@@ -79,7 +79,7 @@ bool parse_parts(const nlohmann::json& j, SkeletonDef& sk, std::string& err) {
 }
 
 bool parse_clip(const nlohmann::json& c, const std::map<std::string, int>& bone_idx,
-                AnimClipDef& clip, std::string& err) {
+                const SkeletonDef& sk, AnimClipDef& clip, std::string& err) {
     clip.loop = c.contains("loop") && c["loop"].get<bool>();
     clip.dur = get_float(c, "dur", 0.f);
     if (clip.dur <= 0.f) { err = "anim: clip dur must be > 0"; return false; }
@@ -96,9 +96,10 @@ bool parse_clip(const nlohmann::json& c, const std::map<std::string, int>& bone_
         }
         for (const auto& k : t["keys"]) {
             KeyDef kd;
+            const BoneDef& bd = sk.bones[tr.bone];
             kd.t = get_float(k, "t", 0.f);
-            kd.x = get_float(k, "x", 0.f);
-            kd.y = get_float(k, "y", 0.f);
+            kd.x = k.contains("x") ? k["x"].get<float>() : bd.x;
+            kd.y = k.contains("y") ? k["y"].get<float>() : bd.y;
             kd.rot = get_float(k, "rot", 0.f);
             kd.sx = get_float(k, "sx", 1.f);
             kd.sy = get_float(k, "sy", 1.f);
@@ -144,7 +145,7 @@ std::optional<AnimSetDef> parse_anim(const nlohmann::json& j, const SkeletonDef&
     AnimSetDef set;
     for (const auto& [name, c] : j["animations"].items()) {
         AnimClipDef clip;
-        if (!parse_clip(c, bone_idx, clip, err)) return std::nullopt;
+        if (!parse_clip(c, bone_idx, sk, clip, err)) return std::nullopt;
         err.clear();
         if (!validate_clip_keys(clip, name, err)) return std::nullopt;
         set.clips[name] = std::move(clip);
