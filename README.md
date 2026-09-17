@@ -118,6 +118,10 @@ F15 镜像 Boss 读你的行为画像（攻防倾向/走位偏好/技能习惯�
 - 素材：Kenney CC0（[kenney.nl](https://kenney.nl)）+ 程序生成（`tools/m5_sprite_gen.py`）
 - 字体：Noto Sans CJK SC（OFL-1.1）
 
+## CHANGELOG
+
+- A5-T3/T4（开发版，未发布）：玩家分件骨骼接入 2D 与 HD-2D，共用姿态、镜像和缩放；3D 支持透明裁剪、分件投影和残影排序。37 项动画测试、63 项 CTest 与 World Validator 通过；隔离运行截图确认待机、行走和攻击姿态变化。当前仍为绿色占位素材，翻滚/受击的视觉验收及 T5 正式素材尚待完成。3D 分件 shader 不可用时回退旧静帧。
+
 ## 星标路线
 
 | 版本 | 里程碑 |

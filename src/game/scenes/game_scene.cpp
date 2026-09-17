@@ -1,4 +1,5 @@
 #include "game_scene.h"
+#include "game/animation/player_avatar.h"   // A5: 玩家骨骼形象 (渲染路径懒建)
 #include "title_scene.h"
 #include "death_scene.h"
 #include "victory_scene.h"
@@ -2229,13 +2230,17 @@ void GameScene::_render() {
     if (g_hd2d_mode) {
         auto& hd2d = HD2DRenderer::inst();
         if (hd2d.ensure_init(sw, sh)) {
-            hd2d.set_camera_shake(shake_ox, shake_oy);  // M6-v2e: 3D shake
+            _ensure_player_avatar();
+            _player_avatar_tick();
+            hd2d.set_camera_shake(shake_ox, shake_oy);
             hd2d.render_frame(*this);
             _render_hd2d_ui_bridge(sw, sh);   // M6-v2a: HUD + 全 overlay 桥
             return;
         }
         g_hd2d_mode = false;  // 初始化失败: 本次会话回退 2D
     }
+    _ensure_player_avatar();
+    _player_avatar_tick();
     _draw_map();
     _draw_ground_items();
     _draw_entities();
@@ -2747,6 +2752,22 @@ static void _draw_interact_hint(const char* text, float cx, float cy) {
                {255, 225, 110, 255});
 }
 
+void GameScene::_ensure_player_avatar() {
+    if (!player || _player_avatar) return;
+    auto avatar = std::make_unique<PlayerAvatar>();
+    std::string avatar_err;
+    if (avatar->try_init("resources/animations", avatar_err))
+        LOG_INFO("A5: player avatar active (skeletal)");
+    else
+        LOG_WARN("A5: avatar inactive, fallback static (%s)", avatar_err.c_str());
+    _player_avatar = std::move(avatar);
+}
+
+void GameScene::_player_avatar_tick() {
+    if (_player_avatar && _player_avatar->active() && player)
+        _player_avatar->update(GetFrameTime(), *player);
+}
+
 void GameScene::_draw_entities() {
     // G9.4: 玩家瓦片 (交互相邻判断)
     std::pair<int,int> ppl = player && game_map
@@ -2813,7 +2834,13 @@ void GameScene::_draw_entities() {
             DrawLineEx({x1, y1}, {x2, y2}, 1.5f, {60, 140, 255, 100});
         }
     }
-    if (player) player->draw_no_cam(_cam_x, _cam_y, game_map.get());
+    if (player) {
+        if (_player_avatar && _player_avatar->active()) {
+            _player_avatar->draw(*player, _cam_x, _cam_y, game_map.get());
+        } else {
+            player->draw_no_cam(_cam_x, _cam_y, game_map.get());
+        }
+    }
 
     // D4 Step4: NPC — sprite (floor-based lookup) + name label
     static const struct { int floor; const char* name; } _npc_lookup[] = {

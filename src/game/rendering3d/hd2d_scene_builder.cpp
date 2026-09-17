@@ -2,6 +2,7 @@
 // 切片范围: 地板/墙 tile (纯色起步) + 玩家/怪 billboard (贴图) + 特效
 // 红线: 只读 gs; 无 gameplay 副作用; 视觉随机只吃 visual_rng (本文件未用随机)
 #include "hd2d_scene_builder.h"
+#include "game/animation/player_avatar.h"
 #include "scenes/game_scene.h"
 #include "world/game_map.h"
 #include "world/challenge_room.h"              // M6-v2a: ChallengePhase
@@ -397,41 +398,62 @@ static const char* _monster_sprite_key_for_3d(const Monster& m) {
     return "mon_orc";
 }
 
-// ── 实体: 玩家 + 存活怪 → billboard (贴图 2D 同源 + v2a 呼吸帧动画) ──
-static void _build_entities(GameScene& gs, std::vector<HD2DDrawItem>& out) {
-    auto& res = ResourceManager::inst();
-    // M4f.3 同款待机/呼吸 2 帧轮换 (GetTime 非随机, 不触 RNG 红线)
-    int anim_frame = ((int)(GetTime() * 4)) & 1;
-
-    if (gs.player && gs.player->combat.is_alive) {
-        HD2DDrawItem item;
-        item.kind = HD2DDrawItem::Kind::ENTITY_BILLBOARD;
-        const auto& r = gs.player->entity.rect;
-        item.world_pos = {r.x + r.width * 0.5f, 0, r.y + r.height * 0.5f};
-        item.size = 36.0f;
-        item.sort_y = r.y;
-        item.outline = true;                   // M6-n: 玩家描边
-        SpriteDef def;
-        item.texture = res.sprite_by_key("player_default", def);
-        if (item.texture.id > 0)
-            item.tex_src = SpriteRenderer::frame_rect(def, anim_frame);
-        else item.tint = {90, 160, 255, 255};
-        item.flip_x = (gs.player->direction == Direction::LEFT);
-        // B3: 翻滚形变 + 残影 (倾斜见 spec §9-2: DrawBillboardRec 无旋转, 3D 不做)
-        Vector2 sq = gs.player->dodge.squash_scale();
-        item.scale_w = sq.x; item.scale_h = sq.y;
-        for (const auto& g : gs.player->dodge.ghosts()) {   // 残影先入 → painter 稳定序垫底
-            float ga = 120.0f * (1.0f - g.age / DodgeComponent::kGhostLife);
-            if (ga <= 0.0f) continue;
-            HD2DDrawItem gh = item;
-            gh.world_pos = {g.pos.x + r.width * 0.5f, 0, g.pos.y + r.height * 0.5f};
-            gh.sort_y = g.pos.y;
-            gh.tint = {255, 255, 255, (unsigned char)ga};
-            gh.outline = false;
-            out.push_back(gh);
-        }
-        out.push_back(item);
+static bool buildPlayerAvatar(const GameScene& scene, std::vector<HD2DDrawItem>& out) {
+    const auto* avatar = scene.playerAvatar();
+    if (!avatar || !avatar->active()) return false;
+    const auto& player = *scene.player;
+    const auto parts = avatar->worldParts(player);
+    const auto& rect = player.entity.rect;
+    const Vector3 feet = {rect.x + rect.width * 0.5f, 0, rect.y + rect.height * 0.5f};
+    for (const auto& ghost : player.dodge.ghosts()) {
+        const float alpha = 120.f * (1.f - ghost.age / DodgeComponent::kGhostLife);
+        if (alpha <= 0) continue;
+        const Vector3 ghost_feet = {feet.x + ghost.pos.x - player.entity.position.x,
+                                   feet.y, feet.z + ghost.pos.y - player.entity.position.y};
+        appendAvatarParts(parts, ghost_feet, ghost.pos.y,
+                          static_cast<unsigned char>(alpha), 0, out);
     }
+    appendAvatarParts(parts, feet, rect.y, 255, 36.f * player.dodge.squash_scale().x, out);
+    return true;
+}
+
+static void buildStaticPlayer(GameScene& gs, int anim_frame, std::vector<HD2DDrawItem>& out) {
+    auto& res = ResourceManager::inst();
+    HD2DDrawItem item;
+    item.kind = HD2DDrawItem::Kind::ENTITY_BILLBOARD;
+    const auto& r = gs.player->entity.rect;
+    item.world_pos = {r.x + r.width * 0.5f, 0, r.y + r.height * 0.5f};
+    item.size = 36.0f;
+    item.sort_y = r.y;
+    item.outline = true;
+    SpriteDef def;
+    item.texture = res.sprite_by_key("player_default", def);
+    if (item.texture.id > 0)
+        item.tex_src = SpriteRenderer::frame_rect(def, anim_frame);
+    else item.tint = {90, 160, 255, 255};
+    item.flip_x = (gs.player->direction == Direction::LEFT);
+    Vector2 sq = gs.player->dodge.squash_scale();
+    item.scale_w = sq.x; item.scale_h = sq.y;
+    for (const auto& g : gs.player->dodge.ghosts()) {
+        float ga = 120.0f * (1.0f - g.age / DodgeComponent::kGhostLife);
+        if (ga <= 0.0f) continue;
+        HD2DDrawItem gh = item;
+        gh.world_pos = {g.pos.x + r.width * 0.5f, 0, g.pos.y + r.height * 0.5f};
+        gh.sort_y = g.pos.y;
+        gh.tint = {255, 255, 255, (unsigned char)ga};
+        gh.outline = false;
+        out.push_back(gh);
+    }
+    out.push_back(item);
+}
+
+static void _build_entities(GameScene& gs, std::vector<HD2DDrawItem>& out,
+                            bool part_color_ready) {
+    auto& res = ResourceManager::inst();
+    int anim_frame = ((int)(GetTime() * 4)) & 1;
+    if (gs.player && gs.player->combat.is_alive
+        && (!part_color_ready || !buildPlayerAvatar(gs, out)))
+        buildStaticPlayer(gs, anim_frame, out);
     for (auto& m : gs.monsters) {
         if (!m || !m->combat.is_alive) continue;
         HD2DDrawItem item;
@@ -440,9 +462,8 @@ static void _build_entities(GameScene& gs, std::vector<HD2DDrawItem>& out) {
         item.world_pos = {r.x + r.width * 0.5f, 0, r.y + r.height * 0.5f};
         item.size = 34.0f;
         item.sort_y = r.y;
-        item.outline = true;                   // M6-n: 怪物描边
+        item.outline = true;
         SpriteDef def;
-        // M6-m: 使用 sprite_override 或按类型/名称映射
         const char* skey = !m->sprite_override.empty() ? m->sprite_override.c_str()
                                                        : _monster_sprite_key_for_3d(*m);
         if (skey) item.texture = res.sprite_by_key(skey, def);
@@ -970,10 +991,11 @@ static void _build_footsteps(GameScene& gs, std::vector<HD2DDrawItem>& out) {
     }
 }
 
-void build_scene(GameScene& gs, std::vector<HD2DDrawItem>& out_items) {
+void build_scene(GameScene& gs, std::vector<HD2DDrawItem>& out_items,
+                 bool part_color_ready) {
     _build_terrain(gs, out_items);
     _build_footsteps(gs, out_items);
-    _build_entities(gs, out_items);
+    _build_entities(gs, out_items, part_color_ready);
     _build_effects(gs, out_items);
     _build_ground_items(gs, out_items);   // M6-v2a
     _build_arena_objects(gs, out_items);  // M6-k

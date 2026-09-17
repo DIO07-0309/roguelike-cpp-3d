@@ -3,6 +3,7 @@
 // v2f: 实体剪影进深度 pass (hd2d_depth.fs alpha-discard, 透明像素不写深度)
 #include "hd2d_shadow_caster.h"
 #include "hd2d_renderer.h"          // HD2DDrawItem
+#include "hd2d_part_geometry.h"     // A5-T4: pro 件同一几何进剪影
 #include "hd2d_shader_bank.h"       // v2f: depth shader 加载
 #include "core/logger.h"
 #include "rlgl.h"
@@ -142,6 +143,10 @@ void HD2DShadowCaster::render_depth(
 // (含 flip_x 负宽源矩形处理), 剪影像素 = 主 pass 可见像素
 void HD2DShadowCaster::_draw_billboard_depth(const HD2DDrawItem& item,
                                              const Camera3D& view_camera) {
+    if (item.pro_mode) {
+        hd2d::drawPartQuad(item, view_camera, hd2d::PartPass::Shadow);
+        return;
+    }
     Vector3 pos = item.world_pos;
     float w = item.size;
     float h = item.size * 1.5f;

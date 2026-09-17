@@ -1,6 +1,7 @@
 // M6-HD2D: HD-2D 渲染器实现 — 垂直切片第一步 (骨架 + 相机 + 地形/billboard)
 // 切片范围: 透视相机 45° 俯视 / 墙体盒子伪光照 / 实体 billboard / 基础后处理
 #include "hd2d_renderer.h"
+#include "hd2d_part_geometry.h"
 #include "hd2d_scene_builder.h"
 #include "hd2d_shader_bank.h"               // M6-v2c: GLSL 加载
 #include "hd2d_post_fx.h"                   // M6-v2c: bloom 链
@@ -40,7 +41,9 @@ bool HD2DRenderer::ensure_init(int target_w, int target_h) {
     _target_h = target_h;
     _setup_camera();
     _load_terrain_shaders();      // M6-v2c: 雾/岩浆 (失败自动回退)
-    _load_outline_shader();       // A1.1: billboard 真轮廓 (失败回退 4 向偏移)
+    _load_outline_shader();
+    if (!_part_color.initialize(_outline_shader))
+        LOG_WARN("HD2D part cutout unavailable; using static player billboards");
     _make_blob_shadow_tex();     // M6-v2c: blob shadow 程序纹理
     _make_mote_glow_tex();       // A2.1: 氛围粒子软光纹理
     _ready = true;
@@ -55,6 +58,7 @@ void HD2DRenderer::shutdown() {
     if (_mote_glow_tex.id > 0) UnloadTexture(_mote_glow_tex);   // A2.1
     _mote_glow_tex = {};
     _fog_ok = _lava_ok = _outline_ok = false;
+    _part_color = {};
     _ready = false;
 }
 
@@ -250,7 +254,7 @@ void HD2DRenderer::render_frame(GameScene& gs) {
 
     // 1. 只读提取绘制列表 (scene_builder 无 gameplay 副作用)
     _draw_items.clear();
-    hd2d::build_scene(gs, _draw_items);
+    hd2d::build_scene(gs, _draw_items, _part_color.ready());
 
     // 2. 相机聚焦玩家世界坐标 (+ M6-v2e: shake 偏移, 帧内消费)
     _camera_focus = {0, 0, 0};
@@ -312,13 +316,16 @@ void HD2DRenderer::_draw_scene() {
     for (const auto& item : _draw_items)
         if (item.kind == HD2DDrawItem::Kind::PORTAL_RING) _draw_portal_ring(item);
     for (const auto& item : _draw_items)
-        if (item.kind == HD2DDrawItem::Kind::ENTITY_BILLBOARD) _draw_billboard(item);
+        if (item.kind == HD2DDrawItem::Kind::ENTITY_BILLBOARD && !hd2d::isGhostPart(item))
+            _draw_billboard(item);
     for (const auto& item : _draw_items)
         if (item.kind == HD2DDrawItem::Kind::DOOR_PANEL) _draw_door_panel(item);
     for (const auto& item : _draw_items)
         if (item.kind == HD2DDrawItem::Kind::ROOM_ICON) _draw_room_icon(item);
     for (const auto& item : _draw_items)
         if (item.kind == HD2DDrawItem::Kind::PROJECTILE_BODY) _draw_projectile_body(item);
+    for (const auto* ghost : hd2d::orderedGhostParts(_draw_items, _camera))
+        _draw_billboard(*ghost);
     for (const auto& item : _draw_items)
         if (item.kind == HD2DDrawItem::Kind::FX_QUAD) _draw_fx_quad(item);
     _draw_ambient_batch();                            // A2.1 (替 v2e 逐颗球)
@@ -534,41 +541,50 @@ void HD2DRenderer::_wall_top_quad(float u0, float u1, float v0, float v1,
 
 // ── Billboard: 面向相机的精灵, 脚点落地, 帧矩形裁剪 (v2a: flip_x 接线) ──
 void HD2DRenderer::_draw_billboard(const HD2DDrawItem& item) {
-    Vector3 pos = item.world_pos;
-    float w = item.size * item.scale_w;      // B3: 翻滚压扁 (默认 1 = 原行为)
-    float h = item.size * 1.5f * item.scale_h;
-    if (item.texture.id > 0) {
-        Rectangle src = item.tex_src.width > 0 ? item.tex_src
-            : Rectangle{0, 0, (float)item.texture.width, (float)item.texture.height};
-        // flip_x: 负宽源矩形 (raylib DrawTexturePro 惯例; billboard 同理取负 w)
-        if (item.flip_x) src.width = -src.width;
-        // A1.1: 3D-aware alpha-mask 真轮廓 (单 draw; 描边不进 shadow map)
-        if (item.outline && _outline_ok) {
-            _draw_billboard_outline(item, src, pos, w, h);
-            _draw_blob_shadow(pos, w);
-            return;
-        }
-        // M6-n 回退: 4 向偏移深色底稿 (仅 outline shader 加载失败时)
-        // 中性深色: 不给群系加色偏 (暖棕会稀释深渊紫, 实测 F11 中心 -4.5→+1.3)
-        if (item.outline) {
-            Color edge{24, 24, 27, 220};
-            float off = item.size * 0.02f;
-            for (int i = 0; i < 4; i++) {
-                Vector3 shift = pos;
-                if (i == 0) shift.x -= off;
-                else if (i == 1) shift.x += off;
-                else if (i == 2) shift.z -= off;
-                else shift.z += off;
-                DrawBillboardRec(_camera, item.texture, src,
-                                 {shift.x, h * 0.5f, shift.z}, {w, h}, edge);
-            }
-        }
-        DrawBillboardRec(_camera, item.texture, src,
-                         {pos.x, h * 0.5f, pos.z}, {w, h}, item.tint);
-    } else {
-        DrawCube({pos.x, h * 0.5f, pos.z}, w * 0.5f, h, w * 0.25f, item.tint);
+    if (item.pro_mode) {
+        _part_color.draw(item, _camera);
+        if (item.blob_width > 0) _draw_blob_shadow(item.world_pos, item.blob_width);
+        return;
     }
+    Vector3 pos = item.world_pos;
+    float w = item.size * item.scale_w;
+    float h = item.size * 1.5f * item.scale_h;
+    if (item.texture.id <= 0) {
+        DrawCube({pos.x, h * 0.5f, pos.z}, w * 0.5f, h, w * 0.25f, item.tint);
+        _draw_blob_shadow(pos, w);
+        return;
+    }
+    Rectangle src = item.tex_src.width > 0 ? item.tex_src
+        : Rectangle{0, 0, (float)item.texture.width, (float)item.texture.height};
+    // flip_x: 负宽源矩形 (raylib DrawTexturePro 惯例; billboard 同理取负 w)
+    if (item.flip_x) src.width = -src.width;
+    // A1.1: 3D-aware alpha-mask 真轮廓 (单 draw; 描边不进 shadow map)
+    if (item.outline && _outline_ok) {
+        _draw_billboard_outline(item, src, pos, w, h);
+        _draw_blob_shadow(pos, w);
+        return;
+    }
+    // M6-n 回退: 4 向偏移深色底稿 (仅 outline shader 加载失败时)
+    if (item.outline) _draw_outline_fallback(item, src, pos, w, h);
+    DrawBillboardRec(_camera, item.texture, src,
+                     {pos.x, h * 0.5f, pos.z}, {w, h}, item.tint);
     _draw_blob_shadow(pos, w);     // M6-v2c: 径向渐变接地阴影
+}
+
+// ── M6-n 回退: 4 向偏移深色底稿 (仅 outline shader 加载失败时) ──
+void HD2DRenderer::_draw_outline_fallback(const HD2DDrawItem& item,
+                                          const Rectangle& src, Vector3 pos, float w, float h) {
+    Color edge{24, 24, 27, 220};
+    float off = item.size * 0.02f;
+    for (int i = 0; i < 4; i++) {
+        Vector3 shift = pos;
+        if (i == 0) shift.x -= off;
+        else if (i == 1) shift.x += off;
+        else if (i == 2) shift.z -= off;
+        else shift.z += off;
+        DrawBillboardRec(_camera, item.texture, src,
+                         {shift.x, h * 0.5f, shift.z}, {w, h}, edge);
+    }
 }
 
 // ── A1.1: 3D-aware 描边路径 — 世界基准宽 → 屏幕 px clamp[1,4] → UV 偏移,

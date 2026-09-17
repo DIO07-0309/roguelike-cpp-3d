@@ -291,7 +291,9 @@ if skel and anim:
     for i, p in enumerate(skel.get("parts", [])):
         if p.get("bone") not in bone_names:
             err(f"player_skeleton parts[{i}]: unknown bone '{p.get('bone')}'")
-        sprite = os.path.join("assets", "sprites", p.get("file", ""))
+        part_file = str(p.get("file", "")).replace("\\", "/")
+        part_file = part_file[len("assets/sprites/"):] if part_file.startswith("assets/sprites/") else part_file
+        sprite = os.path.join("assets", "sprites", part_file)
         if not os.path.exists(sprite):
             err(f"player_skeleton parts[{i}]: missing art {sprite}")
     if skel.get("pixels_per_unit", 0) <= 0:

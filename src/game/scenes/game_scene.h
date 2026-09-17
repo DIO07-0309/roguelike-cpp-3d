@@ -13,6 +13,7 @@
 // G8.1: AI agent forward declarations (global scope)
 class DecisionAgent;
 class BTAgent;
+class PlayerAvatar;   // A5: 渲染路径懒建, 仅前向声明
 #include "item.h"
 #include "game_map.h"
 #include "vfx_server.h"
@@ -114,6 +115,7 @@ public:
 
     // M6-v2e: 氛围层只读视图 (3D 渲染层画粒子 billboard 用)
     const AmbientLayer& ambient_layer() const { return _ambient; }
+    const PlayerAvatar* playerAvatar() const { return _player_avatar.get(); }
 
     // 核心数据
     std::unique_ptr<Player> player;
@@ -365,6 +367,8 @@ private:
     // 渲染辅助 (保留 GameScene 中的轻量级方法)
     void _draw_map();
     void _draw_entities();
+    void _ensure_player_avatar();
+    void _player_avatar_tick();
     void _draw_ground_items();
     void _draw_arena_map();
     void _draw_arena_entities();
@@ -399,6 +403,9 @@ private:
     void _render_damage_floats_3d();
 
     float _cam_x = 0, _cam_y = 0;
+
+    // A5: 玩家骨骼形象 — 首次渲染帧懒建, 失败也缓存不重试 (无头 sim 不实例化)
+    std::unique_ptr<PlayerAvatar> _player_avatar;
 
     // Phase 1: FOV — 玩家跨 tile 时更新
     int _last_player_tile_x = -1;

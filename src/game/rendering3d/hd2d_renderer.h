@@ -1,5 +1,6 @@
 #pragma once
 #include "raylib.h"
+#include "hd2d_part_geometry.h"
 #include <vector>
 #include <memory>
 
@@ -55,6 +56,11 @@ struct HD2DDrawItem {
     int door_state = 0;           // M6-v2h: DOOR_PANEL 四态 (DoorState 枚举值)
     int door_axis = 0;            // M6-n: 门朝向 0=贴东西墙(面板朝±Z) 1=贴南北墙(朝±X)
     bool outline = false;         // M6-n: 实体描边 (玩家/怪; 4向偏移深色底)
+    bool pro_mode = false;
+    float rot_deg = 0.0f;
+    Vector2 pivot_uv_px = {0, 0};
+    Vector2 part_offset = {0, 0};
+    float blob_width = 0.0f;
     MoteStyle mote_style = MoteStyle::DUST;  // A2.1: AMBIENT_MOTE 群系性格
 };
 
@@ -124,6 +130,7 @@ private:
     // ── A1.1: 3D-aware billboard 真轮廓 (alpha-mask 描边 shader) ──
     Shader _outline_shader = {};     // hd2d_billboard_outline (失败→回退 4 向偏移)
     bool _outline_ok = false;
+    hd2d::PartColorShader _part_color;
     int _outline_off_loc = -1;       // uTexelOffset (世界宽→屏幕 clamp→UV)
     int _outline_color_loc = -1;     // uOutlineColor
     int _outline_thresh_loc = -1;    // uAlphaThreshold
@@ -158,6 +165,8 @@ private:
     void _wall_top_quad(float u0, float u1, float v0, float v1,
                         Vector3 pos, float e, float h, Color tint);  // A3.2: 同贴图顶面
     void _draw_billboard(const HD2DDrawItem& item);
+    void _draw_outline_fallback(const HD2DDrawItem& item, const Rectangle& src,
+                                Vector3 pos, float w, float h);
     void _draw_billboard_outline(const HD2DDrawItem& item, const Rectangle& src,
                                  Vector3 pos, float w, float h);  // A1.1
     void _draw_blob_shadow(Vector3 pos, float w);   // M6-v2c: 接地阴影
