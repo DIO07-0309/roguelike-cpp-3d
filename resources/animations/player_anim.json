@@ -1,0 +1,58 @@
+{
+  "animations": {
+    "idle": {
+      "loop": true, "dur": 2.4,
+      "tracks": [
+        { "bone": "torso", "keys": [
+          { "t": 0.0, "rot": 0, "y": 0 },
+          { "t": 1.2, "rot": 2, "y": 1.2 },
+          { "t": 2.4, "rot": 0, "y": 0 } ] },
+        { "bone": "head", "keys": [
+          { "t": 0.0, "rot": 0 },
+          { "t": 1.2, "rot": -2 },
+          { "t": 2.4, "rot": 0 } ] }
+      ]
+    },
+    "walk": {
+      "loop": true, "dur": 0.7,
+      "tracks": [
+        { "bone": "leg_front", "keys": [
+          { "t": 0.0, "rot": -22 }, { "t": 0.35, "rot": 22 }, { "t": 0.7, "rot": -22 } ] },
+        { "bone": "leg_back", "keys": [
+          { "t": 0.0, "rot": 22 }, { "t": 0.35, "rot": -22 }, { "t": 0.7, "rot": 22 } ] },
+        { "bone": "arm_front", "keys": [
+          { "t": 0.0, "rot": 14 }, { "t": 0.35, "rot": -14 }, { "t": 0.7, "rot": 14 } ] },
+        { "bone": "arm_back", "keys": [
+          { "t": 0.0, "rot": -14 }, { "t": 0.35, "rot": 14 }, { "t": 0.7, "rot": -14 } ] },
+        { "bone": "weapon", "keys": [
+          { "t": 0.0, "rot": -14 }, { "t": 0.35, "rot": 14 }, { "t": 0.7, "rot": -14 } ] },
+        { "bone": "torso", "keys": [
+          { "t": 0.0, "y": 0 }, { "t": 0.175, "y": 1.5 }, { "t": 0.35, "y": 0 },
+          { "t": 0.525, "y": 1.5 }, { "t": 0.7, "y": 0 } ] }
+      ]
+    },
+    "attack": {
+      "loop": false, "dur": 0.36,
+      "tracks": [
+        { "bone": "arm_back", "keys": [
+          { "t": 0.0, "rot": 0 }, { "t": 0.1, "rot": -45 },
+          { "t": 0.2, "rot": 80 }, { "t": 0.36, "rot": 10 } ] },
+        { "bone": "weapon", "keys": [
+          { "t": 0.0, "rot": 0 }, { "t": 0.1, "rot": -20 },
+          { "t": 0.2, "rot": 40 }, { "t": 0.36, "rot": 0 } ] },
+        { "bone": "torso", "keys": [
+          { "t": 0.0, "rot": 0 }, { "t": 0.1, "rot": -4 },
+          { "t": 0.2, "rot": 6 }, { "t": 0.36, "rot": 0 } ] }
+      ]
+    },
+    "hit": {
+      "loop": false, "dur": 0.18,
+      "tracks": [
+        { "bone": "torso", "keys": [
+          { "t": 0.0, "rot": 0 }, { "t": 0.06, "rot": -8 }, { "t": 0.18, "rot": 0 } ] },
+        { "bone": "head", "keys": [
+          { "t": 0.0, "rot": 0 }, { "t": 0.06, "rot": -12 }, { "t": 0.18, "rot": 0 } ] }
+      ]
+    }
+  }
+}

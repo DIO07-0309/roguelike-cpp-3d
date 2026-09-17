@@ -98,6 +98,13 @@
       "domain_expand": { "file": "assets/domain_expand.mp3", "source": "external" }
     }
   },
+  "skeleton_parts": {
+    "player_part_head":   { "file": "assets/sprites/player_part_head.png",   "w": 20, "h": 20 },
+    "player_part_torso":  { "file": "assets/sprites/player_part_torso.png",  "w": 24, "h": 28 },
+    "player_part_arm":    { "file": "assets/sprites/player_part_arm.png",    "w": 8,  "h": 22 },
+    "player_part_leg":    { "file": "assets/sprites/player_part_leg.png",    "w": 10, "h": 28 },
+    "player_part_weapon": { "file": "assets/sprites/player_part_weapon.png", "w": 6,  "h": 40 }
+  },
   "lifecycle": {
     "vendor_candidate": ["assets/vendor/tiny_creatures", "assets/vendor/kenney_tiny_dungeon"],
     "deprecated": []

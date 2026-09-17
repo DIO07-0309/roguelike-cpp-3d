@@ -79,6 +79,9 @@ std::vector<Entry> collect(const nlohmann::json& m) {
         for (auto& [cat, entries] : m["assets"].items())
             for (auto& [k, v] : entries.items())
                 out.push_back({cat + "." + k, v.value("file", ""), cat});
+    if (m.contains("skeleton_parts"))   // A5: 骨骼分件 (非 16px tile, 豁免 D2 红线)
+        for (auto& [k, v] : m["skeleton_parts"].items())
+            out.push_back({"skeleton_part." + k, v.value("file", ""), "skeleton_parts"});
     return out;
 }
 
@@ -174,6 +177,14 @@ TEST(AssetManifest, SpriteFramesMatchPngAndScaleRedLine) {
         ASSERT_TRUE(png_dims(v.value("file", ""), w, h)) << k << ": PNG 不可读";
         EXPECT_EQ(w, fw) << k << ": PNG 宽 " << w << " != frame_w " << fw;
         EXPECT_EQ(h, fh) << k << ": PNG 高 " << h << " != frame_h " << fh;
+    }
+    if (m.contains("skeleton_parts")) {   // A5: 分件尺寸一致性 (无 16px 红线)
+        for (auto& [k, v] : m["skeleton_parts"].items()) {
+            int w = 0, h = 0;
+            ASSERT_TRUE(png_dims(v.value("file", ""), w, h)) << k << ": PNG 不可读";
+            EXPECT_EQ(w, v.value("w", 0)) << k << ": PNG 宽 != 声明 w";
+            EXPECT_EQ(h, v.value("h", 0)) << k << ": PNG 高 != 声明 h";
+        }
     }
 }
 

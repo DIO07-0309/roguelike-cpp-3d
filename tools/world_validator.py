@@ -283,6 +283,40 @@ for e in enemies:
             err(f"{ctx} projectile.warning_level {lvl} must be 0/1/2")
 
 
+# ═══ A5: skeletal animation cross-refs ═══
+skel = load_json(os.path.join("animations", "player_skeleton.json"))
+anim = load_json(os.path.join("animations", "player_anim.json"))
+if skel and anim:
+    bone_names = {b["name"] for b in skel.get("bones", [])}
+    for i, p in enumerate(skel.get("parts", [])):
+        if p.get("bone") not in bone_names:
+            err(f"player_skeleton parts[{i}]: unknown bone '{p.get('bone')}'")
+        sprite = os.path.join("assets", "sprites", p.get("file", ""))
+        if not os.path.exists(sprite):
+            err(f"player_skeleton parts[{i}]: missing art {sprite}")
+    if skel.get("pixels_per_unit", 0) <= 0:
+        err("player_skeleton: pixels_per_unit must be > 0")
+    for cname, clip in anim.get("animations", {}).items():
+        if clip.get("dur", 0) <= 0:
+            err(f"player_anim [{cname}]: dur must be > 0")
+        for tr in clip.get("tracks", []):
+            if tr.get("bone") not in bone_names:
+                err(f"player_anim [{cname}]: unknown track bone '{tr.get('bone')}'")
+            ks = tr.get("keys", [])
+            if not ks:
+                err(f"player_anim [{cname}]: track '{tr.get('bone')}' has no keys")
+                continue
+            if abs(ks[-1].get("t", -1) - clip.get("dur", 0)) > 1e-3:
+                err(f"player_anim [{cname}]: track '{tr.get('bone')}' last key t != dur")
+            if ks[0].get("t", -1) > 1e-3:
+                warnings.append(f"player_anim [{cname}]: track '{tr.get('bone')}' first key t != 0")
+            ts = [k.get("t", 0) for k in ks]
+            if ts != sorted(ts):
+                err(f"player_anim [{cname}]: track '{tr.get('bone')}' keys not sorted by t")
+    for need in ("idle", "walk", "attack", "hit"):
+        if need not in anim.get("animations", {}):
+            err(f"player_anim: required clip '{need}' missing")
+
 # ═══ Report ═══
 print(f"\n{'='*60}")
 print(f"  WORLD VALIDATOR REPORT")

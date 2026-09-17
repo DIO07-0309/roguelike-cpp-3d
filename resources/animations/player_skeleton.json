@@ -1,0 +1,24 @@
+{
+  "pixels_per_unit": 0.5,
+  "anchor": [24, 62],
+  "bones": [
+    { "name": "root" },
+    { "name": "hips", "parent": "root", "y": -28 },
+    { "name": "torso", "parent": "hips", "y": 8 },
+    { "name": "head", "parent": "torso", "y": 16 },
+    { "name": "arm_back", "parent": "torso", "x": -3, "y": 13 },
+    { "name": "weapon", "parent": "arm_back", "y": -12 },
+    { "name": "arm_front", "parent": "torso", "x": 4, "y": 13 },
+    { "name": "leg_front", "parent": "hips", "x": 3 },
+    { "name": "leg_back", "parent": "hips", "x": -3 }
+  ],
+  "parts": [
+    { "bone": "leg_back", "file": "player_part_leg.png", "pivot": [8, 30] },
+    { "bone": "arm_back", "file": "player_part_arm.png", "pivot": [8, 2] },
+    { "bone": "weapon", "file": "player_part_weapon.png", "pivot": [4, 28] },
+    { "bone": "torso", "file": "player_part_torso.png", "pivot": [16, 6] },
+    { "bone": "head", "file": "player_part_head.png", "pivot": [16, 2] },
+    { "bone": "arm_front", "file": "player_part_arm.png", "pivot": [8, 2] },
+    { "bone": "leg_front", "file": "player_part_leg.png", "pivot": [8, 30] }
+  ]
+}
