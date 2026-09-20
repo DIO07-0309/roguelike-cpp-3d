@@ -1,3 +1,29 @@
+# A6 — 摄像机语言 v1 (2026-09-20)
+
+> 设计 spec: docs/superpowers/specs/2026-09-20-a6-camera-language-design.md
+> 实施计划: docs/superpowers/plans/2026-09-20-a6-camera-language.md
+
+- **数据层** (T1): `resources/camera/boss_camera.json` + `camera_defs.h/.cpp` 加载器
+  - Boss 战 zoom_in (fov_scale 0.75, 1.5s) / zoom_out (fov_scale 1.0, 0.8s)
+  - 击杀顿帧 (0.08s) + 震动 (amplitude 3.0, frequency 20Hz)
+  - World Validator 相机交叉引用校验段
+- **HitStop** (T2): 独立击杀顿帧计时器 (wall clock, sim 模式跳过)
+  - `HitStop` 类: trigger/update/active/remaining/is_stunned
+  - GameScene._process 集成: 顿帧期间跳过游戏逻辑，仅推表现层
+- **CameraDirector** (T3): 摄像机语言状态机 (NORMAL/BOSS_WAR/KILL_STUN)
+  - 插值: FOV scale + focus_offset (玩家-Boss 中点跟踪)
+  - 命名 `CameraLanguageDirector` (避免与 CameraDirector 常量冲突)
+- **渲染接入** (T4): 2D/3D 双端相机偏移应用
+  - Boss 出场触发 enter_boss_war()
+  - 焦点偏移叠加到 _cam_x/_cam_y (2D) / 待接入 3D fov_scale
+- **击杀顿帧** (T5): on_monster_killed 触发 HitStop + trigger_kill_stun
+  - 顿帧时长: 普通怪 0.08s, Boss 战期间 0.12s
+  - 震动强度: 普通 4.0, 精英 8.0, Boss 16.0
+
+- 门禁: Release 0 error · **ctest 64/64** (新增 camera_test 15 用例) ·
+  validator 0/0 · sim 逐字节一致
+- 待实机验收: Boss 战运镜效果 + 击杀顿帧手感
+
 # A5-T5 — 红饰灰甲骑士分件（开发版，待用户验收）
 
 - 沿用原 Kenney 骑士的红饰、灰甲和面罩辨识特征，补绘透明头盔、胸甲、臂甲、腿靴和剑；原 `player_fire.png` 保留，不是原图无损拆件。
