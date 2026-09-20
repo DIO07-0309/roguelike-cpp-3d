@@ -638,6 +638,13 @@ void GameScene::_process(double delta) {
             if (_boss_entrance_timer <= 0) {
                 _boss_entered = true;
                 state = GameState::PLAYING;
+                // A6: Boss 出场预渲染其区域 (解决镜头聚焦后视野虚空)
+                Monster* boss_monster = _get_boss();
+                if (boss_monster && game_map) {
+                    int boss_tx = (int)(boss_monster->entity.rect.x / TILE_SIZE);
+                    int boss_ty = (int)(boss_monster->entity.rect.y / TILE_SIZE);
+                    game_map->mark_boss_area(boss_tx, boss_ty, 3);  // 半径 3 tile
+                }
                 // A6-T4: Boss 出场触发运镜
                 if (!_sim_mode && _camera_def_loaded) {
                     _camera_director.enter_boss_war();
@@ -649,6 +656,13 @@ void GameScene::_process(double delta) {
                 boss_cinematic_timer = 0;
                 _boss_entered = true;
                 state = GameState::PLAYING;
+                // A6: Boss 出场预渲染其区域 (解决镜头聚焦后视野虚空)
+                Monster* boss_monster = _get_boss();
+                if (boss_monster && game_map) {
+                    int boss_tx = (int)(boss_monster->entity.rect.x / TILE_SIZE);
+                    int boss_ty = (int)(boss_monster->entity.rect.y / TILE_SIZE);
+                    game_map->mark_boss_area(boss_tx, boss_ty, 3);  // 半径 3 tile
+                }
                 // A6-T4: Boss 出场触发运镜
                 if (!_sim_mode && _camera_def_loaded) {
                     _camera_director.enter_boss_war();

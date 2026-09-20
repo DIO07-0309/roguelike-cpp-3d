@@ -102,6 +102,9 @@ public:
     void update_fov(int center_x, int center_y, int radius);
     void update_boss_fov(int center_x, int center_y, int radius);
     void reset_visibility();
+    
+    // A6: Boss 出场时强制标记周围区域为已探索 (解决镜头聚焦后视野虚空问题)
+    void mark_boss_area(int center_x, int center_y, int radius);
 
     // M6-v2d: 两 tile 间视线 (Bresenham 步进, 端点不检查) — 名条遮挡裁剪用
     // 只读查询, 无副作用; 越界 tile 按挡视线处理 (保守)
