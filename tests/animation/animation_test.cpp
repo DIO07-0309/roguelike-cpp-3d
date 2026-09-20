@@ -5,10 +5,17 @@
 #include "game/rendering3d/hd2d_renderer.h"
 #include "game/rendering3d/hd2d_part_geometry.h"
 #include "game/animation/player_avatar.h"
+#include "game/animation/skeleton_avatar.h"
+#include "data/actor_avatar_defs.h"
+#include "entities/monster.h"
+#include "entities/ai.h"
 #include "game/rendering3d/hd2d_scene_builder.h"
 #include <cmath>
 #include <algorithm>
+#include <filesystem>
 #include <limits>
+#include <set>
+#include <string>
 #include "raymath.h"
 #include "rlgl.h"
 
@@ -612,14 +619,14 @@ TEST(HD2DPartGeometry, RealIdlePartsStayAboveFeetWithoutUnitRescaling) {
             bottom = std::min(bottom, position.y);
             top = std::max(top, position.y);
         }
-        EXPECT_NEAR(top - bottom, texture.height * 0.5f, 1e-4f);
+        EXPECT_NEAR(top - bottom, texture.height * skeleton->pixels_per_unit, 1e-4f);
         const auto area = Vector3CrossProduct(Vector3Subtract(quad->positions[1], quad->positions[0]),
                                               Vector3Subtract(quad->positions[2], quad->positions[0]));
         EXPECT_GT(Vector3Length(area), 0.f);
         if (part.file.find("leg") != std::string::npos) {
-            EXPECT_NEAR(bottom, 0, 1e-4f); EXPECT_NEAR(top, 14, 1e-4f);
+            EXPECT_NEAR(bottom, -1.6, 1e-4f); EXPECT_NEAR(top, 14.4, 1e-4f);
         } else if (part.file.find("head") != std::string::npos) {
-            EXPECT_NEAR(bottom, 21, 1e-4f); EXPECT_NEAR(top, 31, 1e-4f);
+            EXPECT_NEAR(bottom, 17.6, 1e-4f); EXPECT_NEAR(top, 33.6, 1e-4f);
         }
     }
 }
@@ -643,4 +650,118 @@ TEST(AvatarAnimator, HeavyScalesDuration) {
     EXPECT_EQ(an.current_name(), "attack");                  // 仍在播
     for (int i = 0; i < 8; ++i) an.advance(0.05f, in);       // 0.98 > 0.648
     EXPECT_EQ(an.current_name(), "idle");
+}
+
+// ���� A6-S1: actor_avatars.json ������ (���ڴ� parse, �� GL ����) ����������
+TEST(ActorAvatarDefs, ParsesWhitelistEntries) {
+    auto j = nlohmann::json::parse(R"({"actors":{"mon_fire_imp":{
+      "skeleton":"resources/animations/imp_skeleton.json","anim":"resources/animations/imp_anim.json"}}})");
+    std::string err;
+    auto out = parse_actor_avatars(j, err);
+    ASSERT_TRUE(out.has_value()) << err;
+    ASSERT_EQ(out->size(), 1u);
+    EXPECT_EQ((*out)["mon_fire_imp"].skeleton, "resources/animations/imp_skeleton.json");
+    EXPECT_EQ((*out)["mon_fire_imp"].anim, "resources/animations/imp_anim.json");
+}
+TEST(ActorAvatarDefs, EmptyOrDefaultActorsMeanFullFallback) {
+    std::string err;
+    auto empty = parse_actor_avatars(nlohmann::json::parse(R"({"actors":{}})"), err);
+    ASSERT_TRUE(empty.has_value()) << err;
+    EXPECT_TRUE(empty->empty());
+    auto absent = parse_actor_avatars(nlohmann::json::parse(R"({})"), err);
+    ASSERT_TRUE(absent.has_value()) << err;   // ȱ actors �� = ȫ����, �Ǵ���
+    EXPECT_TRUE(absent->empty());
+}
+TEST(ActorAvatarDefs, RejectsEntryMissingRequiredField) {
+    auto j = nlohmann::json::parse(R"({"actors":{"mon_orc":{"skeleton":"a.json"}}})");
+    std::string err;
+    EXPECT_FALSE(parse_actor_avatars(j, err).has_value());
+    EXPECT_FALSE(err.empty());
+}
+TEST(ActorAvatarDefs, RepoDefaultWhitelistCoversA6HumanoidFamily) {
+    std::string err;
+    auto out = load_actor_avatars_file("resources/animations/actor_avatars.json", err);
+    ASSERT_TRUE(out.has_value()) << err;
+    const std::set<std::string> expected = {"mon_orc", "mon_elite_orc", "mon_archer",
+                                            "mon_shaman", "mon_goblin_hunter", "mon_tank",
+                                            "mon_bone_soldier", "mon_skeleton_archer"};
+    ASSERT_EQ(out->size(), expected.size());
+    for (const auto& key : expected) {
+        auto it = out->find(key);
+        ASSERT_NE(it, out->end()) << key;
+        EXPECT_FALSE(it->second.skeleton.empty());
+        EXPECT_FALSE(it->second.anim.empty());
+        EXPECT_TRUE(std::filesystem::exists(it->second.skeleton)) << key;
+    }
+    EXPECT_TRUE(std::filesystem::exists(out->begin()->second.anim));
+}
+
+// ���� A6-S1: SkeletonAvatar ͨ�ú��� (hp ���ػ��� + ��Ⱦ�㳯��) ����������
+TEST(SkeletonAvatarCore, HpFallEdgeSingleTrigger) {
+    SkeletonAvatar sk;
+    EXPECT_FALSE(sk.hp_hit_edge(10));        // �״ν���¼����
+    EXPECT_FALSE(sk.hp_hit_edge(12));        // �����ز�����
+    EXPECT_TRUE(sk.hp_hit_edge(8));          // �½��� = �ܻ�
+    EXPECT_FALSE(sk.hp_hit_edge(8));         // ��ƽ���ش���
+}
+TEST(SkeletonAvatarCore, FacingTracksHorizontalMotion) {
+    SkeletonAvatar sk;
+    sk.track_facing({0, 0});
+    sk.track_facing({-4, 2});                // x λ��Ϊ�� �� ����
+    EXPECT_FLOAT_EQ(sk.facing(), -1.f);
+    sk.track_facing({2, 2});                 // x λ��Ϊ�� �� ��ԭ
+    EXPECT_FLOAT_EQ(sk.facing(), 1.f);
+    sk.track_facing({2, 9});                 // �������ƶ����ĳ���
+    EXPECT_FLOAT_EQ(sk.facing(), 1.f);
+}
+
+// ���� A6-S1: monster_anim_input �ź�ӳ�� (������, �� gameplay) ����������
+namespace {
+Monster make_signal_monster() {
+    return Monster(0, 0, "����", 10, 1, 0, 0, {200, 80, 80, 255});
+}
+}
+TEST(MonsterAnimInput, NullAiFallsBackToIdle) {
+    Monster m = make_signal_monster();
+    delete m.ai; m.ai = nullptr;
+    int last_hp = -1;
+    const auto in = monster_anim_input(m, last_hp, 5.f);
+    EXPECT_FALSE(in.moving);
+    EXPECT_FALSE(in.attacking);
+    EXPECT_FALSE(in.hit_flash);
+    EXPECT_FLOAT_EQ(in.attack_recovery_ratio, 1.f);
+}
+TEST(MonsterAnimInput, MovingReadsAiChaseState) {
+    Monster m = make_signal_monster();
+    int last_hp = -1;
+    m.ai->state = AIState::CHASE;
+    EXPECT_TRUE(monster_anim_input(m, last_hp, 5.f).moving);
+    m.ai->state = AIState::IDLE;
+    EXPECT_FALSE(monster_anim_input(m, last_hp, 5.f).moving);
+    m.ai->state = AIState::ATTACK;
+    EXPECT_FALSE(monster_anim_input(m, last_hp, 5.f).moving);
+}
+TEST(MonsterAnimInput, AttackUsesWallClockSwingWindow) {
+    Monster m = make_signal_monster();
+    int last_hp = -1;
+    EXPECT_FALSE(monster_anim_input(m, last_hp, 5.f).attacking);   // Ĭ�� -10 Զ��
+    m.last_attack_wall_time = 4.9f;
+    EXPECT_TRUE(monster_anim_input(m, last_hp, 5.0f).attacking);   // 0.25s �ӿ�����
+    EXPECT_FALSE(monster_anim_input(m, last_hp, 5.2f).attacking);  // �������
+}
+TEST(MonsterAnimInput, HitIsHpFallEdgeOnly) {
+    Monster m = make_signal_monster();
+    int last_hp = -1;
+    EXPECT_FALSE(monster_anim_input(m, last_hp, 5.f).hit_flash);
+    m.combat.current_hp = 7;
+    EXPECT_TRUE(monster_anim_input(m, last_hp, 5.f).hit_flash);
+    EXPECT_FALSE(monster_anim_input(m, last_hp, 5.f).hit_flash);
+    m.combat.current_hp = 9;                                        // ��Ѫ�����ܻ�
+    EXPECT_FALSE(monster_anim_input(m, last_hp, 5.f).hit_flash);
+}
+TEST(MonsterActorKey, PrefersSpriteOverrideThenName) {
+    Monster m = make_signal_monster();
+    EXPECT_EQ(monster_actor_key(m), "����");
+    m.sprite_override = "mon_fire_imp";
+    EXPECT_EQ(monster_actor_key(m), "mon_fire_imp");
 }

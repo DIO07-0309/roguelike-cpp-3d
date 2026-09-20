@@ -220,11 +220,25 @@ void HD2DRenderer::_upload_point_lights() {
                     SHADER_UNIFORM_FLOAT, count);
 }
 
-// ── M6-v2c: blob shadow 程序纹理 — 64x64 径向渐变 (中心黑→边透明) ──
+// ── M6-v2c: blob shadow 程序纹理 — 128x128 径向渐变 (中心黑→边透明) ──
+// A5-T5-fix: 渐变半径 48px < 半图 64px, 留出透明边距; 消除矩形边界
 void HD2DRenderer::_make_blob_shadow_tex() {
     if (_blob_shadow_tex.id > 0) return;
-    Image img = GenImageGradientRadial(64, 64, 0.0f,
-                                       Color{0, 0, 0, 200}, Color{0, 0, 0, 0});
+    const int size = 128;
+    const float radius = 48.0f;
+    Image img = GenImageColor(size, size, Color{0, 0, 0, 0});
+    const float cx = (size - 1) * 0.5f, cy = (size - 1) * 0.5f;
+    for (int y = 0; y < size; ++y) {
+        for (int x = 0; x < size; ++x) {
+            float dx = x - cx, dy = y - cy;
+            float dist = sqrtf(dx * dx + dy * dy);
+            if (dist >= radius) continue;
+            float t = dist / radius;
+            float a = cosf(t * 3.14159265f * 0.5f);
+            ImageDrawPixel(&img, x, y, Color{0, 0, 0,
+                (unsigned char)(a * a * 200.0f)});
+        }
+    }
     _blob_shadow_tex = LoadTextureFromImage(img);
     UnloadImage(img);
 }

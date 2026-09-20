@@ -413,7 +413,8 @@ static bool buildPlayerAvatar(const GameScene& scene, std::vector<HD2DDrawItem>&
         appendAvatarParts(parts, ghost_feet, ghost.pos.y,
                           static_cast<unsigned char>(alpha), 0, out);
     }
-    appendAvatarParts(parts, feet, rect.y, 255, 36.f * player.dodge.squash_scale().x, out);
+    // A5-T5-fix: avatar parts 不用 blob shadow (矩形 quad 可见), 完全依赖 depth shadow
+    appendAvatarParts(parts, feet, rect.y, 255, 0.f, out);
     return true;
 }
 
@@ -456,6 +457,16 @@ static void _build_entities(GameScene& gs, std::vector<HD2DDrawItem>& out,
         buildStaticPlayer(gs, anim_frame, out);
     for (auto& m : gs.monsters) {
         if (!m || !m->combat.is_alive) continue;
+        // A6-S1: 骨骼皮肤命中 → 逐件 pro 片 (无 blob shadow, 依赖 depth shadow), 否则旧 billboard 原样
+        if (auto* skav = m->skeleton_avatar(); skav && skav->active()) {
+            const auto& mr = m->entity.rect;
+            const auto parts = skav->part_draws({}, skav->facing() < 0);
+            if (!parts.empty()) {
+                appendAvatarParts(parts, {mr.x + mr.width * 0.5f, 0, mr.y + mr.height * 0.5f},
+                                  mr.y, 255, 0.f, out);
+                continue;
+            }
+        }
         HD2DDrawItem item;
         item.kind = HD2DDrawItem::Kind::ENTITY_BILLBOARD;
         const auto& r = m->entity.rect;
