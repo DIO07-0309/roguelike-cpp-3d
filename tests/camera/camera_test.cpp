@@ -195,12 +195,12 @@ TEST(CameraLanguageDirector, FocusOffsetTracksMidpoint) {
     Vector2 player_pos = {100, 100};
     Vector2 boss_pos = {200, 100};
     
-    // 更新多帧后 focus_offset 应该接近 25% 偏移 (限制 64px * 0.25 = 16px)
+    // 更新多帧后 focus_offset 应该接近 35% 实际距离 (100px * 0.35 = 35px)
     for (int i = 0; i < 100; ++i) {
         cd.update(0.016f, player_pos, boss_pos);
     }
     
-    // 期望偏移 = min(64, dist) * 0.25 = 16.0
-    EXPECT_NEAR(cd.focus_offset().x, 16.0f, 5.0f);
+    // 期望偏移 = 距离 * 35% = 100 * 0.35 = 35.0
+    EXPECT_NEAR(cd.focus_offset().x, 35.0f, 5.0f);
     EXPECT_NEAR(cd.focus_offset().y, 0.0f, 5.0f);
 }
