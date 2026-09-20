@@ -26,7 +26,7 @@ Vector2 vec_mul(Vector2 a, float s) {
 }
 }
 
-bool CameraDirector::try_init(const CameraDef& def) {
+bool CameraLanguageDirector::try_init(const CameraDef& def) {
     _def = def;
     _initialized = true;
     _state = CameraState::NORMAL;
@@ -37,7 +37,7 @@ bool CameraDirector::try_init(const CameraDef& def) {
     return true;
 }
 
-void CameraDirector::enter_boss_war() {
+void CameraLanguageDirector::enter_boss_war() {
     if (!_initialized) return;
     _state = CameraState::BOSS_WAR;
     _boss_war_active = true;
@@ -45,7 +45,7 @@ void CameraDirector::enter_boss_war() {
     _target_fov_scale = _def.boss_war.zoom_in.fov_scale;
 }
 
-void CameraDirector::exit_boss_war() {
+void CameraLanguageDirector::exit_boss_war() {
     if (!_initialized || !_boss_war_active) return;
     _boss_war_active = false;
     _state = CameraState::NORMAL;
@@ -53,13 +53,13 @@ void CameraDirector::exit_boss_war() {
     _target_focus_offset = {0, 0};
 }
 
-void CameraDirector::trigger_kill_stun() {
+void CameraLanguageDirector::trigger_kill_stun() {
     if (!_initialized) return;
     _state = CameraState::KILL_STUN;
     _kill_stun_timer = _def.kill_stun.duration;
 }
 
-void CameraDirector::update(float dt, const Vector2& player_pos, const Vector2& boss_pos) {
+void CameraLanguageDirector::update(float dt, const Vector2& player_pos, const Vector2& boss_pos) {
     if (!_initialized) return;
     
     switch (_state) {
@@ -75,7 +75,7 @@ void CameraDirector::update(float dt, const Vector2& player_pos, const Vector2& 
     }
 }
 
-void CameraDirector::update_normal(float dt, const Vector2& player_pos) {
+void CameraLanguageDirector::update_normal(float dt, const Vector2& player_pos) {
     (void)player_pos;
     // 平滑插值回正常状态
     float lerp_t = dt * _def.boss_war.lerp_speed;
@@ -83,7 +83,7 @@ void CameraDirector::update_normal(float dt, const Vector2& player_pos) {
     _current_focus_offset = lerp_vec(_current_focus_offset, _target_focus_offset, lerp_t);
 }
 
-void CameraDirector::update_boss_war(float dt, const Vector2& player_pos, const Vector2& boss_pos) {
+void CameraLanguageDirector::update_boss_war(float dt, const Vector2& player_pos, const Vector2& boss_pos) {
     // Boss 战期间: 聚焦玩家和 Boss 的中点
     Vector2 sum = vec_add(player_pos, boss_pos);
     Vector2 mid_point = vec_mul(sum, 0.5f);
@@ -100,7 +100,7 @@ void CameraDirector::update_boss_war(float dt, const Vector2& player_pos, const 
     }
 }
 
-void CameraDirector::update_kill_stun(float dt) {
+void CameraLanguageDirector::update_kill_stun(float dt) {
     _kill_stun_timer -= dt;
     if (_kill_stun_timer <= 0) {
         _kill_stun_timer = 0;
@@ -110,14 +110,14 @@ void CameraDirector::update_kill_stun(float dt) {
     }
 }
 
-Vector2 CameraDirector::focus_offset() const {
+Vector2 CameraLanguageDirector::focus_offset() const {
     return _current_focus_offset;
 }
 
-float CameraDirector::fov_scale() const {
+float CameraLanguageDirector::fov_scale() const {
     return _current_fov_scale;
 }
 
-CameraState CameraDirector::state() const {
+CameraState CameraLanguageDirector::state() const {
     return _state;
 }

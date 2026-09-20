@@ -1,5 +1,5 @@
 #pragma once
-// A6-T3: CameraDirector — 摄像机语言状态机 + 插值
+// A6-T3: CameraLanguageDirector — 摄像机语言状态机 + 插值
 // 管理 Boss 战运镜 (zoom_in/out) 和击杀顿帧
 
 #include "data/camera_defs.h"
@@ -8,7 +8,7 @@
 
 enum class CameraState { NORMAL, BOSS_WAR, KILL_STUN };
 
-class CameraDirector {
+class CameraLanguageDirector {
 public:
     bool try_init(const CameraDef& def);
     

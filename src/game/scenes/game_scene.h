@@ -45,7 +45,7 @@ class PlayerAvatar;   // A5: 渲染路径懒建, 仅前向声明
 #include "minimap.h"
 #include "room_manager.h"    // Batch 2C: Room Encounter
 #include "boss_encounter.h"
-#include "camera_director.h"
+#include "game/director/camera_director.h"
 #include "boss_cinematic.h"
 #include "boss_timeline.h"
 #include "ending_director.h"
@@ -408,6 +408,10 @@ private:
     void _render_damage_floats_3d();
 
     float _cam_x = 0, _cam_y = 0;
+
+    // A6-T3: CameraLanguageDirector — 摄像机语言状态机 (Boss 战运镜 + 击杀顿帧)
+    CameraLanguageDirector _camera_director;
+    bool _camera_def_loaded = false;
 
     // A6-T2: HitStop — 击杀/重击时短暂暂停游戏逻辑 (wall clock, 独立于 PresentationSystem)
     HitStop _hit_stop;

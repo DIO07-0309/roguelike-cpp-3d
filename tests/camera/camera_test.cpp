@@ -105,8 +105,8 @@ TEST(HitStop, RemainingNeverNegative) {
     EXPECT_FALSE(hs.active());
 }
 
-TEST(CameraDirector, TryInitSetsInitialState) {
-    CameraDirector cd;
+TEST(CameraLanguageDirector, TryInitSetsInitialState) {
+    CameraLanguageDirector cd;
     std::string err;
     auto def = load_camera_file("resources/camera/boss_camera.json", err);
     ASSERT_TRUE(def);
@@ -118,8 +118,8 @@ TEST(CameraDirector, TryInitSetsInitialState) {
     EXPECT_NEAR(cd.focus_offset().y, 0.0f, 1e-6f);
 }
 
-TEST(CameraDirector, EnterBossWarChangesStateAndFov) {
-    CameraDirector cd;
+TEST(CameraLanguageDirector, EnterBossWarChangesStateAndFov) {
+    CameraLanguageDirector cd;
     std::string err;
     auto def = load_camera_file("resources/camera/boss_camera.json", err);
     ASSERT_TRUE(def);
@@ -132,8 +132,8 @@ TEST(CameraDirector, EnterBossWarChangesStateAndFov) {
     EXPECT_LE(cd.fov_scale(), 1.0f);
 }
 
-TEST(CameraDirector, ExitBossWarReturnsToNormal) {
-    CameraDirector cd;
+TEST(CameraLanguageDirector, ExitBossWarReturnsToNormal) {
+    CameraLanguageDirector cd;
     std::string err;
     auto def = load_camera_file("resources/camera/boss_camera.json", err);
     ASSERT_TRUE(def);
@@ -146,8 +146,8 @@ TEST(CameraDirector, ExitBossWarReturnsToNormal) {
     EXPECT_EQ(cd.state(), CameraState::NORMAL);
 }
 
-TEST(CameraDirector, TriggerKillStunChangesState) {
-    CameraDirector cd;
+TEST(CameraLanguageDirector, TriggerKillStunChangesState) {
+    CameraLanguageDirector cd;
     std::string err;
     auto def = load_camera_file("resources/camera/boss_camera.json", err);
     ASSERT_TRUE(def);
@@ -163,8 +163,8 @@ TEST(CameraDirector, TriggerKillStunChangesState) {
     EXPECT_EQ(cd.state(), CameraState::NORMAL);
 }
 
-TEST(CameraDirector, UpdateInterpolatesFovScale) {
-    CameraDirector cd;
+TEST(CameraLanguageDirector, UpdateInterpolatesFovScale) {
+    CameraLanguageDirector cd;
     std::string err;
     auto def = load_camera_file("resources/camera/boss_camera.json", err);
     ASSERT_TRUE(def);
@@ -183,8 +183,8 @@ TEST(CameraDirector, UpdateInterpolatesFovScale) {
     EXPECT_NEAR(cd.fov_scale(), def->boss_war.zoom_in.fov_scale, 0.1f);
 }
 
-TEST(CameraDirector, FocusOffsetTracksMidpoint) {
-    CameraDirector cd;
+TEST(CameraLanguageDirector, FocusOffsetTracksMidpoint) {
+    CameraLanguageDirector cd;
     std::string err;
     auto def = load_camera_file("resources/camera/boss_camera.json", err);
     ASSERT_TRUE(def);

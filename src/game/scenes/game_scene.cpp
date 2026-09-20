@@ -1,6 +1,7 @@
 #include "game_scene.h"
 #include "game/animation/player_avatar.h"   // A5: 玩家骨骼形象 (渲染路径懒建)
 #include "systems/hit_stop.h"               // A6-T2: HitStop 击杀顿帧
+#include "data/camera_defs.h"               // A6-T1: 摄像机语言数据加载
 #include "title_scene.h"
 #include "death_scene.h"
 #include "victory_scene.h"
@@ -155,6 +156,18 @@ void GameScene::_ready() {
     ServiceLocator::provide(&_flow);
     ServiceLocator::provide(&_renderer);
     ServiceLocator::provide(&_interact);
+
+    // A6-T4: 加载摄像机语言配置
+    {
+        std::string err;
+        auto cam_def = load_camera_file("resources/camera/boss_camera.json", err);
+        if (cam_def) {
+            _camera_director.try_init(*cam_def);
+            _camera_def_loaded = true;
+        } else {
+            LOG_INFO("[A6] Camera config not loaded: %s", err.c_str());
+        }
+    }
 }
 
 // v1.5.0-P0: sim goto-floor 玩家强度对标 — bot 裸装 (120HP/12ATK) 进 F15
@@ -623,6 +636,10 @@ void GameScene::_process(double delta) {
             if (_boss_entrance_timer <= 0) {
                 _boss_entered = true;
                 state = GameState::PLAYING;
+                // A6-T4: Boss 出场触发运镜
+                if (!_sim_mode && _camera_def_loaded) {
+                    _camera_director.enter_boss_war();
+                }
             }
         } else {
             boss_cinematic_timer -= dt;
@@ -630,6 +647,10 @@ void GameScene::_process(double delta) {
                 boss_cinematic_timer = 0;
                 _boss_entered = true;
                 state = GameState::PLAYING;
+                // A6-T4: Boss 出场触发运镜
+                if (!_sim_mode && _camera_def_loaded) {
+                    _camera_director.enter_boss_war();
+                }
             }
         }
     }
@@ -644,6 +665,19 @@ void GameScene::_process(double delta) {
             _presentation.tick(dt);
             return;
         }
+    }
+
+    // A6-T4: CameraDirector 更新 (wall clock, sim 模式跳过)
+    if (!_sim_mode && _camera_def_loaded) {
+        Vector2 player_pos = {player->entity.rect.x + player->entity.rect.width/2,
+                              player->entity.rect.y + player->entity.rect.height/2};
+        Vector2 boss_pos = {0, 0};
+        Monster* boss_monster = _get_boss();
+        if (boss_monster && boss_monster->combat.is_alive) {
+            boss_pos.x = boss_monster->entity.rect.x + boss_monster->entity.rect.width/2;
+            boss_pos.y = boss_monster->entity.rect.y + boss_monster->entity.rect.height/2;
+        }
+        _camera_director.update(dt, player_pos, boss_pos);
     }
 
     // Q4.1: HitStop — 冻结期间只推表现层, 世界模拟暂停 (打击感)
@@ -2232,8 +2266,16 @@ void GameScene::_render() {
 
     // C1: 屏幕震动 (相机偏移) — G9.3 (RNG-001): 走独立视觉流, 不消耗战斗 RNG
     auto [shake_ox, shake_oy] = shake_offset(_presentation.shake_intensity,
-                                             _presentation.shake_timer);
+                                              _presentation.shake_timer);
     float saved_cx = _cam_x, saved_cy = _cam_y;
+    
+    // A6-T4: CameraDirector 焦点偏移 (Boss 战运镜)
+    if (!_sim_mode && _camera_def_loaded) {
+        Vector2 cam_offset = _camera_director.focus_offset();
+        _cam_x += cam_offset.x;
+        _cam_y += cam_offset.y;
+    }
+    
     _cam_x += shake_ox; _cam_y += shake_oy;
 
     // M6-HD2D: 3D 表现层分支 (--hd2d) — 世界层走 3D 渲染器, HUD/overlay 走 2D 桥
