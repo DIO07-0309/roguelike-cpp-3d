@@ -319,6 +319,29 @@ if skel and anim:
         if need not in anim.get("animations", {}):
             err(f"player_anim: required clip '{need}' missing")
 
+# ═══ A6: camera language validation ═══
+cam = load_json(os.path.join("camera", "boss_camera.json"))
+if cam:
+    bw = cam.get("boss_war", {})
+    for zoom_key in ("zoom_in", "zoom_out"):
+        z = bw.get(zoom_key, {})
+        fs = z.get("fov_scale", 0)
+        if fs <= 0.1 or fs > 2.0:
+            err(f"boss_camera: boss_war.{zoom_key}.fov_scale {fs} out of range (0.1, 2.0]")
+        if z.get("duration", 0) < 0:
+            err(f"boss_camera: boss_war.{zoom_key}.duration must be >= 0")
+    ls = bw.get("lerp_speed", 0)
+    if ls <= 0:
+        err("boss_camera: boss_war.lerp_speed must be > 0")
+    ks = cam.get("kill_stun", {})
+    kd = ks.get("duration", 0)
+    if kd <= 0 or kd > 0.15:
+        err(f"boss_camera: kill_stun.duration {kd} out of range (0, 0.15]")
+    if ks.get("shake_amplitude", 0) < 0:
+        err("boss_camera: kill_stun.shake_amplitude must be >= 0")
+    if ks.get("shake_frequency", 0) <= 0:
+        err("boss_camera: kill_stun.shake_frequency must be > 0")
+
 # ═══ Report ═══
 print(f"\n{'='*60}")
 print(f"  WORLD VALIDATOR REPORT")

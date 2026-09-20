@@ -1,0 +1,18 @@
+{
+  "boss_war": {
+    "zoom_in": {
+      "fov_scale": 0.75,
+      "duration": 1.5
+    },
+    "zoom_out": {
+      "fov_scale": 1.0,
+      "duration": 0.8
+    },
+    "lerp_speed": 2.0
+  },
+  "kill_stun": {
+    "duration": 0.08,
+    "shake_amplitude": 3.0,
+    "shake_frequency": 20.0
+  }
+}

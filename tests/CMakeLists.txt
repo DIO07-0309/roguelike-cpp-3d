@@ -220,6 +220,9 @@ add_roguelike_test(asset_manifest_test   world/asset_manifest_test.cpp)   # G10.
 add_roguelike_test(door_visual_mapping_test world/door_visual_mapping_test.cpp)  # G10.2-B2: 门视觉资产映射 (与 Truth Table 分层)
 
 add_roguelike_test(audio_manifest_test    world/audio_manifest_test.cpp)  # G10.2-B3A: 音频清单化 + fallback 声明化
+
+add_roguelike_test(camera_test            camera/camera_test.cpp)         # A6-T1: 摄像机语言数据层
+
 # G10.2-B3B: font_manifest_test 处于 Review Gate (候选 A 缺 11 符号) — 未录用前不注册, 决策后启用或按裁决移除
 
 
