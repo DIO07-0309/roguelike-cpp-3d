@@ -30,8 +30,19 @@ void GameSceneCombat::on_monster_killed(Monster* m) {
     m->kill_processed = true;
     // D7 Step5: EventBus 广播
     EventBus::inst().emit(m->is_boss ? GameEventType::BOSS_DEAD
-                                     : GameEventType::MONSTER_DIED,
-                          m, _s.current_floor, 0.0f, m->name.c_str());
+                                      : GameEventType::MONSTER_DIED,
+                           m, _s.current_floor, 0.0f, m->name.c_str());
+    
+    // A6-T5: 击杀顿帧 + 震动 (sim 模式跳过)
+    if (!_s._sim_mode && _s._camera_def_loaded) {
+        float stun_duration = _s._camera_director.fov_scale() > 0.9f ? 
+                              0.08f : 0.12f;  // Boss 战期间顿帧更长
+        _s._hit_stop.trigger(stun_duration);
+        _s._camera_director.trigger_kill_stun();
+        // 震动强度: Boss 死亡 > 精英 > 普通
+        float shake = m->is_boss ? 16.0f : (m->is_elite ? 8.0f : 4.0f);
+        _s._presentation.trigger_shake(shake);
+    }
 
     // D4.6: run stats
     _s._gameplay.run_stats.total_kills++;
