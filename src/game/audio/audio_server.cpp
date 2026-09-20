@@ -294,6 +294,19 @@ void AudioServer::init() {
         }
     }
 
+    // A7-T4: 加载音效资源 (Kenney CC0)
+    const char* sfx_list[] = {
+        "hit_sword", "hit_spear", "hit_dagger", "hit_crossbow", "hit_staff",
+        "death_normal", "death_elite", "death_boss",
+        "skill_cast", "ui_click", "ui_select"
+    };
+    for (const char* sfx : sfx_list) {
+        std::string path = _sfx_path + sfx + ".wav";
+        if (FileExists(path.c_str())) {
+            _sfx[sfx] = LoadSound(path.c_str());
+        }
+    }
+
     // BGM
     LOG_INFO("音频: 合成BGM(4支)...");
     _bgm.init();
