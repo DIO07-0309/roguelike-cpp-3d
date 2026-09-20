@@ -197,14 +197,14 @@ TEST(CameraLanguageDirector, FocusOffsetTracksBossWithinFov) {
     Vector2 player_pos = {100, 100};
     Vector2 boss_pos = {200, 100};  // 距离 100px
     
-    // 更新多帧后 focus_offset 应该接近 35% 距离 (100 * 0.35 = 35px)
-    // 且限制在视野半径 80% 内 (160 * 0.8 = 128px, 35 < 128 不触发限制)
+    // 更新多帧后 focus_offset 应该接近 75% 距离 (100 * 0.75 = 75px)
+    // 且限制在视野半径 80% 内 (160 * 0.8 = 128px, 75 < 128 不触发限制)
     for (int i = 0; i < 100; ++i) {
         cd.update(0.016f, player_pos, boss_pos);
     }
     
-    // 期望偏移 = 距离 * 35% = 35.0
-    EXPECT_NEAR(cd.focus_offset().x, 35.0f, 5.0f);
+    // 期望偏移 = 距离 * 75% = 75.0
+    EXPECT_NEAR(cd.focus_offset().x, 75.0f, 5.0f);
     EXPECT_NEAR(cd.focus_offset().y, 0.0f, 5.0f);
 }
 
@@ -223,14 +223,13 @@ TEST(CameraLanguageDirector, FocusOffsetLimitedByFovRadius) {
     Vector2 boss_pos = {300, 100};  // 距离 200px
     
     // 更新多帧后 focus_offset 应该被视野半径限制
-    // 35% 距离 = 70px, 但视野半径 80% = 80px, 所以 70 < 80 不触发
-    // 如果用更远 Boss (400px), 35% = 140px > 80px 会触发限制
+    // 75% 距离 = 150px, 但视野半径 80% = 80px, 所以会触发限制
     for (int i = 0; i < 100; ++i) {
         cd.update(0.016f, player_pos, boss_pos);
     }
     
-    // 期望偏移 = min(70, 80) = 70.0 (未触发限制)
-    EXPECT_NEAR(cd.focus_offset().x, 70.0f, 5.0f);
+    // 期望偏移 = min(150, 80) = 80.0 (触发视野半径限制)
+    EXPECT_NEAR(cd.focus_offset().x, 80.0f, 5.0f);
     EXPECT_NEAR(cd.focus_offset().y, 0.0f, 5.0f);
 }
 

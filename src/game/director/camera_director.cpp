@@ -93,10 +93,17 @@ void CameraLanguageDirector::update(float dt, const Vector2& player_pos, const V
 
 void CameraLanguageDirector::update_normal(float dt, const Vector2& player_pos) {
     (void)player_pos;
-    // 平滑插值回正常状态
-    float lerp_t = dt * _def.boss_war.lerp_speed;
+    // 平滑插值回正常状态 (快速回归, 确保聚焦结束后立即归零)
+    float lerp_t = dt * (_def.boss_war.lerp_speed * 5.0f);  // 5x 速度, 快速回归
     _current_fov_scale = lerp(_current_fov_scale, _target_fov_scale, lerp_t);
     _current_focus_offset = lerp_vec(_current_focus_offset, _target_focus_offset, lerp_t);
+    // 强制归零 (避免浮点残留)
+    if (vec_len(_current_focus_offset) < 0.1f) {
+        _current_focus_offset = {0, 0};
+    }
+    if (_current_fov_scale > 0.999f && _current_fov_scale < 1.001f) {
+        _current_fov_scale = 1.0f;
+    }
 }
 
 void CameraLanguageDirector::update_boss_war(float dt, const Vector2& player_pos, const Vector2& boss_pos) {
@@ -107,18 +114,16 @@ void CameraLanguageDirector::update_boss_war(float dt, const Vector2& player_pos
         return;
     }
     
-    // Boss 战期间: 相机偏向 Boss 方向 (35% 实际距离)
-    // 但限制在视野半径内, 避免看向未渲染区域
+    // Boss 战期间: 镜头真正聚焦到 Boss (50% 中点偏移)
+    // mark_boss_area() 已预渲染 Boss 区域, 可以安全聚焦
     Vector2 to_boss = vec_sub(boss_pos, player_pos);
     
-    // 计算目标偏移: 35% 距离, 但限制在视野半径内
-    Vector2 target_offset;
-    if (vec_len(to_boss) > 0.001f) {
-        target_offset = vec_mul(to_boss, 0.35f);
-        // 限制在视野半径 80% 内, 留余量确保不超出渲染区域
-        float max_offset = _fov_radius_px * 0.8f;
-        target_offset = vec_limit(target_offset, max_offset);
-    }
+    // 50% 中点偏移: 镜头在玩家和 Boss 的中点
+    Vector2 target_offset = vec_mul(to_boss, 0.75f);  // 75% 聚焦 Boss
+    
+    // 限制在视野半径内 (80% 留余量)
+    float max_offset = _fov_radius_px * 0.8f;
+    target_offset = vec_limit(target_offset, max_offset);
     
     _target_focus_offset = target_offset;
     
