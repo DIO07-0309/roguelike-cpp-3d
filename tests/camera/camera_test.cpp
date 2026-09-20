@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "data/camera_defs.h"
+#include "game/systems/hit_stop.h"
 
 TEST(CameraDefs, ParsesValidJson) {
     std::string err;
@@ -52,4 +53,51 @@ TEST(CameraDefs, ValidatesDurationRange) {
     ASSERT_TRUE(def);
     EXPECT_GT(def->kill_stun.duration, 0.0f);
     EXPECT_LE(def->kill_stun.duration, 0.15f);
+}
+
+TEST(HitStop, TriggerSetsActiveAndRemaining) {
+    HitStop hs;
+    EXPECT_FALSE(hs.active());
+    EXPECT_EQ(hs.remaining(), 0.0f);
+    EXPECT_FALSE(hs.is_stunned());
+
+    hs.trigger(0.08f);
+    EXPECT_TRUE(hs.active());
+    EXPECT_NEAR(hs.remaining(), 0.08f, 1e-6f);
+    EXPECT_TRUE(hs.is_stunned());
+}
+
+TEST(HitStop, UpdateDecaysRemaining) {
+    HitStop hs;
+    hs.trigger(0.10f);
+    EXPECT_NEAR(hs.remaining(), 0.10f, 1e-6f);
+
+    hs.update(0.04f);
+    EXPECT_LE(hs.remaining(), 0.06f + 1e-6f);
+    EXPECT_GT(hs.remaining(), 0.05f);
+    EXPECT_TRUE(hs.active());
+
+    hs.update(0.06f);
+    // 浮点精度: 0.10 - 0.04 - 0.06 可能不完全为 0
+    EXPECT_NEAR(hs.remaining(), 0.0f, 1e-6f);
+    EXPECT_FALSE(hs.active());
+    EXPECT_FALSE(hs.is_stunned());
+}
+
+TEST(HitStop, IgnoresNonPositiveDuration) {
+    HitStop hs;
+    hs.trigger(0.0f);
+    EXPECT_FALSE(hs.active());
+    EXPECT_EQ(hs.remaining(), 0.0f);
+
+    hs.trigger(-0.05f);
+    EXPECT_FALSE(hs.active());
+}
+
+TEST(HitStop, RemainingNeverNegative) {
+    HitStop hs;
+    hs.trigger(0.02f);
+    hs.update(0.10f);  // 超过剩余时间
+    EXPECT_EQ(hs.remaining(), 0.0f);
+    EXPECT_FALSE(hs.active());
 }

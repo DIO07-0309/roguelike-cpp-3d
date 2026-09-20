@@ -1,5 +1,6 @@
 #include "game_scene.h"
 #include "game/animation/player_avatar.h"   // A5: 玩家骨骼形象 (渲染路径懒建)
+#include "systems/hit_stop.h"               // A6-T2: HitStop 击杀顿帧
 #include "title_scene.h"
 #include "death_scene.h"
 #include "victory_scene.h"
@@ -634,6 +635,16 @@ void GameScene::_process(double delta) {
     }
 
     if (state != GameState::PLAYING) return;
+
+    // A6-T2: HitStop — 击杀顿帧 (wall clock, 独立于 PresentationSystem)
+    // sim 模式跳过: 顿帧使 game_time 变慢, 影响 sim 确定性
+    if (!_sim_mode) {
+        _hit_stop.update(dt);
+        if (_hit_stop.is_stunned()) {
+            _presentation.tick(dt);
+            return;
+        }
+    }
 
     // Q4.1: HitStop — 冻结期间只推表现层, 世界模拟暂停 (打击感)
     // Q3.10: sim 模式跳过 — 表现层冻结使 game_time 变慢, 900s 超时被稀释成数十分钟
@@ -2232,6 +2243,7 @@ void GameScene::_render() {
         if (hd2d.ensure_init(sw, sh)) {
             _ensure_player_avatar();
             _player_avatar_tick();
+            _monster_avatars_tick();
             hd2d.set_camera_shake(shake_ox, shake_oy);
             hd2d.render_frame(*this);
             _render_hd2d_ui_bridge(sw, sh);   // M6-v2a: HUD + 全 overlay 桥
@@ -2241,6 +2253,7 @@ void GameScene::_render() {
     }
     _ensure_player_avatar();
     _player_avatar_tick();
+    _monster_avatars_tick();
     _draw_map();
     _draw_ground_items();
     _draw_entities();
@@ -2766,6 +2779,39 @@ void GameScene::_ensure_player_avatar() {
 void GameScene::_player_avatar_tick() {
     if (_player_avatar && _player_avatar->active() && player)
         _player_avatar->update(GetFrameTime(), *player);
+}
+
+// A6-S1: 怪物骨骼皮肤 — 白名单命中懒建一次 (成败都缓存), 与玩家同款渲染驱动
+void GameScene::_monster_avatars_tick() {
+    if (!_actor_avatars_loaded) {
+        _actor_avatars_loaded = true;
+        std::string conf_err;
+        auto conf = load_actor_avatars_file("resources/animations/actor_avatars.json", conf_err);
+        if (conf) _actor_avatars = std::move(*conf);
+        else LOG_WARN("A6: actor_avatars.json invalid, all fallback (%s)", conf_err.c_str());
+    }
+    if (_actor_avatars.empty()) return;    // 白名单空 = 零开销全回退
+    const float dt = GetFrameTime();
+    const float now_wall = (float)GetTime();
+    for (auto& m : monsters) {
+        if (!m || !m->combat.is_alive) continue;
+        if (!m->skeleton_avatar()) {
+            auto it = _actor_avatars.find(monster_actor_key(*m));
+            if (it == _actor_avatars.end()) continue;
+            auto avatar = std::make_unique<SkeletonAvatar>();
+            std::string avatar_err;
+            if (avatar->try_init(it->second.skeleton, it->second.anim, avatar_err))
+                LOG_INFO("A6: monster avatar active (%s)", it->first.c_str());
+            else
+                LOG_WARN("A6: monster avatar inactive (%s): %s",
+                         it->first.c_str(), avatar_err.c_str());
+            m->set_skeleton_avatar(std::move(avatar));   // 成功/失败都缓存不重试
+        }
+        auto* avatar = m->skeleton_avatar();
+        if (!avatar || !avatar->active()) continue;
+        avatar->advance(dt, monster_anim_input(*m, avatar->hp_state(), now_wall));
+        avatar->track_facing(m->entity.position);        // 渲染层朝向镜像
+    }
 }
 
 void GameScene::_draw_entities() {
