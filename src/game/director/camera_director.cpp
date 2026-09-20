@@ -24,6 +24,17 @@ Vector2 vec_sub(Vector2 a, Vector2 b) {
 Vector2 vec_mul(Vector2 a, float s) {
     return {a.x * s, a.y * s};
 }
+
+float vec_len(Vector2 a) {
+    return sqrtf(a.x * a.x + a.y * a.y);
+}
+
+// 限制向量长度到 max_len
+Vector2 vec_limit(Vector2 a, float max_len) {
+    float len = vec_len(a);
+    if (len <= max_len || len < 0.001f) return a;
+    return {a.x / len * max_len, a.y / len * max_len};
+}
 }
 
 bool CameraLanguageDirector::try_init(const CameraDef& def) {
@@ -37,11 +48,16 @@ bool CameraLanguageDirector::try_init(const CameraDef& def) {
     return true;
 }
 
+void CameraLanguageDirector::set_fov_radius(float radius_px) {
+    _fov_radius_px = radius_px;
+}
+
 void CameraLanguageDirector::enter_boss_war() {
     if (!_initialized) return;
     _state = CameraState::BOSS_WAR;
     _boss_war_active = true;
     _boss_war_timer = _def.boss_war.zoom_in.duration;
+    _focus_timer = _def.boss_war.focus_duration;  // 聚焦持续时间
     _target_fov_scale = _def.boss_war.zoom_in.fov_scale;
 }
 
@@ -84,27 +100,34 @@ void CameraLanguageDirector::update_normal(float dt, const Vector2& player_pos) 
 }
 
 void CameraLanguageDirector::update_boss_war(float dt, const Vector2& player_pos, const Vector2& boss_pos) {
-    // Boss 战期间: 相机偏向 Boss 方向 (35% 实际距离, 平衡聚焦与跟随)
-    Vector2 to_boss = vec_sub(boss_pos, player_pos);
-    float dist = sqrtf(to_boss.x * to_boss.x + to_boss.y * to_boss.y);
-    
-    // 使用实际距离的 35%, 无硬性上限
-    // 如果距离很近 (<32px), 偏移也很小, 避免过度抖动
-    float offset_scale = 0.35f;
-    if (dist < 32.0f) {
-        // 近距离: 线性衰减, 避免小距离时偏移过大
-        offset_scale = 0.35f * (dist / 32.0f);
+    // 聚焦计时器: 到期后自动回归玩家
+    _focus_timer -= dt;
+    if (_focus_timer <= 0) {
+        exit_boss_war();
+        return;
     }
     
-    _target_focus_offset.x = to_boss.x * offset_scale;
-    _target_focus_offset.y = to_boss.y * offset_scale;
+    // Boss 战期间: 相机偏向 Boss 方向 (35% 实际距离)
+    // 但限制在视野半径内, 避免看向未渲染区域
+    Vector2 to_boss = vec_sub(boss_pos, player_pos);
+    
+    // 计算目标偏移: 35% 距离, 但限制在视野半径内
+    Vector2 target_offset;
+    if (vec_len(to_boss) > 0.001f) {
+        target_offset = vec_mul(to_boss, 0.35f);
+        // 限制在视野半径 80% 内, 留余量确保不超出渲染区域
+        float max_offset = _fov_radius_px * 0.8f;
+        target_offset = vec_limit(target_offset, max_offset);
+    }
+    
+    _target_focus_offset = target_offset;
     
     // 插值到目标 FOV (提高速度, 更快跟随)
     float lerp_t = dt * (_def.boss_war.lerp_speed * 3.0f);  // 3x 速度
     _current_fov_scale = lerp(_current_fov_scale, _target_fov_scale, lerp_t);
     _current_focus_offset = lerp_vec(_current_focus_offset, _target_focus_offset, lerp_t);
     
-    // Boss 战计时器 (用于可能的淡出)
+    // Boss 战计时器
     if (_boss_war_timer > 0) {
         _boss_war_timer -= dt;
     }

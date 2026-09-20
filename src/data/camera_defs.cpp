@@ -55,6 +55,12 @@ bool parse_boss_war(const nlohmann::json& j, BossWarDef& out, std::string& err) 
         err = "camera: lerp_speed must be > 0";
         return false;
     }
+    
+    out.focus_duration = get_float(j, "focus_duration", 2.0f);
+    if (out.focus_duration <= 0.0f) {
+        err = "camera: focus_duration must be > 0";
+        return false;
+    }
     return true;
 }
 

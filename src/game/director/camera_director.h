@@ -25,6 +25,9 @@ public:
     float fov_scale() const;         // 当前 FOV 缩放
     CameraState state() const;
     
+    // 设置视野半径 (像素), 用于限制偏移范围
+    void set_fov_radius(float radius_px);
+    
 private:
     void update_normal(float dt, const Vector2& player_pos);
     void update_boss_war(float dt, const Vector2& player_pos, const Vector2& boss_pos);
@@ -45,7 +48,11 @@ private:
     // 计时器
     float _boss_war_timer = 0.0f;
     float _kill_stun_timer = 0.0f;
+    float _focus_timer = 0.0f;  // 聚焦持续时间计时器
     
     // Boss 战状态
     bool _boss_war_active = false;
+    
+    // 视野半径 (像素), 限制偏移范围
+    float _fov_radius_px = 160.0f;  // 默认 5 tile (32px * 5)
 };

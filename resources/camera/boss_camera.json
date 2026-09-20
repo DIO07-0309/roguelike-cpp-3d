@@ -8,7 +8,8 @@
       "fov_scale": 1.0,
       "duration": 0.8
     },
-    "lerp_speed": 2.0
+    "lerp_speed": 2.0,
+    "focus_duration": 2.0
   },
   "kill_stun": {
     "duration": 0.08,

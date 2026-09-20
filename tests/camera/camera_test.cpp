@@ -183,24 +183,77 @@ TEST(CameraLanguageDirector, UpdateInterpolatesFovScale) {
     EXPECT_NEAR(cd.fov_scale(), def->boss_war.zoom_in.fov_scale, 0.1f);
 }
 
-TEST(CameraLanguageDirector, FocusOffsetTracksMidpoint) {
+TEST(CameraLanguageDirector, FocusOffsetTracksBossWithinFov) {
     CameraLanguageDirector cd;
     std::string err;
     auto def = load_camera_file("resources/camera/boss_camera.json", err);
     ASSERT_TRUE(def);
     cd.try_init(*def);
+    // 设置视野半径 (默认 5 tile * 32px = 160px)
+    cd.set_fov_radius(160.0f);
     
     cd.enter_boss_war();
     
     Vector2 player_pos = {100, 100};
-    Vector2 boss_pos = {200, 100};
+    Vector2 boss_pos = {200, 100};  // 距离 100px
     
-    // 更新多帧后 focus_offset 应该接近 35% 实际距离 (100px * 0.35 = 35px)
+    // 更新多帧后 focus_offset 应该接近 35% 距离 (100 * 0.35 = 35px)
+    // 且限制在视野半径 80% 内 (160 * 0.8 = 128px, 35 < 128 不触发限制)
     for (int i = 0; i < 100; ++i) {
         cd.update(0.016f, player_pos, boss_pos);
     }
     
-    // 期望偏移 = 距离 * 35% = 100 * 0.35 = 35.0
+    // 期望偏移 = 距离 * 35% = 35.0
     EXPECT_NEAR(cd.focus_offset().x, 35.0f, 5.0f);
+    EXPECT_NEAR(cd.focus_offset().y, 0.0f, 5.0f);
+}
+
+TEST(CameraLanguageDirector, FocusOffsetLimitedByFovRadius) {
+    CameraLanguageDirector cd;
+    std::string err;
+    auto def = load_camera_file("resources/camera/boss_camera.json", err);
+    ASSERT_TRUE(def);
+    cd.try_init(*def);
+    // 设置小视野半径 (100px)
+    cd.set_fov_radius(100.0f);
+    
+    cd.enter_boss_war();
+    
+    Vector2 player_pos = {100, 100};
+    Vector2 boss_pos = {300, 100};  // 距离 200px
+    
+    // 更新多帧后 focus_offset 应该被视野半径限制
+    // 35% 距离 = 70px, 但视野半径 80% = 80px, 所以 70 < 80 不触发
+    // 如果用更远 Boss (400px), 35% = 140px > 80px 会触发限制
+    for (int i = 0; i < 100; ++i) {
+        cd.update(0.016f, player_pos, boss_pos);
+    }
+    
+    // 期望偏移 = min(70, 80) = 70.0 (未触发限制)
+    EXPECT_NEAR(cd.focus_offset().x, 70.0f, 5.0f);
+    EXPECT_NEAR(cd.focus_offset().y, 0.0f, 5.0f);
+}
+
+TEST(CameraLanguageDirector, FocusTimerAutoReturns) {
+    CameraLanguageDirector cd;
+    std::string err;
+    auto def = load_camera_file("resources/camera/boss_camera.json", err);
+    ASSERT_TRUE(def);
+    cd.try_init(*def);
+    cd.set_fov_radius(160.0f);
+    
+    cd.enter_boss_war();
+    EXPECT_EQ(cd.state(), CameraState::BOSS_WAR);
+    
+    Vector2 player_pos = {100, 100};
+    Vector2 boss_pos = {200, 100};
+    
+    // 更新超过 focus_duration (2.0s) 后应自动回归 NORMAL
+    for (int i = 0; i < 200; ++i) {  // 200 * 0.016 = 3.2s > 2.0s
+        cd.update(0.016f, player_pos, boss_pos);
+    }
+    
+    EXPECT_EQ(cd.state(), CameraState::NORMAL);
+    EXPECT_NEAR(cd.focus_offset().x, 0.0f, 5.0f);
     EXPECT_NEAR(cd.focus_offset().y, 0.0f, 5.0f);
 }

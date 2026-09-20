@@ -13,6 +13,7 @@ struct BossWarDef {
     ZoomDef zoom_in;          // Boss 出场时拉近
     ZoomDef zoom_out;         // 玩家靠近时拉远
     float lerp_speed = 2.0f;  // 插值速度
+    float focus_duration = 2.0f;  // 聚焦持续时间 (秒), 到期后回归玩家
 };
 
 struct KillStunDef {

@@ -164,6 +164,8 @@ void GameScene::_ready() {
         if (cam_def) {
             _camera_director.try_init(*cam_def);
             _camera_def_loaded = true;
+            // 设置视野半径 (tile * TILE_SIZE = px), 限制聚焦偏移范围
+            _camera_director.set_fov_radius(_fov_radius * TILE_SIZE);
         } else {
             LOG_INFO("[A6] Camera config not loaded: %s", err.c_str());
         }
