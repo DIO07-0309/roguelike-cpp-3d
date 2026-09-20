@@ -1,6 +1,9 @@
 #include <gtest/gtest.h>
 #include "data/camera_defs.h"
 #include "game/systems/hit_stop.h"
+#include "game/director/camera_director.h"
+#include "raylib.h"
+#include "raymath.h"
 
 TEST(CameraDefs, ParsesValidJson) {
     std::string err;
@@ -100,4 +103,104 @@ TEST(HitStop, RemainingNeverNegative) {
     hs.update(0.10f);  // 超过剩余时间
     EXPECT_EQ(hs.remaining(), 0.0f);
     EXPECT_FALSE(hs.active());
+}
+
+TEST(CameraDirector, TryInitSetsInitialState) {
+    CameraDirector cd;
+    std::string err;
+    auto def = load_camera_file("resources/camera/boss_camera.json", err);
+    ASSERT_TRUE(def);
+    
+    EXPECT_TRUE(cd.try_init(*def));
+    EXPECT_EQ(cd.state(), CameraState::NORMAL);
+    EXPECT_NEAR(cd.fov_scale(), 1.0f, 1e-6f);
+    EXPECT_NEAR(cd.focus_offset().x, 0.0f, 1e-6f);
+    EXPECT_NEAR(cd.focus_offset().y, 0.0f, 1e-6f);
+}
+
+TEST(CameraDirector, EnterBossWarChangesStateAndFov) {
+    CameraDirector cd;
+    std::string err;
+    auto def = load_camera_file("resources/camera/boss_camera.json", err);
+    ASSERT_TRUE(def);
+    cd.try_init(*def);
+    
+    cd.enter_boss_war();
+    EXPECT_EQ(cd.state(), CameraState::BOSS_WAR);
+    // FOV 应该开始向 zoom_in.fov_scale 插值
+    EXPECT_GT(cd.fov_scale(), 0.0f);
+    EXPECT_LE(cd.fov_scale(), 1.0f);
+}
+
+TEST(CameraDirector, ExitBossWarReturnsToNormal) {
+    CameraDirector cd;
+    std::string err;
+    auto def = load_camera_file("resources/camera/boss_camera.json", err);
+    ASSERT_TRUE(def);
+    cd.try_init(*def);
+    
+    cd.enter_boss_war();
+    EXPECT_EQ(cd.state(), CameraState::BOSS_WAR);
+    
+    cd.exit_boss_war();
+    EXPECT_EQ(cd.state(), CameraState::NORMAL);
+}
+
+TEST(CameraDirector, TriggerKillStunChangesState) {
+    CameraDirector cd;
+    std::string err;
+    auto def = load_camera_file("resources/camera/boss_camera.json", err);
+    ASSERT_TRUE(def);
+    cd.try_init(*def);
+    
+    cd.trigger_kill_stun();
+    EXPECT_EQ(cd.state(), CameraState::KILL_STUN);
+    
+    // 更新超过 duration 后应回到 NORMAL
+    Vector2 player_pos = {100, 100};
+    Vector2 boss_pos = {150, 150};
+    cd.update(0.1f, player_pos, boss_pos);
+    EXPECT_EQ(cd.state(), CameraState::NORMAL);
+}
+
+TEST(CameraDirector, UpdateInterpolatesFovScale) {
+    CameraDirector cd;
+    std::string err;
+    auto def = load_camera_file("resources/camera/boss_camera.json", err);
+    ASSERT_TRUE(def);
+    cd.try_init(*def);
+    
+    cd.enter_boss_war();
+    float initial_fov = cd.fov_scale();
+    
+    // 更新多帧后 FOV 应该接近 zoom_in.fov_scale
+    Vector2 player_pos = {100, 100};
+    Vector2 boss_pos = {150, 150};
+    for (int i = 0; i < 100; ++i) {
+        cd.update(0.016f, player_pos, boss_pos);
+    }
+    
+    EXPECT_NEAR(cd.fov_scale(), def->boss_war.zoom_in.fov_scale, 0.1f);
+}
+
+TEST(CameraDirector, FocusOffsetTracksMidpoint) {
+    CameraDirector cd;
+    std::string err;
+    auto def = load_camera_file("resources/camera/boss_camera.json", err);
+    ASSERT_TRUE(def);
+    cd.try_init(*def);
+    
+    cd.enter_boss_war();
+    
+    Vector2 player_pos = {100, 100};
+    Vector2 boss_pos = {200, 100};
+    
+    // 更新多帧后 focus_offset 应该接近中点偏移
+    for (int i = 0; i < 100; ++i) {
+        cd.update(0.016f, player_pos, boss_pos);
+    }
+    
+    // 期望偏移 = (boss_pos - player_pos) / 2 = (50, 0)
+    EXPECT_NEAR(cd.focus_offset().x, 50.0f, 5.0f);
+    EXPECT_NEAR(cd.focus_offset().y, 0.0f, 5.0f);
 }
