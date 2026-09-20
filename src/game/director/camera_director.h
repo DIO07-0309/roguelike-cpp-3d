@@ -24,6 +24,7 @@ public:
     Vector2 focus_offset() const;    // 相对玩家的位置偏移
     float fov_scale() const;         // 当前 FOV 缩放
     CameraState state() const;
+    int frame_count() const;         // 帧计数器 (调试用)
     
     // 设置视野半径 (像素), 用于限制偏移范围
     void set_fov_radius(float radius_px);
@@ -55,4 +56,7 @@ private:
     
     // 视野半径 (像素), 限制偏移范围
     float _fov_radius_px = 160.0f;  // 默认 5 tile (32px * 5)
+    
+    // 调试用帧计数器
+    int _frame_count = 0;
 };

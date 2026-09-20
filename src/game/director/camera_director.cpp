@@ -78,6 +78,8 @@ void CameraLanguageDirector::trigger_kill_stun() {
 void CameraLanguageDirector::update(float dt, const Vector2& player_pos, const Vector2& boss_pos) {
     if (!_initialized) return;
     
+    ++_frame_count;
+    
     switch (_state) {
         case CameraState::NORMAL:
             update_normal(dt, player_pos);
@@ -162,4 +164,8 @@ float CameraLanguageDirector::fov_scale() const {
 
 CameraState CameraLanguageDirector::state() const {
     return _state;
+}
+
+int CameraLanguageDirector::frame_count() const {
+    return _frame_count;
 }
