@@ -10,6 +10,7 @@ public:
     void play(const std::string& name, float vol = 0.4f);
     void stop();
     void update(float dt);  // Q4.2: 检测播放结束并循环重播
+    bool is_initialized() const { return !_cache.empty(); }
 
 private:
     Sound _compile_bgm(const std::string& name);

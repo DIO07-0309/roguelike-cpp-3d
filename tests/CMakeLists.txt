@@ -223,6 +223,8 @@ add_roguelike_test(audio_manifest_test    world/audio_manifest_test.cpp)  # G10.
 
 add_roguelike_test(camera_test            camera/camera_test.cpp)         # A6-T1: 摄像机语言数据层
 
+add_roguelike_test(audio_test            audio/audio_test.cpp)            # A7-T1: 音频系统
+
 # G10.2-B3B: font_manifest_test 处于 Review Gate (候选 A 缺 11 符号) — 未录用前不注册, 决策后启用或按裁决移除
 
 

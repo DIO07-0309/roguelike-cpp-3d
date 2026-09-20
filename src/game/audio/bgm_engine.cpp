@@ -125,13 +125,35 @@ Sound BGMEngine::_compile_bgm(const std::string& name) {
                  {"F2",0.5f},{"F2",0.5f},{"C3",0.5f},{"G2",0.5f}};
         mw = "square"; bw = "triangle";
     } else {
-        // G6.1: Biome BGM variants (reuse dungeon chords, vary BPM+waveform)
-        chords = {{"C3",3.0f},{"Db3",3.0f},{"Eb3",3.0f},{"C3",3.0f}};
-        melody = {{"C4",0.5f},{0,1.0f},{"Db4",0.4f},{0,0.8f},{"Eb4",0.4f},{0,1.2f},{"C4",0.6f},{0,0.6f}};
-        if (name == "prison")       { bpm = 72; mw = "square";   }
-        else if (name == "volcano") { bpm = 90; mw = "saw";      bw = "triangle"; }
-        else if (name == "abyss")   { bpm = 62; mw = "triangle"; }
-        beat = 60.0f / bpm;
+        // G6.1/A7-T1: Biome BGM variants (distinct style per biome)
+        if (name == "prison") {
+            // 监牢: 72 BPM, square wave, 压抑感
+            bpm = 72; beat = 60.0f / bpm;
+            mw = "square";
+            chords = {{"C3",3.0f},{"Db3",3.0f},{"Eb3",3.0f},{"C3",3.0f}};
+            melody = {{"C4",0.5f},{0,1.0f},{"Db4",0.4f},{0,0.8f},{"Eb4",0.4f},{0,1.2f},{"C4",0.6f},{0,0.6f}};
+            bw = "square";
+            bass = {{"C2",1.5f},{"Db2",1.5f},{"Eb2",1.5f},{"C2",1.5f}};
+        } else if (name == "volcano") {
+            // 火山: 90 BPM, saw wave, 灼热感
+            bpm = 90; beat = 60.0f / bpm;
+            mw = "saw"; bw = "triangle";
+            chords = {{"C3",3.0f},{"Db3",3.0f},{"Eb3",3.0f},{"C3",3.0f}};
+            melody = {{"C4",0.4f},{"Eb4",0.4f},{"G4",0.4f},{"Bb4",0.4f},{"C5",0.4f},{"Bb4",0.4f},{"G4",0.4f},{"Eb4",0.4f}};
+            bass = {{"C2",0.75f},{"Db2",0.75f},{"Eb2",0.75f},{"C2",0.75f}};
+        } else if (name == "abyss") {
+            // 深渊: 62 BPM, triangle wave, 虚空感
+            bpm = 62; beat = 60.0f / bpm;
+            mw = "triangle"; bw = "sine";
+            chords = {{"C3",4.0f},{"Ab2",4.0f},{"Eb3",4.0f},{"C3",4.0f}};
+            melody = {{"C5",1.0f},{0,0.5f},{"Eb5",0.5f},{0,1.0f},{"Ab5",1.0f},{0,1.5f}};
+            bass = {{"C2",2.0f},{"Ab1",2.0f},{"Eb2",2.0f},{"C2",2.0f}};
+        } else {
+            // 默认: dungeon 变体
+            chords = {{"C3",3.0f},{"Db3",3.0f},{"Eb3",3.0f},{"C3",3.0f}};
+            melody = {{"C4",0.5f},{0,1.0f},{"Db4",0.4f},{0,0.8f},{"Eb4",0.4f},{0,1.2f},{"C4",0.6f},{0,0.6f}};
+            bpm = 75; beat = 60.0f / bpm;
+        }
     }
 
     // 计算总时长 (重复3遍确保~30秒)
