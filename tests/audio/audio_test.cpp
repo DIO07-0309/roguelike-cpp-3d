@@ -28,3 +28,16 @@ TEST(Audio, BgmCompileBiomeVariants) {
     bgm.stop();
     EXPECT_TRUE(bgm.is_initialized());
 }
+
+TEST(Audio, BgmCompileBossVariants) {
+    BGMEngine bgm;
+    bgm.init();
+    // 验证 Boss BGM 可编译
+    bgm.play("boss_f5");
+    bgm.stop();
+    bgm.play("boss_f10");
+    bgm.stop();
+    bgm.play("boss_f15");
+    bgm.stop();
+    EXPECT_TRUE(bgm.is_initialized());
+}
