@@ -120,7 +120,11 @@ F15 镜像 Boss 读你的行为画像（攻防倾向/走位偏好/技能习惯�
 
 ## CHANGELOG
 
-- A5-T3/T4（开发版，未发布）：玩家分件骨骼接入 2D 与 HD-2D，共用姿态、镜像和缩放；3D 支持透明裁剪、分件投影和残影排序。37 项动画测试、63 项 CTest 与 World Validator 通过；隔离运行截图确认待机、行走和攻击姿态变化。当前仍为绿色占位素材，翻滚/受击的视觉验收及 T5 正式素材尚待完成。3D 分件 shader 不可用时回退旧静帧。
+- A5-T3/T4（开发版，未发布）：玩家分件骨骼接入 2D 与 HD-2D，共用姿态、镜像和缩放；3D 支持透明裁剪、分件投影和残影排序。37 项动画测试、63 项 CTest 与 World Validator 通过；隔离运行截图确认待机、行走和攻击姿态变化。绿色占位件已由 T5 红饰灰甲骑士分件替换。翻滚/受击视觉验收仍待完成；3D 分件 shader 不可用时回退旧静帧。
+- A5-T5（开发版，未发布）：参照原 `player_fire.png` 的骑士造型重新补绘，不是无损裁切原图；原图保留作回退。5 张透明贴图复用为 7 件，骨架、pivot 与动画配置不变。隔离 2D/3D 截图确认新外观，3D 行走与攻击姿态变化正常。初版比例偏细长，已由比例修正回到敦实像素风（骨链 hips 20/躯干 28x20/腿 12x20/剑 6x24，实机剪影 ~16.5x24.5、宽高比 0.67，对照图 `a5_visual_20260917\proportion_before_after.png`）；3D 脚下矩形阴影有待美术调优。
+- 素材工具：`conda run python tools/gen_player_knight_parts.py` 默认生成到 `reports/player_knight_parts/`；确认预览后才用 `--output-dir assets/sprites` 更新分件。`conda run python tools/anim_preview.py` 默认写 `reports/anim_preview.png`，拒绝覆盖原骑士及正式分件。固定 Pillow 环境下生成确定；离线预览不含镜像、受击/翻滚 overlay、残影和 3D 光照，不能代替实机验收。
+- A6-S1（开发版，未发布）：玩家骨骼渲染泛化为全实体通用引擎 `SkeletonAvatar`（组合复用，PlayerAvatar 行为零变化）；新增数据驱动皮肤白名单 `resources/animations/actor_avatars.json` + `actor_avatar_defs` 加载器（缺省/空 = 全回退旧 sprite）；Monster 懒挂皮肤（仅渲染路径，sim/无头不触达），`monster_anim_input` 纯函数信号映射（moving=AI CHASE、attacking=0.25s 挥砍窗、hit=hp 下降沿、recovery=1.0）。首版白名单为空 → 游戏内零视觉变化：48 项动画测试、63 项 CTest、World Validator 0/0、`--sim 12 --sim-seed 3` 报告与基线逐字节一致、2D/3D 隔离截图差异低于旧版自对拍噪声底。
+- A6-S2 批次1（开发版，未发布）：人形族 8 怪（兽人/精英兽人/哥布林弓手/萨满/猎手/重甲守卫/骨兵/骨骼弓手）接入骨骼——`tools/gen_mon_humanoid_parts.py` 参数化族生成器（4 体型 × 独立色板，深紫褐描边风格统一），每怪 5 件沿用骑士 rig 尺寸契约；8 份 `mon_*_skeleton.json` 克隆玩家 rig，动画共用 `player_anim.json`；白名单登记 8 键，未迁移怪（史莱姆族等）保持旧贴图。隔离 2D/HD-2D 实机截图确认骨骼怪渲染/镜像/脚贴地正常；sim 逐字节一致。后续批次：软体族、浮灵/魔像族、Boss/影武者/NPC。
 
 ## 星标路线
 
@@ -135,3 +139,4 @@ F15 镜像 Boss 读你的行为画像（攻防倾向/走位偏好/技能习惯�
 | v1.5.0 | Demo Release 门禁达成（sim 直达 · 死因基线 · 平衡审计） |
 | **v1.6.0** | **平台深化** — B2 死因仪表盘 · B1 Mirror 记忆可视化 HUD · B3M Mirror 学习闭环 (跨局记忆+遗忘曲线) · A1.1 Billboard 真轮廓 · A2 群系性格粒子 (PNG 贴图数据驱动) · A3 实体接收阴影 · A3.1 P0 shader 热修 (雾/阴影/bloom 首次真实生效) · A3.2+fix2 墙顶 2D 同源色调映射 · 未探索区虚空化 · A4 bloom 反馈实验后按预案回退 (教训存档) |
 | **v1.7.0** | **翻滚/闪避 (B3)** — Shift+方向纯手感位移 (2 格/0.16s/0.7s 冷却·无无敌帧) · 2D/3D 倾斜压扁+3 段残影+尘土 · Mirror DODGE 采集接入 · sim 基线逐字节零变化 · 已发 Release |
+| **v1.8.0** | **镜头语言 (A6)** — Boss 战镜头聚焦 2 秒后自动回归 · 击杀顿帧期间 focus_timer 继续倒计时，stun 结束后回归 BOSS_WAR · 3D 相机基线改为实体中心 · 64 项 CTest 通过 · 已打 tag v1.8-A6 |
