@@ -694,14 +694,6 @@ void GameScene::_process(double delta) {
             boss_pos.y = boss_monster->entity.rect.y + boss_monster->entity.rect.height/2;
         }
         _camera_director.update(dt, player_pos, boss_pos);
-        // A6-DEBUG: 确认镜头聚焦状态
-        if (_camera_director.state() != CameraState::NORMAL && _camera_director.frame_count() % 30 == 0) {
-            LOG_INFO("[A6-CAM] state=%d offset=(%.1f,%.1f) player=(%.1f,%.1f) boss=(%.1f,%.1f) fov=%.2f",
-                     (int)_camera_director.state(),
-                     _camera_director.focus_offset().x, _camera_director.focus_offset().y,
-                     player_pos.x, player_pos.y, boss_pos.x, boss_pos.y,
-                     _camera_director.fov_scale());
-        }
     }
 
     // Q4.1: HitStop — 冻结期间只推表现层, 世界模拟暂停 (打击感)

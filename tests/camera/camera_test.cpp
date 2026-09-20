@@ -178,8 +178,8 @@ TEST(CameraLanguageDirector, KillStunReturnsToBossWar) {
     Vector2 player_pos = {100, 100};
     Vector2 boss_pos = {200, 100};
     
-    // 更新多帧让镜头聚焦到 Boss
-    for (int i = 0; i < 100; ++i) {
+    // 更新 0.5 秒让镜头聚焦到 Boss (focus_timer 还剩 1.5s)
+    for (int i = 0; i < 31; ++i) {
         cd.update(0.016f, player_pos, boss_pos);
     }
     EXPECT_NEAR(cd.focus_offset().x, 100.0f, 5.0f);
@@ -192,8 +192,8 @@ TEST(CameraLanguageDirector, KillStunReturnsToBossWar) {
     cd.update(0.1f, player_pos, boss_pos);
     EXPECT_EQ(cd.state(), CameraState::BOSS_WAR);
     
-    // 再更新多帧让 offset 重新插值到 Boss
-    for (int i = 0; i < 100; ++i) {
+    // 再更新少量帧让 offset 重新插值到 Boss
+    for (int i = 0; i < 30; ++i) {
         cd.update(0.016f, player_pos, boss_pos);
     }
     EXPECT_NEAR(cd.focus_offset().x, 100.0f, 5.0f);
@@ -268,7 +268,7 @@ TEST(CameraLanguageDirector, FocusOffsetNoFovLimit) {
     EXPECT_NEAR(cd.focus_offset().y, 0.0f, 5.0f);
 }
 
-TEST(CameraLanguageDirector, FocusTimerStaysUntilBossKilled) {
+TEST(CameraLanguageDirector, FocusTimerAutoReturns) {
     CameraLanguageDirector cd;
     std::string err;
     auto def = load_camera_file("resources/camera/boss_camera.json", err);
@@ -282,12 +282,19 @@ TEST(CameraLanguageDirector, FocusTimerStaysUntilBossKilled) {
     Vector2 player_pos = {100, 100};
     Vector2 boss_pos = {200, 100};
     
-    // focus_duration=999s: 更新 2s 后镜头仍保持 BOSS_WAR 聚焦
-    for (int i = 0; i < 200; ++i) {  // 200 * 0.016 = 3.2s < 999s
+    // 更新 1.5 秒后镜头仍保持 BOSS_WAR 聚焦 (focus_duration=2s)
+    for (int i = 0; i < 94; ++i) {  // 94 * 0.016 = 1.5s < 2s
         cd.update(0.016f, player_pos, boss_pos);
     }
     
     EXPECT_EQ(cd.state(), CameraState::BOSS_WAR);
     EXPECT_NEAR(cd.focus_offset().x, 100.0f, 5.0f);
-    EXPECT_NEAR(cd.focus_offset().y, 0.0f, 5.0f);
+    
+    // 更新超过 2 秒后镜头自动回归 NORMAL
+    for (int i = 0; i < 130; ++i) {  // 再更新 2s, 总计 3.5s > 2s
+        cd.update(0.016f, player_pos, boss_pos);
+    }
+    
+    EXPECT_EQ(cd.state(), CameraState::NORMAL);
+    EXPECT_NEAR(cd.focus_offset().x, 0.0f, 5.0f);
 }

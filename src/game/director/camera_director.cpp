@@ -78,8 +78,6 @@ void CameraLanguageDirector::trigger_kill_stun() {
 void CameraLanguageDirector::update(float dt, const Vector2& player_pos, const Vector2& boss_pos) {
     if (!_initialized) return;
     
-    ++_frame_count;
-    
     switch (_state) {
         case CameraState::NORMAL:
             update_normal(dt, player_pos);
@@ -141,15 +139,20 @@ void CameraLanguageDirector::update_boss_war(float dt, const Vector2& player_pos
 
 void CameraLanguageDirector::update_kill_stun(float dt) {
     _kill_stun_timer -= dt;
+    // Boss 战期间击杀: focus_timer 继续倒计时
+    if (_boss_war_active) {
+        _focus_timer -= dt;
+    }
     if (_kill_stun_timer <= 0) {
         _kill_stun_timer = 0;
         // Boss 战期间击杀: 回归 BOSS_WAR 而非 NORMAL
-        if (_boss_war_active) {
+        if (_boss_war_active && _focus_timer > 0) {
             _state = CameraState::BOSS_WAR;
         } else {
             _state = CameraState::NORMAL;
             _target_fov_scale = 1.0f;
             _target_focus_offset = {0, 0};
+            _boss_war_active = false;
         }
     }
 }
@@ -164,8 +167,4 @@ float CameraLanguageDirector::fov_scale() const {
 
 CameraState CameraLanguageDirector::state() const {
     return _state;
-}
-
-int CameraLanguageDirector::frame_count() const {
-    return _frame_count;
 }
