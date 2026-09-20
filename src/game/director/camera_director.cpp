@@ -114,12 +114,12 @@ void CameraLanguageDirector::update_boss_war(float dt, const Vector2& player_pos
         return;
     }
     
-    // Boss 战期间: 镜头真正聚焦到 Boss (50% 中点偏移)
-    // mark_boss_area() 已预渲染 Boss 区域, 可以安全聚焦
+    // Boss 战期间: 镜头直接停在 Boss 身上 (100% 偏移)
+    // mark_boss_room() 已预渲染整个 Boss 房间, 可以安全聚焦
     Vector2 to_boss = vec_sub(boss_pos, player_pos);
     
-    // 50% 中点偏移: 镜头在玩家和 Boss 的中点
-    Vector2 target_offset = vec_mul(to_boss, 0.75f);  // 75% 聚焦 Boss
+    // 100% 聚焦 Boss: 镜头直接到 Boss 位置
+    Vector2 target_offset = to_boss;
     
     // 限制在视野半径内 (80% 留余量)
     float max_offset = _fov_radius_px * 0.8f;

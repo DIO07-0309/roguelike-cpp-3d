@@ -238,17 +238,15 @@ void GameMap::update_boss_fov(int cx, int cy, int radius) {
     }
 }
 
-void GameMap::mark_boss_area(int cx, int cy, int radius) {
-    // A6: Boss 出场时强制标记周围区域为已探索
+void GameMap::mark_boss_room(int cx, int cy) {
+    // A6: Boss 出场时强制标记所在房间为已探索
     // 解决镜头聚焦到 Boss 后视野虚空问题 (未渲染区域)
+    // 从 Boss 位置向四周扩散，找到房间边界并标记所有地板 tile
+    // 简单实现: 半径 6 tile (覆盖典型 Boss 房间)
+    int radius = 6;
     for (int y = cy - radius; y <= cy + radius; y++) {
         for (int x = cx - radius; x <= cx + radius; x++) {
             if (!_in_bounds(x, y)) continue;
-            // 简单圆形判断
-            float dx = x - cx;
-            float dy = y - cy;
-            if (dx * dx + dy * dy > radius * radius) continue;
-            
             bool was_explored = _tiles[y][x].is_explored;
             _tiles[y][x].is_explored = true;
             _tiles[y][x].is_visible = true;  // 也标记为可见, 确保渲染
