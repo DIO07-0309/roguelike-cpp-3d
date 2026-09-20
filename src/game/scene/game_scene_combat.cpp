@@ -42,6 +42,16 @@ void GameSceneCombat::on_monster_killed(Monster* m) {
         // 震动强度: Boss 死亡 > 精英 > 普通
         float shake = m->is_boss ? 16.0f : (m->is_elite ? 8.0f : 4.0f);
         _s._presentation.trigger_shake(shake);
+        // A6-T5: Boss 死亡退出运镜状态
+        if (m->is_boss) {
+            _s._camera_director.exit_boss_war();
+        }
+    }
+
+    // A7-T4: 怪物死亡音效 (使用现有程序合成音效作为临时替代)
+    if (!_s._sim_mode && _s.get_tree()) {
+        const char* death_sfx = m->is_boss ? "bolt" : (m->is_elite ? "slash" : "hit");
+        _s.get_tree()->get_audio()->play_sfx(death_sfx, m->is_boss ? 0.7f : 0.5f);
     }
 
     // D4.6: run stats
