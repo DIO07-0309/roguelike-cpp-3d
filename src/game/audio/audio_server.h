@@ -19,4 +19,6 @@ public:
 private:
     BGMEngine _bgm;
     std::unordered_map<std::string, Sound> _sfx;
+    // A7-T3: 音效路径 (T4 后补)
+    std::string _sfx_path = "assets/sfx/";
 };

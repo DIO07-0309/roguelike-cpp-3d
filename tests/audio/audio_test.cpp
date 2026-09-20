@@ -41,3 +41,21 @@ TEST(Audio, BgmCompileBossVariants) {
     bgm.stop();
     EXPECT_TRUE(bgm.is_initialized());
 }
+
+TEST(Audio, AudioServerInit) {
+    AudioServer::g_muted = true;  // sim 模式静音
+    AudioServer audio;
+    audio.init();
+    EXPECT_TRUE(AudioServer::g_muted);
+    audio.close();
+}
+
+TEST(Audio, AudioServerPlayBgm) {
+    AudioServer::g_muted = true;
+    AudioServer audio;
+    audio.init();
+    audio.play_bgm("prison");
+    audio.play_bgm("boss_f5");
+    audio.stop_bgm();
+    audio.close();
+}
