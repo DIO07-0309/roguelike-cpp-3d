@@ -273,8 +273,8 @@ void HD2DRenderer::render_frame(GameScene& gs) {
     // 2. 相机聚焦玩家世界坐标 (+ M6-v2e: shake 偏移, 帧内消费)
     _camera_focus = {0, 0, 0};
     if (gs.player) {
-        _camera_focus.x = gs.player->entity.rect.x;
-        _camera_focus.z = gs.player->entity.rect.y;
+        _camera_focus.x = gs.player->entity.rect.x + gs.player->entity.rect.width / 2;
+        _camera_focus.z = gs.player->entity.rect.y + gs.player->entity.rect.height / 2;
     }
     _camera_focus.x += _shake_offset.x;
     _camera_focus.z += _shake_offset.z;

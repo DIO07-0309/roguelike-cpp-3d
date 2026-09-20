@@ -9,7 +9,7 @@
       "duration": 0.8
     },
     "lerp_speed": 2.0,
-    "focus_duration": 2.0
+    "focus_duration": 999.0
   },
   "kill_stun": {
     "duration": 0.08,

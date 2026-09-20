@@ -163,6 +163,42 @@ TEST(CameraLanguageDirector, TriggerKillStunChangesState) {
     EXPECT_EQ(cd.state(), CameraState::NORMAL);
 }
 
+TEST(CameraLanguageDirector, KillStunReturnsToBossWar) {
+    CameraLanguageDirector cd;
+    std::string err;
+    auto def = load_camera_file("resources/camera/boss_camera.json", err);
+    ASSERT_TRUE(def);
+    cd.try_init(*def);
+    cd.set_fov_radius(160.0f);
+    
+    // 进入 Boss 战并让镜头聚焦
+    cd.enter_boss_war();
+    EXPECT_EQ(cd.state(), CameraState::BOSS_WAR);
+    
+    Vector2 player_pos = {100, 100};
+    Vector2 boss_pos = {200, 100};
+    
+    // 更新多帧让镜头聚焦到 Boss
+    for (int i = 0; i < 100; ++i) {
+        cd.update(0.016f, player_pos, boss_pos);
+    }
+    EXPECT_NEAR(cd.focus_offset().x, 100.0f, 5.0f);
+    
+    // 击杀顿帧 (Boss 战期间)
+    cd.trigger_kill_stun();
+    EXPECT_EQ(cd.state(), CameraState::KILL_STUN);
+    
+    // 更新超过 stun duration 后应回到 BOSS_WAR (非 NORMAL)
+    cd.update(0.1f, player_pos, boss_pos);
+    EXPECT_EQ(cd.state(), CameraState::BOSS_WAR);
+    
+    // 再更新多帧让 offset 重新插值到 Boss
+    for (int i = 0; i < 100; ++i) {
+        cd.update(0.016f, player_pos, boss_pos);
+    }
+    EXPECT_NEAR(cd.focus_offset().x, 100.0f, 5.0f);
+}
+
 TEST(CameraLanguageDirector, UpdateInterpolatesFovScale) {
     CameraLanguageDirector cd;
     std::string err;
@@ -208,13 +244,13 @@ TEST(CameraLanguageDirector, FocusOffsetTracksBossWithinFov) {
     EXPECT_NEAR(cd.focus_offset().y, 0.0f, 5.0f);
 }
 
-TEST(CameraLanguageDirector, FocusOffsetLimitedByFovRadius) {
+TEST(CameraLanguageDirector, FocusOffsetNoFovLimit) {
     CameraLanguageDirector cd;
     std::string err;
     auto def = load_camera_file("resources/camera/boss_camera.json", err);
     ASSERT_TRUE(def);
     cd.try_init(*def);
-    // 设置小视野半径 (100px)
+    // 设置小视野半径 (100px) — 不再限制偏移
     cd.set_fov_radius(100.0f);
     
     cd.enter_boss_war();
@@ -222,18 +258,17 @@ TEST(CameraLanguageDirector, FocusOffsetLimitedByFovRadius) {
     Vector2 player_pos = {100, 100};
     Vector2 boss_pos = {300, 100};  // 距离 200px
     
-    // 更新多帧后 focus_offset 应该被视野半径限制
-    // 100% 距离 = 200px, 但视野半径 80% = 80px, 所以会触发限制
+    // 更新多帧后 focus_offset 应该 100% 到 Boss (无视野半径限制)
     for (int i = 0; i < 100; ++i) {
         cd.update(0.016f, player_pos, boss_pos);
     }
     
-    // 期望偏移 = min(200, 80) = 80.0 (触发视野半径限制)
-    EXPECT_NEAR(cd.focus_offset().x, 80.0f, 5.0f);
+    // 期望偏移 = 100% 距离 = 200.0 (Boss 房间已预渲染)
+    EXPECT_NEAR(cd.focus_offset().x, 200.0f, 5.0f);
     EXPECT_NEAR(cd.focus_offset().y, 0.0f, 5.0f);
 }
 
-TEST(CameraLanguageDirector, FocusTimerAutoReturns) {
+TEST(CameraLanguageDirector, FocusTimerStaysUntilBossKilled) {
     CameraLanguageDirector cd;
     std::string err;
     auto def = load_camera_file("resources/camera/boss_camera.json", err);
@@ -247,12 +282,12 @@ TEST(CameraLanguageDirector, FocusTimerAutoReturns) {
     Vector2 player_pos = {100, 100};
     Vector2 boss_pos = {200, 100};
     
-    // 更新超过 focus_duration (2.0s) 后应自动回归 NORMAL
-    for (int i = 0; i < 200; ++i) {  // 200 * 0.016 = 3.2s > 2.0s
+    // focus_duration=999s: 更新 2s 后镜头仍保持 BOSS_WAR 聚焦
+    for (int i = 0; i < 200; ++i) {  // 200 * 0.016 = 3.2s < 999s
         cd.update(0.016f, player_pos, boss_pos);
     }
     
-    EXPECT_EQ(cd.state(), CameraState::NORMAL);
-    EXPECT_NEAR(cd.focus_offset().x, 0.0f, 5.0f);
+    EXPECT_EQ(cd.state(), CameraState::BOSS_WAR);
+    EXPECT_NEAR(cd.focus_offset().x, 100.0f, 5.0f);
     EXPECT_NEAR(cd.focus_offset().y, 0.0f, 5.0f);
 }

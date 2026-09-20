@@ -115,15 +115,14 @@ void CameraLanguageDirector::update_boss_war(float dt, const Vector2& player_pos
     }
     
     // Boss 战期间: 镜头直接停在 Boss 身上 (100% 偏移)
-    // mark_boss_room() 已预渲染整个 Boss 房间, 可以安全聚焦
+    // mark_boss_room() 已预渲染整个 Boss 房间, 无需视野半径限制
     Vector2 to_boss = vec_sub(boss_pos, player_pos);
     
     // 100% 聚焦 Boss: 镜头直接到 Boss 位置
     Vector2 target_offset = to_boss;
     
-    // 限制在视野半径内 (80% 留余量)
-    float max_offset = _fov_radius_px * 0.8f;
-    target_offset = vec_limit(target_offset, max_offset);
+    // 注意: 不限制在视野半径内, 因为 Boss 房间已预渲染
+    // 镜头可以移动到 Boss 位置, 即使超出玩家视野
     
     _target_focus_offset = target_offset;
     
@@ -142,9 +141,14 @@ void CameraLanguageDirector::update_kill_stun(float dt) {
     _kill_stun_timer -= dt;
     if (_kill_stun_timer <= 0) {
         _kill_stun_timer = 0;
-        _state = CameraState::NORMAL;
-        _target_fov_scale = 1.0f;
-        _target_focus_offset = {0, 0};
+        // Boss 战期间击杀: 回归 BOSS_WAR 而非 NORMAL
+        if (_boss_war_active) {
+            _state = CameraState::BOSS_WAR;
+        } else {
+            _state = CameraState::NORMAL;
+            _target_fov_scale = 1.0f;
+            _target_focus_offset = {0, 0};
+        }
     }
 }
 
