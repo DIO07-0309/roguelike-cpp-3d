@@ -84,13 +84,24 @@ void CameraLanguageDirector::update_normal(float dt, const Vector2& player_pos) 
 }
 
 void CameraLanguageDirector::update_boss_war(float dt, const Vector2& player_pos, const Vector2& boss_pos) {
-    // Boss 战期间: 聚焦玩家和 Boss 的中点
-    Vector2 sum = vec_add(player_pos, boss_pos);
-    Vector2 mid_point = vec_mul(sum, 0.5f);
-    _target_focus_offset = vec_sub(mid_point, player_pos);
+    // Boss 战期间: 相机轻微偏向 Boss 方向 (25% 偏移, 非中点 50%)
+    // 限制最大偏移距离, 避免看向未渲染区域
+    Vector2 to_boss = vec_sub(boss_pos, player_pos);
+    float dist = sqrtf(to_boss.x * to_boss.x + to_boss.y * to_boss.y);
     
-    // 插值到目标 FOV
-    float lerp_t = dt * _def.boss_war.lerp_speed;
+    // 限制偏移: 最多 64px (约 2 个 tile), 避免超出可见区域
+    float max_offset = 64.0f;
+    Vector2 offset = to_boss;
+    if (dist > 0.001f) {
+        offset.x = to_boss.x / dist * max_offset;
+        offset.y = to_boss.y / dist * max_offset;
+    }
+    
+    // 25% 偏移: 相机以玩家为中心, 轻微偏向 Boss
+    _target_focus_offset = vec_mul(offset, 0.25f);
+    
+    // 插值到目标 FOV (提高速度, 更快跟随)
+    float lerp_t = dt * (_def.boss_war.lerp_speed * 3.0f);  // 3x 速度
     _current_fov_scale = lerp(_current_fov_scale, _target_fov_scale, lerp_t);
     _current_focus_offset = lerp_vec(_current_focus_offset, _target_focus_offset, lerp_t);
     
