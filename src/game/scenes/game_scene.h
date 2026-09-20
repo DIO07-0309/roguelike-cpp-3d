@@ -189,6 +189,11 @@ public:
     bool in_challenge_arena() const { return _world_mode == WorldMode::CHALLENGE_ARENA; }
     const BossSystemDirector& boss_ctrl() const { return _boss; }  // M6-v2b: 危险区只读
 
+    // A6-T4: 摄像机语言访问器 (3D 渲染器只读)
+    bool camera_def_loaded() const { return _camera_def_loaded; }
+    bool sim_mode() const { return _sim_mode; }
+    const CameraLanguageDirector& camera_director() const { return _camera_director; }
+
     // 生命周期
     void _ready() override;
     void _process(double delta) override;

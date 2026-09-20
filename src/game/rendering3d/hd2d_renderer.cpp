@@ -279,6 +279,16 @@ void HD2DRenderer::render_frame(GameScene& gs) {
     _camera_focus.x += _shake_offset.x;
     _camera_focus.z += _shake_offset.z;
     _shake_offset = {0, 0, 0};
+    
+    // A6-T4: CameraDirector 焦点偏移 + FOV 缩放 (3D 渲染)
+    if (gs.camera_def_loaded() && !gs.sim_mode()) {
+        Vector2 cam_offset = gs.camera_director().focus_offset();
+        _camera_focus.x += cam_offset.x;
+        _camera_focus.z += cam_offset.y;
+        // FOV 缩放: 0.75 = 拉近 (Boss 战), 1.0 = 原始
+        float fov_scale = gs.camera_director().fov_scale();
+        _camera.fovy = 50.0f * fov_scale;
+    }
     // 3. 相机定位 (v2f: 提前到深度 pass 前 — billboard 深度几何朝向
     // 需当帧相机, 不吃上一帧残值; _draw_scene 内复用不再重算)
     // M6-i.1: 640→440 拉近相机 (可见 ~12x19 tile), 房间/材质占屏更大
