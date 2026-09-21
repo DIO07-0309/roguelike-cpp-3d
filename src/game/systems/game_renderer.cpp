@@ -918,8 +918,17 @@ void GameRenderer::draw_hud(const Player* player, int current_floor, float game_
     int eff_max_hp = get_effective_max_hp(player);
     float hp_r = eff_max_hp > 0 ? (float)c.current_hp / eff_max_hp : 0.0f;
     if (hp_r > 1.0f) hp_r = 1.0f;
-    Color hp_c = hp_r > 0.5f ? Color{50, 200, 50, 255}
-               : hp_r > 0.25f ? Color{200, 200, 50, 255} : Color{200, 50, 50, 255};
+    if (hp_r < 0.0f) hp_r = 0.0f;
+
+    // 动态颜色：>50% 绿 / >25% 黄 / <25% 红
+    Color hp_c;
+    if (hp_r > 0.5f) {
+        hp_c = Color{50, 200, 50, 255};
+    } else if (hp_r > 0.25f) {
+        hp_c = Color{200, 200, 50, 255};
+    } else {
+        hp_c = Color{200, 50, 50, 255};
+    }
     DrawRectangleRec({10, 10, 200, 16}, {40, 20, 20, 255});
     DrawRectangleRec({10, 10, 200 * hp_r, 16}, hp_c);
     DrawRectangleRec({11, 11, 198 * hp_r, 2}, Color{255, 255, 255, 60});  // 高光
