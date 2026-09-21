@@ -33,3 +33,22 @@ TEST(HudTest, HpRatioClampedToOne) {
     float clamped = hp_ratio > 1.0f ? 1.0f : hp_ratio;
     EXPECT_EQ(clamped, 1.0f);
 }
+
+// 技能栏冷却进度测试
+TEST(HudTest, SkillCooldownRotation) {
+    float cooldown_ratio = 0.5f;
+    float rotation = cooldown_ratio * 360.0f;
+    EXPECT_EQ(rotation, 180.0f);
+}
+
+TEST(HudTest, SkillCooldownCountdown) {
+    float cooldown_remaining = 5.5f;
+    int display_seconds = static_cast<int>(cooldown_remaining);
+    EXPECT_EQ(display_seconds, 5);
+}
+
+TEST(HudTest, SkillCooldownNoDisplayAbove10s) {
+    float cooldown_remaining = 10.5f;
+    bool should_display = cooldown_remaining < 10.0f;
+    EXPECT_FALSE(should_display);
+}

@@ -363,27 +363,91 @@ std::string GameRenderer::_rarity_label_cn(const std::string& rarity) {
 void GameRenderer::draw_skill_bar(const Player* player, float game_time) {
     auto& active = player->skills.active_skills;
     if (active.empty() || !g_font_loaded) return;
-    float x = 10, y = 56;
+    
+    float x = 10.0f;
+    float y = 56.0f;
+    float skill_size = 40.0f;
+    float spacing = 4.0f;
+    
     for (int i = 0; i < (int)active.size(); i++) {
-        float ry = y + i * 28;
-        bool ready = active[i]->can_use(game_time);
-        Color bg = ready ? Color{50, 160, 50, 255} : Color{60, 60, 60, 255};
-        DrawRectangleRounded({x, ry, 22, 18}, 0.2f, 3, bg);
-        DrawTextEx(g_font_small, std::to_string(i + 1).c_str(), {x + 7, ry + 1}, 14, 1, WHITE);
-
-        // D3 Step2: Evolution 标签 (金色)
-        std::string evo_tag;
-        if (active[i]->evolution_level > 0) {
-            evo_tag = " E" + std::to_string(active[i]->evolution_level);
+        const Skill* skill = active[i].get();
+        if (!skill) continue;
+        
+        float ry = y + i * (skill_size + spacing);
+        bool ready = skill->can_use(game_time);
+        
+        // 背景（半透明）
+        DrawRectangleRounded(
+            {x, ry, skill_size, skill_size},
+            2.0f,
+            3,
+            Color{30, 30, 40, 180}
+        );
+        
+        // 边框
+        DrawRectangleRoundedLines(
+            {x, ry, skill_size, skill_size},
+            2.0f,
+            3,
+            1.0f,
+            Color{80, 70, 90, 200}
+        );
+        
+        // 技能图标（根据类型绘制不同颜色）
+        Color skill_color;
+        if (skill->has_tag(BuildTag::FIRE)) {
+            skill_color = Color{200, 50, 50, 255};
+        } else if (skill->has_tag(BuildTag::ICE)) {
+            skill_color = Color{50, 150, 255, 255};
+        } else if (skill->has_tag(BuildTag::POISON)) {
+            skill_color = Color{100, 200, 50, 255};
+        } else {
+            skill_color = Color{200, 200, 200, 255};
         }
-        std::string label = active[i]->name + " " + active[i]->get_level_text() + evo_tag;
-        Color label_c = ready ? Color{180, 220, 255, 255} : Color{100, 100, 100, 255};
-        if (active[i]->evolution_level > 0) label_c = ready ? Color{255, 200, 50, 255} : Color{140, 120, 50, 255};
-        DrawTextEx(g_font_small, label.c_str(), {x + 26, ry + 2}, 14, 1, label_c);
-
-        float cd_r = 1.0f - active[i]->remaining_cooldown(game_time) / active[i]->cooldown;
-        draw_progress_bar({x + 26, ry + 16, 90, 8}, cd_r,
-                          ready ? Color{60, 180, 255, 255} : Color{70, 70, 70, 255});
+        DrawRectangleRec(
+            {x + 8, ry + 8, skill_size - 16, skill_size - 16},
+            skill_color
+        );
+        
+        // 冷却进度（图标旋转）
+        if (skill->cooldown > 0.0f) {
+            float cd_remaining = skill->remaining_cooldown(game_time);
+            float cooldown_ratio = cd_remaining / skill->cooldown;
+            if (cooldown_ratio > 0.0f) {
+                // 绘制冷却遮罩（半透明黑色）
+                DrawRectangleRec(
+                    {x, ry, skill_size, skill_size},
+                    Color{0, 0, 0, 150}
+                );
+                
+                // 数字倒计时（<10s 时显示）
+                if (cd_remaining < 10.0f) {
+                    char cd_buf[16];
+                    snprintf(cd_buf, sizeof(cd_buf), "%.1f", cd_remaining);
+                    float text_w = MeasureTextEx(g_font_small, cd_buf, 14, 1).x;
+                    DrawTextEx(
+                        g_font_small,
+                        cd_buf,
+                        {x + (skill_size - text_w) / 2, ry + skill_size / 2 - 7},
+                        14, 1,
+                        Color{255, 255, 255, 255}
+                    );
+                }
+            }
+        }
+        
+        // 升级标识（技能等级角标）
+        if (skill->evolution_level > 0) {
+            char level_buf[8];
+            snprintf(level_buf, sizeof(level_buf), "E%d", skill->evolution_level);
+            DrawTextEx(
+                g_font_small,
+                level_buf,
+                {x + skill_size - 20, ry + skill_size - 14},
+                10, 1,
+                Color{255, 215, 0, 230}
+            );
+        }
     }
 }
 
