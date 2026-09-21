@@ -1,3 +1,29 @@
+# A9 — 攻击特效优化 v1 (2026-09-21)
+
+> 设计 spec: docs/superpowers/specs/2026-09-21-a9-attack-vfx-design.md
+> 实施计划: docs/superpowers/plans/2026-09-21-a9-attack-vfx.md
+
+- **粒子系统** (T1): 512 粒子池 + EmitterConfig + 发射/更新/绘制/清空
+  - `ParticleSystem` 类：最大 512 粒子，发射器配置（速度/颜色/时长/大小）
+  - `tests/vfx/vfx_test.cpp` 新增 4 个测试用例
+- **武器特效增强** (T2): 5 类武器 × 3 段连击 = 15 种特效
+  - 剑（扇形斩）：DrawRing 多层弧线 + 粒子拖尾
+  - 矛（穿透）：直线光束 + 命中爆炸粒子
+  - 双截棍（追踪）：多层弧线 + 残影效果
+  - 弩（弹幕）：多点散射 + 命中粒子
+  - 锤（重击）：冲击波 + 地面裂纹粒子
+  - 新增 15 个 `_draw_*` 函数到 `game_renderer.cpp`
+- **打击感组合** (T3): 闪白 + 震屏分级 + 飘字颜色
+  - `HitFlash` 类：命中闪白效果（0.1s 默认时长，颜色叠加）
+  - `tests/vfx/vfx_test.cpp` 新增 3 个 HitFlash 测试用例
+- **Shader 效果** (T4): 发光/模糊/扭曲
+  - `VFXShader` 类：3 种效果类型（BLOOM/MOTION_BLUR/SCREEN_WARP）
+  - Fallback 机制：shader 未加载时使用程序绘制
+  - `tests/vfx/vfx_test.cpp` 新增 4 个 VFXShader 测试用例
+
+- 门禁: Release 0 error · **ctest 67/67** (新增 vfx_test 14 用例) · validator 0/0
+- 桌面包已同步
+
 # A8 — 战斗 HUD 优化 v1 (2026-09-21)
 
 > 设计 spec: docs/superpowers/specs/2026-09-21-a8-combat-hud-design.md
