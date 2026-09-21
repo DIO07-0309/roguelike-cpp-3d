@@ -409,30 +409,39 @@ void GameRenderer::draw_skill_bar(const Player* player, float game_time) {
             skill_color
         );
         
-        // 冷却进度（图标旋转）
+        // 技能编号
+        char num_buf[4];
+        snprintf(num_buf, sizeof(num_buf), "%d", i + 1);
+        DrawTextEx(g_font_small, num_buf, {x + 14, ry + 14}, 14, 1, WHITE);
+        
+        // 技能名称（图标右侧）
+        std::string label = skill->name + " " + skill->get_level_text();
+        Color label_c = ready ? Color{180, 220, 255, 255} : Color{100, 100, 100, 255};
+        if (skill->evolution_level > 0) label_c = ready ? Color{255, 200, 50, 255} : Color{140, 120, 50, 255};
+        DrawTextEx(g_font_small, label.c_str(), {x + skill_size + 8, ry + 10}, 14, 1, label_c);
+        
+        // 冷却进度条（技能名称下方）
+        float cd_r = 1.0f;
         if (skill->cooldown > 0.0f) {
+            cd_r = 1.0f - skill->remaining_cooldown(game_time) / skill->cooldown;
+        }
+        draw_progress_bar({x + skill_size + 8, ry + 28, 90, 8}, cd_r,
+                          ready ? Color{60, 180, 255, 255} : Color{70, 70, 70, 255});
+        
+        // 冷却数字倒计时（冷却时显示在图标上）
+        if (skill->cooldown > 0.0f && !ready) {
             float cd_remaining = skill->remaining_cooldown(game_time);
-            float cooldown_ratio = cd_remaining / skill->cooldown;
-            if (cooldown_ratio > 0.0f) {
-                // 绘制冷却遮罩（半透明黑色）
-                DrawRectangleRec(
-                    {x, ry, skill_size, skill_size},
-                    Color{0, 0, 0, 150}
+            if (cd_remaining < 10.0f) {
+                char cd_buf[16];
+                snprintf(cd_buf, sizeof(cd_buf), "%.1f", cd_remaining);
+                float text_w = MeasureTextEx(g_font_small, cd_buf, 14, 1).x;
+                DrawTextEx(
+                    g_font_small,
+                    cd_buf,
+                    {x + (skill_size - text_w) / 2, ry + skill_size / 2 - 7},
+                    14, 1,
+                    Color{255, 255, 255, 255}
                 );
-                
-                // 数字倒计时（<10s 时显示）
-                if (cd_remaining < 10.0f) {
-                    char cd_buf[16];
-                    snprintf(cd_buf, sizeof(cd_buf), "%.1f", cd_remaining);
-                    float text_w = MeasureTextEx(g_font_small, cd_buf, 14, 1).x;
-                    DrawTextEx(
-                        g_font_small,
-                        cd_buf,
-                        {x + (skill_size - text_w) / 2, ry + skill_size / 2 - 7},
-                        14, 1,
-                        Color{255, 255, 255, 255}
-                    );
-                }
             }
         }
         
