@@ -319,3 +319,67 @@ void VFXServer::portal_return(float cx, float cy) {
     aura_ring(cx, cy, 18.0f, {100, 255, 150, 200}, 1.2f);
     spark_burst(cx, cy, 6, {150, 255, 180, 180}, 0.4f);
 }
+
+// ═══════════════════════════════════════════════════════════
+// A9: 武器特效增强 (15 种新特效)
+// ═══════════════════════════════════════════════════════════
+
+void VFXServer::slash_arc_1(float cx, float cy, Direction dir, float radius, Color c, float dur) {
+    effects.push_back({"slash_arc_1", cx, cy, radius, c, dur, 0, dir});
+}
+
+void VFXServer::slash_arc_2(float cx, float cy, Direction dir, float radius, Color c, float dur) {
+    effects.push_back({"slash_arc_2", cx, cy, radius, c, dur, 0, dir});
+}
+
+void VFXServer::slash_arc_3(float cx, float cy, Direction dir, float radius, Color c, float dur) {
+    effects.push_back({"slash_arc_3", cx, cy, radius, c, dur, 0, dir});
+}
+
+void VFXServer::pierce_beam_1(float sx, float sy, float tx, float ty, Color c, float dur) {
+    effects.push_back({"pierce_beam_1", sx, sy, 0, c, dur, 0, Direction::DOWN, tx, ty, 1});
+}
+
+void VFXServer::pierce_beam_2(float sx, float sy, float tx, float ty, Color c, float dur) {
+    effects.push_back({"pierce_beam_2", sx, sy, 0, c, dur, 0, Direction::DOWN, tx, ty, 1});
+}
+
+void VFXServer::pierce_beam_3(float sx, float sy, float tx, float ty, Color c, float dur) {
+    effects.push_back({"pierce_beam_3", sx, sy, 0, c, dur, 0, Direction::DOWN, tx, ty, 1});
+}
+
+void VFXServer::whip_arc_1(float cx, float cy, Direction dir, float radius, Color c, float dur) {
+    effects.push_back({"whip_arc_1", cx, cy, radius, c, dur, 0, dir});
+}
+
+void VFXServer::whip_arc_2(float cx, float cy, Direction dir, float radius, Color c, float dur) {
+    effects.push_back({"whip_arc_2", cx, cy, radius, c, dur, 0, dir});
+}
+
+void VFXServer::whip_arc_3(float cx, float cy, Direction dir, float radius, Color c, float dur) {
+    effects.push_back({"whip_arc_3", cx, cy, radius, c, dur, 0, dir});
+}
+
+void VFXServer::bolt_spread_1(float cx, float cy, float tx, float ty, Color c, float dur) {
+    effects.push_back({"bolt_spread_1", cx, cy, 0, c, dur, 0, Direction::DOWN, tx, ty, 1});
+}
+
+void VFXServer::bolt_spread_2(float cx, float cy, float tx, float ty, Color c, float dur) {
+    effects.push_back({"bolt_spread_2", cx, cy, 0, c, dur, 0, Direction::DOWN, tx, ty, 1});
+}
+
+void VFXServer::bolt_spread_3(float cx, float cy, float tx, float ty, Color c, float dur) {
+    effects.push_back({"bolt_spread_3", cx, cy, 0, c, dur, 0, Direction::DOWN, tx, ty, 1});
+}
+
+void VFXServer::smash_impact_1(float cx, float cy, float radius, Color c, float dur) {
+    effects.push_back({"smash_impact_1", cx, cy, radius, c, dur, 0});
+}
+
+void VFXServer::smash_impact_2(float cx, float cy, float radius, Color c, float dur) {
+    effects.push_back({"smash_impact_2", cx, cy, radius, c, dur, 0});
+}
+
+void VFXServer::smash_impact_3(float cx, float cy, float radius, Color c, float dur) {
+    effects.push_back({"smash_impact_3", cx, cy, radius, c, dur, 0});
+}

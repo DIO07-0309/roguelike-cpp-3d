@@ -106,6 +106,23 @@ public:
     void boss_phase2_flash(float cx, float cy, Color tint);
     void boss_gravity_pull(float cx, float cy, float px, float py);
 
+    // ── A9: 武器特效增强 (15 种新特效) ──
+    void slash_arc_1(float cx, float cy, Direction dir, float radius, Color c, float dur);
+    void slash_arc_2(float cx, float cy, Direction dir, float radius, Color c, float dur);
+    void slash_arc_3(float cx, float cy, Direction dir, float radius, Color c, float dur);
+    void pierce_beam_1(float sx, float sy, float tx, float ty, Color c, float dur);
+    void pierce_beam_2(float sx, float sy, float tx, float ty, Color c, float dur);
+    void pierce_beam_3(float sx, float sy, float tx, float ty, Color c, float dur);
+    void whip_arc_1(float cx, float cy, Direction dir, float radius, Color c, float dur);
+    void whip_arc_2(float cx, float cy, Direction dir, float radius, Color c, float dur);
+    void whip_arc_3(float cx, float cy, Direction dir, float radius, Color c, float dur);
+    void bolt_spread_1(float cx, float cy, float tx, float ty, Color c, float dur);
+    void bolt_spread_2(float cx, float cy, float tx, float ty, Color c, float dur);
+    void bolt_spread_3(float cx, float cy, float tx, float ty, Color c, float dur);
+    void smash_impact_1(float cx, float cy, float radius, Color c, float dur);
+    void smash_impact_2(float cx, float cy, float radius, Color c, float dur);
+    void smash_impact_3(float cx, float cy, float radius, Color c, float dur);
+
     void portal_entry(float cx, float cy);
     void portal_return(float cx, float cy);
 };
