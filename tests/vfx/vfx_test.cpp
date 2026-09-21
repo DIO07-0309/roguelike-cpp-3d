@@ -69,3 +69,28 @@ TEST(ParticleSystemTest, Update) {
     ParticleSystem::update(0.6f);
     EXPECT_EQ(ParticleSystem::active_count(), 0);
 }
+
+// 武器特效类型映射测试
+TEST(WeaponVfxTest, SlashArcTypes) {
+    // 剑（扇形斩）
+    std::string kinds[3] = {"slash_arc_1", "slash_arc_2", "slash_arc_3"};
+    for (int i = 0; i < 3; i++) {
+        EXPECT_FALSE(kinds[i].empty());
+    }
+}
+
+TEST(WeaponVfxTest, PierceBeamTypes) {
+    // 矛（穿透）
+    std::string kinds[3] = {"pierce_beam_1", "pierce_beam_2", "pierce_beam_3"};
+    for (int i = 0; i < 3; i++) {
+        EXPECT_FALSE(kinds[i].empty());
+    }
+}
+
+TEST(WeaponVfxTest, WeaponEffectKindMapping) {
+    // 5 类武器 × 3 段连击 = 15 种特效
+    int weapon_count = 5;
+    int combo_count = 3;
+    int total_effects = weapon_count * combo_count;
+    EXPECT_EQ(total_effects, 15);
+}

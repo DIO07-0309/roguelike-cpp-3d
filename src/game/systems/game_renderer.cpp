@@ -15,6 +15,7 @@
 #include "skill_evolution.h"   // G1 Step3
 #include "resource_manager.h"                 // M4f.2
 #include "game/rendering/sprite_renderer.h"   // M4f.2
+#include "particle_system.h"                 // A9: 粒子系统
 #include <cmath>
 #include <algorithm>
 #include <cstdio>
@@ -177,6 +178,175 @@ static void _draw_fx_ring(float sx, float sy, float radius, float prog,
     DrawRing({sx, sy}, r * 0.6f, r, 0, 360, seg, c);
 }
 
+// ============================================================
+// A9: 武器三连击特效
+// ============================================================
+
+// 剑（扇形斩）三连击
+static void _draw_slash_arc_1(const Effect& e, float sx, float sy, float prog, Color c) {
+    float radius = e.radius * (0.5f + 0.5f * prog);
+    DrawRing({sx, sy}, radius * 0.8f, radius, -45, 90, 16, c);
+}
+
+static void _draw_slash_arc_2(const Effect& e, float sx, float sy, float prog, Color c) {
+    float radius = e.radius * (0.5f + 0.5f * prog);
+    DrawRing({sx, sy}, radius * 0.8f, radius, -45, 90, 16, c);
+    DrawRing({sx, sy}, radius * 0.6f, radius * 0.8f, -30, 60, 16, Fade(c, 0.7f));
+}
+
+static void _draw_slash_arc_3(const Effect& e, float sx, float sy, float prog, Color c) {
+    float radius = e.radius * (0.5f + 0.5f * prog);
+    DrawRing({sx, sy}, radius * 0.8f, radius, -45, 90, 16, c);
+    DrawRing({sx, sy}, radius * 0.6f, radius * 0.8f, -30, 60, 16, Fade(c, 0.7f));
+    DrawRing({sx, sy}, radius * 0.4f, radius * 0.6f, -15, 30, 16, Fade(c, 0.5f));
+    
+    // 粒子拖尾
+    EmitterConfig config;
+    config.position = {e.world_x, e.world_y};
+    config.velocity_min = {-20, -20};
+    config.velocity_max = {20, 20};
+    config.color = c;
+    config.end_color = Color{255, 255, 255, 0};
+    config.duration_min = 0.3f;
+    config.duration_max = 0.5f;
+    config.size_min = 2.0f;
+    config.size_max = 4.0f;
+    ParticleSystem::emit(config, 3);
+}
+
+// 矛（穿透）三连击
+static void _draw_pierce_beam_1(const Effect& e, float sx, float sy, float prog, Color c) {
+    float length = e.radius * 3.0f;
+    float angle = atan2f(e.target_y - e.world_y, e.target_x - e.world_x) * 180.0f / 3.14159f;
+    DrawLineEx({sx, sy}, {e.target_x - sx, e.target_y - sy}, 3, c);
+    // 命中火花
+    _draw_fx_blast(e.target_x, e.target_y, 16, c, 200);
+}
+
+static void _draw_pierce_beam_2(const Effect& e, float sx, float sy, float prog, Color c) {
+    float length = e.radius * 3.0f;
+    DrawLineEx({sx, sy}, {e.target_x - sx, e.target_y - sy}, 4, c);
+    // 分裂光束
+    Vector2 start = {sx, sy};
+    Vector2 end = {e.target_x - sx, e.target_y - sy};
+    Vector2 mid = {start.x + (end.x - start.x) * 0.5f, start.y + (end.y - start.y) * 0.5f};
+    DrawLineEx(mid, {mid.x + 20, mid.y - 20}, 2, Fade(c, 0.7f));
+    DrawLineEx(mid, {mid.x - 20, mid.y + 20}, 2, Fade(c, 0.7f));
+    _draw_fx_blast(e.target_x, e.target_y, 20, c, 200);
+}
+
+static void _draw_pierce_beam_3(const Effect& e, float sx, float sy, float prog, Color c) {
+    DrawLineEx({sx, sy}, {e.target_x - sx, e.target_y - sy}, 5, c);
+    // 贯穿光束 + 命中火花
+    _draw_fx_blast(e.target_x, e.target_y, 24, c, 255);
+    
+    // 粒子效果
+    EmitterConfig config;
+    config.position = {e.target_x, e.target_y};
+    config.velocity_min = {-50, -50};
+    config.velocity_max = {50, 50};
+    config.color = c;
+    config.end_color = Color{255, 255, 255, 0};
+    config.duration_min = 0.2f;
+    config.duration_max = 0.4f;
+    config.size_min = 3.0f;
+    config.size_max = 6.0f;
+    ParticleSystem::emit(config, 5);
+}
+
+// 双截棍（追踪）三连击
+static void _draw_whip_arc_1(const Effect& e, float sx, float sy, float prog, Color c) {
+    float radius = e.radius * (0.5f + 0.5f * prog);
+    DrawRing({sx, sy}, radius * 0.8f, radius, -60, 120, 24, c);
+}
+
+static void _draw_whip_arc_2(const Effect& e, float sx, float sy, float prog, Color c) {
+    float radius = e.radius * (0.5f + 0.5f * prog);
+    DrawRing({sx, sy}, radius * 0.8f, radius, -60, 120, 24, c);
+    DrawRing({sx, sy}, radius * 0.6f, radius * 0.7f, -45, 90, 24, Fade(c, 0.7f));
+}
+
+static void _draw_whip_arc_3(const Effect& e, float sx, float sy, float prog, Color c) {
+    float radius = e.radius * (0.5f + 0.5f * prog);
+    DrawRing({sx, sy}, radius * 0.8f, radius, -60, 120, 24, c);
+    DrawRing({sx, sy}, radius * 0.6f, radius * 0.7f, -45, 90, 24, Fade(c, 0.7f));
+    DrawRing({sx, sy}, radius * 0.4f, radius * 0.4f, -30, 60, 24, Fade(c, 0.5f));
+    
+    // 残影
+    for (int i = 0; i < 3; i++) {
+        float offset = prog * 30.0f + i * 10.0f;
+        DrawRing({sx + offset, sy}, radius * 0.3f, radius * 0.5f, -30, 60, 16, Fade(c, 0.3f - i * 0.1f));
+    }
+}
+
+// 连弩（弹幕）三连击
+static void _draw_bolt_spread_1(const Effect& e, float sx, float sy, float prog, Color c) {
+    DrawLineEx({sx, sy}, {e.target_x - sx, e.target_y - sy}, 2, c);
+    _draw_fx_blast(e.target_x, e.target_y, 12, c, 150);
+}
+
+static void _draw_bolt_spread_2(const Effect& e, float sx, float sy, float prog, Color c) {
+    // 双箭
+    DrawLineEx({sx, sy}, {e.target_x - sx, e.target_y - sy}, 2, c);
+    DrawLineEx({sx, sy}, {e.target_x - sx - 20, e.target_y - sy}, 2, Fade(c, 0.7f));
+    _draw_fx_blast(e.target_x, e.target_y, 16, c, 200);
+}
+
+static void _draw_bolt_spread_3(const Effect& e, float sx, float sy, float prog, Color c) {
+    // 多箭
+    DrawLineEx({sx, sy}, {e.target_x - sx, e.target_y - sy}, 2, c);
+    DrawLineEx({sx, sy}, {e.target_x - sx - 20, e.target_y - sy}, 2, Fade(c, 0.7f));
+    DrawLineEx({sx, sy}, {e.target_x - sx + 20, e.target_y - sy}, 2, Fade(c, 0.7f));
+    
+    // 爆炸
+    _draw_fx_blast(e.target_x, e.target_y, 24, c, 255);
+    
+    // 粒子
+    EmitterConfig config;
+    config.position = {e.target_x, e.target_y};
+    config.velocity_min = {-40, -40};
+    config.velocity_max = {40, 40};
+    config.color = c;
+    config.end_color = Color{255, 255, 100, 0};
+    config.duration_min = 0.3f;
+    config.duration_max = 0.5f;
+    config.size_min = 2.0f;
+    config.size_max = 5.0f;
+    ParticleSystem::emit(config, 8);
+}
+
+// 重锤（重击）三连击
+static void _draw_smash_impact_1(const Effect& e, float sx, float sy, float prog, Color c) {
+    float radius = e.radius * (0.5f + 0.5f * prog);
+    DrawRing({sx, sy}, radius * 0.3f, radius, 0, 360, 16, c);
+}
+
+static void _draw_smash_impact_2(const Effect& e, float sx, float sy, float prog, Color c) {
+    float radius = e.radius * (0.5f + 0.5f * prog);
+    DrawRing({sx, sy}, radius * 0.3f, radius, 0, 360, 16, c);
+    DrawRing({sx, sy}, radius * 0.6f, radius * 1.2f, 0, 360, 16, Fade(c, 0.7f));
+}
+
+static void _draw_smash_impact_3(const Effect& e, float sx, float sy, float prog, Color c) {
+    float radius = e.radius * (0.5f + 0.5f * prog);
+    DrawRing({sx, sy}, radius * 0.3f, radius, 0, 360, 16, c);
+    DrawRing({sx, sy}, radius * 0.6f, radius * 1.2f, 0, 360, 16, Fade(c, 0.7f));
+    DrawRing({sx, sy}, radius * 0.9f, radius * 1.5f, 0, 360, 16, Fade(c, 0.5f));
+    
+    // 碎石粒子
+    EmitterConfig config;
+    config.position = {e.world_x, e.world_y};
+    config.velocity_min = {-60, -60};
+    config.velocity_max = {60, 60};
+    config.color = Color{150, 100, 80, 255};
+    config.end_color = Color{80, 50, 30, 0};
+    config.duration_min = 0.5f;
+    config.duration_max = 0.8f;
+    config.size_min = 3.0f;
+    config.size_max = 8.0f;
+    ParticleSystem::emit(config, 10);
+}
+
 // G5.8.8-fix: 单特效渲染 — 合并原 VFXServer::draw 全部 kind 分支
 static void _draw_effect_body(const Effect& e, float sx, float sy,
                               float cam_x, float cam_y, float t) {
@@ -185,7 +355,48 @@ static void _draw_effect_body(const Effect& e, float sx, float sy,
     Color c = e.color; c.a = (unsigned char)(c.a * alpha);
     float prog = t / e.duration;
 
-    if (e.kind == "pulse" || e.kind == "ring") {
+    // 剑（扇形斩）三连击
+    if (e.kind == "slash_arc_1") {
+        _draw_slash_arc_1(e, sx, sy, prog, c);
+    } else if (e.kind == "slash_arc_2") {
+        _draw_slash_arc_2(e, sx, sy, prog, c);
+    } else if (e.kind == "slash_arc_3") {
+        _draw_slash_arc_3(e, sx, sy, prog, c);
+    }
+    // 矛（穿透）三连击
+    else if (e.kind == "pierce_beam_1") {
+        _draw_pierce_beam_1(e, sx, sy, prog, c);
+    } else if (e.kind == "pierce_beam_2") {
+        _draw_pierce_beam_2(e, sx, sy, prog, c);
+    } else if (e.kind == "pierce_beam_3") {
+        _draw_pierce_beam_3(e, sx, sy, prog, c);
+    }
+    // 双截棍（追踪）三连击
+    else if (e.kind == "whip_arc_1") {
+        _draw_whip_arc_1(e, sx, sy, prog, c);
+    } else if (e.kind == "whip_arc_2") {
+        _draw_whip_arc_2(e, sx, sy, prog, c);
+    } else if (e.kind == "whip_arc_3") {
+        _draw_whip_arc_3(e, sx, sy, prog, c);
+    }
+    // 连弩（弹幕）三连击
+    else if (e.kind == "bolt_spread_1") {
+        _draw_bolt_spread_1(e, sx, sy, prog, c);
+    } else if (e.kind == "bolt_spread_2") {
+        _draw_bolt_spread_2(e, sx, sy, prog, c);
+    } else if (e.kind == "bolt_spread_3") {
+        _draw_bolt_spread_3(e, sx, sy, prog, c);
+    }
+    // 重锤（重击）三连击
+    else if (e.kind == "smash_impact_1") {
+        _draw_smash_impact_1(e, sx, sy, prog, c);
+    } else if (e.kind == "smash_impact_2") {
+        _draw_smash_impact_2(e, sx, sy, prog, c);
+    } else if (e.kind == "smash_impact_3") {
+        _draw_smash_impact_3(e, sx, sy, prog, c);
+    }
+    // 现有特效类型（保留）
+    else if (e.kind == "pulse" || e.kind == "ring") {
         _draw_fx_ring(sx, sy, e.radius, prog, c, 24);
     } else if (e.kind == "spark") {
         _draw_fx_blast(sx, sy, e.radius * (0.5f + 0.5f * prog), c,
