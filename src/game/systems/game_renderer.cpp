@@ -25,6 +25,47 @@ extern Font g_font_small;
 extern bool g_font_loaded;
 
 // ============================================================
+// A8: 技能图标纹理缓存
+// ============================================================
+static Texture2D g_skill_icons[9] = {};
+static bool g_skill_icons_loaded = false;
+
+static void load_skill_icons() {
+    if (g_skill_icons_loaded) return;
+    
+    const char* paths[] = {
+        "assets/icons/skills/skill_fire.png",
+        "assets/icons/skills/skill_ice.png",
+        "assets/icons/skills/skill_poison.png",
+        "assets/icons/skills/skill_physical.png",
+        "assets/icons/skills/skill_lightning.png",
+        "assets/icons/skills/skill_shadow.png",
+        "assets/icons/skills/skill_blood.png",
+        "assets/icons/skills/skill_arcane.png",
+        "assets/icons/skills/skill_shield.png",
+    };
+    
+    for (int i = 0; i < 9; i++) {
+        if (FileExists(paths[i])) {
+            g_skill_icons[i] = LoadTexture(paths[i]);
+        }
+    }
+    g_skill_icons_loaded = true;
+}
+
+static int skill_icon_index(const Skill* skill) {
+    if (!skill) return 3;
+    if (skill->has_tag(BuildTag::FIRE)) return 0;
+    if (skill->has_tag(BuildTag::ICE)) return 1;
+    if (skill->has_tag(BuildTag::POISON)) return 2;
+    if (skill->has_tag(BuildTag::LIGHTNING)) return 4;
+    if (skill->has_tag(BuildTag::BLEED)) return 6;
+    if (skill->has_tag(BuildTag::MAGIC)) return 7;
+    if (skill->has_tag(BuildTag::DEFENSE)) return 8;
+    return 3; // physical
+}
+
+// ============================================================
 // 静态绘制工具
 // ============================================================
 void GameRenderer::draw_panel(Rectangle r, const char* title, Color bg) {
@@ -364,6 +405,8 @@ void GameRenderer::draw_skill_bar(const Player* player, float game_time) {
     auto& active = player->skills.active_skills;
     if (active.empty() || !g_font_loaded) return;
     
+    load_skill_icons();
+    
     float x = 10.0f;
     float y = 56.0f;
     float skill_size = 40.0f;
@@ -393,21 +436,30 @@ void GameRenderer::draw_skill_bar(const Player* player, float game_time) {
             Color{80, 70, 90, 200}
         );
         
-        // 技能图标（根据类型绘制不同颜色）
-        Color skill_color;
-        if (skill->has_tag(BuildTag::FIRE)) {
-            skill_color = Color{200, 50, 50, 255};
-        } else if (skill->has_tag(BuildTag::ICE)) {
-            skill_color = Color{50, 150, 255, 255};
-        } else if (skill->has_tag(BuildTag::POISON)) {
-            skill_color = Color{100, 200, 50, 255};
+        // 技能图标贴图
+        int icon_idx = skill_icon_index(skill);
+        if (g_skill_icons[icon_idx].id > 0) {
+            Rectangle src = {0, 0, (float)g_skill_icons[icon_idx].width, (float)g_skill_icons[icon_idx].height};
+            Rectangle dst = {x + 4, ry + 4, skill_size - 8, skill_size - 8};
+            Color tmod = ready ? WHITE : Color{100, 100, 100, 150};
+            DrawTexturePro(g_skill_icons[icon_idx], src, dst, {0, 0}, 0, tmod);
         } else {
-            skill_color = Color{200, 200, 200, 255};
+            // Fallback: 彩色方块
+            Color skill_color;
+            if (skill->has_tag(BuildTag::FIRE)) {
+                skill_color = Color{200, 50, 50, 255};
+            } else if (skill->has_tag(BuildTag::ICE)) {
+                skill_color = Color{50, 150, 255, 255};
+            } else if (skill->has_tag(BuildTag::POISON)) {
+                skill_color = Color{100, 200, 50, 255};
+            } else {
+                skill_color = Color{200, 200, 200, 255};
+            }
+            DrawRectangleRec(
+                {x + 8, ry + 8, skill_size - 16, skill_size - 16},
+                skill_color
+            );
         }
-        DrawRectangleRec(
-            {x + 8, ry + 8, skill_size - 16, skill_size - 16},
-            skill_color
-        );
         
         // 技能编号
         char num_buf[4];
