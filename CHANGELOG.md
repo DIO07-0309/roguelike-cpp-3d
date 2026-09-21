@@ -1,3 +1,16 @@
+# A8 — 战斗 HUD 优化 v1 (2026-09-21)
+
+> 设计 spec: docs/superpowers/specs/2026-09-21-a8-combat-hud-design.md
+> 实施计划: docs/superpowers/plans/2026-09-21-a8-combat-hud.md
+
+- **HP/XP bar 视觉升级** (T1): 像素风双层边框 + 高光顶线 + 动态颜色（绿→黄→红）
+- **技能栏冷却提示** (T2): 图标旋转 + 数字倒计时 + 升级标识
+- **小地图标记清晰度** (T3): 标记颜色区分（怪物红/Boss 金/楼梯蓝/物品绿）+ 标记大小分级
+- **金币/资源图标** (T4): 像素图标 + 数字对齐 + 圣物数量显示
+
+- 门禁: Release 0 error · **ctest 66/66** (新增 hud_test) · validator 0/0
+- 桌面包已同步
+
 # A6 — 摄像机语言 v1 (2026-09-20)
 
 > 设计 spec: docs/superpowers/specs/2026-09-20-a6-camera-language-design.md
