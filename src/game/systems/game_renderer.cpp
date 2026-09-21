@@ -27,25 +27,20 @@ extern bool g_font_loaded;
 // ============================================================
 // A8: 技能图标纹理缓存
 // ============================================================
-static Texture2D g_skill_icons[9] = {};
+static Texture2D g_skill_icons[4] = {};
 static bool g_skill_icons_loaded = false;
 
 static void load_skill_icons() {
     if (g_skill_icons_loaded) return;
     
     const char* paths[] = {
-        "assets/icons/skills/skill_fire.png",
-        "assets/icons/skills/skill_ice.png",
-        "assets/icons/skills/skill_poison.png",
-        "assets/icons/skills/skill_physical.png",
-        "assets/icons/skills/skill_lightning.png",
-        "assets/icons/skills/skill_shadow.png",
-        "assets/icons/skills/skill_blood.png",
-        "assets/icons/skills/skill_arcane.png",
-        "assets/icons/skills/skill_shield.png",
+        "assets/icons/skills/skill_slash.png",      // 斩击
+        "assets/icons/skills/skill_divine.png",     // 神罚
+        "assets/icons/skills/skill_timestop.png",   // 时停
+        "assets/icons/skills/skill_heal.png",       // 治愈
     };
     
-    for (int i = 0; i < 9; i++) {
+    for (int i = 0; i < 4; i++) {
         if (FileExists(paths[i])) {
             g_skill_icons[i] = LoadTexture(paths[i]);
         }
@@ -54,15 +49,17 @@ static void load_skill_icons() {
 }
 
 static int skill_icon_index(const Skill* skill) {
-    if (!skill) return 3;
-    if (skill->has_tag(BuildTag::FIRE)) return 0;
-    if (skill->has_tag(BuildTag::ICE)) return 1;
-    if (skill->has_tag(BuildTag::POISON)) return 2;
-    if (skill->has_tag(BuildTag::LIGHTNING)) return 4;
-    if (skill->has_tag(BuildTag::BLEED)) return 6;
-    if (skill->has_tag(BuildTag::MAGIC)) return 7;
-    if (skill->has_tag(BuildTag::DEFENSE)) return 8;
-    return 3; // physical
+    if (!skill) return 0;
+    // 根据技能名称或标签判断图标
+    // 斩击 - 物理/近战
+    if (skill->has_tag(BuildTag::MELEE) || skill->has_tag(BuildTag::COMBO)) return 0;
+    // 神罚 - 魔法/AOE
+    if (skill->has_tag(BuildTag::MAGIC) || skill->has_tag(BuildTag::AOE)) return 1;
+    // 时停 - 时间
+    if (skill->has_tag(BuildTag::TIME)) return 2;
+    // 治愈 - 恢复
+    if (skill->has_tag(BuildTag::HEAL)) return 3;
+    return 0; // fallback: 斩击
 }
 
 // ============================================================
