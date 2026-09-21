@@ -227,6 +227,8 @@ add_roguelike_test(audio_test            audio/audio_test.cpp)            # A7-T
 
 add_roguelike_test(hud_test              hud/hud_test.cpp)                # A8-T1: 战斗 HUD 优化
 
+add_roguelike_test(vfx_test              vfx/vfx_test.cpp)                # A9-T1: 攻击特效优化
+
 # G10.2-B3B: font_manifest_test 处于 Review Gate (候选 A 缺 11 符号) — 未录用前不注册, 决策后启用或按裁决移除
 
 
