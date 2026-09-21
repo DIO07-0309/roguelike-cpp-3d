@@ -94,9 +94,40 @@ void MinimapRenderer::draw(const GameMap& map, const MinimapInput& input,
     DrawRectangleRec(tile_to_screen(input.player_tx, input.player_ty, panel), WHITE);
 }
 
-// 标记绘制：中心填充 + 描边（独立小方法）
+// 标记绘制：根据类型决定大小和颜色
 void MinimapRenderer::_draw_marker(const MinimapMarker& m, Rectangle panel) const {
     Rectangle r = tile_to_screen(m.tx, m.ty, panel);
-    DrawRectangleRec(r, m.color);
-    DrawRectangleLinesEx(r, 1.0f, {0, 0, 0, 160});
+    if (r.width <= 0 || r.height <= 0) return;
+    
+    // 根据标记类型决定大小和颜色
+    float marker_size;
+    Color marker_color;
+    
+    switch (m.type) {
+        case MinimapMarker::Type::BOSS:
+            marker_size = 12.0f;
+            marker_color = Color{255, 215, 0, 255};
+            break;
+        case MinimapMarker::Type::STAIRS:
+            marker_size = 10.0f;
+            marker_color = Color{50, 150, 255, 255};
+            break;
+        case MinimapMarker::Type::ITEM:
+            marker_size = 8.0f;
+            marker_color = Color{50, 200, 50, 255};
+            break;
+        case MinimapMarker::Type::MONSTER:
+        default:
+            marker_size = 8.0f;
+            marker_color = Color{200, 50, 50, 255};
+            break;
+    }
+    
+    // 绘制标记（居中）
+    float marker_x = r.x + (r.width - marker_size) / 2;
+    float marker_y = r.y + (r.height - marker_size) / 2;
+    DrawRectangleRec(
+        {marker_x, marker_y, marker_size, marker_size},
+        marker_color
+    );
 }

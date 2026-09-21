@@ -2476,29 +2476,39 @@ void GameScene::_render_ui_tail(int sw, int sh) {
             mm.boss_marker.tx = _boss_last_known.first;
             mm.boss_marker.ty = _boss_last_known.second;
             mm.boss_marker.visible = true;
-            mm.boss_marker.color = {220, 60, 50, 255};  // 红 — Boss
+            mm.boss_marker.color = Color{220, 60, 50, 255};  // 红 — Boss
+            mm.boss_marker.type = MinimapMarker::Type::BOSS;
         }
         // 楼梯（发现后永久地标）
         if (MinimapRenderer::should_show_stairs(*game_map, stairs_pos.first, stairs_pos.second)) {
             mm.stairs_marker.tx = stairs_pos.first;
             mm.stairs_marker.ty = stairs_pos.second;
             mm.stairs_marker.visible = true;
-            mm.stairs_marker.color = {230, 210, 70, 255};  // 黄 — 楼梯
+            mm.stairs_marker.color = Color{230, 210, 70, 255};  // 黄 — 楼梯
+            mm.stairs_marker.type = MinimapMarker::Type::STAIRS;
         }
         // 当前可见的怪物/物品（仅当前 is_visible 才显示）
         for (auto& m : monsters) {
             if (!m) continue;
             auto [mtx, mty] = game_map->pixel_to_tile(m->entity.position.x, m->entity.position.y);
             if (!m->is_boss && MinimapRenderer::should_show_entity(*game_map, mtx, mty)) {
-                MinimapMarker mark; mark.tx = mtx; mark.ty = mty; mark.visible = true;
-                mark.color = {200, 80, 80, 255};  // 暗红 — 普通怪
+                MinimapMarker mark;
+                mark.tx = mtx;
+                mark.ty = mty;
+                mark.visible = true;
+                mark.color = Color{200, 80, 80, 255};  // 暗红 — 普通怪
+                mark.type = MinimapMarker::Type::MONSTER;
                 mm.markers.push_back(mark);
             }
         }
         for (auto& d : ground_items) {
             if (MinimapRenderer::should_show_entity(*game_map, d.tile_x, d.tile_y)) {
-                MinimapMarker mark; mark.tx = d.tile_x; mark.ty = d.tile_y; mark.visible = true;
-                mark.color = {80, 200, 120, 255};  // 绿 — 物品
+                MinimapMarker mark;
+                mark.tx = d.tile_x;
+                mark.ty = d.tile_y;
+                mark.visible = true;
+                mark.color = Color{80, 200, 120, 255};  // 绿 — 物品
+                mark.type = MinimapMarker::Type::ITEM;
                 mm.markers.push_back(mark);
             }
         }

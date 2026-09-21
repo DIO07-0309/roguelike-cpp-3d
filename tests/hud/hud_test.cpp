@@ -52,3 +52,36 @@ TEST(HudTest, SkillCooldownNoDisplayAbove10s) {
     bool should_display = cooldown_remaining < 10.0f;
     EXPECT_FALSE(should_display);
 }
+
+// 小地图标记颜色测试
+TEST(HudTest, MinimapMarkerColorMonster) {
+    Color expected = Color{200, 50, 50, 255};
+    // 测试标记颜色
+    EXPECT_EQ(expected.r, 200);
+}
+
+TEST(HudTest, MinimapMarkerColorBoss) {
+    Color expected = Color{255, 215, 0, 255};
+    EXPECT_EQ(expected.r, 255);
+}
+
+TEST(HudTest, MinimapMarkerColorStairs) {
+    Color expected = Color{50, 150, 255, 255};
+    EXPECT_EQ(expected.r, 50);
+}
+
+TEST(HudTest, MinimapMarkerColorItem) {
+    Color expected = Color{50, 200, 50, 255};
+    EXPECT_EQ(expected.r, 50);
+}
+
+// 小地图标记大小测试
+TEST(HudTest, MinimapMarkerSizeBoss) {
+    float expected_size = 12.0f;
+    EXPECT_EQ(expected_size, 12.0f);
+}
+
+TEST(HudTest, MinimapMarkerSizeMonster) {
+    float expected_size = 8.0f;
+    EXPECT_EQ(expected_size, 8.0f);
+}

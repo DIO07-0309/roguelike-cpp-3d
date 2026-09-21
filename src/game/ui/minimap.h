@@ -21,6 +21,7 @@ struct MinimapMarker {
     int tx = -1, ty = -1;              // 标记的 tile 坐标；-1 表示无
     bool visible = false;              // 当前是否应绘制 （Boss: 最后已知位置且已探索）
     Color color = WHITE;               // 标记颜色
+    enum class Type { MONSTER, BOSS, STAIRS, ITEM } type = Type::MONSTER; // 标记类型
 };
 
 struct MinimapInput {
