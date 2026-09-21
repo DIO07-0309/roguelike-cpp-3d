@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include "game/systems/particle_system.h"
 #include "game/systems/hit_flash.h"
+#include "game/systems/vfx_shader.h"
 
 // 粒子系统初始化测试
 TEST(ParticleSystemTest, Init) {
@@ -119,4 +120,38 @@ TEST(HitFlashTest, Update) {
 TEST(HitFlashTest, DefaultDuration) {
     HitFlash::trigger();
     EXPECT_EQ(HitFlash::remaining(), 0.1f);
+}
+
+// VFXShader 测试
+TEST(VFXShaderTest, Init) {
+    VFXShader::init();
+    EXPECT_FALSE(VFXShader::is_active());
+}
+
+TEST(VFXShaderTest, SetType) {
+    VFXShader::set_type(VFXType::BLOOM);
+    EXPECT_EQ(VFXShader::current_type(), VFXType::BLOOM);
+}
+
+TEST(VFXShaderTest, Enable) {
+    VFXShader::set_type(VFXType::BLOOM);
+    VFXShader::enable(true);
+    EXPECT_TRUE(VFXShader::is_active());
+    
+    VFXShader::enable(false);
+    EXPECT_FALSE(VFXShader::is_active());
+}
+
+TEST(VFXShaderTest, Fallback) {
+    // Shader 未加载时，不崩溃
+    VFXShader::init();
+    VFXShader::set_type(VFXType::BLOOM);
+    VFXShader::enable(true);
+    
+    // 应用效果（即使 shader 未加载也不崩溃）
+    RenderTexture2D target = {};
+    target.id = 0;  // 未加载
+    VFXShader::apply(target, 800, 600);
+    // Shader 仍然活跃，但应用时使用了 fallback
+    EXPECT_TRUE(VFXShader::is_active());
 }
