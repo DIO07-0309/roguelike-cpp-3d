@@ -18,7 +18,7 @@ SceneTree::SceneTree(int w, int h, const char* title) {
     // GetScreenWidth 恒报 960x640 旧值) — blit 矩形无法正确计算, 只见左上。
     // 方案 B: 不开 HIGHDPI (DPI-unaware 窗口, OS 位图拉伸保证完整可见) +
     // RESIZABLE + letterbox blit (dst 全程 GetScreen* 逻辑坐标, 自洽一致)
-    SetConfigFlags(FLAG_WINDOW_RESIZABLE);
+    SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_MSAA_4X_HINT);
     InitWindow(w, h, title);
     // DPI-unaware + 系统缩放 150%: SetWindowSize(1440,960) 系统坐标 → OS 拉伸
     // 到物理 2160x1440 显示; 960x640 逻辑纹理 blit 到 1440x960 绘图空间 (1.5x)

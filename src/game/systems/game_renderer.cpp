@@ -20,10 +20,64 @@
 #include <algorithm>
 #include <cstdio>
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 // 字体指针 (在 main.cpp 中初始化)
 extern Font g_font;
 extern Font g_font_small;
 extern bool g_font_loaded;
+
+// 辅助函数：绘制圆角矩形背景（元气骑士风格）
+static void DrawRoundedRectBg(Rectangle rect, float radius, Color bg_color, Color border_color, int border_thickness = 2) {
+    // 半透明背景
+    Color bg = bg_color;
+    bg.a = (unsigned char)(bg.a * 0.7f);
+    DrawRectangleRec(rect, bg);
+    
+    // 圆角边框（用多段线段近似）
+    if (border_thickness > 0 && radius > 0) {
+        // 顶边
+        DrawLineEx({rect.x + radius, rect.y}, {rect.x + rect.width - radius, rect.y}, border_thickness, border_color);
+        // 底边
+        DrawLineEx({rect.x + radius, rect.y + rect.height}, {rect.x + rect.width - radius, rect.y + rect.height}, border_thickness, border_color);
+        // 左边
+        DrawLineEx({rect.x, rect.y + radius}, {rect.x, rect.y + rect.height - radius}, border_thickness, border_color);
+        // 右边
+        DrawLineEx({rect.x + rect.width, rect.y + radius}, {rect.x + rect.width, rect.y + rect.height - radius}, border_thickness, border_color);
+        
+        // 四个角的圆弧（用小线段近似）
+        for (float a = 0; a <= M_PI / 2; a += M_PI / 12) {
+            float x1 = rect.x + radius - radius * cosf(a);
+            float y1 = rect.y + radius - radius * sinf(a);
+            float x2 = rect.x + radius - radius * cosf(a + M_PI / 12);
+            float y2 = rect.y + radius - radius * sinf(a + M_PI / 12);
+            DrawLineEx({x1, y1}, {x2, y2}, border_thickness, border_color);
+        }
+        for (float a = 0; a <= M_PI / 2; a += M_PI / 12) {
+            float x1 = rect.x + rect.width - radius + radius * cosf(a);
+            float y1 = rect.y + radius - radius * sinf(a);
+            float x2 = rect.x + rect.width - radius + radius * cosf(a + M_PI / 12);
+            float y2 = rect.y + radius - radius * sinf(a + M_PI / 12);
+            DrawLineEx({x1, y1}, {x2, y2}, border_thickness, border_color);
+        }
+        for (float a = 0; a <= M_PI / 2; a += M_PI / 12) {
+            float x1 = rect.x + radius - radius * cosf(a);
+            float y1 = rect.y + rect.height - radius + radius * sinf(a);
+            float x2 = rect.x + radius - radius * cosf(a + M_PI / 12);
+            float y2 = rect.y + rect.height - radius + radius * sinf(a + M_PI / 12);
+            DrawLineEx({x1, y1}, {x2, y2}, border_thickness, border_color);
+        }
+        for (float a = 0; a <= M_PI / 2; a += M_PI / 12) {
+            float x1 = rect.x + rect.width - radius + radius * cosf(a);
+            float y1 = rect.y + rect.height - radius + radius * sinf(a);
+            float x2 = rect.x + rect.width - radius + radius * cosf(a + M_PI / 12);
+            float y2 = rect.y + rect.height - radius + radius * sinf(a + M_PI / 12);
+            DrawLineEx({x1, y1}, {x2, y2}, border_thickness, border_color);
+        }
+    }
+}
 
 // ============================================================
 // A8: 技能图标纹理缓存
@@ -67,10 +121,28 @@ static int skill_icon_index(const Skill* skill) {
 // 静态绘制工具
 // ============================================================
 void GameRenderer::draw_panel(Rectangle r, const char* title, Color bg) {
-    DrawRectangleRounded(r, 0.08f, 8, bg);
-    DrawRectangleRoundedLines(r, 0.08f, 8, 2, {100, 100, 180, 255});
-    if (title && g_font_loaded)
-        DrawTextEx(g_font_small, title, {r.x + 12, r.y + 8}, 18, 1, {200, 200, 255, 255});
+    // 元气骑士风格：圆角 + 半透明背景 + 彩色边框 + 标题栏
+    // 背景（更深的半透明）
+    Color bg_mod = bg;
+    bg_mod.a = (unsigned char)(bg_mod.a * 0.85f);
+    DrawRectangleRounded(r, 0.08f, 8, bg_mod);
+    
+    // 彩色边框（渐变效果：外蓝内紫）
+    DrawRectangleRoundedLines(r, 0.08f, 8, 2, Color{120, 100, 220, 255});
+    
+    // 标题栏背景（更亮）
+    Rectangle title_bg = {r.x, r.y, r.width, 30.0f};
+    Color title_c = Color{30, 30, 60, 200};
+    DrawRectangleRounded(title_bg, 0.08f, 4, title_c);
+    
+    // 标题文字
+    if (title && g_font_loaded) {
+        float title_w = MeasureTextEx(g_font_small, title, 18, 1).x;
+        DrawTextEx(g_font_small, title, {r.x + (r.width - title_w) / 2, r.y + 7}, 18, 1, Color{220, 220, 255, 255});
+    }
+    
+    // 底部装饰线
+    DrawLineEx({r.x + 8, r.y + 30}, {r.x + r.width - 8, r.y + 30}, 1, Color{80, 80, 120, 150});
 }
 
 void GameRenderer::draw_glow_text(const char* text, float x, float y, int size, Color c,
@@ -83,9 +155,22 @@ void GameRenderer::draw_glow_text(const char* text, float x, float y, int size, 
 }
 
 void GameRenderer::draw_progress_bar(Rectangle r, float ratio, Color fill, Color bg) {
-    DrawRectangleRec(r, bg);
-    DrawRectangleRec({r.x, r.y, r.width * ratio, r.height}, fill);
-    DrawRectangleLinesEx(r, 1, {60, 60, 90, 255});
+    // 元气骑士风格：圆角进度条
+    float radius = 3.0f;
+    
+    // 背景
+    Color bg_mod = bg;
+    bg_mod.a = (unsigned char)(bg_mod.a * 0.8f);
+    DrawRectangleRounded(r, radius, 4, bg_mod);
+    
+    // 填充（如果大于 0）
+    if (ratio > 0) {
+        Rectangle fill_rect = {r.x, r.y, r.width * ratio, r.height};
+        DrawRectangleRounded(fill_rect, radius, 4, fill);
+    }
+    
+    // 边框
+    DrawRectangleRoundedLines(r, radius, 4, 1, Color{60, 60, 90, 200});
 }
 
 // G10.3-B3: HUD 像素图标 — 16px 网格风格代码绘制 (与 gen_pixel_blast 同管线风格)
@@ -184,21 +269,42 @@ static void _draw_fx_ring(float sx, float sy, float radius, float prog,
 
 // 剑（扇形斩）三连击
 static void _draw_slash_arc_1(const Effect& e, float sx, float sy, float prog, Color c) {
-    float radius = e.radius * (0.5f + 0.5f * prog);
-    DrawRing({sx, sy}, radius * 0.8f, radius, -45, 90, 16, c);
+    float arc_r = e.radius * (0.5f + 0.5f * prog);
+    float facing = 90;
+    switch (e.direction) {
+        case Direction::DOWN:  facing = 90;  break;
+        case Direction::UP:    facing = 270; break;
+        case Direction::RIGHT: facing = 0;   break;
+        case Direction::LEFT:  facing = 180; break;
+    }
+    DrawRing({sx, sy}, arc_r * 0.8f, arc_r, facing - 45, facing + 45, 16, c);
 }
 
 static void _draw_slash_arc_2(const Effect& e, float sx, float sy, float prog, Color c) {
-    float radius = e.radius * (0.5f + 0.5f * prog);
-    DrawRing({sx, sy}, radius * 0.8f, radius, -45, 90, 16, c);
-    DrawRing({sx, sy}, radius * 0.6f, radius * 0.8f, -30, 60, 16, Fade(c, 0.7f));
+    float arc_r = e.radius * (0.5f + 0.5f * prog);
+    float facing = 90;
+    switch (e.direction) {
+        case Direction::DOWN:  facing = 90;  break;
+        case Direction::UP:    facing = 270; break;
+        case Direction::RIGHT: facing = 0;   break;
+        case Direction::LEFT:  facing = 180; break;
+    }
+    DrawRing({sx, sy}, arc_r * 0.8f, arc_r, facing - 45, facing + 45, 16, c);
+    DrawRing({sx, sy}, arc_r * 0.6f, arc_r * 0.8f, facing - 30, facing + 30, 16, Fade(c, 0.7f));
 }
 
 static void _draw_slash_arc_3(const Effect& e, float sx, float sy, float prog, Color c) {
-    float radius = e.radius * (0.5f + 0.5f * prog);
-    DrawRing({sx, sy}, radius * 0.8f, radius, -45, 90, 16, c);
-    DrawRing({sx, sy}, radius * 0.6f, radius * 0.8f, -30, 60, 16, Fade(c, 0.7f));
-    DrawRing({sx, sy}, radius * 0.4f, radius * 0.6f, -15, 30, 16, Fade(c, 0.5f));
+    float arc_r = e.radius * (0.5f + 0.5f * prog);
+    float facing = 90;
+    switch (e.direction) {
+        case Direction::DOWN:  facing = 90;  break;
+        case Direction::UP:    facing = 270; break;
+        case Direction::RIGHT: facing = 0;   break;
+        case Direction::LEFT:  facing = 180; break;
+    }
+    DrawRing({sx, sy}, arc_r * 0.8f, arc_r, facing - 45, facing + 45, 16, c);
+    DrawRing({sx, sy}, arc_r * 0.6f, arc_r * 0.8f, facing - 30, facing + 30, 16, Fade(c, 0.7f));
+    DrawRing({sx, sy}, arc_r * 0.4f, arc_r * 0.6f, facing - 15, facing + 15, 16, Fade(c, 0.5f));
     
     // 粒子拖尾
     EmitterConfig config;
@@ -1247,12 +1353,12 @@ void GameRenderer::draw_hud(const Player* player, int current_floor, float game_
     if (!player) return;
     auto& c = player->combat;
 
-    // HP bar (G10.3-B3: 像素风双层边框 + 高光顶线)
+    // HP bar (G10.3-B3: 像素风双层边框 + 高光顶线) - 元气骑士风格圆角
     int eff_max_hp = get_effective_max_hp(player);
     float hp_r = eff_max_hp > 0 ? (float)c.current_hp / eff_max_hp : 0.0f;
     if (hp_r > 1.0f) hp_r = 1.0f;
     if (hp_r < 0.0f) hp_r = 0.0f;
-
+    
     // 动态颜色：>50% 绿 / >25% 黄 / <25% 红
     Color hp_c;
     if (hp_r > 0.5f) {
@@ -1262,11 +1368,14 @@ void GameRenderer::draw_hud(const Player* player, int current_floor, float game_
     } else {
         hp_c = Color{200, 50, 50, 255};
     }
-    DrawRectangleRec({10, 10, 200, 16}, {40, 20, 20, 255});
-    DrawRectangleRec({10, 10, 200 * hp_r, 16}, hp_c);
-    DrawRectangleRec({11, 11, 198 * hp_r, 2}, Color{255, 255, 255, 60});  // 高光
-    DrawRectangleLinesEx({9, 9, 202, 18}, 1, {25, 20, 30, 255});         // 外框
-    DrawRectangleLinesEx({10, 10, 200, 16}, 1, {80, 70, 90, 200});        // 内框
+    // 元气骑士风格：圆角半透明背景 + 彩色边框
+    Rectangle hp_rect = {10, 10, 200, 16};
+    DrawRoundedRectBg(hp_rect, 4.0f, Color{40, 20, 20, 200}, Color{100, 80, 80, 220}, 2);
+    // 血条填充
+    Rectangle hp_fill = {12, 12, 196 * hp_r, 12};
+    DrawRectangleRec(hp_fill, hp_c);
+    // 高光
+    DrawRectangleRec({12, 12, 196 * hp_r, 3}, Color{255, 255, 255, 80});
 
     if (g_font_loaded) {
         char buf[128];
@@ -1277,9 +1386,15 @@ void GameRenderer::draw_hud(const Player* player, int current_floor, float game_
         DrawTextEx(g_font_small, buf, {215, 10}, 16, 1, {220, 220, 220, 255});
     }
 
-    // XP bar
+    // XP bar - 元气骑士风格圆角
     float xp_r = (float)player->xp / player->xp_to_next;
-    draw_progress_bar({10, 30, 200, 10}, xp_r, {80, 120, 255, 255});
+    Rectangle xp_rect = {10, 30, 200, 10};
+    DrawRoundedRectBg(xp_rect, 3.0f, Color{20, 30, 60, 200}, Color{60, 80, 120, 220}, 1);
+    // XP 填充
+    if (xp_r > 0) {
+        Rectangle xp_fill = {12, 32, 196 * xp_r, 6};
+        DrawRectangleRec(xp_fill, Color{80, 120, 255, 255});
+    }
 
     if (g_font_loaded) {
         char buf[64];

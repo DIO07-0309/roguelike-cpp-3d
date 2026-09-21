@@ -14,6 +14,7 @@
 #include "world/npc_system.h"                 // M6-v2a: npc_sprite_key
 #include "world/biome.h"                      // A2.1: get_biome_for_floor (mote 风格)
 #include "entities/boss.h"                    // M6-v2b: BossAI 技能预警只读
+#include "systems/weather_system.h"           // 天气系统
 #include "resources/resource_manager.h"
 #include "rendering/sprite_renderer.h"
 #include "config.h"                 // TILE_SIZE
@@ -485,15 +486,423 @@ static void _build_entities(GameScene& gs, std::vector<HD2DDrawItem>& out,
     }
 }
 
-// ── 特效: active_effects 存活项 → 发光片 ──
+// ── 特效: active_effects 存活项 → 3D 特效 (A10) ──
 static void _build_effects(GameScene& gs, std::vector<HD2DDrawItem>& out) {
     for (const auto& e : gs.active_effects) {
         if (e.elapsed >= e.duration) continue;
+        
         HD2DDrawItem item;
-        item.kind = HD2DDrawItem::Kind::FX_QUAD;
-        item.world_pos = {e.world_x, 0, e.world_y};
-        item.size = e.radius;
-        item.tint = e.color;
+        float fx_height = 8.0f;
+        item.world_pos = {e.world_x, fx_height, e.world_y};
+        
+        // 提高特效亮度以触发 Bloom 发光
+        Color bright = e.color;
+        bright.r = (unsigned char)std::min(255, (int)e.color.r + 40);
+        bright.g = (unsigned char)std::min(255, (int)e.color.g + 40);
+        bright.b = (unsigned char)std::min(255, (int)e.color.b + 40);
+        bright.a = 255;
+        item.tint = bright;
+        
+        // ═══════════════════════════════════════════════════════════
+        // 武器特效 (15 种)
+        // ═══════════════════════════════════════════════════════════
+        
+        // 剑弧 (slash_arc_1/2/3) → 3D 光环 + 碎片
+        if (e.kind == "slash_arc_1") {
+            item.kind = HD2DDrawItem::Kind::FX_RING_3D;
+            item.size = e.radius * 1.0f;
+            item.height = 4.0f;
+            item.tint = Color{255, 240, 200, 255};  // 金白
+        }
+        else if (e.kind == "slash_arc_2") {
+            item.kind = HD2DDrawItem::Kind::FX_RING_3D;
+            item.size = e.radius * 1.2f;
+            item.height = 5.0f;
+            item.tint = Color{255, 250, 220, 255};  // 更亮金白
+        }
+        else if (e.kind == "slash_arc_3") {
+            // 第三段强力斩击 - 多层光环 + 大碎片
+            item.kind = HD2DDrawItem::Kind::FX_RING_3D;
+            item.size = e.radius * 1.5f;
+            item.height = 8.0f;
+            item.tint = Color{255, 255, 240, 255};  // 纯白
+        }
+        // 剑弧碎片
+        else if (e.kind == "slash_fragment" || 
+                 (e.kind == "slash_arc_2" && e.elapsed > e.duration * 0.3f) ||
+                 (e.kind == "slash_arc_3" && e.elapsed > e.duration * 0.2f)) {
+            item.kind = HD2DDrawItem::Kind::FX_PARTICLE;
+            item.size = e.radius * 0.4f;
+            item.tint = Color{255, 255, 220, 255};  // 纯白亮
+        }
+        // 剑弧第三段地面冲击
+        else if (e.kind == "slash_arc_3_ground" ||
+                 (e.kind == "slash_arc_3" && e.elapsed > e.duration * 0.5f)) {
+            item.kind = HD2DDrawItem::Kind::FX_RING_3D;
+            item.world_pos = {e.world_x, 1.0f, e.world_y};
+            item.size = e.radius * 0.8f;
+            item.height = 2.0f;
+            item.tint = Color{255, 220, 100, 200};  // 金色地面
+        }
+        
+        // 矛/光束 (pierce_beam_1/2/3, bolt) → 3D 光束
+        else if (e.kind == "pierce_beam_1") {
+            item.kind = HD2DDrawItem::Kind::FX_BEAM_3D;
+            item.size = 3.0f;
+            item.end_pos = {e.target_x, fx_height, e.target_y};
+            item.tint = Color{100, 180, 255, 255};  // 电光蓝
+        }
+        else if (e.kind == "pierce_beam_2") {
+            item.kind = HD2DDrawItem::Kind::FX_BEAM_3D;
+            item.size = 5.0f;
+            item.end_pos = {e.target_x, fx_height, e.target_y};
+            item.tint = Color{120, 200, 255, 255};  // 亮蓝
+        }
+        else if (e.kind == "pierce_beam_3") {
+            // 第三段强力穿透 - 多重光束 + 大爆炸
+            item.kind = HD2DDrawItem::Kind::FX_BEAM_3D;
+            item.size = 10.0f;  // 超粗
+            item.end_pos = {e.target_x, fx_height, e.target_y};
+            item.tint = Color{150, 220, 255, 255};  // 极亮蓝白
+        }
+        // 矛第三段分裂光束
+        else if (e.kind == "pierce_beam_3_split" ||
+                 (e.kind == "pierce_beam_3" && e.elapsed > e.duration * 0.4f)) {
+            item.kind = HD2DDrawItem::Kind::FX_BEAM_3D;
+            item.size = 4.0f;
+            float offset = 30.0f;
+            item.end_pos = {e.target_x + offset, fx_height, e.target_y};
+            item.tint = Color{100, 180, 255, 200};  // 淡蓝
+        }
+        // 光束命中火花
+        else if (e.kind == "beam_hit" || 
+                 (e.kind == "pierce_beam_1" && e.elapsed > e.duration * 0.7f) ||
+                 (e.kind == "pierce_beam_2" && e.elapsed > e.duration * 0.7f) ||
+                 (e.kind == "pierce_beam_3" && e.elapsed > e.duration * 0.6f)) {
+            item.kind = HD2DDrawItem::Kind::FX_EXPLOSION_3D;
+            item.world_pos = {e.target_x, fx_height, e.target_y};
+            item.size = 20.0f;
+            item.tint = Color{180, 230, 255, 255};  // 亮蓝白
+        }
+        
+        // 冲击波/重击 (smash_impact_1/2/3, flash) → 3D 爆炸
+        else if (e.kind == "smash_impact_1") {
+            item.kind = HD2DDrawItem::Kind::FX_EXPLOSION_3D;
+            item.size = e.radius * 0.9f;
+            item.tint = Color{255, 180, 50, 255};  // 火焰橙
+        }
+        else if (e.kind == "smash_impact_2") {
+            item.kind = HD2DDrawItem::Kind::FX_EXPLOSION_3D;
+            item.size = e.radius * 1.1f;
+            item.tint = Color{255, 200, 70, 255};  // 更亮橙
+        }
+        else if (e.kind == "smash_impact_3") {
+            // 第三段重击 - 超级爆炸 + 地面裂纹
+            item.kind = HD2DDrawItem::Kind::FX_EXPLOSION_3D;
+            item.size = e.radius * 1.5f;
+            item.tint = Color{255, 220, 100, 255};  // 极亮金
+        }
+        // 重击地面裂纹
+        else if (e.kind == "ground_crack" || 
+                 (e.kind == "smash_impact_3" && e.elapsed > e.duration * 0.4f)) {
+            item.kind = HD2DDrawItem::Kind::FX_RING_3D;
+            item.world_pos = {e.world_x, 1.0f, e.world_y};
+            item.size = e.radius * 0.8f;
+            item.height = 1.5f;
+            item.tint = Color{255, 140, 40, 220};  // 深橙
+        }
+        // 重击第三段冲击波
+        else if (e.kind == "smash_impact_3_shockwave" ||
+                 (e.kind == "smash_impact_3" && e.elapsed > e.duration * 0.6f)) {
+            item.kind = HD2DDrawItem::Kind::FX_RING_3D;
+            item.size = e.radius * 1.2f;
+            item.height = 6.0f;
+            item.tint = Color{255, 240, 180, 200};  // 亮金
+        }
+        
+        // 双截棍 (whip_arc_1/2/3) → 追踪光环
+        else if (e.kind == "whip_arc_1") {
+            item.kind = HD2DDrawItem::Kind::FX_RING_3D;
+            item.size = e.radius * 0.9f;
+            item.height = 4.0f;
+            item.tint = Color{220, 100, 255, 255};  // 魔法紫
+        }
+        else if (e.kind == "whip_arc_2") {
+            item.kind = HD2DDrawItem::Kind::FX_RING_3D;
+            item.size = e.radius * 1.1f;
+            item.height = 5.0f;
+            item.tint = Color{240, 120, 255, 255};  // 亮紫
+        }
+        else if (e.kind == "whip_arc_3") {
+            // 第三段追踪 - 多重追踪光环
+            item.kind = HD2DDrawItem::Kind::FX_RING_3D;
+            item.size = e.radius * 1.3f;
+            item.height = 8.0f;
+            item.tint = Color{255, 150, 255, 255};  // 极亮紫
+        }
+        // 双截棍残影
+        else if (e.kind == "whip_trail" || 
+                 (e.kind == "whip_arc_2" && e.elapsed > e.duration * 0.2f) ||
+                 (e.kind == "whip_arc_3" && e.elapsed > e.duration * 0.15f)) {
+            item.kind = HD2DDrawItem::Kind::FX_PARTICLE;
+            item.size = e.radius * 0.3f;
+            item.tint = Color{220, 100, 255, 220};  // 淡紫
+        }
+        // 双截棍第三段连锁
+        else if (e.kind == "whip_arc_3_chain" ||
+                 (e.kind == "whip_arc_3" && e.elapsed > e.duration * 0.5f)) {
+            item.kind = HD2DDrawItem::Kind::FX_BEAM_3D;
+            item.size = 3.0f;
+            item.end_pos = {e.target_x, fx_height, e.target_y};
+            item.tint = Color{200, 80, 240, 200};  // 紫电
+        }
+        
+        // 弩/连弩 (bolt_spread_1/2/3) → 多点散射
+        else if (e.kind == "bolt_spread_1") {
+            item.kind = HD2DDrawItem::Kind::FX_BEAM_3D;
+            item.size = 3.0f;  // 第一段
+            item.end_pos = {e.target_x, fx_height, e.target_y};
+            item.tint = Color{255, 220, 100, 255};  // 黄光
+        }
+        else if (e.kind == "bolt_spread_2") {
+            item.kind = HD2DDrawItem::Kind::FX_BEAM_3D;
+            item.size = 5.0f;  // 第二段加粗
+            item.end_pos = {e.target_x, fx_height, e.target_y};
+            item.tint = Color{255, 235, 130, 255};  // 更亮黄
+        }
+        else if (e.kind == "bolt_spread_3") {
+            // 第三段强力一击 - 多重光束 + 大爆炸
+            item.kind = HD2DDrawItem::Kind::FX_EXPLOSION_3D;
+            item.size = 25.0f;  // 大爆炸球
+            item.tint = Color{255, 255, 220, 255};  // 极亮白
+        }
+        // 连弩第三段主光束 - 超粗
+        else if (e.kind == "bolt_spread_3_beam") {
+            item.kind = HD2DDrawItem::Kind::FX_BEAM_3D;
+            item.size = 15.0f;  // 超粗光束
+            item.end_pos = {e.target_x, fx_height, e.target_y};
+            item.tint = Color{255, 255, 240, 255};  // 纯白
+        }
+        // 连弩第三段副光束 - 扩散散射
+        else if (e.kind == "bolt_spread_3_spread_1" || 
+                 e.kind == "bolt_spread_3_spread_2" ||
+                 e.kind == "bolt_spread_3_spread_3") {
+            item.kind = HD2DDrawItem::Kind::FX_BEAM_3D;
+            item.size = 6.0f;  // 中等粗度
+            // 扩散到不同角度
+            float spread_angle = 30.0f;
+            float tx_offset = e.target_x + (e.kind == "bolt_spread_3_spread_1" ? -40 : 
+                                           e.kind == "bolt_spread_3_spread_2" ? 40 : 0);
+            float ty_offset = e.target_y + (e.kind == "bolt_spread_3_spread_3" ? 40 : 0);
+            item.end_pos = {tx_offset, fx_height, ty_offset};
+            item.tint = Color{255, 240, 150, 220};  // 暖黄
+        }
+        // 连弩第三段尾缀特效 - 密集粒子云
+        else if (e.kind == "bolt_spread_3_trail" || 
+                 (e.kind == "bolt_spread_3" && e.elapsed > e.duration * 0.3f)) {
+            item.kind = HD2DDrawItem::Kind::FX_PARTICLE;
+            item.size = 15.0f;  // 大粒子云
+            item.tint = Color{255, 250, 200, 240};  // 暖白黄
+        }
+        // 连弩第三段命中爆炸
+        else if (e.kind == "bolt_spread_3_hit" || 
+                 (e.kind == "bolt_spread_3" && e.elapsed > e.duration * 0.7f)) {
+            item.kind = HD2DDrawItem::Kind::FX_EXPLOSION_3D;
+            item.world_pos = {e.target_x, fx_height, e.target_y};
+            item.size = 20.0f;  // 大爆炸
+            item.tint = Color{255, 255, 255, 255};  // 纯白爆炸
+        }
+        
+        // ═══════════════════════════════════════════════════════════
+        // 技能特效
+        // ═══════════════════════════════════════════════════════════
+        
+        // 火球 (fireball) → 火焰爆炸 + 火焰粒子
+        else if (e.kind == "fireball") {
+            item.kind = HD2DDrawItem::Kind::FX_EXPLOSION_3D;
+            item.size = e.radius * 1.3f;
+            item.tint = Color{255, 120, 30, 255};  // 火焰橙红
+        }
+        // 火球拖尾火焰
+        else if (e.kind == "fireball_trail" || 
+                 (e.kind == "fireball" && e.elapsed > e.duration * 0.3f)) {
+            item.kind = HD2DDrawItem::Kind::FX_PARTICLE;
+            item.size = e.radius * 0.6f;
+            item.tint = Color{255, 80, 20, 200};  // 深红
+        }
+        // 火球命中爆炸
+        else if (e.kind == "fireball_hit" || 
+                 (e.kind == "fireball" && e.elapsed > e.duration * 0.7f)) {
+            item.kind = HD2DDrawItem::Kind::FX_EXPLOSION_3D;
+            item.world_pos = {e.target_x, fx_height, e.target_y};
+            item.size = 30.0f;
+            item.tint = Color{255, 200, 50, 255};  // 亮黄
+        }
+        
+        // 冰霜 (ice_nova, frostbite) → 冰晶光环 + 冰刺
+        else if (e.kind == "ice_nova" || e.kind == "frostbite") {
+            item.kind = HD2DDrawItem::Kind::FX_RING_3D;
+            item.size = e.radius * 1.2f;
+            item.height = 8.0f;
+            item.tint = Color{120, 220, 255, 255};  // 冰蓝
+        }
+        // 冰霜冰刺
+        else if (e.kind == "ice_spike" || 
+                 (e.kind == "ice_nova" && e.elapsed > e.duration * 0.4f)) {
+            item.kind = HD2DDrawItem::Kind::FX_BEAM_3D;
+            item.size = 2.0f;
+            float offset = 25.0f;
+            item.end_pos = {e.world_x + offset, fx_height + 20, e.world_y};
+            item.tint = Color{180, 240, 255, 220};  // 亮冰蓝
+        }
+        // 冰霜地面霜冻
+        else if (e.kind == "ice_ground" || 
+                 (e.kind == "ice_nova" && e.elapsed > e.duration * 0.6f)) {
+            item.kind = HD2DDrawItem::Kind::FX_RING_3D;
+            item.world_pos = {e.world_x, 1.0f, e.world_y};
+            item.size = e.radius * 0.9f;
+            item.height = 1.5f;
+            item.tint = Color{150, 230, 255, 180};  // 淡冰蓝
+        }
+        
+        // 闪电 (lightning, chain_lightning) → 多段光束 + 电弧
+        else if (e.kind == "lightning" || e.kind == "chain_lightning") {
+            item.kind = HD2DDrawItem::Kind::FX_BEAM_3D;
+            item.size = 4.0f;
+            item.end_pos = {e.target_x, fx_height, e.target_y};
+            item.tint = Color{200, 220, 255, 255};  // 电光蓝白
+        }
+        // 闪电分支
+        else if (e.kind == "lightning_branch" || 
+                 (e.kind == "lightning" && e.elapsed > e.duration * 0.3f) ||
+                 (e.kind == "chain_lightning" && e.elapsed > e.duration * 0.2f)) {
+            item.kind = HD2DDrawItem::Kind::FX_BEAM_3D;
+            item.size = 2.5f;
+            float offset = 30.0f;
+            item.end_pos = {e.target_x + offset, fx_height, e.target_y};
+            item.tint = Color{180, 200, 255, 200};  // 淡蓝白
+        }
+        // 闪电命中电弧
+        else if (e.kind == "lightning_hit" || 
+                 (e.kind == "lightning" && e.elapsed > e.duration * 0.6f)) {
+            item.kind = HD2DDrawItem::Kind::FX_EXPLOSION_3D;
+            item.world_pos = {e.target_x, fx_height, e.target_y};
+            item.size = 18.0f;
+            item.tint = Color{220, 240, 255, 255};  // 极亮白蓝
+        }
+        
+        // 毒素 (poison) → 绿色粒子云 + 腐蚀光环
+        else if (e.kind == "poison") {
+            item.kind = HD2DDrawItem::Kind::FX_PARTICLE;
+            item.size = e.radius * 0.6f;
+            item.tint = Color{120, 220, 60, 220};  // 毒绿
+        }
+        // 毒素腐蚀光环
+        else if (e.kind == "poison_ring" || 
+                 (e.kind == "poison" && e.elapsed > e.duration * 0.4f)) {
+            item.kind = HD2DDrawItem::Kind::FX_RING_3D;
+            item.world_pos = {e.world_x, 2.0f, e.world_y};
+            item.size = e.radius * 0.8f;
+            item.height = 3.0f;
+            item.tint = Color{100, 180, 40, 180};  // 深绿
+        }
+        // 毒素地面腐蚀
+        else if (e.kind == "poison_ground" || 
+                 (e.kind == "poison" && e.elapsed > e.duration * 0.6f)) {
+            item.kind = HD2DDrawItem::Kind::FX_RING_3D;
+            item.world_pos = {e.world_x, 0.5f, e.world_y};
+            item.size = e.radius * 1.0f;
+            item.height = 1.0f;
+            item.tint = Color{80, 160, 30, 150};  // 暗绿
+        }
+        
+        // 暗影 (shadow_strike) → 黑暗光环 + 暗影碎片
+        else if (e.kind == "shadow_strike") {
+            item.kind = HD2DDrawItem::Kind::FX_RING_3D;
+            item.size = e.radius * 1.1f;
+            item.height = 6.0f;
+            item.tint = Color{100, 40, 140, 240};  // 暗紫
+        }
+        // 暗影碎片
+        else if (e.kind == "shadow_fragment" || 
+                 (e.kind == "shadow_strike" && e.elapsed > e.duration * 0.3f)) {
+            item.kind = HD2DDrawItem::Kind::FX_PARTICLE;
+            item.size = e.radius * 0.4f;
+            item.tint = Color{80, 20, 120, 200};  // 深紫
+        }
+        // 暗影地面黑洞
+        else if (e.kind == "shadow_ground" || 
+                 (e.kind == "shadow_strike" && e.elapsed > e.duration * 0.5f)) {
+            item.kind = HD2DDrawItem::Kind::FX_RING_3D;
+            item.world_pos = {e.world_x, 0.5f, e.world_y};
+            item.size = e.radius * 0.9f;
+            item.height = 1.5f;
+            item.tint = Color{60, 10, 80, 200};  // 极暗紫
+        }
+        
+        // ═══════════════════════════════════════════════════════════
+        // 通用特效
+        // ═══════════════════════════════════════════════════════════
+        
+        // 通用光环
+        else if (e.kind == "ring" || e.kind == "pulse") {
+            item.kind = HD2DDrawItem::Kind::FX_RING_3D;
+            item.size = e.radius * 0.7f;
+            item.height = 3.0f;
+            item.tint = Color{255, 255, 200, 220};  // 暖白
+        }
+        // 火花/烟雾
+        else if (e.kind == "spark" || e.kind == "smoke") {
+            item.kind = HD2DDrawItem::Kind::FX_PARTICLE;
+            item.size = e.radius * 0.35f;
+            item.tint = Color{255, 240, 180, 200};  // 火花黄
+        }
+        // 血雾 (blood_frenzy) → 血红粒子 + 血池
+        else if (e.kind == "blood_frenzy") {
+            item.kind = HD2DDrawItem::Kind::FX_PARTICLE;
+            item.size = e.radius * 0.5f;
+            item.tint = Color{200, 40, 50, 220};  // 血红
+        }
+        // 血雾地面血池
+        else if (e.kind == "blood_pool" || 
+                 (e.kind == "blood_frenzy" && e.elapsed > e.duration * 0.4f)) {
+            item.kind = HD2DDrawItem::Kind::FX_RING_3D;
+            item.world_pos = {e.world_x, 0.5f, e.world_y};
+            item.size = e.radius * 1.0f;
+            item.height = 1.0f;
+            item.tint = Color{150, 20, 30, 180};  // 暗血红
+        }
+        // 召唤 (summon_spirit) → 灵魂光环 + 上升粒子
+        else if (e.kind == "summon_spirit") {
+            item.kind = HD2DDrawItem::Kind::FX_RING_3D;
+            item.size = e.radius * 0.9f;
+            item.height = 5.0f;
+            item.tint = Color{220, 220, 255, 220};  // 灵魂白蓝
+        }
+        // 召唤上升粒子
+        else if (e.kind == "summon_particle" || 
+                 (e.kind == "summon_spirit" && e.elapsed > e.duration * 0.3f)) {
+            item.kind = HD2DDrawItem::Kind::FX_PARTICLE;
+            item.size = e.radius * 0.4f;
+            item.tint = Color{240, 240, 255, 200};  // 极亮白蓝
+        }
+        // 召唤地面法阵
+        else if (e.kind == "summon_circle" || 
+                 (e.kind == "summon_spirit" && e.elapsed > e.duration * 0.5f)) {
+            item.kind = HD2DDrawItem::Kind::FX_RING_3D;
+            item.world_pos = {e.world_x, 0.5f, e.world_y};
+            item.size = e.radius * 1.1f;
+            item.height = 1.0f;
+            item.tint = Color{200, 200, 255, 180};  // 淡蓝白
+        }
+        
+        // 默认 → 发光片
+        else {
+            item.kind = HD2DDrawItem::Kind::FX_QUAD;
+            item.size = e.radius * 0.6f;
+        }
+        
+        item.sort_y = e.world_y;
         out.push_back(item);
     }
 }

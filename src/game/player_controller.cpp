@@ -742,9 +742,31 @@ void PlayerController::_weapon_attack(GameScene& gs, Player& p) {
             vfx.bolt_spread_2(px, py, px + geo_fwd_x * 60, py + geo_fwd_y * 60,
                    {255,200,100,220}, 0.12f);
         } else {
-            vfx.bolt_spread_3(px, py, px + geo_fwd_x * 70, py + geo_fwd_y * 70,
-                   {255,180,50,240}, 0.15f);
-            vfx.ring(px, py, 24.0f, {255,180,50,200}, 2, 0.35f);
+            // 第三段强力一击 - 多重特效
+            // 主光束（超粗）
+            vfx.effects.push_back({"bolt_spread_3_beam", px, py, 0, 
+                                   {255,255,240,255}, 0.20f, 0, p.direction,
+                                   px + geo_fwd_x * 80, py + geo_fwd_y * 80, 1});
+            // 副光束（扩散散射）
+            vfx.effects.push_back({"bolt_spread_3_spread_1", px, py, 0,
+                                   {255,240,150,220}, 0.18f, 0, p.direction,
+                                   px + geo_fwd_x * 80 - 40, py + geo_fwd_y * 80, 1});
+            vfx.effects.push_back({"bolt_spread_3_spread_2", px, py, 0,
+                                   {255,240,150,220}, 0.18f, 0, p.direction,
+                                   px + geo_fwd_x * 80 + 40, py + geo_fwd_y * 80, 1});
+            vfx.effects.push_back({"bolt_spread_3_spread_3", px, py, 0,
+                                   {255,240,150,220}, 0.18f, 0, p.direction,
+                                   px + geo_fwd_x * 80, py + geo_fwd_y * 80 + 40, 1});
+            // 中央爆炸球
+            vfx.effects.push_back({"bolt_spread_3", px, py, 0,
+                                   {255,255,220,255}, 0.25f, 0, p.direction,
+                                   px + geo_fwd_x * 80, py + geo_fwd_y * 80, 1});
+            // 命中爆炸
+            vfx.effects.push_back({"bolt_spread_3_hit", px + geo_fwd_x * 80, py + geo_fwd_y * 80, 0,
+                                   {255,255,255,255}, 0.15f, 0, p.direction,
+                                   px + geo_fwd_x * 80, py + geo_fwd_y * 80, 1});
+            // 地面冲击圈
+            vfx.ring(px, py, 30.0f, {255,200,100,200}, 2, 0.40f);
         }
         break;
     }

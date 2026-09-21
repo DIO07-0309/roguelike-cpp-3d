@@ -8,6 +8,10 @@ class GameScene;
 class GameMap;
 struct HD2DDrawItem;
 
+namespace Game {
+class WeatherSystem;
+}
+
 // ============================================================
 // M6-HD2D: HD-2D 渲染器 — 2D 逻辑层不动, 3D 表现层切片
 // 设计约束 (P1-C8 教训, 必须遵守):
@@ -23,13 +27,17 @@ enum class MoteStyle : int { DUST = 0, EMBER = 1, FIREFLY = 2 };
 // 一帧的 3D 绘制项 (由 HD2DSceneBuilder 从 GameScene 状态提取)
 struct HD2DDrawItem {
     enum class Kind { FLOOR_TILE, WALL_BLOCK, ENTITY_BILLBOARD, FX_QUAD,
-                     PORTAL_RING,                    // M6-v2a: 挑战传送门竖立光环
-                     PROJECTILE_BODY, WARNING_RING, TRAJECTORY_LINE,  // M6-v2b
-                     CONE_FAN, ENTITY_LINK,          // M6-v2b: 扇形/实体连线
-                     AMBIENT_MOTE,                   // M6-v2e: 氛围粒子微光点
-                     DOOR_PANEL, ROOM_ICON,         // M6-v2h: 门/特殊房间图标
-                     FLOOR_DECAL,                   // M6-j: 地板装饰贴片
-                     STAIR_STEP };                  // N5: 楼梯 3D 立方
+                      PORTAL_RING,                    // M6-v2a: 挑战传送门竖立光环
+                      PROJECTILE_BODY, WARNING_RING, TRAJECTORY_LINE,  // M6-v2b
+                      CONE_FAN, ENTITY_LINK,          // M6-v2b: 扇形/实体连线
+                      AMBIENT_MOTE,                   // M6-v2e: 氛围粒子微光点
+                      DOOR_PANEL, ROOM_ICON,         // M6-v2h: 门/特殊房间图标
+                      FLOOR_DECAL,                   // M6-j: 地板装饰贴片
+                      STAIR_STEP,                    // N5: 楼梯 3D 立方
+                      FX_PARTICLE,                   // A10: 3D 粒子
+                      FX_RING_3D,                    // A10: 3D 光环
+                      FX_BEAM_3D,                    // A10: 3D 光束
+                      FX_EXPLOSION_3D };            // A10: 3D 爆炸
     Kind kind = Kind::FLOOR_TILE;
     int tile_x = 0;                 // 世界 tile 坐标 (32px/格)
     int tile_y = 0;
@@ -171,6 +179,11 @@ private:
                                  Vector3 pos, float w, float h);  // A1.1
     void _draw_blob_shadow(Vector3 pos, float w);   // M6-v2c: 接地阴影
     void _draw_fx_quad(const HD2DDrawItem& item);
+    void _draw_fx_particle(const HD2DDrawItem& item);    // A10: 3D 粒子
+    void _draw_fx_ring_3d(const HD2DDrawItem& item);     // A10: 3D 光环
+    void _draw_fx_beam_3d(const HD2DDrawItem& item);     // A10: 3D 光束
+    void _draw_fx_explosion_3d(const HD2DDrawItem& item); // A10: 3D 爆炸
+    void _draw_weather_particles(class Game::WeatherSystem& weather);  // 天气粒子
     void _draw_portal_ring(const HD2DDrawItem& item);   // M6-v2a: 挑战传送门
     void _draw_door_panel(const HD2DDrawItem& item);    // M6-v2h: 门 (四态)
     void _draw_lock_badge(Vector3 pos, float door_h);  // M6-v2h: 锁徽记

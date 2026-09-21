@@ -6,6 +6,7 @@
 #include "data/enemy_defs.h"   // G1 Step5
 #include "resource_manager.h"                 // M4f.2
 #include "game/rendering/sprite_renderer.h"   // M4f.2
+#include "game/animation/skeleton_avatar.h"   // A6-S1: 骨骼皮肤绘制
 
 // M4f.3: MonsterType → 精灵体型 (0人形 1史莱姆 2Boss 3箭 4甲 5炸弹 6帽)
 static int _sprite_variant_for(bool is_boss, MonsterType type,
@@ -164,6 +165,30 @@ Monster::Monster(float x, float y, const std::string& n, int hp, int atk,
 
 Monster::~Monster() { delete ai; }
 
+// ── A6-S1: 渲染层信号映射 (纯表现, 不读写任何 gameplay 状态) ──
+void Monster::set_skeleton_avatar(std::unique_ptr<SkeletonAvatar> avatar) {
+    _skeleton_avatar = std::move(avatar);
+}
+
+std::string monster_actor_key(const Monster& m) {
+    return !m.sprite_override.empty() ? m.sprite_override : m.name;
+}
+
+AnimInput monster_anim_input(const Monster& m, int& last_hp, float now_wall) {
+    constexpr float kSwingWindowSec = 0.25f;   // 与 _draw_monster_weapon 挥砍窗口同款
+    AnimInput in;
+    in.attack_recovery_ratio = 1.f;            // 怪物无独立恢复计时字段 → 1.0
+    if (!m.ai) {                               // ai 不可见 → 回退 idle
+        last_hp = m.combat.current_hp;
+        return in;
+    }
+    in.moving = (m.ai->state == AIState::CHASE);   // 实际移动态 (IDLE 巡逻视作站立)
+    in.attacking = (now_wall - m.last_attack_wall_time) < kSwingWindowSec;
+    in.hit_flash = (last_hp >= 0 && m.combat.current_hp < last_hp);   // hp 下降沿
+    last_hp = m.combat.current_hp;
+    return in;
+}
+
 bool Monster::can_attack(double gt) const {
     return (gt - last_attack_time) >= attack_cooldown;
 }
@@ -238,16 +263,24 @@ void Monster::draw(float cam_x, float cam_y) {
     DrawEllipse(dr.x + dr.width/2, dr.y + dr.height + 2, dr.width/2 - 2, 3,
                 {0, 0, 0, 80});
 
-    // M4f.4: 怪物身体三态 fallback — 素材精灵 > 程序化 > 几何
-    Rectangle spr = _draw_monster_body(dr, color, monster_type, name, is_boss,
-                                       sprite_override);
+    // A6-S1: 骨骼皮肤覆盖 — 仅 actor_avatars.json 白名单命中且懒建成功才激活
+    // (白名单空 = 永不命中, 旧 sprite 路径原样); squash 类 B3 效果本阶段不做
+    SkeletonAvatar* skeleton = _skeleton_avatar.get();
+    if (skeleton && skeleton->active()) {
+        skeleton->draw_at({dr.x + dr.width / 2, dr.y + dr.height},
+                          skeleton->facing(), 255);
+    } else {
+        // M4f.4: 怪物身体三态 fallback — 素材精灵 > 程序化 > 几何
+        Rectangle spr = _draw_monster_body(dr, color, monster_type, name, is_boss,
+                                           sprite_override);
 
-    // M4f.12: 怪物持械 (身体上层)
-    _draw_monster_weapon(this, dr);
+        // M4f.12: 怪物持械 (身体上层)
+        _draw_monster_weapon(this, dr);
 
-    // 边框 (纹理精灵带轮廓, 仍画描边强化辨识)
-    Color bc = is_boss ? Color{255, 180, 30, 255} : Color{0, 0, 0, 255};
-    DrawRectangleRoundedLines(spr, 0.15f, 4, is_boss ? 3 : 2, bc);
+        // 边框 (纹理精灵带轮廓, 仍画描边强化辨识)
+        Color bc = is_boss ? Color{255, 180, 30, 255} : Color{0, 0, 0, 255};
+        DrawRectangleRoundedLines(spr, 0.15f, 4, is_boss ? 3 : 2, bc);
+    }
 
     // 血条 (非Boss 且受伤)
     if (!is_boss && combat.current_hp < combat.max_hp) {

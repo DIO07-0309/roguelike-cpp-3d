@@ -1,0 +1,13 @@
+﻿faa7d5f feat(A5-T3/T4): 鐜╁楠ㄩ鍔ㄧ敾鎺ュ叆 2D 涓?HD-2D 鍙岀娓叉煋
+4506e62 feat(a5-t2): skeleton pose 姹傚€煎櫒 鈥?鎻掑€?閾惧悎鎴?overlay (绾暟瀛?gtest)
+f2161b2 feat(a5-t1): 楠ㄩ鍔ㄧ敾鏁版嵁灞?鈥?鍔犺浇鍣?JSON schema/鍗犱綅鍒嗕欢/鏍￠獙
+759a227 docs: A5 v1 瀹炴柦璁″垝 鈥?5 浠诲姟 TDD 鍒囧垎 (T1鏁版嵁/T2姹傚€?T3 2D/T4 3D+Pro spike/T5鐪熺礌鏉?, 322 琛?5f37862 docs: A5 楠ㄩ鍔ㄧ敾 v1 璁捐 spec (鐜╁鍥涗欢濂? 鍒嗕欢楠ㄩ+鑷畾鏈€灏廕SON, 寰呭闃?
+0606750 docs: README version row finalized as v1.7.0 (B3 accepted, Release shipped)
+c5c2ded docs: B3 plan appended 5-item implementation-drift note (T5)
+592d2a8 feat: B3-T5 鏂囨/鐮佺偣/鏂囨。鏀跺彛 鈥?README+title+tutorial 閿綅 路 1939 鐮佺偣 路 CHANGELOG/roadmap
+30c56bd feat: B3-T4 3D 缈绘粴琛ㄧ幇 鈥?billboard squash + 娈嬪奖 quad (HD2DDrawItem.scale_*)
+919878f feat: B3-T3 2D 缈绘粴琛ㄧ幇 鈥?鑴氬簳鍊炬枩/鍘嬫墎鍥炲脊/3 娈垫畫褰?灏樺湡鐩村彂
+d86c85f feat: B3-T2 缈绘粴鎺ョ嚎 鈥?Shift璧风炕/浣嶇Щ鎺ョ/on_dodge閲囬泦/sim闆跺彉鍖?0822ddd feat: B3-T1 DodgeComponent 绾€昏緫缁勪欢 + 7 gtest 鐢ㄤ緥 (ctest 61鈫?2)
+d467588 docs: B3 瀹炴柦璁″垝 (5 浠诲姟 TDD 鍒嗚В) + spec 搂9 瀹炴柦鍕樿
+63bdd0b docs: B3 缈绘粴璁捐瑙勬牸 (绾墜鎰熶綅绉?+ B 妗堣〃鐜颁欢, 寰呭闃?
+e1ba111 docs: README v1.6.0 鏄熸爣璺嚎缁堟€?+ 61 ctest

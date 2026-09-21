@@ -8,11 +8,13 @@
 #include "entity.h"
 #include "combat_stats.h"
 #include "combat_system.h"
+#include "game/animation/avatar_animator.h"   // A6-S1: AnimInput 信号映射
 
 // 前向声明
 class Player;
 class GameMap;
 class MonsterAI;
+class SkeletonAvatar;   // A6-S1: 通用骨骼形象 (渲染层专属)
 
 // ============================================================
 // D2 Step4: TeamRole — 怪物在队伍中的职责 (自动按 MonsterType 分配)
@@ -96,10 +98,20 @@ public:
     bool can_attack(double game_time) const;
 
     void draw(float cam_x, float cam_y);
+
+    // A6-S1: 骨骼皮肤 (渲染层专属; 仅渲染路径由 GameScene 懒建/驱动, sim/无头永不触达)
+    SkeletonAvatar* skeleton_avatar() { return _skeleton_avatar.get(); }
+    void set_skeleton_avatar(std::unique_ptr<SkeletonAvatar> avatar);
+    std::unique_ptr<SkeletonAvatar> _skeleton_avatar;
 };
 
 // 前置声明特效结构
 struct Effect;
+
+// A6-S1: 皮肤白名单查找 key — sprite_override 优先, 空则 name (数据驱动, 无 gameplay)
+std::string monster_actor_key(const Monster& m);
+// A6-S1: 动画信号映射 (可测纯函数; ai 不可见状态 → 全 false 回退 idle)
+AnimInput monster_anim_input(const Monster& m, int& last_hp, float now_wall);
 
 // 工厂
 Monster* spawn_monster(float px, float py, const std::string& type);

@@ -1,0 +1,36 @@
+{
+  "actors": {
+    "mon_orc": {
+      "skeleton": "resources/animations/mon_orc_skeleton.json",
+      "anim": "resources/animations/player_anim.json"
+    },
+    "mon_elite_orc": {
+      "skeleton": "resources/animations/mon_elite_orc_skeleton.json",
+      "anim": "resources/animations/player_anim.json"
+    },
+    "mon_archer": {
+      "skeleton": "resources/animations/mon_archer_skeleton.json",
+      "anim": "resources/animations/player_anim.json"
+    },
+    "mon_shaman": {
+      "skeleton": "resources/animations/mon_shaman_skeleton.json",
+      "anim": "resources/animations/player_anim.json"
+    },
+    "mon_goblin_hunter": {
+      "skeleton": "resources/animations/mon_goblin_hunter_skeleton.json",
+      "anim": "resources/animations/player_anim.json"
+    },
+    "mon_tank": {
+      "skeleton": "resources/animations/mon_tank_skeleton.json",
+      "anim": "resources/animations/player_anim.json"
+    },
+    "mon_bone_soldier": {
+      "skeleton": "resources/animations/mon_bone_soldier_skeleton.json",
+      "anim": "resources/animations/player_anim.json"
+    },
+    "mon_skeleton_archer": {
+      "skeleton": "resources/animations/mon_skeleton_archer_skeleton.json",
+      "anim": "resources/animations/player_anim.json"
+    }
+  }
+}

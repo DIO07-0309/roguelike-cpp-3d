@@ -6,6 +6,7 @@
 #include "hd2d_shader_bank.h"               // M6-v2c: GLSL 加载
 #include "hd2d_post_fx.h"                   // M6-v2c: bloom 链
 #include "hd2d_shadow_caster.h"             // M6-v2e: 光空间深度 RT
+#include "systems/weather_system.h"         // 天气系统
 #include "core/logger.h"                    // P1-C9: 3D 激活日志
 #include "rlgl.h"                           // M6-v2a: rl 原语 (贴图地板/墙)
 #include "core/scene_tree.h"                // M6-v2c: main_target (bloom 源)
@@ -46,6 +47,7 @@ bool HD2DRenderer::ensure_init(int target_w, int target_h) {
         LOG_WARN("HD2D part cutout unavailable; using static player billboards");
     _make_blob_shadow_tex();     // M6-v2c: blob shadow 程序纹理
     _make_mote_glow_tex();       // A2.1: 氛围粒子软光纹理
+    Game::WeatherSystem::inst().init(300);  // 天气系统
     _ready = true;
     LOG_INFO("HD2D: 3D 表现层已激活");  // P1-C9: 确认 3D 分支生效 (回退静默时日志可辨)
     return true;
@@ -265,11 +267,41 @@ void HD2DRenderer::_setup_camera() {
 
 void HD2DRenderer::render_frame(GameScene& gs) {
     if (!_ready) return;
-
+ 
     // 1. 只读提取绘制列表 (scene_builder 无 gameplay 副作用)
     _draw_items.clear();
     hd2d::build_scene(gs, _draw_items, _part_color.ready());
-
+    
+    // 1.5. 天气系统更新
+    auto& weather = Game::WeatherSystem::inst();
+    
+    // DEBUG: F8 切换天气类型测试（覆盖 biome 映射）
+    static Game::WeatherType debug_weather = Game::WeatherType::NONE;
+    static bool debug_mode = false;
+    
+    if (IsKeyPressed(KEY_F8)) {
+        Game::WeatherType next_type;
+        switch (debug_weather) {
+            case Game::WeatherType::NONE:    next_type = Game::WeatherType::RAIN;    break;
+            case Game::WeatherType::RAIN:    next_type = Game::WeatherType::SNOW;    break;
+            case Game::WeatherType::SNOW:    next_type = Game::WeatherType::ASH;     break;
+            case Game::WeatherType::ASH:     next_type = Game::WeatherType::DUST;    break;
+            case Game::WeatherType::DUST:    next_type = Game::WeatherType::SPORE;   break;
+            case Game::WeatherType::SPORE:   next_type = Game::WeatherType::NONE;    break;
+            default:                         next_type = Game::WeatherType::RAIN;   break;
+        }
+        debug_weather = next_type;
+        debug_mode = (next_type != Game::WeatherType::NONE);
+        weather.set_weather(debug_weather);
+        LOG_INFO("DEBUG: 天气切换为 %d", (int)debug_weather);
+    }
+    
+    if (gs.game_map && !debug_mode) {
+        // 正常模式：使用 biome 映射
+        weather.set_weather_from_biome(gs.game_map->biome_id());
+    }
+    weather.update(GetFrameTime());
+    
     // 2. 相机聚焦玩家世界坐标 (+ M6-v2e: shake 偏移, 帧内消费)
     _camera_focus = {0, 0, 0};
     if (gs.player) {
@@ -312,6 +344,7 @@ void HD2DRenderer::render_frame(GameScene& gs) {
         }
     }
     _draw_scene();
+    _draw_weather_particles(weather);  // 渲染天气粒子
     _apply_post_processing(gs);
 }
 
@@ -352,6 +385,14 @@ void HD2DRenderer::_draw_scene() {
         _draw_billboard(*ghost);
     for (const auto& item : _draw_items)
         if (item.kind == HD2DDrawItem::Kind::FX_QUAD) _draw_fx_quad(item);
+    for (const auto& item : _draw_items)
+        if (item.kind == HD2DDrawItem::Kind::FX_PARTICLE) _draw_fx_particle(item);
+    for (const auto& item : _draw_items)
+        if (item.kind == HD2DDrawItem::Kind::FX_RING_3D) _draw_fx_ring_3d(item);
+    for (const auto& item : _draw_items)
+        if (item.kind == HD2DDrawItem::Kind::FX_BEAM_3D) _draw_fx_beam_3d(item);
+    for (const auto& item : _draw_items)
+        if (item.kind == HD2DDrawItem::Kind::FX_EXPLOSION_3D) _draw_fx_explosion_3d(item);
     _draw_ambient_batch();                            // A2.1 (替 v2e 逐颗球)
     EndMode3D();
 }
@@ -674,6 +715,157 @@ void HD2DRenderer::_draw_fx_quad(const HD2DDrawItem& item) {
     float pulse = 0.8f + 0.2f * sinf((float)GetTime() * 6.0f + pos.x * 0.1f);
     float s = item.size * pulse;
     DrawCube({pos.x, 0.15f, pos.z}, s, 0.06f, s * 0.6f, item.tint);
+}
+
+// ═══════════════════════════════════════════════════════════
+// A10: 3D 特效绘制
+// ═══════════════════════════════════════════════════════════
+
+void HD2DRenderer::_draw_fx_particle(const HD2DDrawItem& item) {
+    Vector3 pos = item.world_pos;
+    // 3D 粒子 - 减少 draw call，使用批处理
+    float t = GetTime() * 8.0f;
+    
+    // 主粒子（带发光）- 2 个球
+    Color glow = item.tint;
+    glow.a = (unsigned char)(glow.a * 0.4f);
+    DrawSphere({pos.x, pos.y, pos.z}, item.size * 0.4f, glow);
+    DrawSphere({pos.x, pos.y, pos.z}, item.size * 0.2f, item.tint);
+    
+    // 周围粒子（4 颗）- 减少数量提高性能
+    for (int i = 0; i < 4; i++) {
+        float angle = t + i * 1.57f;
+        float dist = item.size * (0.5f + sinf(t + i) * 0.2f);
+        Vector3 offset = {cosf(angle) * dist, sinf(t * 0.7f + i) * dist * 0.5f, 
+                         sinf(angle) * dist};
+        Color p = item.tint;
+        p.a = (unsigned char)(p.a * 0.5f);
+        DrawSphere({pos.x + offset.x, pos.y + offset.y, pos.z + offset.z}, 
+                   item.size * 0.12f, p);
+    }
+    
+    // 外层光晕（2 颗）- 大范围发光
+    for (int i = 0; i < 2; i++) {
+        float angle = t * 0.5f + i * 3.14f;
+        float dist = item.size * (1.2f + sinf(t * 0.3f + i) * 0.3f);
+        Vector3 offset = {cosf(angle) * dist, sinf(t * 0.4f + i) * dist * 0.4f, 
+                         sinf(angle) * dist};
+        Color halo = item.tint;
+        halo.a = (unsigned char)(halo.a * 0.25f);
+        DrawSphere({pos.x + offset.x, pos.y + offset.y, pos.z + offset.z}, 
+                   item.size * 0.25f, halo);
+    }
+}
+
+void HD2DRenderer::_draw_fx_ring_3d(const HD2DDrawItem& item) {
+    Vector3 pos = item.world_pos;
+    float t = GetTime();
+    float pulse = 0.8f + 0.2f * sinf(t * 5.0f);
+    float radius = item.size * pulse;
+    float thickness = item.height;
+    
+    // 外层光环（深色）- 高多边形
+    Color outer = item.tint;
+    outer.a = (unsigned char)(outer.a * 0.6f);
+    DrawCylinder({pos.x, pos.y, pos.z},
+                 radius, radius, thickness * 0.4f, 64, outer);
+    
+    // 中层光环（主色）- 高多边形
+    DrawCylinder({pos.x, pos.y, pos.z},
+                 radius * 0.85f, radius * 0.85f, thickness * 0.3f, 64, item.tint);
+    
+    // 内层光环（亮色）- 高多边形
+    Color inner = item.tint;
+    inner.r = (unsigned char)std::min(255, (int)inner.r + 60);
+    inner.g = (unsigned char)std::min(255, (int)inner.g + 60);
+    inner.b = (unsigned char)std::min(255, (int)inner.b + 60);
+    inner.a = (unsigned char)(inner.a * 0.8f);
+    DrawCylinder({pos.x, pos.y, pos.z},
+                 radius * 0.6f, radius * 0.6f, thickness * 0.25f, 64, inner);
+    
+    // 地面投影（半透明）- 高多边形
+    Color shadow = item.tint;
+    shadow.a = 80;
+    DrawCylinder({pos.x, 0.5f, pos.z},
+                 radius * 0.7f, radius * 0.7f, 0.2f, 48, shadow);
+}
+
+void HD2DRenderer::_draw_fx_beam_3d(const HD2DDrawItem& item) {
+    Vector3 start = item.world_pos;
+    Vector3 end = item.end_pos;
+    
+    // 计算光束方向
+    Vector3 dir = Vector3Subtract(end, start);
+    float length = Vector3Length(dir);
+    if (length < 0.01f) return;
+    dir = Vector3Normalize(dir);
+    
+    float mid_x = (start.x + end.x) * 0.5f;
+    float mid_y = (start.y + end.y) * 0.5f;
+    float mid_z = (start.z + end.z) * 0.5f;
+    
+    // 外层光束（较粗，半透明）- 高多边形
+    Color outer = item.tint;
+    outer.a = (unsigned char)(outer.a * 0.5f);
+    DrawCylinder({mid_x, mid_y, mid_z}, item.size * 0.8f, item.size * 0.8f,
+                 length * 0.9f, 32, outer);
+    
+    // 中层光束（主色）- 高多边形
+    DrawCylinder({mid_x, mid_y, mid_z}, item.size * 0.5f, item.size * 0.5f,
+                 length * 0.95f, 32, item.tint);
+    
+    // 内层核心（亮色，细）- 高多边形
+    Color core = item.tint;
+    core.r = (unsigned char)std::min(255, (int)core.r + 80);
+    core.g = (unsigned char)std::min(255, (int)core.g + 80);
+    core.b = (unsigned char)std::min(255, (int)core.b + 80);
+    core.a = (unsigned char)(core.a * 0.9f);
+    DrawCylinder({mid_x, mid_y, mid_z}, item.size * 0.2f, item.size * 0.2f,
+                 length * 0.98f, 24, core);
+    
+    // 端点发光球 - 高多边形
+    DrawSphere(end, item.size * 0.6f, core);
+}
+
+void HD2DRenderer::_draw_fx_explosion_3d(const HD2DDrawItem& item) {
+    Vector3 pos = item.world_pos;
+    float t = GetTime();
+    float pulse = 0.8f + 0.2f * sinf(t * 6.0f);
+    float radius = item.size * pulse * 0.5f;
+    
+    // 外层爆炸（大球，半透明）- 高多边形
+    Color outer = item.tint;
+    outer.a = (unsigned char)(outer.a * 0.4f);
+    DrawSphere({pos.x, pos.y, pos.z}, radius * 1.2f, outer);
+    
+    // 中层爆炸（主球）- 高多边形
+    DrawSphere({pos.x, pos.y, pos.z}, radius, item.tint);
+    
+    // 内层核心（亮球）- 高多边形
+    Color core = item.tint;
+    core.r = (unsigned char)std::min(255, (int)core.r + 100);
+    core.g = (unsigned char)std::min(255, (int)core.g + 100);
+    core.b = (unsigned char)std::min(255, (int)core.b + 100);
+    core.a = (unsigned char)(core.a * 0.9f);
+    DrawSphere({pos.x, pos.y, pos.z}, radius * 0.5f, core);
+    
+    // 碎片粒子（6 颗）- 高多边形
+    for (int i = 0; i < 6; i++) {
+        float angle = t * 2.0f + i * 1.047f;
+        float dist = radius * (1.5f + sinf(t + i) * 0.3f);
+        Vector3 offset = {cosf(angle) * dist, sinf(t * 0.5f + i) * dist * 0.5f, 
+                         sinf(angle) * dist};
+        Color fragment = item.tint;
+        fragment.a = (unsigned char)(fragment.a * (0.4f + sinf(t + i) * 0.2f));
+        DrawSphere({pos.x + offset.x, pos.y + offset.y, pos.z + offset.z}, 
+                   radius * 0.15f, fragment);
+    }
+    
+    // 地面冲击圈 - 高多边形
+    Color ground = item.tint;
+    ground.a = 100;
+    DrawCylinder({pos.x, 0.5f, pos.z},
+                 radius * 0.8f, radius * 0.8f, 0.3f, 48, ground);
 }
 
 // ── M6-v2a: 挑战传送门 — 竖立脉冲双环 (2D 双层圆的 3D 对应物) ──
@@ -1011,12 +1203,61 @@ Vector2 HD2DRenderer::world_to_screen(Vector3 world_pos, float y_offset) const {
 // (实测 238); 各档阈值只吃高光
 void HD2DRenderer::_apply_bloom_biome_preset(const GameMap* map) {
     const char* biome = map ? map->biome_id() : "";
-    float threshold = 0.72f, softness = 0.22f, intensity = 0.12f;
+    float threshold = 0.60f, softness = 0.30f, intensity = 0.35f;  // 降低阈值，提高强度
     if (strcmp(biome, "ash_volcano") == 0)
-        threshold = 0.82f, softness = 0.14f, intensity = 0.15f;  // 火山
+        threshold = 0.65f, softness = 0.25f, intensity = 0.40f;  // 火山 - 最强发光
     else if (strcmp(biome, "void_abyss") == 0)
-        threshold = 0.74f, softness = 0.20f, intensity = 0.18f;  // 深渊
+        threshold = 0.62f, softness = 0.28f, intensity = 0.45f;  // 深渊 - 最强发光
     HD2DPostFX::inst().set_params(threshold, softness, intensity);
+}
+
+// ── 天气粒子渲染 ──
+void HD2DRenderer::_draw_weather_particles(Game::WeatherSystem& weather) {
+    // 开始 3D 模式
+    BeginMode3D(_camera);
+    
+    // 相机位置（用于偏移粒子）
+    Vector3 cam_pos = _camera_focus;
+    
+    // 渲染天气粒子
+    for (const auto& p : weather.get_particles()) {
+        if (!p.active) continue;
+        
+        // 粒子位置相对于相机
+        Vector3 world_pos = {
+            cam_pos.x + p.position.x,
+            p.position.y,
+            cam_pos.z + p.position.z
+        };
+        
+        // 根据天气类型绘制不同形状
+        float life_ratio = p.life / p.max_life;
+        Color color = p.color;
+        color.a = (unsigned char)(color.a * (1.0f - life_ratio));  // 淡出
+        
+        // 雨滴：细长圆柱
+        if (weather.get_weather() == Game::WeatherType::RAIN) {
+            DrawCylinder(world_pos, p.size, p.size * 0.5f, 8.0f, 8, color);
+        }
+        // 雪花：小立方体
+        else if (weather.get_weather() == Game::WeatherType::SNOW) {
+            DrawCube(world_pos, p.size * 2.0f, p.size * 0.3f, p.size * 2.0f, color);
+        }
+        // 灰烬/灰尘/孢子：小球
+        else {
+            DrawSphere(world_pos, p.size, color);
+        }
+    }
+    
+    // 结束 3D 模式
+    EndMode3D();
+    
+    // 地面效果（潮湿/积雪/灰烬层）
+    if (weather.get_ground_alpha() > 0.01f) {
+        Color ground_tint = weather.get_ground_tint();
+        ground_tint.a = (unsigned char)(weather.get_ground_alpha() * 255);
+        DrawRectangle(0, 0, _target_w, _target_h, ground_tint);
+    }
 }
 
 // ── M6-v2c: 后处理 — bloom 链 + 夜色分级 + 地平雾带 (shader 版) ──
