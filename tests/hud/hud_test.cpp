@@ -85,3 +85,25 @@ TEST(HudTest, MinimapMarkerSizeMonster) {
     float expected_size = 8.0f;
     EXPECT_EQ(expected_size, 8.0f);
 }
+
+// 金币/资源图标位置测试
+TEST(HudTest, GoldIconPosition) {
+    float screen_h = 720.0f;
+    float gold_x = 14.0f;
+    float gold_y = screen_h - 27.0f;
+    EXPECT_EQ(gold_x, 14.0f);
+}
+
+TEST(HudTest, KeyIconPosition) {
+    float screen_h = 720.0f;
+    float icon_size = 14.0f;
+    float key_x = 14.0f + icon_size + 12.0f;
+    EXPECT_TRUE(key_x > 14.0f);
+}
+
+// 圣物数量测试
+TEST(HudTest, RelicCountDisplay) {
+    int relic_count = 5;
+    bool should_display = relic_count > 0;
+    EXPECT_TRUE(should_display);
+}

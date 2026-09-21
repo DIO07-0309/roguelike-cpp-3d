@@ -1116,19 +1116,43 @@ void GameRenderer::draw_hud(const Player* player, int current_floor, float game_
         // Batch 3A: Gold / Key HUD (bottom-left) — G10.3-B3: 像素图标替代纯文本
         if (player) {
             float icon_s = 14.0f;
-            _draw_gold_icon(14.0f, (float)screen_h - 27.0f, icon_s);
+            float base_x = 14.0f;
+            float base_y = (float)screen_h - 27.0f;
+            
+            // 金币图标（黄色）
+            _draw_gold_icon(base_x, base_y, icon_s);
             char gbuf[16];
             snprintf(gbuf, sizeof(gbuf), "%d", player->gold);
             DrawTextEx(g_font_small, gbuf,
-                       {14.0f + icon_s + 4.0f, (float)screen_h - 26.0f},
+                       {base_x + icon_s + 4.0f, base_y + 1.0f},
                        12, 1, Color{255, 214, 90, 230});
+            
+            // 计算金币文本宽度
             float gw = MeasureTextEx(g_font_small, gbuf, 12, 1).x;
-            _draw_key_icon(14.0f + icon_s + 12.0f + gw, (float)screen_h - 27.0f, icon_s);
+            
+            // 钥匙图标（金色）
+            _draw_key_icon(base_x + icon_s + 12.0f + gw, base_y, icon_s);
             char kbuf[16];
             snprintf(kbuf, sizeof(kbuf), "%d", player->key_count);
             DrawTextEx(g_font_small, kbuf,
-                       {14.0f + icon_s * 2 + 16.0f + gw + 4.0f, (float)screen_h - 26.0f},
+                       {base_x + icon_s * 2 + 16.0f + gw + 4.0f, base_y + 1.0f},
                        12, 1, Color{190, 160, 90, 230});
+            
+            // 圣物数量（圣物面板打开时）
+            if (show_relic_panel && player->relics.size() > 0) {
+                float relic_x = base_x + icon_s * 2 + 16.0f + gw + 4.0f + 
+                               MeasureTextEx(g_font_small, kbuf, 12, 1).x + 12.0f;
+                // 圣物图标（紫色）
+                DrawRectangleRec(
+                    {relic_x, base_y + 1.0f, icon_s, icon_s},
+                    Color{180, 100, 255, 230}
+                );
+                char rbuf[16];
+                snprintf(rbuf, sizeof(rbuf), "%d", (int)player->relics.size());
+                DrawTextEx(g_font_small, rbuf,
+                           {relic_x + icon_s + 4.0f, base_y + 1.0f},
+                           12, 1, Color{200, 150, 255, 230});
+            }
         }
         const char* hint = "[R]圣物  [B]背包  [F1]日志  [M]地图  [ESC]保存";
         float hw = MeasureTextEx(g_font_small, hint, 12, 1).x;
