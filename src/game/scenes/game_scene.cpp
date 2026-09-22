@@ -475,6 +475,19 @@ void GameScene::enter_floor(int floor, uint32_t seed) {
         }
     } else {
         FloorManager::spawn_floor_monsters(floor, game_map.get(), monsters, rooms);
+        // G15: 第 1 层保底武器 — 出生房旁固定 1 把 common 武器 (空手死亡螺旋:
+        //       sim 50 局 avg_damage 42 vs 承伤 231, 拿到武器局 kills 8 vs 空手 0-2)
+        if (floor == 1 && !rooms.empty()) {
+            const WeaponDef* wdef = get_weapon_def("sword_common");
+            if (wdef) {
+                auto weapon = std::make_shared<EquipmentItem>(
+                    pick_weapon_name(wdef, 0), Rarity::COMMON, "weapon",
+                    (int)wdef->base_damage);
+                weapon->weapon_def_id = "sword_common";
+                auto [wtx, wty] = rooms[0];
+                ground_items.push_back({weapon, wtx + 2, wty});
+            }
+        }
         state = GameState::PLAYING;
         // Batch 2C: 进层构建 Room Encounter 映射 (房间矩形 + 门组, 一次性固化)
         RoomEncounterCallbacks cb;

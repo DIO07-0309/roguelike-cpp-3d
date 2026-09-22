@@ -1,3 +1,26 @@
+# G15 — sim 武器获取链修复: 拾取恢复 + 保底武器 (2026-09-22)
+
+> 50 局基线定位: win=0% 主因已从"卡死"转变为"全程空手" (50 局 weapon 全 fist_basic,
+> avg_damage_dealt 42.9 vs 承伤 231.7). 本轮修复拾取链 3 项, 输出 2.6 倍.
+
+- **拾取永久放弃 bug** (`src/core/sim/sim_ai.cpp:_evaluate_pickup`)
+  - 根因: G14b 拾取冷却块里 `_pickup_fail_streak++` 在**冷却期间每帧执行** —
+    1.5s 内从 0 涨到 90 → `>=3` 永久放弃拾取 → **picks=0 全程空手**
+  - 修复: streak 只在**真实再次尝试** (冷却已过仍见物品) 时 +1; 冷却中仅返回 0
+  - 实测: 玩家背包从 0 → 3 件 (拾取恢复)
+- **怪清光后空转** (`sim_ai.cpp:_evaluate_move`)
+  - 原 `if (!t) return 0.1f` — 全图无怪时直接中性分, 尸体掉落/未搜房间全浪费
+  - 修复: 无怪时先走 loot (0.7) / 房间 (0.6) 分支, 0.1 仅兜底
+- **第 1 层保底武器** (`src/game/scenes/game_scene.cpp`)
+  - 第 1 层出生房旁固定 1 把 `sword_common` (roguelike 教学化设计, 真玩家同受益)
+  - 空手死亡螺旋: 空手局 kills 0-2 / 承伤 210 磨死; 拿武器局 kills 8 (sword) 爬 2 层
+
+- 门禁: Release 0 error · ctest 68/68 · validator 0/0
+- 效果 (10 局 seed21): avg_damage_dealt 10.7 → 27.7 (2.6x) · 武器局 1/10 → 3/10
+  (sword_common/spear_epic/dagger_common) · TIMEOUT_WALL 归零
+- 遗留: 拿武器局仍被卡死检测抓 4/10 → walkable 判定不统一 (P1-C7 专项, 同 G14 遗留);
+  win_rate 仍 0 (AI 推进/平衡)
+
 # G14 — sim AI 卡死修复链: 可达性判定统一 + 路径稳定化 (2026-09-22)
 
 > 本轮定位 sim win_rate=0 的根因链, 修复 6 项真实缺陷并将 avg_floor 从 1.0 提升到 1.1~4.5 (随修复推进波动)。

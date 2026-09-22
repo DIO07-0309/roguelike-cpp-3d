@@ -138,6 +138,12 @@ F15 镜像 Boss 读你的行为画像（攻防倾向/走位偏好/技能习惯�
   - **弹体接入**：`GameScene::projectiles` 由 `std::vector<Projectile>` 改为 `ObjectPool<Projectile>`，每帧 `erase(remove_if)` 的 O(n) 元素搬移换成 `release_if` 逐槽位回收；四处遍历点（玩家弹体 tick、敌方弹体 tick、2D 绘制、3D `_build_projectiles`）改 `for_each`；`Monster::projectiles_ptr` 与 `WeaponExecutor` 签名同步改池类型。
   - 新增 `tests/systems/object_pool_test.cpp` 9 用例，含扩容安全回归与真实弹体集成。
   - 门禁：Release 0 error · ctest 68/68 · World Validator 0 error / 0 warning · `--sim 3` exit=0。
+- G15（开发版，未发布）：sim 武器获取链修复——拾取恢复 + 保底武器。
+  - **拾取永久放弃 bug**：冷却块内 `_pickup_fail_streak` 每帧累加（1.5s 内 0→90）→ 永久放弃拾取 → 50 局全程空手。修复为仅在真实再次尝试时累加。
+  - **怪清光后空转**：`_evaluate_move` 无怪时直接 0.1 分，尸体掉落全浪费；修复为先搜 loot/房间再兜底。
+  - **第 1 层保底武器**：出生房旁固定 `sword_common`（教学化设计，真玩家同受益）。
+  - 效果：avg_damage 10.7→27.7（2.6x）、武器局 1/10→3/10、TIMEOUT 归零。
+  - 遗留（P1-C7）：walkable 判定三套语义不统一，拿武器局仍被卡死检测抓到 4/10。
 - G14（开发版，未发布）：sim AI 卡死修复链——可达性判定统一 + 路径稳定化。
   - **OPEN 门 BFS 判定 bug**（`sim_ai.cpp:_tile_rect_walkable` 把 OPEN 门也当墙，BFS 永不过门、怪被"门隔离"）；执行层接触开门 `try_open_door_toward` 接线（原死代码）；攻击射程/理想距离对齐武器真实射程（弩不再当近战）。
   - **卡死行为链**：BFS 定向朝怪 / 近身直接攻击 / 近身战豁免 / progressed 三源信号 / 传送失败反向拉怪 / 强开 3x3 CLOSED 门；传送落 CLOSED 门允许+落地即开。

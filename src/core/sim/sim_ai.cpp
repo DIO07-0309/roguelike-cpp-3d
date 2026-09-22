@@ -747,7 +747,22 @@ float DecisionAgent::_evaluate_move(int dir, const Player* p,
         return -1.0f;
 
     auto* t = _find_nearest(p, monsters);
-    if (!t) { sim_move_noenemy++; return 0.1f; } // 全图无存活怪 → 中性
+    if (!t) {
+        // G15: 全图无怪 → 先搜 loot/房间, 否则打完怪就站桩, 尸体掉落全废
+        //      → 永远空手 (50 局 avg_damage 42 vs weapon 全 fist_basic)
+        if (map && !_ground.empty()) {
+            float loot_d = _near_loot_dist(p);
+            if (loot_d >= 0 && loot_d < 5.0f * 32.0f) {
+                int ls = _bfs_toward_loot(p, map);
+                if (ls >= 0) return (dir == ls) ? 0.7f : 0.0f;
+            }
+        }
+        if (map) {
+            int rs = _bfs_toward_room(p, map);
+            if (rs >= 0) return (dir == rs) ? 0.6f : 0.0f;
+        }
+        sim_move_noenemy++; return 0.1f; // 全图无存活怪无资源 → 中性
+    }
 
     float ex = t->entity.rect.x + t->entity.rect.width/2;
     float ey = t->entity.rect.y + t->entity.rect.height/2;
@@ -871,12 +886,10 @@ float DecisionAgent::_evaluate_move(int dir, const Player* p,
 float DecisionAgent::_evaluate_pickup(const Player* p, const GameMap* map,
     const std::vector<Monster*>& monsters) const {
     if (!map) return 0;
-    // G14b: 拾取冷却 + 放弃 — 1.5s 内已尝试过 pickup 或累计 3 次捡不掉
-    //       (物品捡不走/需走近) → 返回 0 让位移动, 否则 AI 每帧 pickup 死原地
-    if (_game_time - _last_pickup_attempt < 1.5f) {
-        _pickup_fail_streak++;
-        return 0;
-    }
+    // G14b: 拾取冷却 + 放弃 — 冷却中不评估; 累计 3 次"真实尝试后物品仍在"
+    //        (在下方 loot 命中处 ++) 才放弃, 避免冷却期间每帧误累加 (旧 bug
+    //        1.5s 内 streak 涨到 90 → 永久放弃 → picks=0 全程空手)
+    if (_game_time - _last_pickup_attempt < 1.5f) return 0;
     if (_pickup_fail_streak >= 3) return 0;
     float threat = 0.0f;
     for (auto* m : monsters) {
@@ -889,8 +902,8 @@ float DecisionAgent::_evaluate_pickup(const Player* p, const GameMap* map,
     // 拾取半径与 InteractionHandler::pickup_item 对齐 (PICKUP_RANGE=2.0 * TILE_SIZE)
     float loot_d = _near_loot_dist(p);
     if (loot_d >= 0 && loot_d < 2.0f * 32.0f) {
+        _pickup_fail_streak++;   // G14b: 真实尝试计数 (冷却已过仍见物品 = 上次失败)
         // P1-A2-fix: 被围殴 (threat>0.55, 怪 <2 格) 时拾取消分 → 还手保命
-        // 冒烟复现: 残血 hp=0.03 仍 pickup 站桩 → 史莱姆围殴磨死 + 卡死传送
         float loot_w = (threat > 0.55f) ? 0.0f : 1.6f;
         if (loot_w > 0 && _hp_ratio(p) < 0.5f) loot_w *= 1.8f;  // 残血药水加权
         if (loot_w > 0) return loot_w * (1.0f - 0.6f * threat);

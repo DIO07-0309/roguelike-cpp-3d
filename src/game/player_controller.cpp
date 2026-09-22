@@ -1,5 +1,6 @@
 #include "player_controller.h"
 #include "core/logger.h"      // A4-probe
+#include "core/sim/sim_ai.h"  // G15: SIM-LOOT best 诊断 (last_best_action)
 #include "scenes/game_scene.h"
 #include "player.h"
 #include "monster.h"
@@ -141,6 +142,12 @@ void PlayerController::tick(float dt) {
             else if (move.x < 0) gs.player->direction = Direction::LEFT;
             else if (move.x > 0) gs.player->direction = Direction::RIGHT;
             gs.player->is_moving = (move.x != 0 || move.y != 0);
+            static int _loot_dbg = 0;
+            if (++_loot_dbg % 240 == 0)
+                LOG_INFO("[SIM-LOOT] items=%d best=%s inv=%zu",
+                    (int)gs.ground_items.size(),
+                    gs._sim_ai ? gs._sim_ai->last_best_action().c_str() : "?",
+                    gs.player->inventory.items.size());
         }
         auto& e = gs.player->entity;
         _record_move(move.x, move.y);
