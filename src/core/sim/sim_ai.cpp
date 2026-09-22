@@ -380,26 +380,11 @@ static bool _boss_winding_up(const Monster* m) {
 }
 
 // Q3.2: tile 级 rect 碰撞判定 — BFS 与真实移动(rect)对齐, 防 tile可行走但玩家进不去导致的卡墙
+// P1-C7: Sim 决策走判定 — 统一入口 GameMap::is_passable_sim.
+//        原实现 (CLOSED 特判 + is_rect_walkable) 与 _sim_tile_passable 语义分歧,
+//        现已合并 (见 game_map.cpp is_passable_sim 注释).
 static bool _tile_rect_walkable(const GameMap* map, int tx, int ty) {
-    if (!map) return false;
-    DoorState ds = map->door_state_at(tx, ty);
-    // G14: OPEN 门可走 (is_walkable=true) — 原 `ds != NONE → false` 把 OPEN 门
-    //      也判为不可走 → BFS 永远过不了门 → 怪被"门隔离" → 卡死. 与执行层
-    //      is_rect_walkable(OPEN=true) 对齐; CLOSED 门由 Sim 自动开放行.
-    if (ds == DoorState::CLOSED) return true;   // Sim 自动开 CLOSED
-    if (ds == DoorState::LOCKED || ds == DoorState::SEALED) return false;
-    Rectangle r = { (float)(tx * 32), (float)(ty * 32), 32.0f, 32.0f };
-    return map->is_rect_walkable(r);
-}
-
-// G14: tile 级可走判定 — 与 game_scene 连通性报告同源 (非墙即走, LOCKED/SEALED 除外).
-//      _tile_rect_walkable 的 is_rect_walkable(32x32 rect) 经实测与真实可达域
-//      不一致 (reach=583 怪可达但 _bfs_toward 返回 -1), 用于 BFS 目标可达性.
-static bool _sim_tile_passable(const GameMap* map, int tx, int ty) {
-    if (!map) return false;
-    DoorState ds = map->door_state_at(tx, ty);
-    if (ds == DoorState::LOCKED || ds == DoorState::SEALED) return false;
-    return map->tile_at(tx, ty) != TileType::WALL;
+    return map ? map->is_passable_sim(tx, ty) : false;
 }
 
 // Q3.2: 危险视野 — 活性毒池/尖刺圈/木桶 (伤害圈 1.2 格 + 缓冲 = 1.5 格)
@@ -614,13 +599,13 @@ int DecisionAgent::_bfs_toward(const Player* p,
         if (tx < 0 || tx >= w || ty < 0 || ty >= h) continue;
         // G14: 怪 tile 不可走(卡墙/位置异常) → 标记其可走邻居为可达目标,
         //       否则 BFS 永远踏不上怪 tile → is_target 不命中 → 怪不可达 → 死局
-        if (_sim_tile_passable(map, tx, ty)) {
+        if (_tile_rect_walkable(map, tx, ty)) {
             is_target[ty * w + tx] = 1;
         } else {
             for (int d = 0; d < 4; d++) {
                 int nx = tx + kBfsDx[d], ny = ty + kBfsDy[d];
                 if (nx >= 0 && nx < w && ny >= 0 && ny < h &&
-                    _sim_tile_passable(map, nx, ny))
+                    _tile_rect_walkable(map, nx, ny))
                     is_target[ny * w + nx] = 1;
             }
         }

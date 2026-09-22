@@ -1,3 +1,21 @@
+# P1-C7 — walkable 判定语义统一 (2026-09-22)
+
+> 统一 `_tile_rect_walkable` / `_sim_tile_passable` / `is_rect_walkable` 三套 walkable
+> 语义为**单一入口** `GameMap::is_passable_sim`, 消除决策层/执行层分歧遗留
+> (G14 卡死修复链的剩余根因层).
+
+- **新增统一入口** (`src/game/world/game_map.h/.cpp`)
+  - `bool is_passable_sim(tx, ty)`: WALL/LOCKED/SEALED 不可走; FLOOR/STAIRS/LAVA/
+    OPEN 门/CLOSED 门可走 (CLOSED 门 = Sim 自动开门语义, 执行层移动前接线
+    `try_open_door_toward` 已保证)
+- **sim_ai.cpp 收敛**: `_tile_rect_walkable` 改为薄包装 `is_passable_sim`;
+  删除 `_sim_tile_passable` (原与前者 CLOSED/rect 语义分歧), 调用点合并
+- **测试矩阵** (`tests/world/door_truth_table_test.cpp` 新增 `PassableSimMatrix`):
+  6 种 tile 类型 + 门四态 + 越界, 锁定统一语义防漂移
+- 门禁: Release 0 error · ctest 68/68 (含新矩阵) · validator 0/0
+- 行为等价验证: 10 局 sim 结果与收敛前一致 (统一不改变既有正确语义)
+- 遗留: STUCK_RECOVERED 4/10 (武器局卡死) — 下一轮专项
+
 # G15 — sim 武器获取链修复: 拾取恢复 + 保底武器 (2026-09-22)
 
 > 50 局基线定位: win=0% 主因已从"卡死"转变为"全程空手" (50 局 weapon 全 fist_basic,

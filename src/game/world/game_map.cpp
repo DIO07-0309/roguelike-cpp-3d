@@ -56,6 +56,15 @@ bool GameMap::is_walkable(int tx, int ty) const {
     return _tiles[ty][tx].is_walkable;
 }
 
+// P1-C7: Sim 决策层可走判定 — 单一入口统一三套 walkable 语义 (见 game_map.h 注释)
+bool GameMap::is_passable_sim(int tx, int ty) const {
+    if (!_in_bounds(tx, ty)) return false;
+    if (_tiles[ty][tx].type == TileType::WALL) return false;
+    DoorState ds = door_state_at(tx, ty);
+    if (ds == DoorState::LOCKED || ds == DoorState::SEALED) return false;
+    return true;
+}
+
 bool GameMap::is_rect_walkable(Rectangle r) const {
     float pts[8][2] = {
         {r.x, r.y}, {r.x + r.width - 1, r.y},

@@ -61,6 +61,11 @@ public:
 
     bool is_walkable(int tx, int ty) const;
     bool is_rect_walkable(Rectangle rect) const;
+    // P1-C7: Sim 决策层可走判定 — 单一入口统一 _tile_rect_walkable /
+    //        _sim_tile_passable / is_rect_walkable 三套语义分歧.
+    //        语义: WALL/LOCKED/SEALED 不可走; FLOOR/STAIRS/LAVA/OPEN/CLOSED 门可走
+    //        (CLOSED 门视为可走 — Sim 自动开门, 执行层移动前 try_open_door_toward)
+    bool is_passable_sim(int tx, int ty) const;
     TileType tile_at(int tx, int ty) const {  // M4b: tile 类型查询 (lava 感知)
         return (_in_bounds(tx, ty)) ? _tiles[ty][tx].type : TileType::WALL;
     }

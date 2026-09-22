@@ -138,6 +138,7 @@ F15 镜像 Boss 读你的行为画像（攻防倾向/走位偏好/技能习惯�
   - **弹体接入**：`GameScene::projectiles` 由 `std::vector<Projectile>` 改为 `ObjectPool<Projectile>`，每帧 `erase(remove_if)` 的 O(n) 元素搬移换成 `release_if` 逐槽位回收；四处遍历点（玩家弹体 tick、敌方弹体 tick、2D 绘制、3D `_build_projectiles`）改 `for_each`；`Monster::projectiles_ptr` 与 `WeaponExecutor` 签名同步改池类型。
   - 新增 `tests/systems/object_pool_test.cpp` 9 用例，含扩容安全回归与真实弹体集成。
   - 门禁：Release 0 error · ctest 68/68 · World Validator 0 error / 0 warning · `--sim 3` exit=0。
+- P1-C7（开发版，未发布）：walkable 判定语义统一——三套判定（`_tile_rect_walkable`/`_sim_tile_passable`/`is_rect_walkable`）收敛为单一入口 `GameMap::is_passable_sim`（WALL/LOCKED/SEALED 不可走，CLOSED 门=Sim 自动开门语义），新增 PassableSimMatrix 测试矩阵。行为等价验证 + 68/68 测试。
 - G15（开发版，未发布）：sim 武器获取链修复——拾取恢复 + 保底武器。
   - **拾取永久放弃 bug**：冷却块内 `_pickup_fail_streak` 每帧累加（1.5s 内 0→90）→ 永久放弃拾取 → 50 局全程空手。修复为仅在真实再次尝试时累加。
   - **怪清光后空转**：`_evaluate_move` 无怪时直接 0.1 分，尸体掉落全浪费；修复为先搜 loot/房间再兜底。

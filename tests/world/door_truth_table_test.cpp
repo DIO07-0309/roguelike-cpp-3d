@@ -175,6 +175,44 @@ TEST(DoorTruthTable, DoorGroupOps) {
     EXPECT_FALSE(m.open_room_doors(bad));
 }
 
+// ── P1-C7: is_passable_sim 统一判定矩阵 ────────────────────────
+// 语义: WALL/LOCKED/SEALED 不可走; FLOOR/STAIRS/LAVA/OPEN/CLOSED 门可走
+// (CLOSED 视为可走 — Sim 自动开门, 执行层移动前 try_open_door_toward)
+TEST(DoorTruthTable, PassableSimMatrix) {
+    GameMap m{8, 3, 32};
+    for (int y = 0; y < 3; y++)
+        for (int x = 0; x < 8; x++)
+            m.set_tile(x, y, TileType::FLOOR);
+    m.set_tile(0, 1, TileType::WALL);
+    m.set_tile(1, 1, TileType::STAIRS_DOWN);
+    m.set_tile(2, 1, TileType::LAVA);
+    m.set_tile(3, 1, TileType::DOOR);   // OPEN (set_tile 默认 OPEN)
+    EXPECT_TRUE(m.is_passable_sim(0, 0));   // FLOOR
+    EXPECT_FALSE(m.is_passable_sim(0, 1));  // WALL
+    EXPECT_TRUE(m.is_passable_sim(1, 1));   // STAIRS
+    EXPECT_TRUE(m.is_passable_sim(2, 1));   // LAVA
+    EXPECT_TRUE(m.is_passable_sim(3, 1));   // DOOR OPEN
+    EXPECT_FALSE(m.is_passable_sim(-1, 0)); // 越界
+    EXPECT_FALSE(m.is_passable_sim(0, 99)); // 越界
+
+    // 门的四态
+    const std::vector<std::pair<DoorState, bool>> door_table = {
+        {DoorState::OPEN,   true },
+        {DoorState::CLOSED, true },   // Sim 可走 (自动开门语义)
+        {DoorState::LOCKED, false},
+        {DoorState::SEALED, false},
+    };
+    for (auto& [st, passable] : door_table) {
+        GameMap m2{4, 3, 32};
+        for (int y = 0; y < 3; y++)
+            for (int x = 0; x < 4; x++)
+                m2.set_tile(x, y, TileType::FLOOR);
+        m2.set_tile(1, 1, TileType::DOOR);
+        ASSERT_TRUE(m2.set_door_state(1, 1, st));
+        EXPECT_EQ(m2.is_passable_sim(1, 1), passable) << "state=" << name(st);
+    }
+}
+
 // ── 枚举值域不变量: 非 DOOR 恒 NONE, DOOR 恒在四态之内 ────────
 TEST(DoorTruthTable, EnumDomainInvariant_AllSeeds) {
     DungeonGenerator gen(MAP_WIDTH, MAP_HEIGHT, TILE_SIZE);
