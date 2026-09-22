@@ -2,151 +2,824 @@
   "version": 2,
   "source": "Kenney Tiny Dungeon (CC0) + Tiny Creatures (CC0)",
   "sprites": {
-    "player_default": { "file": "assets/sprites/player_fire.png",  "frame_w": 16, "frame_h": 16 },
-    "player_poison":  { "file": "assets/sprites/player_poison.png",  "frame_w": 16, "frame_h": 16 },
-    "player_ice":     { "file": "assets/sprites/player_ice.png",     "frame_w": 16, "frame_h": 16 },
-    "player_fire":    { "file": "assets/sprites/player_fire.png",    "frame_w": 16, "frame_h": 16 },
-    "mon_slime":      { "file": "assets/sprites/mon_slime.png",      "frame_w": 16, "frame_h": 16 },
-    "mon_orc":        { "file": "assets/sprites/mon_orc.png",        "frame_w": 16, "frame_h": 16 },
-    "mon_bomber":     { "file": "assets/sprites/mon_bomber.png",     "frame_w": 16, "frame_h": 16 },
-    "mon_tank":       { "file": "assets/sprites/mon_tank.png",       "frame_w": 16, "frame_h": 16 },
-    "mon_charger":    { "file": "assets/sprites/mon_charger.png",    "frame_w": 16, "frame_h": 16 },
-    "mon_summoner":   { "file": "assets/sprites/mon_summoner.png",   "frame_w": 16, "frame_h": 16 },
-    "mon_skeleton":   { "file": "assets/sprites/mon_skeleton.png",   "frame_w": 16, "frame_h": 16 },
-    "mon_shaman":     { "file": "assets/sprites/mon_shaman.png",     "frame_w": 16, "frame_h": 16 },
-    "mon_shadow_stalker":  { "file": "assets/sprites/mon_shadow_stalker.png",  "frame_w": 16, "frame_h": 16 },
-    "mon_fire_imp":        { "file": "assets/sprites/mon_fire_imp.png",        "frame_w": 16, "frame_h": 16 },
-    "mon_elite_orc":       { "file": "assets/sprites/mon_elite_orc.png",       "frame_w": 16, "frame_h": 16 },
-    "mon_shadow_assassin": { "file": "assets/sprites/mon_shadow_assassin.png", "frame_w": 16, "frame_h": 16 },
-    "mon_dark_mage":       { "file": "assets/sprites/mon_dark_mage.png",       "frame_w": 16, "frame_h": 16 },
-    "mon_void_walker":     { "file": "assets/sprites/mon_void_walker.png",     "frame_w": 16, "frame_h": 16 },
-    "mon_night_stalker":   { "file": "assets/sprites/mon_night_stalker.png",   "frame_w": 16, "frame_h": 16 },
-    "mon_ice_warden":      { "file": "assets/sprites/mon_ice_warden.png",      "frame_w": 16, "frame_h": 16 },
-    "mon_blood_leech":     { "file": "assets/sprites/mon_blood_leech.png",    "frame_w": 16, "frame_h": 16 },
-    "mon_archer":          { "file": "assets/sprites/mon_archer.png",          "frame_w": 16, "frame_h": 16 },
-    "mon_frost_slime":     { "file": "assets/sprites/mon_frost_slime.png",     "frame_w": 16, "frame_h": 16 },
-    "mon_elite_slime":     { "file": "assets/sprites/mon_elite_slime.png",     "frame_w": 16, "frame_h": 16 },
-    "mon_lightning_orb":   { "file": "assets/sprites/mon_lightning_orb.png",   "frame_w": 16, "frame_h": 16 },
-    "mon_poison_wyrm":     { "file": "assets/sprites/mon_poison_wyrm.png",     "frame_w": 16, "frame_h": 16 },
-    "mon_golem":           { "file": "assets/sprites/mon_golem.png",           "frame_w": 16, "frame_h": 16 },
-    "mon_necromancer":     { "file": "assets/sprites/mon_necromancer.png",     "frame_w": 16, "frame_h": 16 },
-    "mon_storm_elemental": { "file": "assets/sprites/mon_storm_elemental.png", "frame_w": 16, "frame_h": 16 },
-    "mon_blood_priest":    { "file": "assets/sprites/mon_blood_priest.png",    "frame_w": 16, "frame_h": 16 },
-    "mon_stone_guardian":  { "file": "assets/sprites/mon_stone_guardian.png",  "frame_w": 16, "frame_h": 16 },
-    "mon_iron_sentinel":   { "file": "assets/sprites/mon_iron_sentinel.png",   "frame_w": 16, "frame_h": 16 },
-    "mon_bone_soldier":    { "file": "assets/sprites/mon_bone_soldier.png",    "frame_w": 16, "frame_h": 16 },
-    "mon_skeleton_archer": { "file": "assets/sprites/mon_skeleton_archer.png", "frame_w": 16, "frame_h": 16 },
-    "mon_goblin_hunter":   { "file": "assets/sprites/mon_goblin_hunter.png",   "frame_w": 16, "frame_h": 16 },
-    "boss_f5":        { "file": "assets/sprites/boss_f5.png",        "frame_w": 16, "frame_h": 16 },
-    "boss_f10":       { "file": "assets/sprites/boss_f10.png",       "frame_w": 16, "frame_h": 16 },
-    "boss_shadow_knight": { "file": "assets/sprites/boss_shadow_knight.png", "frame_w": 16, "frame_h": 16 },
-    "boss_necromancer":   { "file": "assets/sprites/boss_necromancer.png",   "frame_w": 16, "frame_h": 16 },
-    "boss_vampire":       { "file": "assets/sprites/boss_vampire.png",       "frame_w": 16, "frame_h": 16 },
-    "boss_fire_demon":    { "file": "assets/sprites/boss_fire_demon.png",    "frame_w": 16, "frame_h": 16 },
-    "wall":           { "file": "assets/sprites/wall.png",           "frame_w": 16, "frame_h": 16 },
-    "floor":          { "file": "assets/sprites/floor.png",          "frame_w": 16, "frame_h": 16 },
-    "wall_prison":    { "file": "assets/sprites/wall_prison.png",    "frame_w": 16, "frame_h": 16 },
-    "wall_volcano":   { "file": "assets/sprites/wall_volcano.png",   "frame_w": 16, "frame_h": 16 },
-    "wall_abyss":     { "file": "assets/sprites/wall_abyss.png",     "frame_w": 16, "frame_h": 16 },
-    "floor_prison":   { "file": "assets/sprites/floor_prison.png",   "frame_w": 16, "frame_h": 16 },
-    "floor_volcano":  { "file": "assets/sprites/floor_volcano.png",  "frame_w": 16, "frame_h": 16 },
-    "floor_abyss":    { "file": "assets/sprites/floor_abyss.png",    "frame_w": 16, "frame_h": 16 },
-    "chest":          { "file": "assets/sprites/chest.png",          "frame_w": 16, "frame_h": 16 },
-    "spring_top":     { "file": "assets/sprites/spring_top.png",     "frame_w": 16, "frame_h": 16 },
-    "spring_bottom":  { "file": "assets/sprites/spring_bottom.png",  "frame_w": 16, "frame_h": 16 },
-    "altar":          { "file": "assets/sprites/altar.png",          "frame_w": 16, "frame_h": 16 },
-    "boss_self":      { "file": "assets/sprites/player_fire.png",    "frame_w": 16, "frame_h": 16 },
-    "npc_1":          { "file": "assets/sprites/npc_1.png",          "frame_w": 16, "frame_h": 16 },
-    "npc_2":          { "file": "assets/sprites/npc_2.png",          "frame_w": 16, "frame_h": 16 },
-    "npc_3":          { "file": "assets/sprites/npc_3.png",          "frame_w": 16, "frame_h": 16 },
-    "npc_blacksmith": { "file": "assets/sprites/npc_blacksmith.png", "frame_w": 16, "frame_h": 16 },
-    "weapon_dagger":  { "file": "assets/sprites/weapon_dagger.png",  "frame_w": 16, "frame_h": 16 },
-    "weapon_sword":   { "file": "assets/sprites/weapon_sword.png",   "frame_w": 16, "frame_h": 16 },
-    "weapon_spear":   { "file": "assets/sprites/weapon_spear.png",   "frame_w": 16, "frame_h": 16 },
-    "weapon_nunchaku": { "file": "assets/sprites/weapon_nunchaku.png", "frame_w": 16, "frame_h": 16 },
-    "weapon_crossbow": { "file": "assets/sprites/weapon_crossbow.png", "frame_w": 16, "frame_h": 16 },
-    "room_altar":      { "file": "assets/sprites/room_altar.png",      "frame_w": 16, "frame_h": 16 },
-    "room_chest":      { "file": "assets/sprites/room_chest.png",      "frame_w": 16, "frame_h": 16 },
-    "room_spring":     { "file": "assets/sprites/room_spring.png",     "frame_w": 16, "frame_h": 16 },
-    "room_shop":       { "file": "assets/sprites/room_shop.png",       "frame_w": 16, "frame_h": 16 },
-    "room_blacksmith": { "file": "assets/sprites/room_blacksmith.png", "frame_w": 16, "frame_h": 16 },
-    "room_library":    { "file": "assets/sprites/room_library.png",    "frame_w": 16, "frame_h": 16 },
-    "room_gambler":    { "file": "assets/sprites/room_gambler.png",    "frame_w": 16, "frame_h": 16 },
-    "room_shrine":     { "file": "assets/sprites/room_shrine.png",     "frame_w": 16, "frame_h": 16 },
-    "room_secret":     { "file": "assets/sprites/room_secret.png",     "frame_w": 16, "frame_h": 16 },
-    "item_armor_leather": { "file": "assets/sprites/item_armor_leather.png", "frame_w": 16, "frame_h": 16 },
-    "item_armor_chain":   { "file": "assets/sprites/item_armor_chain.png",   "frame_w": 16, "frame_h": 16 },
-    "item_armor_iron":    { "file": "assets/sprites/item_armor_iron.png",    "frame_w": 16, "frame_h": 16 },
-    "item_armor_scale":   { "file": "assets/sprites/item_armor_scale.png",   "frame_w": 16, "frame_h": 16 },
-    "item_armor_plate":   { "file": "assets/sprites/item_armor_plate.png",   "frame_w": 16, "frame_h": 16 },
-    "item_armor_rune":    { "file": "assets/sprites/item_armor_rune.png",    "frame_w": 16, "frame_h": 16 },
-    "item_armor_ice":     { "file": "assets/sprites/item_armor_ice.png",     "frame_w": 16, "frame_h": 16 },
-    "item_armor_robe":    { "file": "assets/sprites/item_armor_robe.png",    "frame_w": 16, "frame_h": 16 },
-    "item_potion_red":    { "file": "assets/sprites/item_potion_red.png",    "frame_w": 16, "frame_h": 16 },
-    "item_potion_blue":   { "file": "assets/sprites/item_potion_blue.png",   "frame_w": 16, "frame_h": 16 },
-    "item_charm":         { "file": "assets/sprites/item_charm.png",         "frame_w": 16, "frame_h": 16 }
+    "player_default": {
+      "file": "assets/sprites/player_fire.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "player_poison": {
+      "file": "assets/sprites/player_poison.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "player_ice": {
+      "file": "assets/sprites/player_ice.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "player_fire": {
+      "file": "assets/sprites/player_fire.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "mon_slime": {
+      "file": "assets/sprites/mon_slime.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "mon_orc": {
+      "file": "assets/sprites/mon_orc.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "mon_bomber": {
+      "file": "assets/sprites/mon_bomber.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "mon_tank": {
+      "file": "assets/sprites/mon_tank.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "mon_charger": {
+      "file": "assets/sprites/mon_charger.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "mon_summoner": {
+      "file": "assets/sprites/mon_summoner.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "mon_skeleton": {
+      "file": "assets/sprites/mon_skeleton.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "mon_shaman": {
+      "file": "assets/sprites/mon_shaman.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "mon_shadow_stalker": {
+      "file": "assets/sprites/mon_shadow_stalker.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "mon_fire_imp": {
+      "file": "assets/sprites/mon_fire_imp.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "mon_elite_orc": {
+      "file": "assets/sprites/mon_elite_orc.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "mon_shadow_assassin": {
+      "file": "assets/sprites/mon_shadow_assassin.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "mon_dark_mage": {
+      "file": "assets/sprites/mon_dark_mage.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "mon_void_walker": {
+      "file": "assets/sprites/mon_void_walker.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "mon_night_stalker": {
+      "file": "assets/sprites/mon_night_stalker.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "mon_ice_warden": {
+      "file": "assets/sprites/mon_ice_warden.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "mon_blood_leech": {
+      "file": "assets/sprites/mon_blood_leech.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "mon_archer": {
+      "file": "assets/sprites/mon_archer.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "mon_frost_slime": {
+      "file": "assets/sprites/mon_frost_slime.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "mon_elite_slime": {
+      "file": "assets/sprites/mon_elite_slime.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "mon_lightning_orb": {
+      "file": "assets/sprites/mon_lightning_orb.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "mon_poison_wyrm": {
+      "file": "assets/sprites/mon_poison_wyrm.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "mon_golem": {
+      "file": "assets/sprites/mon_golem.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "mon_necromancer": {
+      "file": "assets/sprites/mon_necromancer.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "mon_storm_elemental": {
+      "file": "assets/sprites/mon_storm_elemental.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "mon_blood_priest": {
+      "file": "assets/sprites/mon_blood_priest.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "mon_stone_guardian": {
+      "file": "assets/sprites/mon_stone_guardian.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "mon_iron_sentinel": {
+      "file": "assets/sprites/mon_iron_sentinel.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "mon_bone_soldier": {
+      "file": "assets/sprites/mon_bone_soldier.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "mon_skeleton_archer": {
+      "file": "assets/sprites/mon_skeleton_archer.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "mon_goblin_hunter": {
+      "file": "assets/sprites/mon_goblin_hunter.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "boss_f5": {
+      "file": "assets/sprites/boss_f5.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "boss_f10": {
+      "file": "assets/sprites/boss_f10.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "boss_shadow_knight": {
+      "file": "assets/sprites/boss_shadow_knight.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "boss_necromancer": {
+      "file": "assets/sprites/boss_necromancer.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "boss_vampire": {
+      "file": "assets/sprites/boss_vampire.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "boss_fire_demon": {
+      "file": "assets/sprites/boss_fire_demon.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "wall": {
+      "file": "assets/sprites/wall.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "floor": {
+      "file": "assets/sprites/floor.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "wall_prison": {
+      "file": "assets/sprites/wall_prison.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "wall_volcano": {
+      "file": "assets/sprites/wall_volcano.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "wall_abyss": {
+      "file": "assets/sprites/wall_abyss.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "floor_prison": {
+      "file": "assets/sprites/floor_prison.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "floor_volcano": {
+      "file": "assets/sprites/floor_volcano.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "floor_abyss": {
+      "file": "assets/sprites/floor_abyss.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "chest": {
+      "file": "assets/sprites/chest.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "spring_top": {
+      "file": "assets/sprites/spring_top.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "spring_bottom": {
+      "file": "assets/sprites/spring_bottom.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "altar": {
+      "file": "assets/sprites/altar.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "boss_self": {
+      "file": "assets/sprites/player_fire.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "npc_1": {
+      "file": "assets/sprites/npc_1.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "npc_2": {
+      "file": "assets/sprites/npc_2.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "npc_3": {
+      "file": "assets/sprites/npc_3.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "npc_blacksmith": {
+      "file": "assets/sprites/npc_blacksmith.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "weapon_dagger": {
+      "file": "assets/sprites/weapon_dagger.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "weapon_sword": {
+      "file": "assets/sprites/weapon_sword.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "weapon_spear": {
+      "file": "assets/sprites/weapon_spear.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "weapon_nunchaku": {
+      "file": "assets/sprites/weapon_nunchaku.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "weapon_crossbow": {
+      "file": "assets/sprites/weapon_crossbow.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "room_altar": {
+      "file": "assets/sprites/room_altar.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "room_chest": {
+      "file": "assets/sprites/room_chest.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "room_spring": {
+      "file": "assets/sprites/room_spring.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "room_shop": {
+      "file": "assets/sprites/room_shop.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "room_blacksmith": {
+      "file": "assets/sprites/room_blacksmith.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "room_library": {
+      "file": "assets/sprites/room_library.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "room_gambler": {
+      "file": "assets/sprites/room_gambler.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "room_shrine": {
+      "file": "assets/sprites/room_shrine.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "room_secret": {
+      "file": "assets/sprites/room_secret.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "item_armor_leather": {
+      "file": "assets/sprites/item_armor_leather.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "item_armor_chain": {
+      "file": "assets/sprites/item_armor_chain.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "item_armor_iron": {
+      "file": "assets/sprites/item_armor_iron.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "item_armor_scale": {
+      "file": "assets/sprites/item_armor_scale.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "item_armor_plate": {
+      "file": "assets/sprites/item_armor_plate.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "item_armor_rune": {
+      "file": "assets/sprites/item_armor_rune.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "item_armor_ice": {
+      "file": "assets/sprites/item_armor_ice.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "item_armor_robe": {
+      "file": "assets/sprites/item_armor_robe.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "item_potion_red": {
+      "file": "assets/sprites/item_potion_red.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "item_potion_blue": {
+      "file": "assets/sprites/item_potion_blue.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+    "item_charm": {
+      "file": "assets/sprites/item_charm.png",
+      "frame_w": 16,
+      "frame_h": 16
+    }
   },
   "assets": {
     "door": {
-      "open":   { "file": "assets/vendor/kenney_tiny_dungeon/Tiles/tile_0003.png", "source": "kenney_tiny_dungeon", "render": { "scale_base": 16 } },
-      "closed": { "file": "assets/vendor/kenney_tiny_dungeon/Tiles/tile_0022.png", "source": "kenney_tiny_dungeon", "render": { "scale_base": 16 } },
-      "locked": { "file": "assets/vendor/kenney_tiny_dungeon/Tiles/tile_0022.png", "source": "kenney_tiny_dungeon", "render": { "scale_base": 16, "overlay": "#B03030", "overlay_alpha": 0.35 } },
-      "sealed": { "file": "assets/vendor/kenney_tiny_dungeon/Tiles/tile_0018.png", "source": "kenney_tiny_dungeon", "render": { "scale_base": 16 } }
+      "open": {
+        "file": "assets/vendor/kenney_tiny_dungeon/Tiles/tile_0003.png",
+        "source": "kenney_tiny_dungeon",
+        "render": {
+          "scale_base": 16
+        }
+      },
+      "closed": {
+        "file": "assets/vendor/kenney_tiny_dungeon/Tiles/tile_0022.png",
+        "source": "kenney_tiny_dungeon",
+        "render": {
+          "scale_base": 16
+        }
+      },
+      "locked": {
+        "file": "assets/vendor/kenney_tiny_dungeon/Tiles/tile_0022.png",
+        "source": "kenney_tiny_dungeon",
+        "render": {
+          "scale_base": 16,
+          "overlay": "#B03030",
+          "overlay_alpha": 0.35
+        }
+      },
+      "sealed": {
+        "file": "assets/vendor/kenney_tiny_dungeon/Tiles/tile_0018.png",
+        "source": "kenney_tiny_dungeon",
+        "render": {
+          "scale_base": 16
+        }
+      }
     },
     "audio": {
-      "timestop":      { "file": "assets/jojo_timestop.mp3",  "source": "external", "fallback": "synth:bolt" },
-      "domain_expand": { "file": "assets/domain_expand.mp3", "source": "external" }
+      "timestop": {
+        "file": "assets/jojo_timestop.mp3",
+        "source": "external",
+        "fallback": "synth:bolt"
+      },
+      "domain_expand": {
+        "file": "assets/domain_expand.mp3",
+        "source": "external"
+      }
     }
   },
   "skeleton_parts": {
-    "player_part_head":   { "file": "assets/sprites/player_part_head.png",   "w": 22, "h": 20 },
-    "player_part_torso":  { "file": "assets/sprites/player_part_torso.png",  "w": 28, "h": 20 },
-    "player_part_arm":    { "file": "assets/sprites/player_part_arm.png",    "w": 11, "h": 16 },
-    "player_part_leg":    { "file": "assets/sprites/player_part_leg.png",    "w": 22, "h": 20 },
-    "player_part_weapon": { "file": "assets/sprites/player_part_weapon.png", "w": 6,  "h": 24 },
-    "mon_orc_part_head":   { "file": "assets/sprites/mon_orc_part_head.png",   "w": 22, "h": 20 },
-    "mon_orc_part_torso":  { "file": "assets/sprites/mon_orc_part_torso.png",  "w": 28, "h": 20 },
-    "mon_orc_part_arm":    { "file": "assets/sprites/mon_orc_part_arm.png",    "w": 9,  "h": 16 },
-    "mon_orc_part_leg":    { "file": "assets/sprites/mon_orc_part_leg.png",    "w": 12, "h": 20 },
-    "mon_orc_part_weapon": { "file": "assets/sprites/mon_orc_part_weapon.png", "w": 6,  "h": 24 },
-    "mon_elite_orc_part_head":   { "file": "assets/sprites/mon_elite_orc_part_head.png",   "w": 22, "h": 20 },
-    "mon_elite_orc_part_torso":  { "file": "assets/sprites/mon_elite_orc_part_torso.png",  "w": 28, "h": 20 },
-    "mon_elite_orc_part_arm":    { "file": "assets/sprites/mon_elite_orc_part_arm.png",    "w": 9,  "h": 16 },
-    "mon_elite_orc_part_leg":    { "file": "assets/sprites/mon_elite_orc_part_leg.png",    "w": 12, "h": 20 },
-    "mon_elite_orc_part_weapon": { "file": "assets/sprites/mon_elite_orc_part_weapon.png", "w": 6,  "h": 24 },
-    "mon_archer_part_head":   { "file": "assets/sprites/mon_archer_part_head.png",   "w": 22, "h": 20 },
-    "mon_archer_part_torso":  { "file": "assets/sprites/mon_archer_part_torso.png",  "w": 28, "h": 20 },
-    "mon_archer_part_arm":    { "file": "assets/sprites/mon_archer_part_arm.png",    "w": 9,  "h": 16 },
-    "mon_archer_part_leg":    { "file": "assets/sprites/mon_archer_part_leg.png",    "w": 12, "h": 20 },
-    "mon_archer_part_weapon": { "file": "assets/sprites/mon_archer_part_weapon.png", "w": 6,  "h": 24 },
-    "mon_shaman_part_head":   { "file": "assets/sprites/mon_shaman_part_head.png",   "w": 22, "h": 20 },
-    "mon_shaman_part_torso":  { "file": "assets/sprites/mon_shaman_part_torso.png",  "w": 28, "h": 20 },
-    "mon_shaman_part_arm":    { "file": "assets/sprites/mon_shaman_part_arm.png",    "w": 9,  "h": 16 },
-    "mon_shaman_part_leg":    { "file": "assets/sprites/mon_shaman_part_leg.png",    "w": 12, "h": 20 },
-    "mon_shaman_part_weapon": { "file": "assets/sprites/mon_shaman_part_weapon.png", "w": 6,  "h": 24 },
-    "mon_goblin_hunter_part_head":   { "file": "assets/sprites/mon_goblin_hunter_part_head.png",   "w": 22, "h": 20 },
-    "mon_goblin_hunter_part_torso":  { "file": "assets/sprites/mon_goblin_hunter_part_torso.png",  "w": 28, "h": 20 },
-    "mon_goblin_hunter_part_arm":    { "file": "assets/sprites/mon_goblin_hunter_part_arm.png",    "w": 9,  "h": 16 },
-    "mon_goblin_hunter_part_leg":    { "file": "assets/sprites/mon_goblin_hunter_part_leg.png",    "w": 12, "h": 20 },
-    "mon_goblin_hunter_part_weapon": { "file": "assets/sprites/mon_goblin_hunter_part_weapon.png", "w": 6,  "h": 24 },
-    "mon_tank_part_head":   { "file": "assets/sprites/mon_tank_part_head.png",   "w": 22, "h": 20 },
-    "mon_tank_part_torso":  { "file": "assets/sprites/mon_tank_part_torso.png",  "w": 28, "h": 20 },
-    "mon_tank_part_arm":    { "file": "assets/sprites/mon_tank_part_arm.png",    "w": 9,  "h": 16 },
-    "mon_tank_part_leg":    { "file": "assets/sprites/mon_tank_part_leg.png",    "w": 12, "h": 20 },
-    "mon_tank_part_weapon": { "file": "assets/sprites/mon_tank_part_weapon.png", "w": 6,  "h": 24 },
-    "mon_bone_soldier_part_head":   { "file": "assets/sprites/mon_bone_soldier_part_head.png",   "w": 22, "h": 20 },
-    "mon_bone_soldier_part_torso":  { "file": "assets/sprites/mon_bone_soldier_part_torso.png",  "w": 28, "h": 20 },
-    "mon_bone_soldier_part_arm":    { "file": "assets/sprites/mon_bone_soldier_part_arm.png",    "w": 9,  "h": 16 },
-    "mon_bone_soldier_part_leg":    { "file": "assets/sprites/mon_bone_soldier_part_leg.png",    "w": 12, "h": 20 },
-    "mon_bone_soldier_part_weapon": { "file": "assets/sprites/mon_bone_soldier_part_weapon.png", "w": 6,  "h": 24 },
-    "mon_skeleton_archer_part_head":   { "file": "assets/sprites/mon_skeleton_archer_part_head.png",   "w": 22, "h": 20 },
-    "mon_skeleton_archer_part_torso":  { "file": "assets/sprites/mon_skeleton_archer_part_torso.png",  "w": 28, "h": 20 },
-    "mon_skeleton_archer_part_arm":    { "file": "assets/sprites/mon_skeleton_archer_part_arm.png",    "w": 9,  "h": 16 },
-    "mon_skeleton_archer_part_leg":    { "file": "assets/sprites/mon_skeleton_archer_part_leg.png",    "w": 12, "h": 20 },
-    "mon_skeleton_archer_part_weapon": { "file": "assets/sprites/mon_skeleton_archer_part_weapon.png", "w": 6,  "h": 24 }
+    "player_part_head": {
+      "file": "assets/sprites/player_part_head.png",
+      "w": 22,
+      "h": 20
+    },
+    "player_part_torso": {
+      "file": "assets/sprites/player_part_torso.png",
+      "w": 28,
+      "h": 20
+    },
+    "player_part_arm": {
+      "file": "assets/sprites/player_part_arm.png",
+      "w": 11,
+      "h": 16
+    },
+    "player_part_leg": {
+      "file": "assets/sprites/player_part_leg.png",
+      "w": 22,
+      "h": 20
+    },
+    "player_part_weapon": {
+      "file": "assets/sprites/player_part_weapon.png",
+      "w": 6,
+      "h": 24
+    },
+    "mon_orc_part_head": {
+      "file": "assets/sprites/mon_orc_part_head.png",
+      "w": 22,
+      "h": 20
+    },
+    "mon_orc_part_torso": {
+      "file": "assets/sprites/mon_orc_part_torso.png",
+      "w": 28,
+      "h": 20
+    },
+    "mon_orc_part_arm": {
+      "file": "assets/sprites/mon_orc_part_arm.png",
+      "w": 9,
+      "h": 16
+    },
+    "mon_orc_part_leg": {
+      "file": "assets/sprites/mon_orc_part_leg.png",
+      "w": 12,
+      "h": 20
+    },
+    "mon_orc_part_weapon": {
+      "file": "assets/sprites/mon_orc_part_weapon.png",
+      "w": 6,
+      "h": 24
+    },
+    "mon_elite_orc_part_head": {
+      "file": "assets/sprites/mon_elite_orc_part_head.png",
+      "w": 22,
+      "h": 20
+    },
+    "mon_elite_orc_part_torso": {
+      "file": "assets/sprites/mon_elite_orc_part_torso.png",
+      "w": 28,
+      "h": 20
+    },
+    "mon_elite_orc_part_arm": {
+      "file": "assets/sprites/mon_elite_orc_part_arm.png",
+      "w": 9,
+      "h": 16
+    },
+    "mon_elite_orc_part_leg": {
+      "file": "assets/sprites/mon_elite_orc_part_leg.png",
+      "w": 12,
+      "h": 20
+    },
+    "mon_elite_orc_part_weapon": {
+      "file": "assets/sprites/mon_elite_orc_part_weapon.png",
+      "w": 6,
+      "h": 24
+    },
+    "mon_archer_part_head": {
+      "file": "assets/sprites/mon_archer_part_head.png",
+      "w": 22,
+      "h": 20
+    },
+    "mon_archer_part_torso": {
+      "file": "assets/sprites/mon_archer_part_torso.png",
+      "w": 28,
+      "h": 20
+    },
+    "mon_archer_part_arm": {
+      "file": "assets/sprites/mon_archer_part_arm.png",
+      "w": 9,
+      "h": 16
+    },
+    "mon_archer_part_leg": {
+      "file": "assets/sprites/mon_archer_part_leg.png",
+      "w": 12,
+      "h": 20
+    },
+    "mon_archer_part_weapon": {
+      "file": "assets/sprites/mon_archer_part_weapon.png",
+      "w": 6,
+      "h": 24
+    },
+    "mon_shaman_part_head": {
+      "file": "assets/sprites/mon_shaman_part_head.png",
+      "w": 22,
+      "h": 20
+    },
+    "mon_shaman_part_torso": {
+      "file": "assets/sprites/mon_shaman_part_torso.png",
+      "w": 28,
+      "h": 20
+    },
+    "mon_shaman_part_arm": {
+      "file": "assets/sprites/mon_shaman_part_arm.png",
+      "w": 9,
+      "h": 16
+    },
+    "mon_shaman_part_leg": {
+      "file": "assets/sprites/mon_shaman_part_leg.png",
+      "w": 12,
+      "h": 20
+    },
+    "mon_shaman_part_weapon": {
+      "file": "assets/sprites/mon_shaman_part_weapon.png",
+      "w": 6,
+      "h": 24
+    },
+    "mon_goblin_hunter_part_head": {
+      "file": "assets/sprites/mon_goblin_hunter_part_head.png",
+      "w": 22,
+      "h": 20
+    },
+    "mon_goblin_hunter_part_torso": {
+      "file": "assets/sprites/mon_goblin_hunter_part_torso.png",
+      "w": 28,
+      "h": 20
+    },
+    "mon_goblin_hunter_part_arm": {
+      "file": "assets/sprites/mon_goblin_hunter_part_arm.png",
+      "w": 9,
+      "h": 16
+    },
+    "mon_goblin_hunter_part_leg": {
+      "file": "assets/sprites/mon_goblin_hunter_part_leg.png",
+      "w": 12,
+      "h": 20
+    },
+    "mon_goblin_hunter_part_weapon": {
+      "file": "assets/sprites/mon_goblin_hunter_part_weapon.png",
+      "w": 6,
+      "h": 24
+    },
+    "mon_tank_part_head": {
+      "file": "assets/sprites/mon_tank_part_head.png",
+      "w": 22,
+      "h": 20
+    },
+    "mon_tank_part_torso": {
+      "file": "assets/sprites/mon_tank_part_torso.png",
+      "w": 28,
+      "h": 20
+    },
+    "mon_tank_part_arm": {
+      "file": "assets/sprites/mon_tank_part_arm.png",
+      "w": 9,
+      "h": 16
+    },
+    "mon_tank_part_leg": {
+      "file": "assets/sprites/mon_tank_part_leg.png",
+      "w": 12,
+      "h": 20
+    },
+    "mon_tank_part_weapon": {
+      "file": "assets/sprites/mon_tank_part_weapon.png",
+      "w": 6,
+      "h": 24
+    },
+    "mon_bone_soldier_part_head": {
+      "file": "assets/sprites/mon_bone_soldier_part_head.png",
+      "w": 22,
+      "h": 20
+    },
+    "mon_bone_soldier_part_torso": {
+      "file": "assets/sprites/mon_bone_soldier_part_torso.png",
+      "w": 28,
+      "h": 20
+    },
+    "mon_bone_soldier_part_arm": {
+      "file": "assets/sprites/mon_bone_soldier_part_arm.png",
+      "w": 9,
+      "h": 16
+    },
+    "mon_bone_soldier_part_leg": {
+      "file": "assets/sprites/mon_bone_soldier_part_leg.png",
+      "w": 12,
+      "h": 20
+    },
+    "mon_bone_soldier_part_weapon": {
+      "file": "assets/sprites/mon_bone_soldier_part_weapon.png",
+      "w": 6,
+      "h": 24
+    },
+    "mon_skeleton_archer_part_head": {
+      "file": "assets/sprites/mon_skeleton_archer_part_head.png",
+      "w": 22,
+      "h": 20
+    },
+    "mon_skeleton_archer_part_torso": {
+      "file": "assets/sprites/mon_skeleton_archer_part_torso.png",
+      "w": 28,
+      "h": 20
+    },
+    "mon_skeleton_archer_part_arm": {
+      "file": "assets/sprites/mon_skeleton_archer_part_arm.png",
+      "w": 9,
+      "h": 16
+    },
+    "mon_skeleton_archer_part_leg": {
+      "file": "assets/sprites/mon_skeleton_archer_part_leg.png",
+      "w": 12,
+      "h": 20
+    },
+    "mon_skeleton_archer_part_weapon": {
+      "file": "assets/sprites/mon_skeleton_archer_part_weapon.png",
+      "w": 6,
+      "h": 24
+    },
+    "mon_slime_part_torso": {
+      "file": "assets/sprites/mon_slime_part_torso.png",
+      "w": 28,
+      "h": 20
+    },
+    "mon_slime_part_head": {
+      "file": "assets/sprites/mon_slime_part_head.png",
+      "w": 22,
+      "h": 20
+    },
+    "mon_slime_part_arm": {
+      "file": "assets/sprites/mon_slime_part_arm.png",
+      "w": 11,
+      "h": 16
+    },
+    "mon_slime_part_leg": {
+      "file": "assets/sprites/mon_slime_part_leg.png",
+      "w": 22,
+      "h": 20
+    },
+    "mon_slime_part_weapon": {
+      "file": "assets/sprites/mon_slime_part_weapon.png",
+      "w": 6,
+      "h": 24
+    },
+    "mon_bomber_part_torso": {
+      "file": "assets/sprites/mon_bomber_part_torso.png",
+      "w": 28,
+      "h": 20
+    },
+    "mon_bomber_part_head": {
+      "file": "assets/sprites/mon_bomber_part_head.png",
+      "w": 22,
+      "h": 20
+    },
+    "mon_bomber_part_arm": {
+      "file": "assets/sprites/mon_bomber_part_arm.png",
+      "w": 11,
+      "h": 16
+    },
+    "mon_bomber_part_leg": {
+      "file": "assets/sprites/mon_bomber_part_leg.png",
+      "w": 22,
+      "h": 20
+    },
+    "mon_bomber_part_weapon": {
+      "file": "assets/sprites/mon_bomber_part_weapon.png",
+      "w": 6,
+      "h": 24
+    },
+    "mon_elite_slime_part_torso": {
+      "file": "assets/sprites/mon_elite_slime_part_torso.png",
+      "w": 28,
+      "h": 20
+    },
+    "mon_elite_slime_part_head": {
+      "file": "assets/sprites/mon_elite_slime_part_head.png",
+      "w": 22,
+      "h": 20
+    },
+    "mon_elite_slime_part_arm": {
+      "file": "assets/sprites/mon_elite_slime_part_arm.png",
+      "w": 11,
+      "h": 16
+    },
+    "mon_elite_slime_part_leg": {
+      "file": "assets/sprites/mon_elite_slime_part_leg.png",
+      "w": 22,
+      "h": 20
+    },
+    "mon_elite_slime_part_weapon": {
+      "file": "assets/sprites/mon_elite_slime_part_weapon.png",
+      "w": 6,
+      "h": 24
+    },
+    "mon_frost_slime_part_torso": {
+      "file": "assets/sprites/mon_frost_slime_part_torso.png",
+      "w": 28,
+      "h": 20
+    },
+    "mon_frost_slime_part_head": {
+      "file": "assets/sprites/mon_frost_slime_part_head.png",
+      "w": 22,
+      "h": 20
+    },
+    "mon_frost_slime_part_arm": {
+      "file": "assets/sprites/mon_frost_slime_part_arm.png",
+      "w": 11,
+      "h": 16
+    },
+    "mon_frost_slime_part_leg": {
+      "file": "assets/sprites/mon_frost_slime_part_leg.png",
+      "w": 22,
+      "h": 20
+    },
+    "mon_frost_slime_part_weapon": {
+      "file": "assets/sprites/mon_frost_slime_part_weapon.png",
+      "w": 6,
+      "h": 24
+    },
+    "mon_blood_leech_part_torso": {
+      "file": "assets/sprites/mon_blood_leech_part_torso.png",
+      "w": 28,
+      "h": 20
+    },
+    "mon_blood_leech_part_head": {
+      "file": "assets/sprites/mon_blood_leech_part_head.png",
+      "w": 22,
+      "h": 20
+    },
+    "mon_blood_leech_part_arm": {
+      "file": "assets/sprites/mon_blood_leech_part_arm.png",
+      "w": 11,
+      "h": 16
+    },
+    "mon_blood_leech_part_leg": {
+      "file": "assets/sprites/mon_blood_leech_part_leg.png",
+      "w": 22,
+      "h": 20
+    },
+    "mon_blood_leech_part_weapon": {
+      "file": "assets/sprites/mon_blood_leech_part_weapon.png",
+      "w": 6,
+      "h": 24
+    }
   },
   "lifecycle": {
-    "vendor_candidate": ["assets/vendor/tiny_creatures", "assets/vendor/kenney_tiny_dungeon"],
+    "vendor_candidate": [
+      "assets/vendor/tiny_creatures",
+      "assets/vendor/kenney_tiny_dungeon"
+    ],
     "deprecated": []
   }
 }

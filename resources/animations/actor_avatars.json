@@ -31,6 +31,26 @@
     "mon_skeleton_archer": {
       "skeleton": "resources/animations/mon_skeleton_archer_skeleton.json",
       "anim": "resources/animations/player_anim.json"
+    },
+    "mon_slime": {
+      "skeleton": "resources/animations/mon_slime_skeleton.json",
+      "anim": "resources/animations/player_anim.json"
+    },
+    "mon_bomber": {
+      "skeleton": "resources/animations/mon_bomber_skeleton.json",
+      "anim": "resources/animations/player_anim.json"
+    },
+    "mon_elite_slime": {
+      "skeleton": "resources/animations/mon_elite_slime_skeleton.json",
+      "anim": "resources/animations/player_anim.json"
+    },
+    "mon_frost_slime": {
+      "skeleton": "resources/animations/mon_frost_slime_skeleton.json",
+      "anim": "resources/animations/player_anim.json"
+    },
+    "mon_blood_leech": {
+      "skeleton": "resources/animations/mon_blood_leech_skeleton.json",
+      "anim": "resources/animations/player_anim.json"
     }
   }
 }
