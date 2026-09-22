@@ -849,21 +849,9 @@ float DecisionAgent::_evaluate_move(int dir, const Player* p,
     if (step < 0) step = _bfs_toward(p, monsters, map, false);
     if (step < 0) step = _greedy_step(p, t, map);
     if (step < 0) { sim_bfs_fail++; return 0.0f; }
-
-    // Q3.2: 路径记忆 — 同一目标沿用上次实际走的步, 消除 BFS 等权震荡
-    if (t && _mem_target == t->instance_id && _mem_step >= 0) {
-        float mdx = (_mem_step == 2) ? -32.0f : (_mem_step == 3) ? 32.0f : 0.0f;
-        float mdy = (_mem_step == 0) ? -32.0f : (_mem_step == 1) ? 32.0f : 0.0f;
-        Rectangle mr = p->entity.rect;
-        mr.x += mdx; mr.y += mdy;
-        float nd = hypotf(ex - (px + mdx), ey - (py + mdy));
-        // G14b: 等距也保持记忆 (nd <= d+ε) — 原 nd < d 对对称双路径不锁定 →
-        //       玩家在等距格间往返震荡 (tile14↔16). ε 容忍浮点等值噪声.
-        if (map->is_rect_walkable(mr) && nd <= d + 0.01f) {
-            if (dir == _mem_step) sim_move_branch[3]++;  // G14: 路径记忆也是 appr
-            return (dir == _mem_step) ? 0.8f : 0.0f;
-        }
-    }
+    // P1-C7b: 统一稳定步 — 与 _stuck_escape 共用 _pick_stable_bfs_step (同 _mem_*),
+    //          替代原 0.8 记忆块 (两套记忆交替写入互相污染 → stuck/常规切换震荡)
+    step = _pick_stable_bfs_step(p, monsters, map, step);
     if (dir == step) sim_move_branch[3]++;
     return (dir == step) ? 0.6f : 0.0f;
 }
