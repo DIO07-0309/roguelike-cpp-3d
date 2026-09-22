@@ -21,6 +21,37 @@ static void _exec_scatter(Monster* self, Player* player, std::vector<Effect>* ef
                           int monster_room, int player_room);
 static void _exec_guard_aura(Monster* self, std::vector<Monster*>* all, std::vector<Effect>* effects, MonsterSkillState& sk);
 
+// G5.5: 怪物攻击事件 (Q4.4: AI 层经事件总线解耦音效, ranged=1 弹道/0 近战)
+static void _emit_monster_attack(Monster* self, bool ranged) {
+    EventBus::inst().emit(GameEventType::MONSTER_ATTACK, self,
+                          ranged ? 1 : 0, 0.0f, nullptr);
+}
+
+// G5.5: 近攻反馈 — 攻击事件 + 怪物→玩家命中拖尾特效
+static void _push_melee_attack_feedback(Monster* self, Player* player,
+                                        std::vector<Effect>* effects) {
+    _emit_monster_attack(self, false);
+    if (!effects) return;
+    VFXServer vfx;
+    vfx.monster_attack(
+        self->entity.rect.x + self->entity.rect.width/2,
+        self->entity.rect.y + self->entity.rect.height/2,
+        player->entity.rect.x + player->entity.rect.width/2,
+        player->entity.rect.y + player->entity.rect.height/2,
+        self->color);
+    for (auto& e : vfx.effects) effects->push_back(e);
+}
+
+// G5.5: 施法起手预警环 (弹道类攻击共用)
+static void _push_cast_vfx(Monster* self, std::vector<Effect>* effects) {
+    if (!effects) return;
+    VFXServer vfx;
+    vfx.ring(self->entity.rect.x + self->entity.rect.width/2,
+             self->entity.rect.y + self->entity.rect.height/2,
+             16.0f, {255, 200, 60, 160}, 1, 0.40f);
+    for (auto& e : vfx.effects) effects->push_back(e);
+}
+
 MonsterAI::MonsterAI(float sight, float speed, float patrol, float attack)
     : sight_range(sight), move_speed(speed), patrol_interval(patrol),
       attack_range(attack) {
@@ -220,7 +251,7 @@ void MonsterAI::update(Monster* self, Player* player, GameMap* map,
     else if (state == AIState::CHASE)
         _execute_chase(self, player, map, (float)dt);
     else if (state == AIState::ATTACK)
-        _execute_attack(self, player, gt, effects);
+        _execute_attack(self, player, map, dt, gt, effects);
 }
 
 void MonsterAI::_decide_state(Monster* self, Player* player) {
@@ -272,7 +303,33 @@ void MonsterAI::_execute_chase(Monster* self, Player* player, GameMap* map, doub
     float dy = player->entity.rect.y + player->entity.rect.height/2
              - self->entity.rect.y - self->entity.rect.height/2;
     float dist = sqrtf(dx*dx + dy*dy);
+
+    // AI 优化：更新记忆（玩家可见时）
+    if (dist <= sight_range * 32.0f) {
+        update_memory(player->entity.rect.x + player->entity.rect.width/2,
+                     player->entity.rect.y + player->entity.rect.height/2,
+                     3.0f);  // 记忆持续 3 秒
+    }
+
+    // 记忆计时器递减
+    tick_memory((float)dt);
+
+    // 如果玩家离开视野，但记忆有效，向最后已知位置移动
+    float target_x, target_y;
+    if (dist > sight_range * 32.0f && memory_valid()) {
+        target_x = memory_x;
+        target_y = memory_y;
+    } else {
+        target_x = player->entity.rect.x + player->entity.rect.width/2;
+        target_y = player->entity.rect.y + player->entity.rect.height/2;
+    }
+
+    // 计算到目标的方向
+    dx = target_x - (self->entity.rect.x + self->entity.rect.width/2);
+    dy = target_y - (self->entity.rect.y + self->entity.rect.height/2);
+    dist = sqrtf(dx*dx + dy*dy);
     if (dist < 1) return;
+
     // B14: Archer 保持距离 — 玩家太近时后退
     if (self->monster_type == MonsterType::ARCHER && dist < 3.0f * 32.0f) {
         _apply_movement(self, map, -dx / dist, -dy / dist, dt);
@@ -281,46 +338,126 @@ void MonsterAI::_execute_chase(Monster* self, Player* player, GameMap* map, doub
     _apply_movement(self, map, dx / dist, dy / dist, dt);
 }
 
-void MonsterAI::_execute_attack(Monster* self, Player* player, double gt,
-                                 std::vector<Effect>* effects) {
+// G5.5: 普攻分发器 — 弹道怪走射弹, 近战怪按 attack_pattern 分支
+void MonsterAI::_execute_attack(Monster* self, Player* player, GameMap* map,
+                                double dt, double gt, std::vector<Effect>* effects) {
+    _tick_pending_strikes(self, player, dt, gt, effects);
+    if (_lunge_left > 0.0f) { _attack_lunge(self, player, map, dt, gt, effects); return; }
     if (!self->can_attack(gt)) return;
     if (_monster_room >= 0 && _player_room >= 0 && _monster_room != _player_room) return;
 
-    // D2: Projectile-based ranged attack
     if (self->uses_projectile && self->projectiles_ptr) {
-        int dmg = calculate_damage(get_effective_attack(self),
-            player->combat.get_effective_defense(self->attack_type),
-            self->attack_type);
-        auto p = ProjectileFactory::enemy_projectile(self, player, dmg,
-            self->projectile_speed, self->projectile_warning_time,
-            (WarningLevel)self->projectile_warning_level);
-        self->projectiles_ptr->push_back(p);
-        self->last_attack_time = (float)gt;
-        EventBus::inst().emit(GameEventType::MONSTER_ATTACK, self, 1, 0.0f, nullptr);  // Q4.4
-        // Warning VFX at firing source
-        if (effects) {
-            VFXServer vfx;
-            float cx = self->entity.rect.x + self->entity.rect.width/2;
-            float cy = self->entity.rect.y + self->entity.rect.height/2;
-            vfx.ring(cx, cy, 16.0f, {255,200,60,160}, 1, 0.40f);
-            for (auto& e : vfx.effects) effects->push_back(e);
-        }
+        if (attack_pattern == MonsterAttackPattern::SPREAD)
+            _attack_spread(self, player, gt, effects);
+        else
+            _fire_projectile(self, player, gt, effects);
         return;
     }
 
-    // Original melee instant-attack
+    switch (attack_pattern) {
+    case MonsterAttackPattern::CLEAVE:
+        _attack_cleave(self, player, map, gt, effects);
+        break;
+    case MonsterAttackPattern::DOUBLE_STRIKE:
+        self->attack_target(player, gt);
+        _push_melee_attack_feedback(self, player, effects);
+        _pending_strikes = 1;
+        _strike_gap = 0.25f;
+        break;
+    case MonsterAttackPattern::LUNGE:
+        _attack_lunge(self, player, map, dt, gt, effects);
+        break;
+    default:
+        self->attack_target(player, gt);
+        _push_melee_attack_feedback(self, player, effects);
+        break;
+    }
+}
+
+// G5.5: DOUBLE_STRIKE 补段 — 到点打出第二段 (不受普攻冷却门控)
+void MonsterAI::_tick_pending_strikes(Monster* self, Player* player, double dt,
+                                      double gt, std::vector<Effect>* effects) {
+    if (_pending_strikes <= 0) return;
+    _strike_gap -= (float)dt;
+    if (_strike_gap > 0.0f) return;
+    _pending_strikes = 0;
+    if (_monster_room >= 0 && _player_room >= 0 && _monster_room != _player_room) return;
     self->attack_target(player, gt);
-    EventBus::inst().emit(GameEventType::MONSTER_ATTACK, self, 0, 0.0f, nullptr);  // Q4.4
+    _push_melee_attack_feedback(self, player, effects);
+}
+
+// G5.5: LUNGE — 首次调用启动短冲刺; 冲刺中每帧推进, 末段自动命中
+void MonsterAI::_attack_lunge(Monster* self, Player* player, GameMap* map,
+                              double dt, double gt, std::vector<Effect>* effects) {
+    if (_lunge_left <= 0.0f) {
+        float dx = player->entity.rect.x + player->entity.rect.width/2
+                 - self->entity.rect.x - self->entity.rect.width/2;
+        float dy = player->entity.rect.y + player->entity.rect.height/2
+                 - self->entity.rect.y - self->entity.rect.height/2;
+        float len = sqrtf(dx*dx + dy*dy);
+        if (len < 1.0f) return;
+        _lunge_dir = {dx/len, dy/len};
+        _lunge_left = 0.18f;
+        _lunge_hit_pending = true;
+        return;
+    }
+    _lunge_left -= (float)dt;
+    _apply_movement(self, map, _lunge_dir.x, _lunge_dir.y, dt * 2.5f);
+    if (_lunge_left > 0.0f) return;
+    if (!_lunge_hit_pending) return;
+    _lunge_hit_pending = false;
+    self->attack_target(player, gt);
+    _push_melee_attack_feedback(self, player, effects);
+}
+
+// G5.5: CLEAVE — 1.5x 顺劈 + 沿命中方向击退 (复用 attack_target 统一触发规则)
+void MonsterAI::_attack_cleave(Monster* self, Player* player, GameMap* map,
+                               double gt, std::vector<Effect>* effects) {
+    self->attack_target(player, gt, 1.5f);
+    _emit_monster_attack(self, false);
+    float dx = player->entity.rect.x - self->entity.rect.x;
+    float dy = player->entity.rect.y - self->entity.rect.y;
+    float len = sqrtf(dx*dx + dy*dy);
+    if (len > 1.0f)
+        clamp_displacement(player->entity, dx/len * 24.0f, dy/len * 24.0f, map);
     if (effects) {
         VFXServer vfx;
-        vfx.monster_attack(
-            self->entity.rect.x + self->entity.rect.width/2,
-            self->entity.rect.y + self->entity.rect.height/2,
-            player->entity.rect.x + player->entity.rect.width/2,
-            player->entity.rect.y + player->entity.rect.height/2,
-            self->color);
+        float mx = self->entity.rect.x + self->entity.rect.width/2;
+        float my = self->entity.rect.y + self->entity.rect.height/2;
+        vfx.slash_arc(mx, my, Direction::DOWN, 40.0f, self->color);
+        vfx.spark_burst(mx, my, 8, self->color);
         for (auto& e : vfx.effects) effects->push_back(e);
     }
+}
+
+// G5.5: SPREAD — 扇形 3 发散射 (弹道池注入)
+void MonsterAI::_attack_spread(Monster* self, Player* player,
+                               double gt, std::vector<Effect>* effects) {
+    int dmg = calculate_damage(get_effective_attack(self),
+                               player->combat.get_effective_defense(self->attack_type),
+                               self->attack_type);
+    auto shots = ProjectileFactory::spread_shot(self, player, 3, 30.0f, dmg,
+        self->projectile_speed, self->projectile_warning_time,
+        (WarningLevel)self->projectile_warning_level);
+    for (auto& p : shots) self->projectiles_ptr->insert(p);
+    self->last_attack_time = (float)gt;
+    _emit_monster_attack(self, true);
+    _push_cast_vfx(self, effects);
+}
+
+// G5.5: 单发弹道普攻 (原 D2 逻辑, 抽出复用)
+void MonsterAI::_fire_projectile(Monster* self, Player* player,
+                                 double gt, std::vector<Effect>* effects) {
+    int dmg = calculate_damage(get_effective_attack(self),
+                               player->combat.get_effective_defense(self->attack_type),
+                               self->attack_type);
+    auto p = ProjectileFactory::enemy_projectile(self, player, dmg,
+        self->projectile_speed, self->projectile_warning_time,
+        (WarningLevel)self->projectile_warning_level);
+    self->projectiles_ptr->insert(p);
+    self->last_attack_time = (float)gt;
+    _emit_monster_attack(self, true);
+    _push_cast_vfx(self, effects);
 }
 
 void MonsterAI::_apply_movement(Monster* self, GameMap* map, float mx, float my, double dt) {

@@ -54,6 +54,8 @@ struct EnemyDef {
     std::string role_str;         // "none" | "frontline" | "backline" | ...
     std::string attack_type_str;  // "physical" | "magical"
     std::string ai_archetype;     // G5.3: "default"|"bomber"|"shaman"|"sniper"|"controller"|"ambush"|"guardian"|"charger"|"summoner"
+    // G5.5: 普攻模式 "basic"|"double_strike"|"cleave"|"lunge"|"spread" (空=按类型回退)
+    std::string attack_pattern_str;
 
     float attack_cooldown = 1.5f;
 

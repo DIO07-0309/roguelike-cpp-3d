@@ -22,6 +22,7 @@ class PlayerAvatar;   // A5: 渲染路径懒建, 仅前向声明
 #include "interaction_handler.h"
 #include "floor_manager.h"
 #include "combat_coordinator.h"
+#include "object_pool.h"
 #include "build_score.h"
 #include "event_system.h"
 #include "floor_narrative.h"
@@ -173,7 +174,8 @@ public:
     std::vector<Effect> active_effects;
 
     // D2: Unified projectiles (PLAYER + MONSTER + ENVIRONMENT)
-    std::vector<Projectile> projectiles;
+    // G11: 索引槽位对象池 — acquire/release O(1), 免每帧 erase-remove 搬移
+    Game::ObjectPool<Projectile> projectiles{512};
 
     // 信号
     Object::Signal<> on_floor_cleared;

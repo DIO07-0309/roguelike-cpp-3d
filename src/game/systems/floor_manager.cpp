@@ -41,41 +41,49 @@ static const char* _pick_monster_type(const FloorConfig& cfg) {
     return "slime";
 }
 
+// G14: 单怪生成尝试 — 校验 tile 可走/非门/非锁门 + rect 级可走 + 距出生房 3 格
+//      原缺陷: 只查 is_walkable(tile), OPEN 门可落怪 → 怪占门位, Room Encounter
+//      门组 LOCKED 后怪被锁进异常位置 (sim stuck# 怪 tile 异常根因之一)
+static bool _try_place_monster(GameMap* map, int stx, int sty,
+                               const std::pair<int,int>& spawn_room,
+                               const FloorConfig& cfg, const GrowthCurve& gc,
+                               std::vector<std::unique_ptr<Monster>>& out_monsters) {
+    if (map->tile_at(stx, sty) == TileType::DOOR) return false;      // 门 tile 不落怪
+    DoorState ds = map->door_state_at(stx, sty);
+    if (ds == DoorState::LOCKED || ds == DoorState::SEALED) return false;
+    float d0 = hypotf((float)(stx - spawn_room.first),
+                      (float)(sty - spawn_room.second));
+    if (d0 <= 3.0f) return false;                                    // 出生房半径内不落
+    Rectangle r = { (float)(stx * 32), (float)(sty * 32), 32.0f, 32.0f };
+    if (!map->is_rect_walkable(r)) return false;                     // rect 级最终校验
+    auto [px, py] = map->tile_to_pixel(stx, sty);
+    const char* type = _pick_monster_type(cfg);
+    auto* m = spawn_monster(px, py, type);
+    m->combat.max_hp = (int)(m->combat.max_hp * gc.monster_hp);
+    m->combat.current_hp = m->combat.max_hp;
+    m->combat.attack = (int)(m->combat.attack * gc.monster_atk);
+    m->entity.sync_rect();
+    if (m->ai) m->ai->team_coop_chance = cfg.team_coop_chance;
+    out_monsters.emplace_back(m);
+    return true;
+}
+
 void FloorManager::spawn_floor_monsters(int floor_number, GameMap* map,
                                          std::vector<std::unique_ptr<Monster>>& out_monsters,
                                          const std::vector<std::pair<int,int>>& rooms) {
     const FloorConfig* cfg = get_floor_config(floor_number);
-    // D4.6: HP/ATK 从统一 GrowthCurveSystem 读取 (不再使用 cfg->hp_mult/atk_mult)
     const GrowthCurve& gc = g_growth.curve(floor_number);
-    float hp_m  = gc.monster_hp;
-    float atk_m = gc.monster_atk;
     int count = cfg->monster_count;
 
-    // P1-A4-fix: 出生房(rooms[0] = 玩家落点)永不刷怪 — 安全屋惯例.
-    // 原缺陷: ri % rooms.size() 取模环绕后落回 rooms[0], 怪刷在玩家落点,
-    // 开局即被围殴 (20局冒烟: 19局出生房围杀零输出, M4 基线 DEATH_MONSTER 62% 直接死因)
+    // P1-A4-fix: 出生房(rooms[0])永不刷怪 — 安全屋惯例 (原取模环绕落回出生房)
     const int room_count = (int)rooms.size();
-    if (room_count < 2) return;   // 只有出生房 → 不刷 (理论不该发生, 防御)
+    if (room_count < 2) return;   // 只有出生房 → 不刷 (防御)
     int ri = 1;
     while ((int)out_monsters.size() < count && ri < 500) {
-        auto [tx, ty] = rooms[1 + (ri % (room_count - 1))];   // 轮询 rooms[1..N-1]
+        auto [tx, ty] = rooms[1 + (ri % (room_count - 1))];   // 房间中心 + 随机偏移
         int off_x = (int)(rng() % 5) - 2;
         int off_y = (int)(rng() % 5) - 2;
-        int stx = tx + off_x, sty = ty + off_y;
-        // 双保险: 距出生房中心 3 格内不落怪 (偏移可能蹭进出生房边缘)
-        float d0 = hypotf((float)(stx - rooms[0].first),
-                          (float)(sty - rooms[0].second));
-        if (map->is_walkable(stx, sty) && d0 > 3.0f) {
-            auto [px, py] = map->tile_to_pixel(stx, sty);
-            const char* type = _pick_monster_type(*cfg);
-            auto* m = spawn_monster(px, py, type);
-            m->combat.max_hp = (int)(m->combat.max_hp * hp_m);
-            m->combat.current_hp = m->combat.max_hp;
-            m->combat.attack = (int)(m->combat.attack * atk_m);
-            m->entity.sync_rect();
-            if (m->ai) m->ai->team_coop_chance = cfg->team_coop_chance;
-            out_monsters.emplace_back(m);
-        }
+        _try_place_monster(map, tx + off_x, ty + off_y, rooms[0], *cfg, gc, out_monsters);
         ri++;
     }
 }

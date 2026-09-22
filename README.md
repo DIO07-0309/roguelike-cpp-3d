@@ -125,6 +125,35 @@ F15 镜像 Boss 读你的行为画像（攻防倾向/走位偏好/技能习惯�
 - 素材工具：`conda run python tools/gen_player_knight_parts.py` 默认生成到 `reports/player_knight_parts/`；确认预览后才用 `--output-dir assets/sprites` 更新分件。`conda run python tools/anim_preview.py` 默认写 `reports/anim_preview.png`，拒绝覆盖原骑士及正式分件。固定 Pillow 环境下生成确定；离线预览不含镜像、受击/翻滚 overlay、残影和 3D 光照，不能代替实机验收。
 - A6-S1（开发版，未发布）：玩家骨骼渲染泛化为全实体通用引擎 `SkeletonAvatar`（组合复用，PlayerAvatar 行为零变化）；新增数据驱动皮肤白名单 `resources/animations/actor_avatars.json` + `actor_avatar_defs` 加载器（缺省/空 = 全回退旧 sprite）；Monster 懒挂皮肤（仅渲染路径，sim/无头不触达），`monster_anim_input` 纯函数信号映射（moving=AI CHASE、attacking=0.25s 挥砍窗、hit=hp 下降沿、recovery=1.0）。首版白名单为空 → 游戏内零视觉变化：48 项动画测试、63 项 CTest、World Validator 0/0、`--sim 12 --sim-seed 3` 报告与基线逐字节一致、2D/3D 隔离截图差异低于旧版自对拍噪声底。
 - A6-S2 批次1（开发版，未发布）：人形族 8 怪（兽人/精英兽人/哥布林弓手/萨满/猎手/重甲守卫/骨兵/骨骼弓手）接入骨骼——`tools/gen_mon_humanoid_parts.py` 参数化族生成器（4 体型 × 独立色板，深紫褐描边风格统一），每怪 5 件沿用骑士 rig 尺寸契约；8 份 `mon_*_skeleton.json` 克隆玩家 rig，动画共用 `player_anim.json`；白名单登记 8 键，未迁移怪（史莱姆族等）保持旧贴图。隔离 2D/HD-2D 实机截图确认骨骼怪渲染/镜像/脚贴地正常；sim 逐字节一致。后续批次：软体族、浮灵/魔像族、Boss/影武者/NPC。
+- G5.5（开发版，未发布）：怪物 AI 与渲染性能优化批次。
+  - **怪物记忆系统**：`MonsterAI` 新增记忆三元组（last-known 玩家位置 + 3 秒衰减），玩家离开视野后仍向最后已知位置推进，消除"贴脸才追"的空转感。
+  - **普攻模式多样化**：新增 `MonsterAttackPattern`（basic/double_strike/cleave/lunge/spread），`enemies.json` 可配 `attack_pattern` 字段，空值按类型回退（坦克→cleave 1.5x+击退、精英→double_strike 双段、charger→lunge 0.18s 突进、射程≥3 的召唤类→spread 扇形 3 发）；近战怪不授予 spread，避免静默失效。`attack_target` 增加 `damage_mult` 参数承载 cleave 倍率。
+  - **Boss 阶段变化增强**：二阶段新增周期性狂暴脉冲（近身击退 + 真实伤害，间隔随二阶段时长由 6s 收敛至 4s）与 HP<25% 一次性"背水一战"（攻速+43%/移速+20%/攻击+15% + 红色演出）。
+  - **FX 粒子单批渲染**：`FX_PARTICLE` 由逐颗 8 次 `DrawSphere` 改为相机朝向 additive quad 单批提交（核心+外发光+4 环绕+2 光晕，轨道数学与旧版逐项一致），全帧 1 个 rlgl 批。
+  - **视锥体裁剪落地**：FX_QUAD/环形/爆炸逐项按相机 ±220 世界单位裁剪，光束用双端判定避免长束误裁。
+  - **天气粒子** 300→150；新增 `src/game/systems/object_pool.h` 通用对象池（基础设施，G11 已接入弹体）。
+  - 门禁：Release 0 error · ctest 68/68 · World Validator 0 error / 0 warning。
+- G11（开发版，未发布）：对象池接入弹体。
+  - **ObjectPool 重构**：改为索引槽位设计。旧实现直接借出 `vector` 元素裸指针，`emplace_back` 扩容会使所有已借出指针同时悬垂；现在按索引访问，扩容不影响既有槽位。`release` 重置为默认状态，杜绝跨生命周期残留数据；`acquire` / `release` 均 O(1)，空闲索引栈复用槽位不缩容。
+  - **弹体接入**：`GameScene::projectiles` 由 `std::vector<Projectile>` 改为 `ObjectPool<Projectile>`，每帧 `erase(remove_if)` 的 O(n) 元素搬移换成 `release_if` 逐槽位回收；四处遍历点（玩家弹体 tick、敌方弹体 tick、2D 绘制、3D `_build_projectiles`）改 `for_each`；`Monster::projectiles_ptr` 与 `WeaponExecutor` 签名同步改池类型。
+  - 新增 `tests/systems/object_pool_test.cpp` 9 用例，含扩容安全回归与真实弹体集成。
+  - 门禁：Release 0 error · ctest 68/68 · World Validator 0 error / 0 warning · `--sim 3` exit=0。
+- G14（开发版，未发布）：sim AI 卡死修复链——可达性判定统一 + 路径稳定化。
+  - **OPEN 门 BFS 判定 bug**（`sim_ai.cpp:_tile_rect_walkable` 把 OPEN 门也当墙，BFS 永不过门、怪被"门隔离"）；执行层接触开门 `try_open_door_toward` 接线（原死代码）；攻击射程/理想距离对齐武器真实射程（弩不再当近战）。
+  - **卡死行为链**：BFS 定向朝怪 / 近身直接攻击 / 近身战豁免 / progressed 三源信号 / 传送失败反向拉怪 / 强开 3x3 CLOSED 门；传送落 CLOSED 门允许+落地即开。
+  - **sim 整格步进**（位置恒格点、rect 落单 tile，决策/执行一致）；**拾取冷却+3 次失败放弃**（破 pickup 死循环）；**路径记忆等距锁定**（破对称双路径震荡）；怪物生成排除门 tile + rect 级校验。
+  - 门禁：Release 0 error · ctest 68/68 · World Validator 0/0。avg_floor 1.0 → 1.1~4.5。
+  - 遗留 TODO（P1-C7 专项）：`_tile_rect_walkable` / `is_rect_walkable` / `_sim_tile_passable` 三套 walkable 语义不统一，需单一入口 + 判定测试矩阵。
+- G13（开发版，未发布）：sim 卡死脱困死锁修复 + 卡死看门狗。
+  - **死锁**：卡死 ≥8s 后调用兜底传送，成功与失败都无条件 `return "none"` 且不重置计时；传送失败（最近怪隔墙不同房间）即每帧空转直到烧满 36000 帧。修复为传送失败回落旋转脱困。原 50 行卡死判定块从 `best_action()` 抽出为 `_stuck_escape` (38 行) + `_rotation_escape` (12 行)。
+  - **看门狗**：新信号 `sim_stuck_watchdog`，按本局**累计卡死时长** 120s（36000 帧预算约 600s 的 1/5）强制结算为 `STUCK_RECOVERED`。不用"传送失败次数"——传送会周期性成功清零计数，seed21 五局全部因此漏报。阈值取值实测调优，240s 反而更差。
+  - **跨层时间回绕**：`enter_floor` 把 `game_time` 归零，残留 `_stuck_since` 变"未来时间"导致累计值出现 -244s 负数、看门狗判不成立。`set_time` 检测时间倒退即丢弃过期计时，累加处 `std::max(0,...)` 双保险。
+  - 门禁：Release 0 error · ctest 68/68 · World Validator 0/0 · `git diff --check` 干净。`TIMEOUT_WALL` seed101 6→0、seed21 5→0。
+  - 遗留：win_rate 仍为 0，属 AI 推进能力/平衡问题，非本次范围。
+- G12（开发版，未发布）：武器攻击路径函数拆分。
+  - `WeaponExecutor::execute` 由 91 行（HEAD 既有 90 行遗留，本次改动触及故顺带拆）拆为 30 行编排器 + 4 个单职责助手：`_try_stage3_special` 13 行（combo 第三段特殊技分发）、`_update_range_indicator` 6 行、`_resolve_normal` 25 行（弩弹道 vs 近战 SSOT 几何）、`_finalize_attack` 29 行（协同上下文 + 推进连段 + 事件 + 音频）。纯机械拆分，守卫顺序与事件映射逐行保留。
+  - 顺手清理 `ai.cpp` 5 处、`ai.h` 4 处尾随空格，`git diff --check` 归零。
+  - 门禁：Release 0 error · ctest 68/68（武器路径 69 用例）· World Validator 0/0 · `git diff --check` 干净 · `--sim 5` exit=0。
 
 ## 星标路线
 

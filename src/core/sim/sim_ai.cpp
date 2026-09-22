@@ -23,6 +23,46 @@ int  DecisionAgent::g_mcts_iters = 100;
 int sim_stuck_teleports = 0;   // [PLAYER-FIX] 口袋传送次数
 int sim_stuck_rotations = 0;   // 旋转脱困进入次数
 int sim_stuck_loot_wd = 0;     // 搜刮看门狗强制下楼次数
+int sim_stuck_watchdog = 0;    // G13: >0 = 本帧请求强制结算 (STUCK_RECOVERED)
+
+// G13: 动作分布诊断 — 结算时打印, 定位 AI 实际行为
+// 0=none 1=move_* 2=attack 3=skill_* 4=pickup 5=descend 6=use_potion 7=其他
+int sim_action_counts[8] = {0};
+// G14: 移动分支归因 — 0:recovery 1:loot 2:room 3:approach 4:stand(圈内站桩)
+int sim_move_branch[5] = {0};
+// G14: BFS/贪心全部失败次数 — appr 分支 step==-1 时自增
+int sim_bfs_fail = 0;
+// G14: stairs 分支归因 — 0:stairs_active总帧 1:descend 2:move(走楼梯/搜刮)
+int sim_stairs[3] = {0};
+// G14: _evaluate_move 返回 0.1 的无怪随机游走帧数
+int sim_move_noenemy = 0;
+// G14: 卡死采样 — ...(..., LOCKED门数, 怪4邻可走数)
+int sim_stuck_sample[64][13] = {0};
+int sim_stuck_sample_count = 0;
+// G14: 旋转脱困被墙挡住的次数 (尝试移动但可走性失败)
+int sim_rot_blocked = 0;
+// G14: 卡死时 BFS 朝怪命中/失败次数
+int sim_stuck_bfs_hit = 0, sim_stuck_bfs_fail = 0;
+// G14: 传送尝试次数 (含失败) — 判断传送分支是否被走到
+int sim_tp_attempts = 0;
+
+static int _action_bucket(const std::string& a) {
+    if (a.empty()) return 0;
+    if (a.rfind("move_", 0) == 0) return 1;
+    if (a == "attack") return 2;
+    if (a.rfind("skill_", 0) == 0) return 3;
+    if (a == "pickup") return 4;
+    if (a == "descend") return 5;
+    if (a == "use_potion") return 6;
+    return 7;
+}
+
+// G13: 卡死看门狗阈值 — 本局累计卡死时长 (秒) / 传送尝试冷却 (秒)
+// 36000 帧预算约 600s; 120s 卡死 = 1/5 预算耗在无进展, 判本局不可恢复。
+// 实测: 240s 反而更差 (seed101 真实死亡 8→1), 局跑得越久越容易在卡死中耗光预算;
+//       120s 在各种子下平衡最好。阈值可调, 但不应无脑拉高。
+static const double kStuckTotalBudget = 120.0;
+static const float  kTeleportCooldown = 1.0f;
 
 // G8.3: Build SimulationState snapshot from live game state
 mcts::SimulationState DecisionAgent::build_sim_state(
@@ -203,17 +243,17 @@ float DecisionAgent::_evaluate_attack(const Player* p,
     if (!t) return 0;
     float d = hypotf(t->entity.rect.x + t->entity.rect.width/2 - (p->entity.rect.x + p->entity.rect.width/2),
                      t->entity.rect.y + t->entity.rect.height/2 - (p->entity.rect.y + p->entity.rect.height/2));
-    // P1-C5: 判定线保持 48px 基线 — reach 对齐实验 (min(reach,48)) 冒烟
-    // af 6.25→2.55 负回归: dagger 判定收窄 32px 后 AI 不再"预判性试挥",
-    // 怪进圈的出手时机反被 move 步进抢走 (与 Q3.15 风筝同构的时序耦合).
-    // 判定圈对齐需与出手时序一起重设计 — 记 P1-C6.
-    float reach_px = 48.0f;
+    // G13: 用武器真实射程 — 原硬编码 48px 让 crossbow(10格/320px) 成近战武器,
+    //       AI 判"出圈"→ 不攻击, 实测 atk=1%/move=98% 全程空转。
+    //       max(,1.5) 保底 48px: P1-C5 实验收窄 dagger 致负回归(af 6.25→2.55),
+    //       保底值与旧行为一致, 只修正射程被低估的远程武器。
+    //       归一化分母随之从固定 96px 改为 reach×2 — 原 48px 时恰好相等(96px),
+    //       远程按比例放大, 保持"贴脸 1.0 / 射程处 0.5"的相对曲线。
+    float reach_px = std::max(p->weapon.current_range(), 1.5f) * 32.0f;
     if (d > reach_px) return 0; // out of range — no score
     // Melee builds score higher for attacking
     float base = 1.0f - _prefer_range; // range=0 → score 1.0
-    // 归一化分母保持 96px 基线语义 (P1-C5 实验证明: 缩到 reach×1.5 会整体
-    // 抬高贴脸分 → 压过拾取/撤退 → 空手局雪崩; 该参数与 Q3.15 风筝平衡耦合)
-    float score = base * (1.0f - d / (3.0f * 32.0f)); // closer = better
+    float score = base * (1.0f - d / (reach_px * 2.0f)); // closer = better
     // P1-C2: 自身中毒时毒源怪 +0.25 — 斩断再上毒源头 (兽人族 25%/击 上毒)
     if (_player_poison_stacks(p) > 0 && _monster_applies_poison(t))
         score += 0.25f;
@@ -279,9 +319,50 @@ static bool _teleport_player_to_nearest(Player* p,
     p->entity.position.x = (float)(r.tile_x * 32);
     p->entity.position.y = (float)(r.tile_y * 32);
     p->entity.sync_rect();
+    // G14: 落点在 CLOSED 门 → 即时开启 (玩家已站门 tile, 需可走)
+    if (const_cast<GameMap*>(map)->door_state_at(r.tile_x, r.tile_y) == DoorState::CLOSED)
+        const_cast<GameMap*>(map)->set_door_state(r.tile_x, r.tile_y, DoorState::OPEN);
     LOG_INFO("[PLAYER-FIX] 口袋传送 → tile(%d,%d) room=%d",
              r.tile_x, r.tile_y, rooms ? rooms->room_at(r.tile_x, r.tile_y) : -1);
     return true;
+}
+
+// G14: 兜底拉怪 — 玩家到怪 BFS 不可达(孤岛怪/卡墙)时, 把最近存活怪拉到玩家
+//       1-2 格环内可走 tile, 破除"怪杀不到 → 楼层永不清"死局. 仅卡死脱困调用.
+static bool _teleport_monster_to_player(const Player* p,
+    const std::vector<Monster*>& monsters, const GameMap* map) {
+    if (!p || !map) return false;
+    const Monster* t = nullptr;
+    float bd = 1e9f;
+    for (const Monster* m : monsters) {
+        if (!m || !m->combat.is_alive) continue;
+        float d = hypotf(m->entity.rect.x - p->entity.rect.x,
+                         m->entity.rect.y - p->entity.rect.y);
+        if (d < bd) { bd = d; t = m; }
+    }
+    if (!t) return false;
+    int ptx = (int)(p->entity.rect.x + p->entity.rect.width/2) / 32;
+    int pty = (int)(p->entity.rect.y + p->entity.rect.height/2) / 32;
+    for (int r = 2; r >= 1; r--)
+        for (int dy = -r; dy <= r; dy++)
+            for (int dx = -r; dx <= r; dx++) {
+                if (abs(dx) != r && abs(dy) != r) continue;
+                int nx = ptx + dx, ny = pty + dy;
+                if (nx < 0 || ny < 0 || nx >= map->width || ny >= map->height) continue;
+                Rectangle tr = { (float)(nx * 32), (float)(ny * 32), 32, 32 };
+                // G14: 只排除 LOCKED/SEALED — 原 != NONE 会误跳过 OPEN/CLOSED 门,
+                //      玩家在走廊/门节点时周围全被跳过 → 拉怪永败 (stuck_tp=0)
+                DoorState nds = map->door_state_at(nx, ny);
+                if (nds == DoorState::LOCKED || nds == DoorState::SEALED) continue;
+                if (!map->is_rect_walkable(tr)) continue;
+                Monster* mm = const_cast<Monster*>(t);
+                mm->entity.position.x = (float)(nx * 32);
+                mm->entity.position.y = (float)(ny * 32);
+                mm->entity.sync_rect();
+                LOG_INFO("[PLAYER-FIX] 兜底拉怪 → tile(%d,%d)", nx, ny);
+                return true;
+            }
+    return false;
 }
 
 // Q3.2: Boss 蓄力判定 — 任一技能处于 windup 阶段即视为"即将出招"
@@ -302,10 +383,23 @@ static bool _boss_winding_up(const Monster* m) {
 static bool _tile_rect_walkable(const GameMap* map, int tx, int ty) {
     if (!map) return false;
     DoorState ds = map->door_state_at(tx, ty);
+    // G14: OPEN 门可走 (is_walkable=true) — 原 `ds != NONE → false` 把 OPEN 门
+    //      也判为不可走 → BFS 永远过不了门 → 怪被"门隔离" → 卡死. 与执行层
+    //      is_rect_walkable(OPEN=true) 对齐; CLOSED 门由 Sim 自动开放行.
     if (ds == DoorState::CLOSED) return true;   // Sim 自动开 CLOSED
-    if (ds != DoorState::NONE) return false;     // LOCKED/SEALED 不可走
+    if (ds == DoorState::LOCKED || ds == DoorState::SEALED) return false;
     Rectangle r = { (float)(tx * 32), (float)(ty * 32), 32.0f, 32.0f };
     return map->is_rect_walkable(r);
+}
+
+// G14: tile 级可走判定 — 与 game_scene 连通性报告同源 (非墙即走, LOCKED/SEALED 除外).
+//      _tile_rect_walkable 的 is_rect_walkable(32x32 rect) 经实测与真实可达域
+//      不一致 (reach=583 怪可达但 _bfs_toward 返回 -1), 用于 BFS 目标可达性.
+static bool _sim_tile_passable(const GameMap* map, int tx, int ty) {
+    if (!map) return false;
+    DoorState ds = map->door_state_at(tx, ty);
+    if (ds == DoorState::LOCKED || ds == DoorState::SEALED) return false;
+    return map->tile_at(tx, ty) != TileType::WALL;
 }
 
 // Q3.2: 危险视野 — 活性毒池/尖刺圈/木桶 (伤害圈 1.2 格 + 缓冲 = 1.5 格)
@@ -518,7 +612,18 @@ int DecisionAgent::_bfs_toward(const Player* p,
             m->entity.rect.y + m->entity.rect.height/2);
         // Q3.13: 越界怪跳过 — 击退/传送可使位置出图, 否则 is_target 越界写堆损坏
         if (tx < 0 || tx >= w || ty < 0 || ty >= h) continue;
-        is_target[ty * w + tx] = 1;
+        // G14: 怪 tile 不可走(卡墙/位置异常) → 标记其可走邻居为可达目标,
+        //       否则 BFS 永远踏不上怪 tile → is_target 不命中 → 怪不可达 → 死局
+        if (_sim_tile_passable(map, tx, ty)) {
+            is_target[ty * w + tx] = 1;
+        } else {
+            for (int d = 0; d < 4; d++) {
+                int nx = tx + kBfsDx[d], ny = ty + kBfsDy[d];
+                if (nx >= 0 && nx < w && ny >= 0 && ny < h &&
+                    _sim_tile_passable(map, nx, ny))
+                    is_target[ny * w + nx] = 1;
+            }
+        }
     }
     std::vector<int> first((size_t)N, -2);  // 从起点出发的第一步方向, -1=起点, -2=未访问
     std::queue<int> q;
@@ -619,7 +724,20 @@ float DecisionAgent::_evaluate_move(int dir, const Player* p,
     Rectangle target_rect = p->entity.rect;
     target_rect.x += dx * 32.0f;
     target_rect.y += dy * 32.0f;
-    if (map && !map->is_rect_walkable(target_rect)) return -999; // blocked
+    if (map) {
+        if (!map->is_rect_walkable(target_rect)) {
+            // G14: CLOSED 门放行 — BFS(_tile_rect_walkable) 视为可走(Sim自动开),
+            //       而 rect 级判定 is_walkable=false 令 AI 永不走门 → 开门逻辑
+            //       (best_action CLOSED→pickup) 成死代码 → AI 困死房间.
+            //       返回低分 0.05: 无更好选项时选门方向, best_action 触发 pickup 开门.
+            auto [pcx, pcy] = map->pixel_to_tile(
+                p->entity.rect.x + p->entity.rect.width/2,
+                p->entity.rect.y + p->entity.rect.height/2);
+            int ntx = pcx + (int)(dx * 1.0f), nty = pcy + (int)(dy * 1.0f);
+            if (map->door_state_at(ntx, nty) == DoorState::CLOSED) return 0.05f;
+            return -999; // 真正 blocked (墙/LOCKED/SEALED)
+        }
+    }
 
     float px = p->entity.rect.x + p->entity.rect.width/2;
     float py = p->entity.rect.y + p->entity.rect.height/2;
@@ -629,7 +747,7 @@ float DecisionAgent::_evaluate_move(int dir, const Player* p,
         return -1.0f;
 
     auto* t = _find_nearest(p, monsters);
-    if (!t) return 0.1f; // 全图无存活怪 → 中性
+    if (!t) { sim_move_noenemy++; return 0.1f; } // 全图无存活怪 → 中性
 
     float ex = t->entity.rect.x + t->entity.rect.width/2;
     float ey = t->entity.rect.y + t->entity.rect.height/2;
@@ -653,11 +771,13 @@ float DecisionAgent::_evaluate_move(int dir, const Player* p,
     // 0.6 保留撤离意图但让贴脸攻击(d0≈0.67)反超 → "逃一步打一下" 轮换
     if (map && _needs_recovery(p) && t && !t->is_boss) {
         int room_step = _bfs_toward_room(p, map, true);   // P1-A3-fix2: 只找回血房
-        if (room_step >= 0) return (dir == room_step) ? 1.3f : 0.0f;
+        if (room_step >= 0) { if (dir == room_step) sim_move_branch[0]++;
+            return (dir == room_step) ? 1.3f : 0.0f; }
         // 无房可去 → 仅贴脸时拉开 (条件撤退, 血线安全或距离拉开即恢复战斗)
         if (d < 2.0f * 32.0f) {
             int away = _bfs_away(p, t, map, true);
-            if (away >= 0) return (dir == away) ? 0.6f : 0.0f;
+            if (away >= 0) { if (dir == away) sim_move_branch[0]++;
+                return (dir == away) ? 0.6f : 0.0f; }
         }
     }
 
@@ -676,28 +796,34 @@ float DecisionAgent::_evaluate_move(int dir, const Player* p,
     }
 
     // P1-A2: 战斗间隙捡地面物品 — 比特殊房更近的直接资源, 优先级更高 (0.7 > 0.6)
-    if (d > 160.0f && map && !_ground.empty()) {
+    // G13: 间隙判定对齐真实射程 — 原 160px 硬编码, crossbow 射程 320px 时 AI 在
+    //      5~10 格区间去捡破烂而非攻击 (loot 0.7 > 远程 attack 0.35)。
+    float reach_px = std::max(p->weapon.current_range(), 1.5f) * 32.0f;
+    if (d > reach_px + 32.0f && map && !_ground.empty()) {
         float loot_d = _near_loot_dist(p);
         // 只对 5 格内的近物品直奔; 更远的留给房间搜刮 (避免长途回头捡破烂)
         if (loot_d >= 0 && loot_d < 5.0f * 32.0f) {
             int loot_step = _bfs_toward_loot(p, map);
-            if (loot_step >= 0) return (dir == loot_step) ? 0.7f : 0.0f;
+            if (loot_step >= 0) { if (dir == loot_step) sim_move_branch[1]++;
+                return (dir == loot_step) ? 0.7f : 0.0f; }
         }
     }
 
-    // Q3.2: 战斗间隙搜刮 — 最近怪 >5 格(160px)时走向最近未触发特殊房 (圣物/装备/泉水)
+    // Q3.2: 战斗间隙搜刮 — 最近怪超出射程时走向最近未触发特殊房 (圣物/装备/泉水)
     // 交战圈内(≤ideal)先打; rect级BFS保证路径真实可达, 不会卡墙
-    if (d > 160.0f && map) {
+    if (d > reach_px + 32.0f && map) {
         int room_step = _bfs_toward_room(p, map);
-        if (room_step >= 0) return (dir == room_step) ? 0.6f : 0.0f;
+        if (room_step >= 0) { if (dir == room_step) sim_move_branch[2]++;
+            return (dir == room_step) ? 0.6f : 0.0f; }
     }
 
-    // Q3.1: 理想距离按玩家真实武器判定 — 近战FIST不可风筝(火系profile会抖动挨打)
-    // P1-C5: ideal_dist 保持基线公式 — 实验证明 attack 圈/步进/idealdist 与
-    // Q3.15 风筝平衡深度耦合, 单点改动引发 af 6.25→1.35 雪崩 (见 DATA_REVIEW),
-    // 决策圈对齐的完整重构记 P1-C6 专项.
-    float atk_range = (p->weapon.weapon_type() != WeaponType::FIST) ? 2.5f : 1.5f;
-    float ideal_dist = atk_range + _prefer_range * 2.0f; // 近战=1.5, 远程=2.5~4.5
+    // G13: ideal_dist 对齐真实射程 — 原硬编码 2.5/1.5 与 reach 脱节,
+    //       crossbow 射程 10 格但 ideal 只 2.5 格, AI 在 2.5~10 格区间
+    //       attack=0(旧 reach 48px 出圈) 且 move>0 → 追到 2.5 格停下干等。
+    //       与 _evaluate_attack 的 reach_px 同源 (max(current_range,1.5)),
+    //       保证 ideal_dist ≥ reach, 消除 attack=0/move=0 死区。
+    float atk_range = std::max(p->weapon.current_range(), 1.5f);
+    float ideal_dist = atk_range + _prefer_range * 2.0f;
 
     // Q3.2: 已到攻击圈内 → 站桩攻击/放技能, 不移动
     // Q3.15: 此处存在已知理论缺陷 — d ∈ (48px, ideal_dist] 区间 attack=0/move=0,
@@ -714,6 +840,7 @@ float DecisionAgent::_evaluate_move(int dir, const Player* p,
             int step = _bfs_toward(p, monsters, map, false);
             if (step >= 0) return (dir == step) ? 0.4f : 0.0f;
         }
+        if (dir == 0) sim_move_branch[4]++;
         return 0;
     }
 
@@ -721,7 +848,7 @@ float DecisionAgent::_evaluate_move(int dir, const Player* p,
     int step = _bfs_toward(p, monsters, map, true);
     if (step < 0) step = _bfs_toward(p, monsters, map, false);
     if (step < 0) step = _greedy_step(p, t, map);
-    if (step < 0) return 0.0f;
+    if (step < 0) { sim_bfs_fail++; return 0.0f; }
 
     // Q3.2: 路径记忆 — 同一目标沿用上次实际走的步, 消除 BFS 等权震荡
     if (t && _mem_target == t->instance_id && _mem_step >= 0) {
@@ -730,15 +857,27 @@ float DecisionAgent::_evaluate_move(int dir, const Player* p,
         Rectangle mr = p->entity.rect;
         mr.x += mdx; mr.y += mdy;
         float nd = hypotf(ex - (px + mdx), ey - (py + mdy));
-        if (map->is_rect_walkable(mr) && nd < d)
+        // G14b: 等距也保持记忆 (nd <= d+ε) — 原 nd < d 对对称双路径不锁定 →
+        //       玩家在等距格间往返震荡 (tile14↔16). ε 容忍浮点等值噪声.
+        if (map->is_rect_walkable(mr) && nd <= d + 0.01f) {
+            if (dir == _mem_step) sim_move_branch[3]++;  // G14: 路径记忆也是 appr
             return (dir == _mem_step) ? 0.8f : 0.0f;
+        }
     }
+    if (dir == step) sim_move_branch[3]++;
     return (dir == step) ? 0.6f : 0.0f;
 }
 
 float DecisionAgent::_evaluate_pickup(const Player* p, const GameMap* map,
     const std::vector<Monster*>& monsters) const {
     if (!map) return 0;
+    // G14b: 拾取冷却 + 放弃 — 1.5s 内已尝试过 pickup 或累计 3 次捡不掉
+    //       (物品捡不走/需走近) → 返回 0 让位移动, 否则 AI 每帧 pickup 死原地
+    if (_game_time - _last_pickup_attempt < 1.5f) {
+        _pickup_fail_streak++;
+        return 0;
+    }
+    if (_pickup_fail_streak >= 3) return 0;
     float threat = 0.0f;
     for (auto* m : monsters) {
         if (!m || !m->combat.is_alive) continue;
@@ -772,6 +911,218 @@ float DecisionAgent::_evaluate_pickup(const Player* p, const GameMap* map,
     return 0;
 }
 
+// G13: 四方向轮换脱困 — 走不了或有危险就转下一向
+std::string DecisionAgent::_rotation_escape(const Player* p, const GameMap* map) const {
+    if (_escape_dir < 0) { sim_stuck_rotations++; _escape_dir = 0; }
+    const char* esc[] = {"move_up", "move_down", "move_left", "move_right"};
+    // G14: 撞墙统计 — 当前方向不可走/有危险时自增 (可判断 AI 是否困死)
+    float mdx = (_escape_dir == 2) ? -1.0f : (_escape_dir == 3) ? 1.0f : 0.0f;
+    float mdy = (_escape_dir == 0) ? -1.0f : (_escape_dir == 1) ? 1.0f : 0.0f;
+    Rectangle er = p->entity.rect;
+    er.x += mdx * 32; er.y += mdy * 32;
+    // G14: rect 级整步判定失败(玩家可停半格位, 连续移动与 ±32 整步脱节)
+    //      时, 回退 tile 级判定(_tile_rect_walkable, 与 BFS 同源) —
+    //      否则 AI 永远认为 4 向全堵, 卡死在开放式空间 (stuck# open=4 door=0)
+    if (!map->is_rect_walkable(er) ||
+        _is_hazard_near(er.x + er.width / 2, er.y + er.height / 2, map)) {
+        auto [pcx, pcy] = map->pixel_to_tile(
+            p->entity.rect.x + p->entity.rect.width/2,
+            p->entity.rect.y + p->entity.rect.height/2);
+        int ntx = pcx + (int)mdx, nty = pcy + (int)mdy;
+        sim_rot_blocked++;
+        if (map->door_state_at(ntx, nty) == DoorState::CLOSED)
+            return "pickup";   // G14: CLOSED 门 → E 键开门
+        if (!_is_hazard_near(ntx * 32.0f + 16.0f, nty * 32.0f + 16.0f, map) &&
+            _tile_rect_walkable(map, ntx, nty))
+            return esc[_escape_dir];   // tile 级可走 → 放行 (执行层二分贴墙)
+        _escape_dir = (_escape_dir + 1) % 4;
+    }
+    return esc[_escape_dir];
+}
+
+// G14b: 卡死进展信号 — 玩家移动>2格 / 怪HP总和变化(玩家输出或环境衰减) /
+//       玩家HP变化 / 怪死亡, 任一为真即非卡死. 容差 0.01 过滤浮点等值噪声.
+bool DecisionAgent::_stuck_progress(const Player* p,
+    const std::vector<Monster*>& monsters, int tx, int ty) const {
+    float php = (float)p->combat.current_hp;
+    float mon = 0;
+    int alive = 0;
+    for (const Monster* m : monsters) {
+        if (!m || !m->combat.is_alive) continue;
+        mon += m->combat.current_hp; alive++;
+    }
+    bool progressed = hypotf((float)(tx - (int)_last_px), (float)(ty - (int)_last_py)) > 2.0f
+                   || fabsf(mon - _last_mon_sum) > 0.01f
+                   || fabsf(php - _last_hp_sum) > 0.01f
+                   || alive != _last_alive_count;
+    if (progressed && _stuck_since >= 0)
+        _stuck_total += std::max(0.0f, (float)_game_time - _stuck_since);
+    if (progressed) { _stuck_since = -1; _escape_dir = -1;
+                      _last_px = (float)tx; _last_py = (float)ty; }
+    _last_hp_sum = php; _last_mon_sum = mon; _last_alive_count = alive;
+    return progressed;
+}
+
+// G14b: 卡死 ≥8s 兜底 — 传玩家到怪旁/反向拉怪/强开 3x3 CLOSED 门; 成功返回 "none"
+std::string DecisionAgent::_stuck_tp_or_pull(const Player* p,
+    const std::vector<Monster*>& monsters, const GameMap* map,
+    int tx, int ty, float stuck_for) const {
+    if (stuck_for <= 8.0f || (float)_game_time - _last_teleport_try < kTeleportCooldown)
+        return "";
+    _last_teleport_try = (float)_game_time;   // ≥8s → 兜底传送
+    sim_tp_attempts++;
+    auto* pm = const_cast<Player*>(p);
+    if (_teleport_player_to_nearest(pm, monsters, map, _rooms)) {
+        sim_stuck_teleports++;
+        _stuck_since = -1; _escape_dir = -1; _last_px = -999; _last_py = -999;
+        return "none";
+    }
+    // G14: 玩家传送失败(怪不可达) → 反向拉怪到玩家旁, 破除孤岛怪死局
+    if (_teleport_monster_to_player(p, monsters, map)) {
+        sim_stuck_teleports++;
+        _stuck_since = -1; _escape_dir = -1; _last_px = -999; _last_py = -999;
+        return "none";
+    }
+    // G14: 强开周围 3x3 CLOSED 门 — 玩家半格卡位使 try_open_door_toward 查错格
+    auto* gm = const_cast<GameMap*>(map);
+    for (int dy = -1; dy <= 1; dy++)
+        for (int dx = -1; dx <= 1; dx++) {
+            int nx = tx + dx, ny = ty + dy;
+            if (gm->door_state_at(nx, ny) == DoorState::CLOSED)
+                gm->set_door_state(nx, ny, DoorState::OPEN);
+        }
+    return "";
+}
+
+// G13: 卡死脱困编排 — 返回脱困动作; "" = 未进入脱困 (交给常规评分)
+std::string DecisionAgent::_stuck_escape(const Player* p,
+    const std::vector<Monster*>& monsters, const GameMap* map) const {
+    if (!p || !map) return "";
+    int tx = (int)(p->entity.rect.x + p->entity.rect.width / 2) / 32;
+    int ty = (int)(p->entity.rect.y + p->entity.rect.height / 2) / 32;
+    _stuck_progress(p, monsters, tx, ty);   // 更新卡死状态
+    if (tx != (int)_last_px || ty != (int)_last_py) _escape_dir = -1;
+    // G14: 近身战豁免 — 2 格内有怪 = 真实战斗 (围殴/拉锯), 卡死机制让位
+    if (_count_in_range(p, monsters, 2.0f * 32.0f) > 0) {
+        _stuck_since = -1; _escape_dir = -1;
+        return "";
+    }
+    if (_stuck_since < 0) {   // 锚定徘徊中心, 开始计时
+        _stuck_since = (float)_game_time;
+        _last_px = (float)tx; _last_py = (float)ty;
+        return "";
+    }
+    float stuck_for = std::max(0.0f, (float)_game_time - _stuck_since);
+    if (_stuck_total + stuck_for > kStuckTotalBudget) {   // 累计卡死超预算
+        sim_stuck_watchdog = 1;
+        LOG_INFO("[SIM] 卡死看门狗: 累计 %.0fs → 强制结算", _stuck_total + stuck_for);
+        return "none";
+    }
+    std::string tp = _stuck_tp_or_pull(p, monsters, map, tx, ty, stuck_for);
+    if (!tp.empty()) return tp;
+    if (stuck_for <= 2.0f) return "";
+    _stuck_sample(p, monsters, map, tx, ty);
+    // G14: 怪就在 1.5 格内还卡死(被挤/地形) → 直接攻击
+    if (_count_in_range(p, monsters, 1.5f * 32.0f) > 0) {
+        sim_stuck_bfs_hit++;
+        return "attack";
+    }
+    // G14: 卡死时优先 BFS 朝怪定向移动 — 原盲目旋转只让 AI 原地打转
+    int bstep = _bfs_toward(p, monsters, map, true);
+    if (bstep >= 0) {
+        sim_stuck_bfs_hit++;
+        bstep = _pick_stable_bfs_step(p, monsters, map, bstep);
+        const char* dl[] = {"move_up", "move_down", "move_left", "move_right"};
+        return dl[bstep];
+    }
+    sim_stuck_bfs_fail++;
+    return _rotation_escape(p, map);
+}
+
+// G14: 卡死采样诊断 — AI tile + 最近怪距离 + 存活怪数 + 邻居统计 (环形缓冲 64)
+void DecisionAgent::_stuck_sample(const Player* p,
+    const std::vector<Monster*>& monsters, const GameMap* map,
+    int tx, int ty) const {
+    auto* nm = _find_nearest(p, monsters);
+    int sIdx = sim_stuck_sample_count % 64;
+    int sAlive = 0;
+    for (const Monster* m : monsters) if (m && m->combat.is_alive) sAlive++;
+    sim_stuck_sample[sIdx][0] = tx;
+    sim_stuck_sample[sIdx][1] = ty;
+    sim_stuck_sample[sIdx][2] = nm ? (int)hypotf(
+        nm->entity.rect.x + nm->entity.rect.width/2 - (p->entity.rect.x + p->entity.rect.width/2),
+        nm->entity.rect.y + nm->entity.rect.height/2 - (p->entity.rect.y + p->entity.rect.height/2)) : -1;
+    sim_stuck_sample[sIdx][3] = sAlive;
+    sim_stuck_sample[sIdx][5] = _is_hazard_near(p->entity.rect.x + p->entity.rect.width/2,
+        p->entity.rect.y + p->entity.rect.height/2, map) ? 1 : 0;
+    int stats[4];
+    _stuck_neighbor_stats(map, nm, tx, ty, stats);
+    sim_stuck_sample[sIdx][4] = stats[0];   // AI 4邻可走
+    sim_stuck_sample[sIdx][6] = stats[1];   // AI 4邻DOOR
+    sim_stuck_sample[sIdx][11] = stats[2];  // 全图 LOCKED
+    sim_stuck_sample[sIdx][12] = stats[3];  // 怪 4邻可走
+    sim_stuck_sample[sIdx][7] = nm ? (int)((nm->entity.rect.x + nm->entity.rect.width/2) / 32) : -1;
+    sim_stuck_sample[sIdx][8] = nm ? (int)((nm->entity.rect.y + nm->entity.rect.height/2) / 32) : -1;
+    sim_stuck_sample[sIdx][9] = _rooms ? _rooms->room_at(tx, ty) : -1;
+    sim_stuck_sample[sIdx][10] = nm && _rooms
+        ? _rooms->room_at((int)((nm->entity.rect.x + nm->entity.rect.width/2) / 32),
+                          (int)((nm->entity.rect.y + nm->entity.rect.height/2) / 32)) : -1;
+    sim_stuck_sample_count++;
+}
+
+// G14b: 卡死邻居统计 — [4邻可走, 4邻DOOR, 全图LOCKED, 怪4邻可走]
+void DecisionAgent::_stuck_neighbor_stats(const GameMap* map, const Monster* nm,
+    int tx, int ty, int out[4]) const {
+    int sOpen = 0, sDoor = 0;
+    for (int dd = 0; dd < 4; dd++) {
+        int nx = tx + (dd == 2 ? -1 : dd == 3 ? 1 : 0);
+        int ny = ty + (dd == 0 ? -1 : dd == 1 ? 1 : 0);
+        if (_tile_rect_walkable(map, nx, ny)) sOpen++;
+        if (map->door_state_at(nx, ny) != DoorState::NONE) sDoor++;
+    }
+    int sLocked = 0;
+    for (int i = 0; i < map->width; i++)
+        for (int j = 0; j < map->height; j++)
+            if (map->door_state_at(i, j) == DoorState::LOCKED) sLocked++;
+    int mOpen = -1;
+    if (nm) {
+        int mtx2 = (int)((nm->entity.rect.x + nm->entity.rect.width/2) / 32);
+        int mty2 = (int)((nm->entity.rect.y + nm->entity.rect.height/2) / 32);
+        mOpen = 0;
+        for (int dd = 0; dd < 4; dd++)
+            if (_tile_rect_walkable(map, mtx2 + (dd == 2 ? -1 : dd == 3 ? 1 : 0),
+                                    mty2 + (dd == 0 ? -1 : dd == 1 ? 1 : 0))) mOpen++;
+    }
+    out[0] = sOpen; out[1] = sDoor; out[2] = sLocked; out[3] = mOpen;
+}
+
+// G14b: 卡死 BFS 步稳定化 — 路径记忆迟滞: 目标未变且上次方向仍缩短距离时,
+//       沿用 _mem_step, 消除 BFS 等权震荡 (玩家在 2 个等距格间往返不止).
+int DecisionAgent::_pick_stable_bfs_step(const Player* p,
+    const std::vector<Monster*>& monsters, const GameMap* map, int bstep) const {
+    auto* mem_t = _find_nearest(p, monsters);
+    if (!mem_t || _mem_target != mem_t->instance_id || _mem_step < 0) {
+        _mem_target = mem_t ? mem_t->instance_id : 0;
+        _mem_step = bstep;
+        return bstep;
+    }
+    float ex = mem_t->entity.rect.x + mem_t->entity.rect.width/2;
+    float ey = mem_t->entity.rect.y + mem_t->entity.rect.height/2;
+    float px2 = p->entity.rect.x + p->entity.rect.width/2;
+    float py2 = p->entity.rect.y + p->entity.rect.height/2;
+    float mdx = (_mem_step == 2) ? -32.0f : (_mem_step == 3) ? 32.0f : 0.0f;
+    float mdy = (_mem_step == 0) ? -32.0f : (_mem_step == 1) ? 32.0f : 0.0f;
+    Rectangle mr = p->entity.rect;
+    mr.x += mdx; mr.y += mdy;
+    float nd = hypotf(ex - (px2 + mdx), ey - (py2 + mdy));
+    // G14b: 等距也保持记忆 (nd <= d+ε) — 对称双路径不震荡
+    if (map->is_rect_walkable(mr) && nd <= hypotf(ex - px2, ey - py2) + 0.01f) {
+        return _mem_step;
+    }
+    _mem_step = bstep;
+    return bstep;
+}
+
 // ═══════════════════════════════════════════════════════════
 //  G7.4: Best action selection (evaluate → pick max)
 // ═══════════════════════════════════════════════════════════
@@ -783,6 +1134,7 @@ std::string DecisionAgent::best_action(const Player* player,
 
     if (boss_intro_active) return "confirm";
     if (stairs_active) {
+        sim_stairs[0]++;
         // Q3.2: 清层后先搜刮未触发特殊房 (原逻辑直接下楼 → 整层资源全丢)
         // P1-C3-fix: 层级搜刮预算 15s — 超时放弃本层余下搜刮直奔楼梯.
         // 全量数据: 无限搜刮 → TWall 16.8% 爬不完; 15s 预算 → TWall 7.8%.
@@ -822,7 +1174,7 @@ std::string DecisionAgent::best_action(const Player* player,
                 sim_stuck_loot_wd++;   // M2-C: 搜刮看门狗强制下楼计数
                 _loot_abandoned = true;  // P1-C3: 锁定放弃, 走楼梯不再回头
             }
-            if (!_loot_abandoned) return move_act;
+            if (!_loot_abandoned) { sim_stairs[2]++; return move_act; }
         }
         // P1-C3: 搜刮完毕/放弃 → 人必须先走到楼梯格 (原直接 "descend" 但
         // _check_floor_transition 只认"站在楼梯上按 E" → 站原地按 E 600s)
@@ -831,9 +1183,11 @@ std::string DecisionAgent::best_action(const Player* player,
             int sstep = _bfs_to_stairs(player, map);
             if (sstep >= 0) {
                 const char* dl[] = {"move_up","move_down","move_left","move_right"};
+                sim_stairs[2]++;
                 return dl[sstep];
             }
         }
+        sim_stairs[1]++;
         return "descend";
     }
 
@@ -851,49 +1205,10 @@ std::string DecisionAgent::best_action(const Player* player,
     // Q3.10: 仅怪物血量总和变动视为战斗 (毒/环境只影响自身HP, 不得掩盖卡死)
     // P0-M2: 锚点半径卡死判定 — 原同 tile 判定被"两 tile 来回震荡"永久重置
     // (BFS 路径记忆在墙前 L/R 横跳 896s 不触发传送 → 900s 死局)
-    if (player && map) {
-        int pt0 = (int)(player->entity.rect.x + player->entity.rect.width / 2) / 32;
-        int pt1 = (int)(player->entity.rect.y + player->entity.rect.height / 2) / 32;
-        float drift = hypotf((float)(pt0 - (int)_last_px), (float)(pt1 - (int)_last_py));
-        bool local_wander = (drift <= 2.0f);   // 2-tile 徘徊半径
-        if (!local_wander) { _stuck_since = -1; _escape_dir = -1;
-                             _last_px = (float)pt0; _last_py = (float)pt1; }
-        else {
-            if (pt0 != (int)_last_px || pt1 != (int)_last_py) { _escape_dir = -1; }
-            float mon = 0;
-            for (const Monster* m : monsters) if (m->combat.is_alive) mon += m->combat.current_hp;
-            if (mon != _last_mon_sum) { _stuck_since = -1; _escape_dir = -1; }
-            _last_mon_sum = mon;
-            if (_stuck_since < 0) {
-                _stuck_since = (float)_game_time;
-                _last_px = (float)pt0; _last_py = (float)pt1;  // 锚定徘徊中心
-            }
-            else if ((float)_game_time - _stuck_since > 8.0f) {
-                // Q3.10: ≥8s 原地徘徊 → 兜底传送 (口袋/毒池/隔墙死局, 不依赖怪距)
-                if (_teleport_player_to_nearest(const_cast<Player*>(player), monsters, map, _rooms)) {
-                    sim_stuck_teleports++;   // M2-C: [PLAYER-FIX] 传送计数
-                    _stuck_since = -1; _escape_dir = -1;
-                    _last_px = -999; _last_py = -999;   // 传送后重新锚定
-                }
-                return "none";
-            }
-            else if ((float)_game_time - _stuck_since > 2.0f &&
-                     _count_in_range(player, monsters, 1.5f * 32.0f) == 0) {
-                // M2-C: 旋转脱困计数 — 仅首次进入脱困状态计 1 次
-                // (4 方向轮换每换向都触发本分支, 按事件计数而非按换向计数)
-                if (_escape_dir < 0) { sim_stuck_rotations++; _escape_dir = 0; }
-                float mdx = (_escape_dir == 2) ? -1.0f : (_escape_dir == 3) ? 1.0f : 0.0f;
-                float mdy = (_escape_dir == 0) ? -1.0f : (_escape_dir == 1) ? 1.0f : 0.0f;
-                Rectangle er = player->entity.rect;
-                er.x += mdx * 32; er.y += mdy * 32;
-                if (!map->is_rect_walkable(er) ||
-                    _is_hazard_near(er.x + er.width/2, er.y + er.height/2, map))
-                    _escape_dir = (_escape_dir + 1) % 4;
-                const char* esc[] = {"move_up","move_down","move_left","move_right"};
-                return esc[_escape_dir];
-            }
-        }
-    }
+    // G13: 抽为 _stuck_escape — 原实现在此 return "none" 且无条件不重置计时,
+    //      传送一旦失败即永久空转, 烧完 36000 帧 → TIMEOUT_WALL 假结果
+    std::string stuck_action = _stuck_escape(player, monsters, map);
+    if (!stuck_action.empty()) return stuck_action;
 
     float best_score = 0;
     std::string best = "";
@@ -952,7 +1267,10 @@ std::string DecisionAgent::best_action(const Player* player,
 
     // Pickup
     float pu_score = _evaluate_pickup(player, map, monsters);
-    if (pu_score > best_score) { best_score = pu_score; best = "pickup"; }
+    if (pu_score > best_score) {
+        best_score = pu_score; best = "pickup";
+        _last_pickup_attempt = (float)_game_time;   // G14b: 记录拾取尝试时刻
+    }
 
     // Movement (pick best direction)
     float move_scores[4];
@@ -1030,6 +1348,7 @@ bool DecisionAgent::is_action_just_pressed(const char* action_name,
     if (_cached_frame != _frame) {
         _cached_best = best_action(player, monsters, map, stairs_active, boss_intro_active);
         _cached_frame = _frame;
+        sim_action_counts[_action_bucket(_cached_best)]++;   // G13: 动作分布诊断
     }
     return !_cached_best.empty() && _cached_best == action_name;
 }

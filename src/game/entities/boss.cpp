@@ -608,13 +608,73 @@ void BossAI::update(Monster* self, Player* player, GameMap* map,
         return; // 暂停中
     }
 
+    // G5.5: 二阶段持续行为 (狂暴脉冲 + 背水一战) — 阶段变化增强
+    if (phase2)
+        _tick_phase2_behaviors(self, player, map, dt, effects);
+
     // ── B15: Boss 状态机 ──
     _tick_boss_state(self, player, map, dt, gt, all, effects);
+}
+
+// G5.5: 二阶段持续行为 — 背水一战(一次性) + 周期性狂暴脉冲
+void BossAI::_tick_phase2_behaviors(Monster* self, Player* player, GameMap* map,
+                                    double dt, std::vector<Effect>* effects) {
+    _phase2_elapsed += (float)dt;
+    // 背水一战: HP<25% 一次性终极强化 (当帧只演出, 不进状态机)
+    if (!_last_stand && _hp_ratio(self) < 0.25f) {
+        _enter_last_stand(self, effects);
+        return;
+    }
+    // 狂暴脉冲: 每 6s 一次 — 近身玩家击退 + 真实伤害, 压迫近战位
+    // 阶段升级: 二阶段越久脉冲越密 (20s 后由 6s 收敛到 4s 下限)
+    _rage_pulse_cd -= (float)dt;
+    if (_rage_pulse_cd > 0.0f) return;
+    float pulse_cd = 6.0f - _phase2_elapsed * 0.1f;
+    if (pulse_cd < 4.0f) pulse_cd = 4.0f;
+    _rage_pulse_cd = pulse_cd;
+
+    float bx = self->entity.rect.x + self->entity.rect.width/2;
+    float by = self->entity.rect.y + self->entity.rect.height/2;
+    float px = player->entity.rect.x + player->entity.rect.width/2;
+    float py = player->entity.rect.y + player->entity.rect.height/2;
+    float dx = px - bx, dy = py - by;
+    float dist = sqrtf(dx*dx + dy*dy);
+    if (effects && dist < 220.0f) {
+        VFXServer v;
+        v.ring(bx, by, 96.0f, {220, 60, 220, 200}, 2, 0.50f);
+        for (auto& e : v.effects) effects->push_back(e);
+    }
+    if (dist >= 96.0f || dist < 1.0f) return;
+    clamp_displacement(player->entity, -dx/dist * 30.0f, -dy/dist * 30.0f, map);
+    int dmg = calculate_damage((int)(self->combat.get_effective_attack() * 0.5f),
+                               player->combat.get_effective_defense(AttackType::TRUE),
+                               AttackType::TRUE);
+    player->combat.take_damage(dmg);
+}
+
+// G5.5: 背水一战 — HP<25% 一次性强化 (攻速/移速/攻击全面提升, 红色演出)
+void BossAI::_enter_last_stand(Monster* self, std::vector<Effect>* effects) {
+    _last_stand = true;
+    move_speed *= 1.20f;
+    self->attack_cooldown *= 0.70f;
+    self->combat.attack = (int)(self->combat.attack * 1.15f);
+    self->entity.size = {56, 56};  // visually bigger
+    self->entity.sync_rect();
+    LOG_INFO("[BOSS] 背水一战! 攻速+43%% 移速+20%% 攻击+15%%");
+    if (effects) {
+        VFXServer v;
+        float mx = self->entity.rect.x + self->entity.rect.width/2;
+        float my = self->entity.rect.y + self->entity.rect.height/2;
+        v.boss_phase2_flash(mx, my, {255, 60, 40, 255});
+        v.ring(mx, my, 128, {255, 80, 40, 255}, 3, 0.8f);
+        for (auto& e : v.effects) effects->push_back(e);
+    }
 }
 
 void BossAI::_enter_phase2(Monster* self, std::vector<Effect>* effects) {
     phase2 = true;
     phase2_pause = _phase2_pause;                       // G1 Step6: from BossDef
+    _rage_pulse_cd = 3.0f;                              // G5.5: 转场演出后再首发脉冲
     is_enraged = true;
     move_speed *= _phase2_speed_mult;                   // G1 Step6: from BossDef
     self->attack_cooldown *= _phase2_cd_mult;           // G1 Step6: from BossDef

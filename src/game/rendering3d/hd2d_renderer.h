@@ -179,7 +179,7 @@ private:
                                  Vector3 pos, float w, float h);  // A1.1
     void _draw_blob_shadow(Vector3 pos, float w);   // M6-v2c: 接地阴影
     void _draw_fx_quad(const HD2DDrawItem& item);
-    void _draw_fx_particle(const HD2DDrawItem& item);    // A10: 3D 粒子
+    void _draw_fx_particles_batch();         // G5.5: 3D 粒子单批 (替逐颗 DrawSphere)
     void _draw_fx_ring_3d(const HD2DDrawItem& item);     // A10: 3D 光环
     void _draw_fx_beam_3d(const HD2DDrawItem& item);     // A10: 3D 光束
     void _draw_fx_explosion_3d(const HD2DDrawItem& item); // A10: 3D 爆炸
@@ -196,6 +196,7 @@ private:
     void _draw_trajectory_line(const HD2DDrawItem& item);  // M6-v2b
     void _draw_cone_fan(const HD2DDrawItem& item);          // M6-v2b: Boss 扇形预警
     void _draw_entity_link(const HD2DDrawItem& item);       // M6-v2b: 实体连线
+    void _draw_fx_pass();              // G5.5: FX 特效层 (粒子单批 + 视锥体裁剪)
     void _draw_ambient_batch();     // A2.1: 氛围粒子单批软光 (替 M6-v2e 逐颗球)
     bool _ambient_billboard_basis(Vector3& right, Vector3& up) const;  // A2.1
     void _apply_post_processing(GameScene& gs);

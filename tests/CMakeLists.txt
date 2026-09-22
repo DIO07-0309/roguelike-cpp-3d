@@ -85,6 +85,7 @@ add_roguelike_test(registry_test    registry/registry_test.cpp)
 add_roguelike_test(damage_test      combat/damage_test.cpp)
 add_roguelike_test(damage_type_test combat/damage_type_test.cpp)
 add_roguelike_test(projectile_test  combat/projectile_test.cpp)
+add_roguelike_test(object_pool_test systems/object_pool_test.cpp)   # G11: 对象池槽位复用/回收/扩容安全
 add_roguelike_test(buff_test        combat/buff_test.cpp)
 add_roguelike_test(dodge_test       combat/dodge_test.cpp)   # B3: 翻滚纯逻辑组件
 add_roguelike_test(animation_test  animation/animation_test.cpp)  # A5: 骨骼动画数据层+求值器

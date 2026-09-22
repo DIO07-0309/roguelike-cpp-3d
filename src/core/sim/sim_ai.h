@@ -47,7 +47,12 @@ public:
 
     void start(const Player* player);
     void tick();
-    void set_time(double t) { _game_time = t; }
+    // G13: 跨层 game_time 归零 → 丢弃过期卡死计时 (否则 _stuck_since 变"未来时间")
+    void set_time(double t) {
+        if (_last_game_time >= 0.0f && t < _last_game_time) _stuck_since = -1;
+        _last_game_time = (float)t;
+        _game_time = t;
+    }
     // P0-M2: room domain context (set once per scene by GameScene)
     void set_room_manager(const class RoomManager* rm) { _rooms = rm; }
 
@@ -73,6 +78,7 @@ private:
     float _dir_timer = 0;
     int  _current_dir = -1;
     double _game_time = 0;
+    float _last_game_time = -1.0f;   // G13: 检测跨层 game_time 回绕
     const class RoomManager* _rooms = nullptr;   // P0-M2
 
     // Q3.1: 帧级 best_action 缓存 — 同帧多次查询(每动作名一次)结果必须一致
@@ -126,7 +132,9 @@ private:
     // Q3.2: 卡死逃脱 — 原地 ≥2s 且无近距怪 → 直线脱困 (口袋/贴墙钉子户)
     mutable float _stuck_since = -1.0f;
     mutable float _last_px = -1.0f, _last_py = -1.0f;
-    mutable float _last_hp_sum = -1.0f, _last_mon_sum = -1.0f;  // 换血检测
+    mutable float _last_hp_sum = -1.0f;                    // 换血检测 (玩家 HP)
+    mutable float _last_mon_sum = -1.0f;                   // 怪 HP 总和变化检测 (战斗输出)
+    mutable int _last_alive_count = -1;                    // 存活怪数变化检测 (卡死 progress)
     mutable int _loot_last_tx = -999, _loot_last_ty = -999;     // 搜刮卡死看门狗
     mutable float _loot_stuck_since = -1.0f;
     // P1-C3: 本层搜刮放弃标记 — 看门狗触发后置位, 直奔楼梯 (原直接 "descend"
@@ -137,8 +145,14 @@ private:
     // (P1-C3 vs P1-C2 500局: TWall 29→4 但 deep 22→5, s3) — 搜刮要限时限层
     mutable float _stairs_since = -1.0f;
     mutable int _escape_dir = -1;
+    // G13: 本局累计卡死时长 (秒) — 超预算即判定不可恢复, 触发看门狗强制结算
+    // (不用传送失败计数: 传送会周期性成功并清零计数, 卡死局永远凑不满阈值)
+    mutable double _stuck_total = 0;
+    mutable float _last_teleport_try = -1.0f;
     // Q3.3: 药水决策冷却 — 防止残血时逐帧连喝清空背包
     mutable double _last_potion_time = -999.0;
+    mutable float _last_pickup_attempt = -1.0f;   // G14b: 拾取冷却 — 防 pick 死循环
+    mutable int _pickup_fail_streak = 0;          // G14b: 连续拾取失败数 (3 次放弃)
     // P1-A2: 地面物品快照 (每帧 set_ground_items 注入)
     std::vector<GroundSpot> _ground;
     // P1-C3: 楼梯目标 tile (-1=未注入) — set_stairs_pos 每帧注入
@@ -147,6 +161,26 @@ private:
     int _bfs_to_stairs(const Player* p, const GameMap* map) const;
     // Q3.2: 危险视野 — 活性毒池/尖刺圈内判定 (半径 1.5 格)
     bool _is_hazard_near(float px, float py, const GameMap* map) const;
+    // G13: 卡死脱困 — 原地 ≥2s 四方向脱困, ≥8s 兜底传送; "" = 未进入脱困
+    std::string _stuck_escape(const Player* p, const std::vector<Monster*>& monsters,
+        const GameMap* map) const;
+    // G14b: 卡死进展信号 — 玩家移动>2格/怪HP变化/玩家HP变化/怪死亡 (任一=非卡死)
+    bool _stuck_progress(const Player* p, const std::vector<Monster*>& monsters,
+        int tx, int ty) const;
+    // G14b: 卡死 ≥8s 兜底 — 传玩家/拉怪/强开 3x3 CLOSED 门; 成功返回 "none"
+    std::string _stuck_tp_or_pull(const Player* p, const std::vector<Monster*>& monsters,
+        const GameMap* map, int tx, int ty, float stuck_for) const;
+    // G13: 四方向轮换脱困, 返回 move_* 动作名
+    std::string _rotation_escape(const Player* p, const GameMap* map) const;
+    // G14: 卡死采样诊断 — 记录 AI tile/怪距/可走数 (环形缓冲 64)
+    void _stuck_sample(const Player* p, const std::vector<Monster*>& monsters,
+        const GameMap* map, int tx, int ty) const;
+    // G14b: 卡死邻居统计 — 输出 (4邻可走数, 4邻DOOR数, 全图LOCKED门数, 怪4邻可走数)
+    void _stuck_neighbor_stats(const GameMap* map, const Monster* nm,
+        int tx, int ty, int out[4]) const;
+    // G14b: 卡死 BFS 步稳定化 — 路径记忆迟滞消除 BFS 等权震荡 (返回 0-3)
+    int _pick_stable_bfs_step(const Player* p, const std::vector<Monster*>& monsters,
+        const GameMap* map, int bstep) const;
     // Q3.2: 残血且无可用自愈 → 需去找泉水/祭坛回血
     bool _needs_recovery(const Player* p) const;
     // Q3.2: BFS 至最近未触发特殊房 (回血/增益资源), -1=不可达
@@ -167,6 +201,8 @@ public:
 
     // ── Q3.3: 本帧决策结果 (game_scene 消费 use_potion 用) ──
     std::string last_best_action() const { return _cached_best; }
+    // G13: 本局累计卡死时长 (秒) — 结算时诊断用
+    double stuck_total() const { return _stuck_total; }
 
     // ── G8.3: Build SimulationState from game state ──
     // Q3.15 (A6 fix): 需要 game_time 计算真实剩余冷却 (原伪造常量导致根节点永久禁用普攻)
@@ -182,4 +218,16 @@ using SimAI = DecisionAgent;
 extern int sim_stuck_teleports;   // [PLAYER-FIX] 口袋传送次数
 extern int sim_stuck_rotations;   // 旋转脱困进入次数
 extern int sim_stuck_loot_wd;     // 搜刮看门狗强制下楼次数
+extern int sim_stuck_watchdog;    // G13: >0 = 本帧请求强制结算 (STUCK_RECOVERED)
+extern int sim_action_counts[8];  // G13: 动作分布诊断 (见 sim_ai.cpp 注释)
+extern int sim_move_branch[5];   // G14: 移动分支归因 (0:recovery 1:loot 2:room 3:approach 4:stand)
+extern int sim_bfs_fail;         // G14: BFS/贪心全部失败次数
+extern int sim_stairs[3];        // G14: 0:stairs总帧 1:descend 2:move
+extern int sim_move_noenemy;     // G14: 无怪随机游走帧数
+extern int sim_stuck_sample[64][13];  // G14: (tileX,tileY,怪距px,存活怪数,4邻可走,hazard,4邻DOOR数,怪tx,怪ty,AI房间,怪房间,LOCKED门数,怪4邻可走)
+extern int sim_stuck_sample_count;   // G14: 采样累计数
+extern int sim_rot_blocked;          // G14: 旋转脱困撞墙次数
+extern int sim_stuck_bfs_hit;        // G14: 卡死 BFS 朝怪命中数
+extern int sim_stuck_bfs_fail;       // G14: 卡死 BFS 朝怪失败数
+extern int sim_tp_attempts;          // G14: 传送尝试次数
 

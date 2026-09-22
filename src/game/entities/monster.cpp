@@ -193,8 +193,8 @@ bool Monster::can_attack(double gt) const {
     return (gt - last_attack_time) >= attack_cooldown;
 }
 
-int Monster::attack_target(Player* target, double gt) {
-    int dmg = calculate_damage(get_effective_attack(this),
+int Monster::attack_target(Player* target, double gt, float damage_mult) {
+    int dmg = calculate_damage((int)(get_effective_attack(this) * damage_mult),
                                 target->combat.get_effective_defense(attack_type),
                                 attack_type);
     target->combat.take_damage(dmg);
@@ -349,6 +349,26 @@ static AIArchetype _str_to_archetype(const std::string& s) {
     return AIArchetype::DEFAULT;
 }
 
+// G5.5: attack_pattern 字符串 → 枚举 (空串由调用方走类型回退)
+static MonsterAttackPattern _str_to_attack_pattern(const std::string& s) {
+    if (s == "double_strike") return MonsterAttackPattern::DOUBLE_STRIKE;
+    if (s == "cleave")        return MonsterAttackPattern::CLEAVE;
+    if (s == "lunge")         return MonsterAttackPattern::LUNGE;
+    if (s == "spread")        return MonsterAttackPattern::SPREAD;
+    return MonsterAttackPattern::BASIC;
+}
+
+// G5.5: 类型回退默认普攻模式 — 让旧配置怪也获得差异化攻击节奏
+static MonsterAttackPattern _default_pattern_for_type(MonsterType t) {
+    switch (t) {
+    case MonsterType::TANK:     return MonsterAttackPattern::CLEAVE;
+    case MonsterType::ELITE:    return MonsterAttackPattern::DOUBLE_STRIKE;
+    case MonsterType::CHARGER:  return MonsterAttackPattern::LUNGE;
+    case MonsterType::SUMMONER: return MonsterAttackPattern::SPREAD;
+    default:                    return MonsterAttackPattern::BASIC;
+    }
+}
+
 // visual_id → Color (表现层映射, 未来替换为 texture/animation)
 // M5-D: 新专属怪配色 (与 mon_<visual_id> 专属图同色系)
 static Color _visual_to_color(const std::string& vid) {
@@ -434,6 +454,18 @@ Monster* spawn_monster(float px, float py, const std::string& type) {
 
     // G5.3: AI Archetype (行为原型, 与 MonsterType 外观解耦)
     if (ai) ai->archetype = _str_to_archetype(def->ai_archetype);
+
+    // G5.5: 普攻模式 (enemies.json attack_pattern 优先, 空则按类型回退)
+    // SPREAD 依赖弹道池, 仅授予射程 >=3 格的远程/召唤类怪; 否则回退 BASIC,
+    // 避免近战怪被静默套上不生效的模式
+    if (ai) {
+        MonsterAttackPattern pat = def->attack_pattern_str.empty()
+            ? _default_pattern_for_type(m->monster_type)
+            : _str_to_attack_pattern(def->attack_pattern_str);
+        if (pat == MonsterAttackPattern::SPREAD && def->ai.attack_range < 3.0f)
+            pat = MonsterAttackPattern::BASIC;
+        ai->attack_pattern = pat;
+    }
 
     // D2: Ranged monsters use projectile attacks (data-driven from enemies.json)
     bool is_ranged = (m->monster_type == MonsterType::ARCHER

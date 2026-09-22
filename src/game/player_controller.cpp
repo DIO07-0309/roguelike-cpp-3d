@@ -177,8 +177,30 @@ void PlayerController::tick(float dt) {
         } else {
             float speed_mul = (gs._tw_speed_boost > 0) ? 1.25f : 1.0f;
             float s = get_effective_speed(gs.player.get()) * speed_mul * dt;
-            _try_move_axis(true,  move.x * s);
-            _try_move_axis(false, move.y * s);
+            // G14: R1 接触开门 — try_open_door_toward 此前从未被调用(死代码),
+            //       CLOSED 门 is_walkable=false 令移动被拒 → AI BFS(CLOSED可走)
+            //       与执行层 rect 判定脱节 → 玩家卡死于 CLOSED 门旁 (door=1 stuck#)
+            if ((move.x != 0.0f || move.y != 0.0f))
+                gs.game_map->try_open_door_toward(e.rect, move.x, move.y);
+            if (gs._sim_mode) {
+                // G14b: sim 整格步进 — 半格位置(px=112)使 rect 跨 2 tile,
+                //       连续移动(is_rect_walkable 全tile)与 BFS(中心tile)分裂,
+                //       玩家永远"走不动". 整格步进后位置恒对齐格点, rect 28px
+                //       落单 tile → 决策/执行完全一致. 0.14s/格≈228px/s 同步速.
+                static float _sim_last_step = -1.0f;
+                if ((move.x != 0.0f || move.y != 0.0f) &&
+                    gs.game_time - _sim_last_step >= 0.14f) {
+                    _sim_last_step = gs.game_time;
+                    float dx = move.x * 32.0f, dy = move.y * 32.0f;
+                    e.position.x += dx; e.position.y += dy; e.sync_rect();
+                    if (!gs.game_map->is_rect_walkable(e.rect)) {
+                        e.position.x -= dx; e.position.y -= dy; e.sync_rect();
+                    }
+                }
+            } else {
+                _try_move_axis(true,  move.x * s);
+                _try_move_axis(false, move.y * s);
+            }
         }
 
         // ── 房间发现 ──

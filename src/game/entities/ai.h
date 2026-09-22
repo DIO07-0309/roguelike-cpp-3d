@@ -58,6 +58,18 @@ enum class AIArchetype {
 };
 
 // ============================================================
+// G5.5: MonsterAttackPattern — 普攻模式 (数据驱动 enemies.json)
+// 组合优于继承: 模式是状态字段+小型执行器, 非类层级
+// ============================================================
+enum class MonsterAttackPattern {
+    BASIC,         // 普通单体攻击 (原行为)
+    DOUBLE_STRIKE, // 二连击: 短间隔补第二段
+    CLEAVE,        // 顺劈: 1.5x 伤害 + 击退
+    LUNGE,         // 冲刺: 短突进贴近后命中
+    SPREAD,        // 散射: 一次扇形多发弹
+};
+
+// ============================================================
 // MonsterAI — 怪物行为状态机 (IDLE → CHASE → ATTACK)
 // D2 Step3: Think → Skill → Move → Attack 管线
 // ============================================================
@@ -97,6 +109,14 @@ public:
     float _archetype_timer = 0.0f;   // 通用计时器 (sniper蓄力/controller间隔/ambush冷却)
     bool  _archetype_active = false; // 特殊状态激活中 (ambush隐身中)
 
+    // G5.5: 普攻模式 (spawn_monster 按 enemies.json/类型回退设置)
+    MonsterAttackPattern attack_pattern = MonsterAttackPattern::BASIC;
+    int   _pending_strikes = 0;       // DOUBLE_STRIKE: 待打出剩余段数
+    float _strike_gap = 0.0f;         // DOUBLE_STRIKE: 下一段倒计时 (s)
+    float _lunge_left = 0.0f;         // LUNGE: 冲刺剩余时间 (s, >0 冲刺中)
+    Vector2 _lunge_dir{0, 0};         // LUNGE: 冲刺单位方向
+    bool  _lunge_hit_pending = false; // LUNGE: 冲刺末段待命中
+
     // Q3.16: 房间守卫 (leash) — 怪物锚定出生房间, 未被挑衅不远离追击。
     // 解决: IDLE 随机巡逻走出房间 → 进入视野全图追击 → 前期怪涌向主角、中后期没怪。
     float home_x = -1.0f, home_y = -1.0f; // 出生锚点 (首次 update 记录, -1=未初始化)
@@ -108,6 +128,33 @@ public:
     int _player_room = -1;  // 当前 update 周期玩家所在房间索引 (由 update() 设置)
     const RoomManager* _room_mgr = nullptr; // 由 update() 传入, 用于边界检查
 
+    // AI 优化：怪物记忆系统 — 记住玩家最后位置，离开视野后继续追击
+    float memory_x = 0.0f;
+    float memory_y = 0.0f;
+    float memory_timer = 0.0f;      // 记忆持续时间（秒）
+    bool has_memory = false;
+
+    void update_memory(float x, float y, float duration = 3.0f) {
+        memory_x = x;
+        memory_y = y;
+        memory_timer = duration;
+        has_memory = true;
+    }
+
+    bool memory_valid() const {
+        return has_memory && memory_timer > 0.0f;
+    }
+
+    void tick_memory(float dt) {
+        if (memory_timer > 0) {
+            memory_timer -= dt;
+            if (memory_timer <= 0) {
+                has_memory = false;
+                memory_timer = 0.0f;
+            }
+        }
+    }
+
 protected:
     float _patrol_timer = 0.0f;
     Vector2 _patrol_dir{0, 0};
@@ -115,8 +162,20 @@ protected:
     void _decide_state(Monster* self, Player* player);
     void _execute_idle(Monster* self, GameMap* map, double dt);
     void _execute_chase(Monster* self, Player* player, GameMap* map, double dt);
-    void _execute_attack(Monster* self, Player* player, double game_time,
+    void _execute_attack(Monster* self, Player* player, GameMap* map,
+                         double dt, double game_time,
                          std::vector<Effect>* effects);
+    // G5.5: 普攻模式执行器 (每个 ≤40 行, 组合式小函数)
+    void _tick_pending_strikes(Monster* self, Player* player, double dt,
+                               double gt, std::vector<Effect>* effects);
+    void _attack_cleave(Monster* self, Player* player, GameMap* map,
+                        double gt, std::vector<Effect>* effects);
+    void _attack_lunge(Monster* self, Player* player, GameMap* map,
+                       double dt, double gt, std::vector<Effect>* effects);
+    void _attack_spread(Monster* self, Player* player,
+                        double gt, std::vector<Effect>* effects);
+    void _fire_projectile(Monster* self, Player* player,
+                          double gt, std::vector<Effect>* effects);
     void _apply_movement(Monster* self, GameMap* map, float mx, float my, double dt);
     float _dist_to(Monster* self, Player* player) const;
     void _pick_new_dir();

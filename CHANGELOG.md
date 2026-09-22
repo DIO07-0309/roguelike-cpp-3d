@@ -1,3 +1,140 @@
+# G14 — sim AI 卡死修复链: 可达性判定统一 + 路径稳定化 (2026-09-22)
+
+> 本轮定位 sim win_rate=0 的根因链, 修复 6 项真实缺陷并将 avg_floor 从 1.0 提升到 1.1~4.5 (随修复推进波动)。
+> 剩余核心问题 (多套 walkable 判定语义不统一) 已记录为 P1-C7 专项。
+
+- **致命 bug: OPEN 门被 BFS 判为障碍** (`src/core/sim/sim_ai.cpp:_tile_rect_walkable`)
+  - 原 `if (ds != DoorState::NONE) return false;` 把 **OPEN 门也当不可走** —— BFS 永远过不了任何
+    门 → 怪被"门隔离" → 楼层永清。与执行层 `is_rect_walkable` (OPEN=true) 完全脱节
+  - 修复: OPEN 走 `is_rect_walkable` (true), 仅 LOCKED/SEALED 拦截, CLOSED 由 Sim 自动开放行
+- **执行层接触开门接线** (`src/game/player_controller.cpp`)
+  - `GameMap::try_open_door_toward` (R1 接触开门) 此前**从未被任何调用者使用** (死代码) →
+    玩家朝 CLOSED 门移动被 `is_rect_walkable` 拒绝 → 卡门旁死循环 (门永不开启)
+- **攻击射程/理想距离对齐武器真实射程** (`sim_ai.cpp`)
+  - 原硬编码 48px / 2.5-1.5 格: crossbow 射程 10 格 (320px) 被当成近战武器 → AI 判"出圈"从不射击
+  - 现用 `max(weapon.current_range(), 1.5f)`: 保底 48px 规避 P1-C5 已知收窄回归, 只修正远程
+- **卡死行为链修复** (`sim_ai.cpp`)
+  - 卡死 ≥2s: 近身 (≤1.5 格) 直接 attack / 否则 **BFS 定向朝怪** (原盲目旋转只让 AI 原地转圈)
+  - 近身战豁免 (2 格内有怪 = 真实战斗, 卡死机制让位) — 避免 120s 看门狗误杀拉锯战
+  - progressed 信号三源化 (怪HP/玩家HP/存活数, 容差 0.01) — 环境 tick 不再误判"战斗"
+  - 传送兜底: 玩家传送失败 → **反向拉怪到玩家旁** (孤岛怪破除) → 再强开 3x3 CLOSED 门
+- **传送落 CLOSED 门允许+落地即开** (`sim_ai.cpp` / `sim_ai_teleport.cpp`)
+  - `_tile_valid_for_landing` 原 `is_walkable` 拦截 CLOSED 门 → 怪被门围时传送永败
+- **sim 整格步进** (`player_controller.cpp`)
+  - 连续移动 (speed×dt) 使玩家停在**半格位置** → rect 跨 2 tile, 执行层 `is_rect_walkable`
+    与 BFS (中心 tile) 分裂 → "永远走不动"。整格步进 (0.14s/格, 撞墙还原) 后位置恒格点对齐,
+    rect 28px 落单 tile → 决策/执行一致
+- **拾取防死循环** (`sim_ai.cpp`)
+  - `_evaluate_pickup` 2 格内给 1.6 分压过移动, 但物品捡不掉 → AI 每帧 pickup 死原地
+  - 修复: 拾取尝试冷却 1.5s + 连续 3 次失败 → 本局放弃该拾取 (让位移动/战斗)
+- **路径记忆等距锁定** (`sim_ai.cpp` ×2 处)
+  - 原 `nd < d` 对对称等距双路径不锁定 → 玩家在等距格间往返震荡 (实测 tile 14↔16)
+  - 修复: `nd <= d + ε` 容忍浮点等值, 路径记忆生效打破震荡
+- **怪物生成排除门 tile** (`src/game/systems/floor_manager.cpp`)
+  - 原只查 `is_walkable(tile)` → 怪可生成在 OPEN 门 tile, Room Encounter 门组 LOCKED 后怪被锁异常位
+  - 修复: 排除 DOOR/LOCKED/SEALED + rect 级校验 + 拆 `_try_place_monster` 保持 ≤40 行
+- **诊断基础设施** (保留, 结算时低频输出): [SIM-DIAG] 动作分布/移动分支/卡死采样/连通性报告
+
+- 门禁: Release 0 error · **ctest 68/68** · validator 0 error / 0 warning
+- 指标: avg_floor 1.0 → 1.1~4.5 (随版本), 卡死场景从"怪 600-1080px 远不可达"收敛到
+  "怪 111-322px 近可达但路径震荡" (部分场景已修复)
+- **遗留 TODO (P1-C7 专项)**: 代码库存在 3 套 walkable 语义
+  `_tile_rect_walkable` / `is_rect_walkable` / `_sim_tile_passable`, 边界条件互有分歧
+  (CLOSED 门/半格 rect/门状态), 导致决策层与执行层仍有缝隙。彻底方案: 统一
+  `IsPassable(map, tile, rect)` 单一入口 + 扩展 `door_truth_table_test` 覆盖矩阵
+- 遗留: win_rate 仍为 0 (AI 推进/平衡), 非本轮范围
+
+# G13 — sim 卡死脱困死锁修复 + 卡死看门狗 (2026-09-22)
+
+- **死锁修复** (`src/core/sim/sim_ai.cpp`)
+  - 根因：卡死 ≥8s 后调用兜底传送，**成功与失败都无条件 `return "none"` 且不重置计时**。
+    传送失败（最近怪隔墙不同房间、周围无可落格）→ 每帧返回"什么都不做"，直到烧满 36000 帧
+  - 修复：传送失败时回落旋转脱困（原 `else if` 链改平铺 `if`），不再空转
+  - 原 `sim_ai.cpp` 50 行卡死判定块从 `best_action()` 抽出为 `_stuck_escape` (38 行) +
+    `_rotation_escape` (12 行)，`best_action` 只剩一行调用
+- **卡死看门狗**（新信号 `sim_stuck_watchdog`，sim_ai → game_scene）
+  - 用**本局累计卡死时长**而非"传送失败次数"：传送会周期性成功并清零计数，失败计数永远凑不满
+    阈值（实测 seed21 五局全部因此漏报）
+  - 阈值 `kStuckTotalBudget = 120s`（36000 帧预算约 600s 的 1/5）。实测 240s 反而更差
+    （seed101 真实死亡 8→1），局跑得越久越容易在卡死中耗光预算
+  - `game_scene.cpp:_process` 顶格检查；**不设** `_sim_wall_timeout`，结算分类自然落到
+    末尾 else → `STUCK_RECOVERED`（原该分支永不可达，每次都 0）
+- **跨层时间回绕修复** (`sim_ai.h:set_time`)
+  - 实测发现 `_stuck_total` 出现 -99 / -244s 负值：`enter_floor` 把 `game_time` 归零，
+    残留的 `_stuck_since` 变成"未来时间"，`_stuck_total` 被负数拉爆、看门狗判不成立
+  - `set_time` 检测时间倒退即丢弃过期计时；累加处再 `std::max(0, ...)` 双保险
+- **阈值调参可观测**：`DecisionAgent::stuck_total()` + `[SIM-DIAG]` 结算日志
+
+- 门禁: Release 0 error · **ctest 68/68** · validator 0 error / 0 warning · `git diff --check` 干净
+- **TIMEOUT_WALL 归零**：seed101 `TIMEOUT_WALL 6→0`（现 DEATH_DOT=5 / DEATH_MONSTER=3 / STUCK_RECOVERED=2），
+  seed21 `TIMEOUT_WALL 5→0`（STUCK_RECOVERED=5）
+- 遗留：win_rate 仍为 0，是 AI 推进能力/平衡问题，非本次范围
+- 桌面包已同步
+
+# G12 — 武器攻击路径函数拆分 (2026-09-22)
+
+- **`WeaponExecutor::execute` 91 行 → 30 行编排器** (`src/game/systems/weapon_executor.cpp`)
+  - 拆为 4 个单职责助手：`_try_stage3_special` 13 行（combo 第三段特殊技分发）/
+    `_update_range_indicator` 6 行（射程指示器）/ `_resolve_normal` 25 行（弩弹道 vs 近战 SSOT 几何）/
+    `_finalize_attack` 29 行（协同上下文 + 推进连段 + 事件 + 音频）
+  - 纯机械拆分：守卫顺序、`_set_attack_context` 先于 `execute_attack`、事件类型映射、音效回退全部逐行保留
+  - `_resolve_normal` 未用到 `map`，直接去掉参数而非留 `(void)map` 压警告
+- **顺手清理**：`ai.cpp` 5 处 + `ai.h` 4 处尾随空格，`git diff --check` 归零
+- **遗留说明**：`execute` 原为 90 行（HEAD 既有遗留，本次改动触及故顺带拆分）；
+  `for_each` 复杂度为 O(capacity) 而非 O(存活数)，已写入 `object_pool.h` 注释，
+  不适合接到"高容量、低占用"容器
+
+- 门禁: Release 0 error · **ctest 68/68**（武器路径 69 用例：special 13 / weapon 15 / synergy 18 / action 7 / projectile 16）
+  · validator 0 error / 0 warning · `git diff --check` 干净 · `--sim 5` exit=0
+- 桌面包已同步
+
+# G11 — 对象池接入弹体 (2026-09-22)
+
+- **ObjectPool 重构** (`src/game/systems/object_pool.h`)
+  - 索引槽位设计取代裸指针借出；槽位用 `deque` 存储，`push_back` 不失效既有元素地址，
+    故 `acquire()` 返回的 `T*` 跨扩容天然有效（旧实现用 `vector`，扩容后全部悬垂）
+  - `release` 重置槽位为默认状态，杜绝跨生命周期残留数据；`clear` 回收不缩容
+  - `acquire` / `release` 均 O(1)；空闲索引栈复用槽位
+  - API: `acquire` / `insert` / `release` / `clear` / `for_each` / `release_if` / `at` / `size` / `capacity` / `idle`
+- **弹体接入** (`GameScene::projectiles` → `Game::ObjectPool<Projectile>`)
+  - 每帧 `erase(remove_if)` 的 O(n) 元素搬移 → `release_if` 逐槽位 O(1) 回收
+  - 遍历点全部改 `for_each`：玩家弹体 tick (`tick_projectiles`) / 敌方弹体 tick / 2D 绘制 / 3D `_build_projectiles`
+  - `Monster::projectiles_ptr` 与 `WeaponExecutor` 相关签名同步改池类型，`push_back` → `insert`
+  - `_build_projectiles` 顺带拆为 4 个 ≤40 行函数（`_build_projectiles` 8 / `_build_warning_item` 20 / `_build_trajectory_item` 21 / `_build_active_item` 12）
+- **单测** `tests/systems/object_pool_test.cpp`（9 用例：值写入 / 回收重置 / 槽位复用 / 幂等与越界 / 条件回收 / 跳过空闲 / clear / 扩容安全回归 / 真实弹体集成）
+
+- 门禁: Release 0 error · **ctest 68/68** · validator 0 error / 0 warning · `--sim 3` exit=0
+- 桌面包已同步
+
+# G5.5 — 怪物 AI 与渲染性能优化 (2026-09-22)
+
+- **怪物记忆系统** (`src/game/entities/ai.h` / `ai.cpp`)
+  - `MonsterAI` 新增 `memory_x` / `memory_y` / `memory_timer` + `update_memory` / `memory_valid` / `tick_memory`
+  - `_execute_chase`：玩家在视野内时刷新记忆（持续 3 秒），离开视野后向最后已知位置推进
+- **普攻模式多样化** (`MonsterAttackPattern`)
+  - 5 种模式：`basic` / `double_strike` / `cleave` / `lunge` / `spread`
+  - 数据驱动：`EnemyDef::attack_pattern_str` ← `enemies.json` 的 `attack_pattern` 字段
+  - 类型回退：tank→cleave、elite→double_strike、charger→lunge、射程≥3 的 summoner→spread
+  - `Monster::attack_target` 增加 `damage_mult`（默认 1.0）承载 cleave 1.5x
+  - 守卫：近战怪（`attack_range < 3.0`）不授予 spread，回退 basic，避免模式静默失效
+  - `_execute_attack` 拆为分发器 + 5 个 ≤40 行执行器；攻击事件与特效抽为 `_emit_monster_attack` / `_push_melee_attack_feedback` / `_push_cast_vfx`
+- **Boss AI 阶段变化增强** (`src/game/entities/boss.cpp`)
+  - `_tick_phase2_behaviors`：二阶段狂暴脉冲（每 6s，近身 96px 内击退 30px + 0.5x 真实伤害），间隔随 `_phase2_elapsed` 由 6s 收敛至 4s 下限
+  - `_enter_last_stand`：HP<25% 一次性强化（攻速×0.7 / 移速×1.2 / 攻击×1.15 / 体型 56px + 红色双环演出）
+- **FX 粒子单批渲染** (`src/game/rendering3d/hd2d_renderer.cpp`)
+  - `_draw_fx_particle`（逐颗 8 次 `DrawSphere`）→ `_draw_fx_particles_batch`（相机朝向 additive quad，全帧 1 个 rlgl 批）
+  - 视觉构成保持不变：核心 + 外发光 + 4 环绕 + 2 外层光晕，轨道数学逐项对应
+  - `_fx_emit_quad` / `_fx_emit_particle` 静态助手（匿名命名空间）
+  - `_draw_fx_pass`：FX 五段绘制循环（粒子单批 + 4 类逐项）抽为独立函数，`_draw_scene` 47→39 行，绘制顺序与裁剪条件不变
+- **视锥体裁剪落地**
+  - `_fx_in_view`：FX_QUAD / FX_RING_3D / FX_EXPLOSION_3D 按相机焦点 ±`kFxCullMargin`(220) 世界单位裁剪
+  - `_fx_beam_in_view`：光束双端判定，避免起点屏外/终点屏内的长束被误裁
+- **天气粒子** `WeatherSystem::init` 300→150
+- **对象池基础设施**：新增 `src/game/systems/object_pool.h`（模板池，G11 已接入弹体）
+
+- 门禁: Release 0 error · **ctest 68/68** · validator 0 error / 0 warning
+- 桌面包已同步
+
 # A9 — 攻击特效优化 v1 (2026-09-21)
 
 > 设计 spec: docs/superpowers/specs/2026-09-21-a9-attack-vfx-design.md

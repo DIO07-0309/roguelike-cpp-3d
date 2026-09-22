@@ -8,6 +8,8 @@
 #include "entity.h"
 #include "combat_stats.h"
 #include "combat_system.h"
+#include "types/weapon_types.h"               // Projectile (弹体池元素)
+#include "object_pool.h"                      // Game::ObjectPool
 #include "game/animation/avatar_animator.h"   // A6-S1: AnimInput 信号映射
 
 // 前向声明
@@ -80,7 +82,7 @@ public:
     float projectile_speed = 300.0f;
     float projectile_warning_time = 0.8f;
     int   projectile_warning_level = 0;
-    std::vector<struct Projectile>* projectiles_ptr = nullptr;
+    Game::ObjectPool<Projectile>* projectiles_ptr = nullptr;
 
     // AI 组件 (在 ai.h 中定义)
     class MonsterAI* ai = nullptr;
@@ -94,7 +96,8 @@ public:
                    std::vector<struct Effect>* effects = nullptr,
                    int monster_room = -1, int player_room = -1,
                    const class RoomManager* room_mgr = nullptr);
-    int attack_target(Player* target, double game_time);
+    // G5.5: damage_mult 支持普攻模式倍率 (CLEAVE 1.5x); 默认 1.0 = 原行为
+    int attack_target(Player* target, double game_time, float damage_mult = 1.0f);
     bool can_attack(double game_time) const;
 
     void draw(float cam_x, float cam_y);

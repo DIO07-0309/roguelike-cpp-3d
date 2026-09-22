@@ -16,11 +16,12 @@ bool _tile_occupied(int tx, int ty, const std::vector<Monster*>& others) {
 }
 
 bool _tile_valid_for_landing(const GameMap* map, int tx, int ty) {
-    if (!map->is_walkable(tx, ty)) return false;
     if (map->tile_at(tx, ty) == TileType::WALL) return false;
     DoorState ds = map->door_state_at(tx, ty);
     if (ds == DoorState::LOCKED || ds == DoorState::SEALED) return false;
-    return true;
+    // G14: CLOSED 门允许作为落点 (is_walkable=false 曾被误拦; 落地后开门)
+    if (ds == DoorState::CLOSED) return true;
+    return map->is_walkable(tx, ty);
 }
 } // namespace
 

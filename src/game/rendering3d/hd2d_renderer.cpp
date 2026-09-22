@@ -29,6 +29,18 @@ constexpr float kOutlineBaseWorldW = 2.0f;   // 基准描边宽 (世界单位)
 constexpr float kOutlineMinScreenPx = 1.0f;  // 远距最小可辨识保护
 constexpr float kOutlineMaxScreenPx = 4.0f;  // 近距 Boss 过粗保护
 constexpr float kOutlineAlphaCutoff = 0.5f;  // 剪影阈值 (与 depth pass 同源)
+// ── G5.5: 视锥体裁剪 — 绘制项中心超相机 ±kFxCullMargin 跳过 (屏外高多边形纯浪费) ──
+constexpr float kFxCullMargin = 220.0f;      // 相机焦点边际 (世界单位, 同屏可见范围)
+inline bool _fx_in_view(const HD2DDrawItem& item, Vector3 focus) {
+    return fabsf(item.world_pos.x - focus.x) <= kFxCullMargin
+        && fabsf(item.world_pos.z - focus.z) <= kFxCullMargin;
+}
+// 光束双端判定 — 长束起点屏外/终点屏内不得误裁
+inline bool _fx_beam_in_view(const HD2DDrawItem& item, Vector3 focus) {
+    return _fx_in_view(item, focus)
+        || (fabsf(item.end_pos.x - focus.x) <= kFxCullMargin
+            && fabsf(item.end_pos.z - focus.z) <= kFxCullMargin);
+}
 }  // namespace
 
 HD2DRenderer& HD2DRenderer::inst() {
@@ -47,7 +59,7 @@ bool HD2DRenderer::ensure_init(int target_w, int target_h) {
         LOG_WARN("HD2D part cutout unavailable; using static player billboards");
     _make_blob_shadow_tex();     // M6-v2c: blob shadow 程序纹理
     _make_mote_glow_tex();       // A2.1: 氛围粒子软光纹理
-    Game::WeatherSystem::inst().init(300);  // 天气系统
+    Game::WeatherSystem::inst().init(150);  // 天气系统（性能优化：150 粒子）
     _ready = true;
     LOG_INFO("HD2D: 3D 表现层已激活");  // P1-C9: 确认 3D 分支生效 (回退静默时日志可辨)
     return true;
@@ -383,16 +395,8 @@ void HD2DRenderer::_draw_scene() {
         if (item.kind == HD2DDrawItem::Kind::PROJECTILE_BODY) _draw_projectile_body(item);
     for (const auto* ghost : hd2d::orderedGhostParts(_draw_items, _camera))
         _draw_billboard(*ghost);
-    for (const auto& item : _draw_items)
-        if (item.kind == HD2DDrawItem::Kind::FX_QUAD) _draw_fx_quad(item);
-    for (const auto& item : _draw_items)
-        if (item.kind == HD2DDrawItem::Kind::FX_PARTICLE) _draw_fx_particle(item);
-    for (const auto& item : _draw_items)
-        if (item.kind == HD2DDrawItem::Kind::FX_RING_3D) _draw_fx_ring_3d(item);
-    for (const auto& item : _draw_items)
-        if (item.kind == HD2DDrawItem::Kind::FX_BEAM_3D) _draw_fx_beam_3d(item);
-    for (const auto& item : _draw_items)
-        if (item.kind == HD2DDrawItem::Kind::FX_EXPLOSION_3D) _draw_fx_explosion_3d(item);
+    // G5.5: FX 特效层 (粒子单批 + 逐项视锥体裁剪)
+    _draw_fx_pass();
     _draw_ambient_batch();                            // A2.1 (替 v2e 逐颗球)
     EndMode3D();
 }
@@ -721,40 +725,93 @@ void HD2DRenderer::_draw_fx_quad(const HD2DDrawItem& item) {
 // A10: 3D 特效绘制
 // ═══════════════════════════════════════════════════════════
 
-void HD2DRenderer::_draw_fx_particle(const HD2DDrawItem& item) {
+namespace {
+// 单个相机朝向 additive quad (中心 c, 半径 r, 基 right/up, 色 t)
+inline void _fx_emit_quad(Vector3 c, float r, Vector3 right, Vector3 up, Color t) {
+    rlColor4ub(t.r, t.g, t.b, t.a);
+    rlTexCoord2f(0, 0);
+    rlVertex3f(c.x - right.x * r - up.x * r,
+               c.y - right.y * r - up.y * r,
+               c.z - right.z * r - up.z * r);
+    rlTexCoord2f(1, 0);
+    rlVertex3f(c.x + right.x * r - up.x * r,
+               c.y + right.y * r - up.y * r,
+               c.z + right.z * r - up.z * r);
+    rlTexCoord2f(1, 1);
+    rlVertex3f(c.x + right.x * r + up.x * r,
+               c.y + right.y * r + up.y * r,
+               c.z + right.z * r + up.z * r);
+    rlTexCoord2f(0, 1);
+    rlVertex3f(c.x - right.x * r + up.x * r,
+               c.y - right.y * r + up.y * r,
+               c.z - right.z * r + up.z * r);
+}
+
+// 单颗粒 8 quad 发射 (视觉构成与旧逐颗 DrawSphere 逐项对应:
+//   核心 + 外发光 + 4 环绕 + 2 外层光晕)
+void _fx_emit_particle(const HD2DDrawItem& item, Vector3 right, Vector3 up, float t) {
     Vector3 pos = item.world_pos;
-    // 3D 粒子 - 减少 draw call，使用批处理
-    float t = GetTime() * 8.0f;
-    
-    // 主粒子（带发光）- 2 个球
-    Color glow = item.tint;
+    Color tint = item.tint;
+    _fx_emit_quad(pos, item.size * 0.25f, right, up, tint);
+    Color glow = tint;
     glow.a = (unsigned char)(glow.a * 0.4f);
-    DrawSphere({pos.x, pos.y, pos.z}, item.size * 0.4f, glow);
-    DrawSphere({pos.x, pos.y, pos.z}, item.size * 0.2f, item.tint);
-    
-    // 周围粒子（4 颗）- 减少数量提高性能
+    _fx_emit_quad(pos, item.size * 0.55f, right, up, glow);
     for (int i = 0; i < 4; i++) {
         float angle = t + i * 1.57f;
         float dist = item.size * (0.5f + sinf(t + i) * 0.2f);
-        Vector3 offset = {cosf(angle) * dist, sinf(t * 0.7f + i) * dist * 0.5f, 
-                         sinf(angle) * dist};
-        Color p = item.tint;
+        Vector3 offset = {cosf(angle) * dist, sinf(t * 0.7f + i) * dist * 0.5f,
+                          sinf(angle) * dist};
+        Color p = tint;
         p.a = (unsigned char)(p.a * 0.5f);
-        DrawSphere({pos.x + offset.x, pos.y + offset.y, pos.z + offset.z}, 
-                   item.size * 0.12f, p);
+        _fx_emit_quad({pos.x + offset.x, pos.y + offset.y, pos.z + offset.z},
+                      item.size * 0.15f, right, up, p);
     }
-    
-    // 外层光晕（2 颗）- 大范围发光
     for (int i = 0; i < 2; i++) {
         float angle = t * 0.5f + i * 3.14f;
         float dist = item.size * (1.2f + sinf(t * 0.3f + i) * 0.3f);
-        Vector3 offset = {cosf(angle) * dist, sinf(t * 0.4f + i) * dist * 0.4f, 
-                         sinf(angle) * dist};
-        Color halo = item.tint;
+        Vector3 offset = {cosf(angle) * dist, sinf(t * 0.4f + i) * dist * 0.4f,
+                          sinf(angle) * dist};
+        Color halo = tint;
         halo.a = (unsigned char)(halo.a * 0.25f);
-        DrawSphere({pos.x + offset.x, pos.y + offset.y, pos.z + offset.z}, 
-                   item.size * 0.25f, halo);
+        _fx_emit_quad({pos.x + offset.x, pos.y + offset.y, pos.z + offset.z},
+                      item.size * 0.32f, right, up, halo);
     }
+}
+}  // namespace
+
+// ── G5.5: FX 粒子单批 — 全帧 1 个 rlgl 批 (替旧逐颗 8 DrawSphere) ──
+void HD2DRenderer::_draw_fx_particles_batch() {
+    if (_mote_glow_tex.id <= 0) return;
+    Vector3 right, up;
+    if (!_ambient_billboard_basis(right, up)) return;
+    BeginBlendMode(BLEND_ADDITIVE);
+    rlSetTexture(_mote_glow_tex.id);
+    rlBegin(RL_QUADS);
+    float t = GetTime() * 8.0f;
+    for (const auto& item : _draw_items) {
+        if (item.kind != HD2DDrawItem::Kind::FX_PARTICLE) continue;
+        if (!_fx_in_view(item, _camera_focus)) continue;  // 视锥体裁剪
+        _fx_emit_particle(item, right, up, t);
+    }
+    rlEnd();
+    rlSetTexture(0);
+    EndBlendMode();
+}
+// ── G5.5: FX 特效 pass — 粒子单批提交, 其余类型逐项视锥体裁剪 ──
+void HD2DRenderer::_draw_fx_pass() {
+    for (const auto& item : _draw_items)
+        if (item.kind == HD2DDrawItem::Kind::FX_QUAD && _fx_in_view(item, _camera_focus))
+            _draw_fx_quad(item);
+    _draw_fx_particles_batch();
+    for (const auto& item : _draw_items)
+        if (item.kind == HD2DDrawItem::Kind::FX_RING_3D && _fx_in_view(item, _camera_focus))
+            _draw_fx_ring_3d(item);
+    for (const auto& item : _draw_items)
+        if (item.kind == HD2DDrawItem::Kind::FX_BEAM_3D && _fx_beam_in_view(item, _camera_focus))
+            _draw_fx_beam_3d(item);
+    for (const auto& item : _draw_items)
+        if (item.kind == HD2DDrawItem::Kind::FX_EXPLOSION_3D && _fx_in_view(item, _camera_focus))
+            _draw_fx_explosion_3d(item);
 }
 
 void HD2DRenderer::_draw_fx_ring_3d(const HD2DDrawItem& item) {

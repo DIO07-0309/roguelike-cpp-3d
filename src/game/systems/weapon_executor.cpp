@@ -169,13 +169,26 @@ static bool _try_nunchaku_special(Player* p, const AttackStageDef& st,
     float rpx, float wp, const std::vector<Monster*>& rt);
 static bool _try_spear_special(Player* p, const AttackStageDef& st, float rpx);
 static bool _try_crossbow_power(Player* p, const AttackStageDef& st,
-    Vector2 origin, std::vector<Projectile>* projs, GameMap* map);
+    Vector2 origin, Game::ObjectPool<Projectile>* projs, GameMap* map);
 static void _crossbow_normal(Player* p, const AttackStageDef& st,
-    Vector2 origin, int stage_idx, std::vector<Projectile>* projs);
+    Vector2 origin, int stage_idx, Game::ObjectPool<Projectile>* projs);
 static std::vector<WeaponAttackResult> _melee_normal(
     Player* p, const WeaponDef* def, const AttackStageDef& st,
     Vector2 origin, float rpx, float wp, const std::vector<Monster*>& rt,
     const AttackGeometry& geo);
+
+// ── Forward decls for execute() 编排段 (G12: 函数 ≤40 行拆分) ──
+static bool _try_stage3_special(Player* p, const WeaponDef* def,
+    const AttackStageDef& st, float rpx, float wp, Vector2 origin,
+    const std::vector<Monster*>& rt, Game::ObjectPool<Projectile>* projs, GameMap* map);
+static void _update_range_indicator(Player* p, const WeaponDef* def, float rpx);
+static std::vector<WeaponAttackResult> _resolve_normal(
+    Player* p, const WeaponDef* def, const AttackStageDef& st,
+    float rpx, float wp, Vector2 origin, const std::vector<Monster*>& rt,
+    Game::ObjectPool<Projectile>* projs);
+static void _finalize_attack(Player* p, const WeaponDef* def,
+    const AttackStageDef& st, const std::vector<WeaponAttackResult>& results,
+    double game_time, AudioServer* audio);
 
 // ═══════════════════════════════════════════════════════════════
 // WeaponExecutor — execute
@@ -186,91 +199,111 @@ std::vector<WeaponAttackResult> WeaponExecutor::execute(
     const std::vector<Monster*>& targets,
     double game_time,
     AudioServer* audio,
-    std::vector<Projectile>* projectiles,
+    Game::ObjectPool<Projectile>* projectiles,
     GameMap* map)
 {
     std::vector<WeaponAttackResult> results;
     if (!player || !player->combat.is_alive) return results;
     if (!player->weapon.can_attack(game_time)) return results;
 
-    auto& w = player->weapon;
-    const WeaponDef* def = w.current_def();
+    const WeaponDef* def = player->weapon.current_def();
     if (!def) return results;
 
-    const AttackStageDef& stage = w.current_stage();
+    const AttackStageDef& stage = player->weapon.current_stage();
     float rpx = stage.range * TILE_SIZE;
     float wp = (stage.hit_shape == HitShape::SECTOR) ? stage.width : stage.width * TILE_SIZE;
     Vector2 origin = _player_origin(player);
     auto rt = _raw_targets(targets);
-    bool is_special = false;
 
-    // ── Stage-3 special initiations ──
-    if (w.combo_index() == 2 && def->stage_count >= 3) {
-        if (def->type == WeaponType::NUNCHAKU)
-            is_special = _try_nunchaku_special(player, stage, rpx, wp, rt);
-        else if (def->type == WeaponType::SPEAR)
-            is_special = _try_spear_special(player, stage, rpx);
-        else if (def->type == WeaponType::CROSSBOW && projectiles)
-            is_special = _try_crossbow_power(player, stage, origin, projectiles, map);
+    bool is_special = _try_stage3_special(player, def, stage, rpx, wp, origin, rt,
+                                          projectiles, map);
+    _update_range_indicator(player, def, rpx);
+    if (!is_special)
+        results = _resolve_normal(player, def, stage, rpx, wp, origin, rt, projectiles);
+
+    _finalize_attack(player, def, stage, results, game_time, audio);
+    return results;
+}
+
+// ── Stage-3 special 分发: 仅 combo 第三段且武器定义有第三段时触发 ──
+static bool _try_stage3_special(Player* p, const WeaponDef* def,
+    const AttackStageDef& st, float rpx, float wp, Vector2 origin,
+    const std::vector<Monster*>& rt, Game::ObjectPool<Projectile>* projs, GameMap* map)
+{
+    if (p->weapon.combo_index() != 2 || def->stage_count < 3) return false;
+    if (def->type == WeaponType::NUNCHAKU)
+        return _try_nunchaku_special(p, st, rpx, wp, rt);
+    if (def->type == WeaponType::SPEAR)
+        return _try_spear_special(p, st, rpx);
+    if (def->type == WeaponType::CROSSBOW && projs)
+        return _try_crossbow_power(p, st, origin, projs, map);
+    return false;
+}
+
+// ── G9.3: 远程/双节棍武器刷新射程指示器 ──
+static void _update_range_indicator(Player* p, const WeaponDef* def, float rpx) {
+    if (def->type != WeaponType::SPEAR && def->type != WeaponType::CROSSBOW
+        && def->type != WeaponType::NUNCHAKU) return;
+    p->weapon.range_indicator_timer = 0.25f;
+    p->weapon.range_indicator_px = rpx;
+}
+
+// ── 普通攻击结算: 弩走弹道, 其余走 SSOT 几何近战命中 ──
+static std::vector<WeaponAttackResult> _resolve_normal(
+    Player* p, const WeaponDef* def, const AttackStageDef& st,
+    float rpx, float wp, Vector2 origin, const std::vector<Monster*>& rt,
+    Game::ObjectPool<Projectile>* projs)
+{
+    if (def->type == WeaponType::CROSSBOW && projs) {
+        _crossbow_normal(p, st, origin, p->weapon.combo_index(), projs);
+        return {};
     }
-
-    // ── G9.3: range indicator for ranged + nunchaku weapons ──
-    if (def->type == WeaponType::SPEAR || def->type == WeaponType::CROSSBOW
-        || def->type == WeaponType::NUNCHAKU) {
-        w.range_indicator_timer = 0.25f;
-        w.range_indicator_px = rpx;
+    // G10.5-B: 构建 SSOT 几何 — range_boost/legendary 膨胀后的真实值
+    float eff_rpx = rpx;
+    if (p->weapon.combo_index() == 2 && def->stage_count >= 3) {
+        if (def->affix.type == "range_boost")
+            eff_rpx *= (1.0f + def->affix.value);
+        if (def->legendary_effect == "sword_wave")
+            eff_rpx *= 1.3f;
     }
+    AttackGeometry geo;
+    geo.origin = origin;
+    geo.direction = _we_forward_vec(p->direction);
+    geo.shape = st.hit_shape;
+    geo.range_px = eff_rpx;
+    geo.width_px = wp;
+    return _melee_normal(p, def, st, origin, rpx, wp, rt, geo);
+}
 
-    // ── Normal resolution ──
-    if (!is_special) {
-        if (def->type == WeaponType::CROSSBOW && projectiles)
-            _crossbow_normal(player, stage, origin, w.combo_index(), projectiles);
-        else {
-            // G10.5-B: 构建 SSOT 几何 — range_boost/legendary 膨胀后的真实值
-            float eff_rpx = rpx;
-            if (w.combo_index() == 2 && def->stage_count >= 3) {
-                if (def->affix.type == "range_boost")
-                    eff_rpx *= (1.0f + def->affix.value);
-                if (def->legendary_effect == "sword_wave")
-                    eff_rpx *= 1.3f;
-            }
-            AttackGeometry geo;
-            geo.origin = origin;
-            geo.direction = _we_forward_vec(player->direction);
-            geo.shape = stage.hit_shape;
-            geo.range_px = eff_rpx;
-            geo.width_px = wp;
-            results = _melee_normal(player, def, stage, origin, rpx, wp, rt, geo);
-        }
-    }
-
+// ── 攻击收尾: 技能协同上下文 + 推进连段 + 事件 + 音频 ──
+static void _finalize_attack(Player* p, const WeaponDef* def,
+    const AttackStageDef& st, const std::vector<WeaponAttackResult>& results,
+    double game_time, AudioServer* audio)
+{
     // ── G9.3: set attack context for skill synergy ──
     float total_dmg = 0.0f;
     Monster* prime_target = nullptr;
     for (auto& r : results) { total_dmg += r.damage; if (!prime_target) prime_target = r.target; }
-    _set_attack_context(player, total_dmg, prime_target, (float)game_time);
+    _set_attack_context(p, total_dmg, prime_target, (float)game_time);
 
     // ── Advance + emit + audio ──
-    int stage_before = w.combo_index();
-    w.execute_attack(game_time);
+    int stage_before = p->weapon.combo_index();
+    p->weapon.execute_attack(game_time);
     GameEventType gev = stage_before == 0 ? GameEventType::WEAPON_STAGE_1
                       : stage_before == 1 ? GameEventType::WEAPON_STAGE_2
                       : GameEventType::WEAPON_SPECIAL;
-    EventBus::inst().emit(gev, player, stage_before, stage.damage_multiplier,
-        def->name.c_str());
-    EventBus::inst().emit(GameEventType::WEAPON_ATTACK_COMPLETE, player,
-        (int)stage.damage_multiplier * 100, total_dmg, def->name.c_str());
+    EventBus::inst().emit(gev, p, stage_before, st.damage_multiplier, def->name.c_str());
+    EventBus::inst().emit(GameEventType::WEAPON_ATTACK_COMPLETE, p,
+        (int)st.damage_multiplier * 100, total_dmg, def->name.c_str());
     // F15.2: record weapon usage with full context
-    g_behavior.on_weapon_attack(weapon_type_name(def->type),
-        (float)game_time, 0,  // floor set by game_scene
-        player->entity.rect.x + player->entity.rect.width/2,
-        player->entity.rect.y + player->entity.rect.height/2,
+    g_behavior.on_weapon_attack(weapon_type_name(def->type), (float)game_time, 0,  // floor set by game_scene
+        p->entity.rect.x + p->entity.rect.width / 2,
+        p->entity.rect.y + p->entity.rect.height / 2,
         (int)def->type, stage_before);
     if (audio) {
-        const char* sfx = stage.sfx_name.empty() ? "melee" : stage.sfx_name.c_str();
+        const char* sfx = st.sfx_name.empty() ? "melee" : st.sfx_name.c_str();
         audio->play_sfx(sfx);
     }
-    return results;
 }
 
 // ── Stage-3 special: nunchaku 5-hit auto-track flurry ──
@@ -315,7 +348,7 @@ static bool _try_spear_special(Player* p, const AttackStageDef& st, float rpx)
 
 // ── Stage-3 special: crossbow power shot (piercing projectile + recoil) ──
 static bool _try_crossbow_power(Player* p, const AttackStageDef& st,
-    Vector2 origin, std::vector<Projectile>* projs, GameMap* map)
+    Vector2 origin, Game::ObjectPool<Projectile>* projs, GameMap* map)
 {
     Vector2 fwd = {0, 1};
     switch (p->direction) {
@@ -334,7 +367,7 @@ static bool _try_crossbow_power(Player* p, const AttackStageDef& st,
     proj.piercing = true;
     proj.pierce_walls = true;  // 弩箭蓄力穿透墙体
     proj.lifetime = 1.5f;
-    proj.owner = (int)ProjectileOwner::PLAYER; projs->push_back(proj);
+    proj.owner = (int)ProjectileOwner::PLAYER; projs->insert(proj);
     // 后坐力
     clamp_displacement(p->entity, -fwd.x * TILE_SIZE, -fwd.y * TILE_SIZE, map);
     return true;
@@ -342,7 +375,7 @@ static bool _try_crossbow_power(Player* p, const AttackStageDef& st,
 
 // ── Crossbow normal stages: fire projectiles ──
 static void _crossbow_normal(Player* p, const AttackStageDef& st,
-    Vector2 origin, int stage_idx, std::vector<Projectile>* projs)
+    Vector2 origin, int stage_idx, Game::ObjectPool<Projectile>* projs)
 {
     Vector2 fwd = {0, 1};
     switch (p->direction) {
@@ -362,7 +395,7 @@ static void _crossbow_normal(Player* p, const AttackStageDef& st,
                        (fwd.x * sa + fwd.y * ca) * 700.0f };
             p2.damage = _calc_weapon_dmg(p, nullptr, st.damage_multiplier, dc);
             p2.lifetime = 1.2f;
-            projs->push_back(p2);
+            projs->insert(p2);
         }
     } else {
         Projectile proj;
@@ -370,7 +403,7 @@ static void _crossbow_normal(Player* p, const AttackStageDef& st,
         proj.vel = { fwd.x * 700.0f, fwd.y * 700.0f };
         proj.damage = _calc_weapon_dmg(p, nullptr, st.damage_multiplier, dc);
         proj.lifetime = 1.2f;
-        proj.owner = (int)ProjectileOwner::PLAYER; projs->push_back(proj);
+    proj.owner = (int)ProjectileOwner::PLAYER; projs->insert(proj);
     }
 }
 
@@ -486,25 +519,24 @@ std::vector<WeaponAttackResult> WeaponExecutor::tick_specials(
 // ═══════════════════════════════════════════════════════════════
 
 std::vector<WeaponAttackResult> WeaponExecutor::tick_projectiles(
-    std::vector<Projectile>& projectiles,
+    Game::ObjectPool<Projectile>& projectiles,
     const std::vector<Monster*>& targets,
     float dt,
     const GameMap* map)
 {
     std::vector<WeaponAttackResult> results;
-    for (auto& p : projectiles) {
-        if (!p.alive) continue;
-        if (p.owner != (int)ProjectileOwner::PLAYER) continue;
+    projectiles.for_each([&](Projectile& p, int) {
+        if (!p.alive) return;
+        if (p.owner != (int)ProjectileOwner::PLAYER) return;
         p.elapsed += dt;
-        if (p.elapsed >= p.lifetime) { p.alive = false; continue; }
+        if (p.elapsed >= p.lifetime) { p.alive = false; return; }
         p.pos.x += p.vel.x * dt;
         p.pos.y += p.vel.y * dt;
         // 墙体碰撞 — pierce_walls=false 的弹幕碰墙销毁
         if (!p.pierce_walls && map) {
             auto [wtx, wty] = map->pixel_to_tile(p.pos.x, p.pos.y);
-            if (!map->is_walkable(wtx, wty)) { p.alive = false; continue; }
+            if (!map->is_walkable(wtx, wty)) { p.alive = false; return; }
         }
-
         for (auto* m : targets) {
             if (!m || !m->combat.is_alive) continue;
             Rectangle mr = m->entity.rect;
@@ -520,7 +552,7 @@ std::vector<WeaponAttackResult> WeaponExecutor::tick_projectiles(
                 if (!p.piercing) { p.alive = false; break; }
             }
         }
-    }
+    });
     // D2: cleanup handled centrally by game_scene after both PLAYER + MONSTER ticks
     return results;
 }

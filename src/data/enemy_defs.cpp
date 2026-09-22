@@ -68,6 +68,7 @@ static EnemyDef _parse_enemy(const json& j) {
     def.role_str        = j.value("role", "none");
     def.attack_type_str = j.value("attack_type", "physical");
     def.ai_archetype    = j.value("ai_archetype", "default");  // G5.3
+    def.attack_pattern_str = j.value("attack_pattern", "");    // G5.5
     def.attack_cooldown   = j.value("attack_cooldown", 1.5f);
 
     // 嵌套 ai

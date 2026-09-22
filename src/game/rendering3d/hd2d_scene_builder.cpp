@@ -1081,57 +1081,72 @@ static void _build_portals(GameScene& gs, std::vector<HD2DDrawItem>& out) {
 
 // ── M6-v2b: 投射物 — WARNING 相 (AOE圈/轨迹线) + ACTIVE 相 (发光弹体) ──
 // 条件与配色逐条对齐 2D 分支 (game_scene._render 2234-2275)
-static void _build_projectiles(GameScene& gs, std::vector<HD2DDrawItem>& out) {
-    for (const auto& p : gs.projectiles) {
-        if (!p.alive) continue;
-        HD2DDrawItem item;
-        item.world_pos = {p.pos.x, 12.0f, p.pos.y};   // 弹道离地 12px
-
-        if (p.active_time < 0.0f) {
-            // WARNING 相: 2D 配色 (红/橙/黄 三级) + 1-fade 递增警示
-            float fade = 1.0f - (-p.active_time / p.warning_time);
-            Color wc = (p.warning_level >= 2) ? Color{255,40,20,120}
-                     : (p.warning_level >= 1) ? Color{255,160,30,120}
-                     : Color{255,200,60,110};
-            if (p.warning_radius > 0.0f) {
-                // AOE 危险圈 → 贴地预警 ring
-                item.kind = HD2DDrawItem::Kind::WARNING_RING;
-                item.world_pos.y = 0.1f;
-                item.size = p.warning_radius;
-                item.tint = wc;
-                item.height = fade;                    // renderer 递增脉冲
-                out.push_back(item);
-            } else {
-                // 点弹 → 轨迹线 (终点 = 撞墙/寿命终点, 与 2D _preview 同算法)
-                float speed = sqrtf(p.vel.x * p.vel.x + p.vel.y * p.vel.y);
-                if (speed < 1.0f) continue;
-                float ux = p.vel.x / speed, uy = p.vel.y / speed;
-                float len = speed * p.lifetime;
-                if (gs.game_map) {
-                    for (float d = TILE_SIZE; d < len; d += TILE_SIZE) {
-                        auto [tx, ty] = gs.game_map->pixel_to_tile(
-                            p.pos.x + ux * d, p.pos.y + uy * d);
-                        if (!gs.game_map->is_walkable(tx, ty)) { len = d; break; }
-                    }
-                }
-                item.kind = HD2DDrawItem::Kind::TRAJECTORY_LINE;
-                item.end_pos = {p.pos.x + ux * len, 12.0f, p.pos.y + uy * len};
-                item.tint = wc;
-                item.height = fade;
-                out.push_back(item);
-            }
-            continue;
+// ── M6-v2b: 弹体轨迹线 (终点 = 撞墙/寿命终点, 与 2D _preview 同算法) ──
+static void _build_trajectory_item(const Projectile& p, const GameMap* map,
+                                   Color wc, float fade,
+                                   std::vector<HD2DDrawItem>& out) {
+    float speed = sqrtf(p.vel.x * p.vel.x + p.vel.y * p.vel.y);
+    if (speed < 1.0f) return;
+    float ux = p.vel.x / speed, uy = p.vel.y / speed;
+    float len = speed * p.lifetime;
+    if (map) {
+        for (float d = TILE_SIZE; d < len; d += TILE_SIZE) {
+            auto [tx, ty] = map->pixel_to_tile(p.pos.x + ux * d, p.pos.y + uy * d);
+            if (!map->is_walkable(tx, ty)) { len = d; break; }
         }
-        // ACTIVE 相: 弹体 (穿透金 / 敌元素色 / 玩家土色; 2D 同源)
-        item.kind = HD2DDrawItem::Kind::PROJECTILE_BODY;
-        item.piercing = p.piercing;
-        item.element = p.element;
-        item.tint = p.owner != 0 ? Color{255, 80, 40, 255}
-                   : Color{200, 160, 100, 255};
-        item.size = 6.0f;
-        item.trail_dir = p.vel;                 // M6-v2d: 拖尾方向 (px/s)
-        out.push_back(item);
     }
+    HD2DDrawItem item;
+    item.kind = HD2DDrawItem::Kind::TRAJECTORY_LINE;
+    item.world_pos = {p.pos.x, 12.0f, p.pos.y};
+    item.end_pos = {p.pos.x + ux * len, 12.0f, p.pos.y + uy * len};
+    item.tint = wc;
+    item.height = fade;
+    out.push_back(item);
+}
+
+// ── M6-v2b: WARNING 相 (AOE 贴地预警 ring / 点弹轨迹线) ──
+static void _build_warning_item(const Projectile& p, const GameMap* map,
+                                std::vector<HD2DDrawItem>& out) {
+    // WARNING 相: 2D 配色 (红/橙/黄 三级) + 1-fade 递增警示
+    float fade = 1.0f - (-p.active_time / p.warning_time);
+    Color wc = (p.warning_level >= 2) ? Color{255,40,20,120}
+             : (p.warning_level >= 1) ? Color{255,160,30,120}
+             : Color{255,200,60,110};
+    HD2DDrawItem item;
+    item.world_pos = {p.pos.x, 12.0f, p.pos.y};
+    item.tint = wc;
+    item.height = fade;                       // renderer 递增脉冲
+    if (p.warning_radius > 0.0f) {
+        item.kind = HD2DDrawItem::Kind::WARNING_RING;
+        item.world_pos.y = 0.1f;              // AOE 危险圈贴地
+        item.size = p.warning_radius;
+        out.push_back(item);
+    } else {
+        _build_trajectory_item(p, map, wc, fade, out);
+    }
+}
+
+// ── M6-v2b: ACTIVE 相 (穿透金 / 敌元素色 / 玩家土色; 2D 同源) ──
+static void _build_active_item(const Projectile& p, std::vector<HD2DDrawItem>& out) {
+    HD2DDrawItem item;
+    item.kind = HD2DDrawItem::Kind::PROJECTILE_BODY;
+    item.world_pos = {p.pos.x, 12.0f, p.pos.y};
+    item.piercing = p.piercing;
+    item.element = p.element;
+    item.tint = p.owner != 0 ? Color{255, 80, 40, 255}
+               : Color{200, 160, 100, 255};
+    item.size = 6.0f;
+    item.trail_dir = p.vel;                 // M6-v2d: 拖尾方向 (px/s)
+    out.push_back(item);
+}
+
+static void _build_projectiles(GameScene& gs, std::vector<HD2DDrawItem>& out) {
+    const GameMap* map = gs.game_map.get();
+    gs.projectiles.for_each([map, &out](const Projectile& p, int) {
+        if (!p.alive) return;
+        if (p.active_time < 0.0f) _build_warning_item(p, map, out);
+        else _build_active_item(p, out);
+    });
 }
 
 // ── M6-v2b: 远程武器射程指示环 (玩家 range_indicator_timer 激活时) ──

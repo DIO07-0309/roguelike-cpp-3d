@@ -197,6 +197,11 @@ public:
     bool phase2 = false;
     float phase2_pause = 0.0f;     // 进入二阶段暂停计时
 
+    // G5.5: Phase2 阶段变化增强 — 狂暴脉冲 + 背水一战
+    float _phase2_elapsed = 0.0f;  // 二阶段累计时间 (s)
+    float _rage_pulse_cd = 0.0f;   // 狂暴脉冲冷却 (s)
+    bool  _last_stand = false;     // 背水一战已触发 (HP<25%, 一次性)
+
     // D8 Step2: Boss-specific config
     int   skill_cycle_bias = 6;    // Necromancer: 改成更频繁的召唤循环
     float golem_shield_pct = 0.0f; // Golem: DEFEND 减伤比例
@@ -267,6 +272,10 @@ public:
 
 private:
     void _enter_phase2(Monster* self, std::vector<Effect>* effects);
+    // G5.5: Phase2 持续行为 (狂暴脉冲/背水一战) — 阶段变化增强
+    void _tick_phase2_behaviors(Monster* self, Player* player, GameMap* map,
+                                double dt, std::vector<Effect>* effects);
+    void _enter_last_stand(Monster* self, std::vector<Effect>* effects);
     void _tick_boss_state(Monster* self, Player* player, GameMap* map,
                           double dt, double gt,
                           std::vector<Monster*>* all, std::vector<Effect>* effects);
