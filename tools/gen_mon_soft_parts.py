@@ -8,7 +8,7 @@ from pathlib import Path
 from PIL import Image
 
 from anim_preview import checkerboard, render_pose
-from gen_mon_humanoid_parts import (BONES, PART_SLOTS, SIZES,
+from gen_mon_humanoid_parts import (BONES, PART_SLOTS, SIZES, STAFF,
                                     skeleton_dict)
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -31,6 +31,9 @@ FAMILIES = {
     "leech_blood":  {"s": (76, 32, 40),  "m": (120, 44, 54),  "l": (168, 68, 72),
                      "h": (214, 104, 96), "r": (130, 30, 38), "R": (188, 52, 50),
                      "p": (232, 116, 92), "b": (38, 24, 28),  "g": (108, 92, 66)},
+    "wyrm_venom":  {"s": (30, 48, 24),  "m": (52, 86, 42),  "l": (92, 140, 66),
+                    "h": (168, 214, 96), "r": (74, 110, 40), "R": (112, 158, 58),
+                    "p": (198, 232, 92), "b": (28, 32, 24),  "g": (96, 88, 56)},
 }
 
 MONSTERS = {
@@ -39,6 +42,7 @@ MONSTERS = {
     "elite_slime": "elite_purple",
     "frost_slime": "frost_blue",
     "blood_leech": "leech_blood",
+    "poison_wyrm": "wyrm_venom",
 }
 
 # 软体部件像素行 (长度宽松, fit 到 SIZES 画布; 内容居中/靠上)
@@ -117,6 +121,36 @@ SOFT_ROWS = {
     ],
 }
 
+SOFT_ROWS_OVERRIDES = {
+    "wyrm_venom": {
+        "torso": [
+            "....oooooooooooooooo....",
+            "..oohhhhhhhhhhhhhhhoo...",
+            ".ohlllllllllllllllllho..",
+            "olmmmmllooooooommmmmmlo.",
+            "ollllloooooooooollmmllo.",
+            "olmmmmmmmmmmmmmmmlllllo.",
+            "ollllllllmmmmmmmmmmmlo..",
+            "olmmmmllooooooommmmmmlo.",
+            "ollllloooooooooollmmllo.",
+            "olmmmmmmmmmmmmmmmlllllo.",
+            "ollllllllmmmmmmmmmmmlo..",
+            "olmmmmllooooooommmmmmlo.",
+            "ollllloooooooooollmmllo.",
+            "olmmmmmmmmmmmmmmmlllllo.",
+            "ollllllllmmmmmmmmmmmlo..",
+            ".ollllllllllllllllllo...",
+            "..oolllllllllllllloo....",
+            "....oooooooooooooooo....",
+            ".......................",
+            ".......................",
+        ],
+        "weapon": STAFF.split("|"),
+    },
+}
+assert "torso" in SOFT_ROWS_OVERRIDES.get("wyrm_venom", {}), \
+    "wyrm_venom must hit torso override (key typo guard)"
+
 
 def fit_rows(rows, width, height):
     out = []
@@ -141,7 +175,8 @@ def part_image(monster_id, part_name):
     family = MONSTERS[monster_id]
     pal = palette_for(family)
     width, height = SIZES[part_name]
-    rows = fit_rows(SOFT_ROWS[part_name], width, height)
+    base = SOFT_ROWS_OVERRIDES.get(family, {}).get(part_name, SOFT_ROWS[part_name])
+    rows = fit_rows(base, width, height)
     image = Image.new("RGBA", (width, height))
     image.putdata([pal[p] for row in rows for p in row])
     return image

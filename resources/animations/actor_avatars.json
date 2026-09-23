@@ -103,6 +103,22 @@
     "mon_dark_mage": {
       "skeleton": "resources/animations/mon_dark_mage_skeleton.json",
       "anim": "resources/animations/player_anim.json"
+    },
+    "mon_shadow_stalker": {
+      "skeleton": "resources/animations/mon_shadow_stalker_skeleton.json",
+      "anim": "resources/animations/player_anim.json"
+    },
+    "mon_shadow_assassin": {
+      "skeleton": "resources/animations/mon_shadow_assassin_skeleton.json",
+      "anim": "resources/animations/player_anim.json"
+    },
+    "mon_night_stalker": {
+      "skeleton": "resources/animations/mon_night_stalker_skeleton.json",
+      "anim": "resources/animations/player_anim.json"
+    },
+    "mon_poison_wyrm": {
+      "skeleton": "resources/animations/mon_poison_wyrm_skeleton.json",
+      "anim": "resources/animations/player_anim.json"
     }
   }
 }

@@ -49,6 +49,15 @@ FAMILIES = {
     "void_dark": {"s": (34, 26, 48), "m": (56, 44, 80), "l": (86, 70, 122),
                   "h": (126, 110, 168), "r": (58, 50, 70), "R": (90, 80, 110),
                   "p": (104, 180, 110), "b": (22, 18, 32), "g": (96, 88, 70)},
+    "shadow_dusk": {"s": (28, 22, 40), "m": (52, 40, 72), "l": (86, 68, 116),
+                    "h": (132, 112, 168), "r": (40, 34, 56), "R": (70, 60, 96),
+                    "p": (92, 214, 208), "b": (18, 14, 26), "g": (96, 88, 70)},
+    "shadow_ink": {"s": (18, 18, 22), "m": (36, 38, 46), "l": (62, 66, 78),
+                   "h": (108, 116, 132), "r": (30, 34, 42), "R": (54, 60, 72),
+                   "p": (156, 176, 200), "b": (12, 12, 16), "g": (96, 88, 70)},
+    "night_brown": {"s": (48, 36, 26), "m": (86, 64, 44), "l": (128, 98, 66),
+                    "h": (176, 144, 100), "r": (70, 54, 38), "R": (104, 82, 56),
+                    "p": (214, 224, 236), "b": (32, 24, 18), "g": (96, 88, 70)},
 }
 MONSTERS = {
     "orc": ("orc_green", "standard", "cleaver"),
@@ -65,6 +74,9 @@ MONSTERS = {
     "ice_warden": ("frost_ice", "bulk", "greatsword"),
     "blood_priest": ("blood_crimson", "standard", "bloodstaff"),
     "dark_mage": ("void_dark", "gaunt", "staff"),
+    "shadow_stalker": ("shadow_dusk", "standard", "dagger"),
+    "shadow_assassin": ("shadow_ink", "gaunt", "dagger"),
+    "night_stalker": ("night_brown", "standard", "spear"),
 }
 # ppu 全档 0.8: 对齐磁盘 14 骨架约定 (9e6d6fc 曾把 JSON 0.45/0.5→0.8, 生成器同步)
 TIERS = {"standard": (1.0, 1.0, 0.8), "runt": (1.0, 1.0, 0.8),
@@ -111,11 +123,15 @@ TOME = (".oooo.|orrrro|orhhro|orhhro|orRRro|orhhro|orhhro|orrrro|orhhro|"
 BLOODSTAFF = ("..oo..|.orrro|orRRro|orrrro|.oRro.|..r...|..gg..|..gg..|"
               "..gg..|..gg..|..gg..|..gg..|..gg..|..gg..|..gg..|..gg..|"
               "..gg..|..gg..|..gg..|..gg..|..gg..|..gg..|.oooo.|..oo..")
+SPEAR = ("..oo..|.ohhlo|.ohhlo|ohhmmo|.orRro|.rrrr.|..rr..|..gg..|..gg..|"
+         "..gg..|..gg..|..gg..|..gg..|..gg..|..gg..|..gg..|..gg..|..gg..|"
+         "..gg..|..gg..|.oooo.|..oo..|......|......")
 WEAPONS = {"sword": list(PART_ROWS["weapon"]), "cleaver": CLEAVER.split("|"),
            "bow": BOW.split("|"), "staff": STAFF.split("|"),
            "dagger": DAGGER.split("|"), "greatsword": GREATSWORD.split("|"),
            "lance": LANCE.split("|"), "scythe": SCYTHE.split("|"),
-           "tome": TOME.split("|"), "bloodstaff": BLOODSTAFF.split("|")}
+           "tome": TOME.split("|"), "bloodstaff": BLOODSTAFF.split("|"),
+           "spear": SPEAR.split("|")}
 
 
 def build_palette(family):

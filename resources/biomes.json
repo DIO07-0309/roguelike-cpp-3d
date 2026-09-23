@@ -36,8 +36,8 @@
       "floor_base": [190, 80, 45], "floor_joint": [55, 25, 15], "floor_dirt": [120, 60, 30],
       "floor_b": [230, 120, 70], "floor_c": [75, 38, 22], "grid_line": [45, 22, 15]
     },
-    "enemy_pool": ["fire_imp", "elite_orc", "orc", "charger"],
-    "enemy_weights": [30, 25, 25, 20],
+    "enemy_pool": ["fire_imp", "elite_orc", "orc", "charger", "lightning_orb"],
+    "enemy_weights": [30, 25, 25, 20, 15],
     "boss_id": "10",
     "floor_narrative_hook": "幽暗深渊",
     "bgm": "volcano",
