@@ -42,8 +42,9 @@ MONSTERS = {
     "bone_soldier": ("bone_white", "gaunt", "sword"),
     "skeleton_archer": ("bone_white", "gaunt", "bow"),
 }
-TIERS = {"standard": (1.0, 1.0, 0.5), "runt": (1.0, 1.0, 0.45),
-         "bulk": (1.16, 1.05, 0.5), "gaunt": (0.80, 1.06, 0.5)}
+# ppu 全档 0.8: 对齐磁盘 14 骨架约定 (9e6d6fc 曾把 JSON 0.45/0.5→0.8, 生成器同步)
+TIERS = {"standard": (1.0, 1.0, 0.8), "runt": (1.0, 1.0, 0.8),
+         "bulk": (1.16, 1.05, 0.8), "gaunt": (0.80, 1.06, 0.8)}
 BONES = [
     {"name": "root"},
     {"name": "hips", "parent": "root", "y": 20},

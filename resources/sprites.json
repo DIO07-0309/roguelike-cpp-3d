@@ -813,6 +813,181 @@
       "file": "assets/sprites/mon_blood_leech_part_weapon.png",
       "w": 6,
       "h": 24
+    },
+    "mon_golem_part_torso": {
+      "file": "assets/sprites/mon_golem_part_torso.png",
+      "w": 28,
+      "h": 20
+    },
+    "mon_golem_part_head": {
+      "file": "assets/sprites/mon_golem_part_head.png",
+      "w": 22,
+      "h": 20
+    },
+    "mon_golem_part_arm": {
+      "file": "assets/sprites/mon_golem_part_arm.png",
+      "w": 11,
+      "h": 16
+    },
+    "mon_golem_part_leg": {
+      "file": "assets/sprites/mon_golem_part_leg.png",
+      "w": 22,
+      "h": 20
+    },
+    "mon_golem_part_weapon": {
+      "file": "assets/sprites/mon_golem_part_weapon.png",
+      "w": 6,
+      "h": 24
+    },
+    "mon_stone_guardian_part_torso": {
+      "file": "assets/sprites/mon_stone_guardian_part_torso.png",
+      "w": 28,
+      "h": 20
+    },
+    "mon_stone_guardian_part_head": {
+      "file": "assets/sprites/mon_stone_guardian_part_head.png",
+      "w": 22,
+      "h": 20
+    },
+    "mon_stone_guardian_part_arm": {
+      "file": "assets/sprites/mon_stone_guardian_part_arm.png",
+      "w": 11,
+      "h": 16
+    },
+    "mon_stone_guardian_part_leg": {
+      "file": "assets/sprites/mon_stone_guardian_part_leg.png",
+      "w": 22,
+      "h": 20
+    },
+    "mon_stone_guardian_part_weapon": {
+      "file": "assets/sprites/mon_stone_guardian_part_weapon.png",
+      "w": 6,
+      "h": 24
+    },
+    "mon_iron_sentinel_part_torso": {
+      "file": "assets/sprites/mon_iron_sentinel_part_torso.png",
+      "w": 28,
+      "h": 20
+    },
+    "mon_iron_sentinel_part_head": {
+      "file": "assets/sprites/mon_iron_sentinel_part_head.png",
+      "w": 22,
+      "h": 20
+    },
+    "mon_iron_sentinel_part_arm": {
+      "file": "assets/sprites/mon_iron_sentinel_part_arm.png",
+      "w": 11,
+      "h": 16
+    },
+    "mon_iron_sentinel_part_leg": {
+      "file": "assets/sprites/mon_iron_sentinel_part_leg.png",
+      "w": 22,
+      "h": 20
+    },
+    "mon_iron_sentinel_part_weapon": {
+      "file": "assets/sprites/mon_iron_sentinel_part_weapon.png",
+      "w": 6,
+      "h": 24
+    },
+    "mon_lightning_orb_part_torso": {
+      "file": "assets/sprites/mon_lightning_orb_part_torso.png",
+      "w": 28,
+      "h": 20
+    },
+    "mon_lightning_orb_part_head": {
+      "file": "assets/sprites/mon_lightning_orb_part_head.png",
+      "w": 22,
+      "h": 20
+    },
+    "mon_lightning_orb_part_arm": {
+      "file": "assets/sprites/mon_lightning_orb_part_arm.png",
+      "w": 11,
+      "h": 16
+    },
+    "mon_lightning_orb_part_leg": {
+      "file": "assets/sprites/mon_lightning_orb_part_leg.png",
+      "w": 22,
+      "h": 20
+    },
+    "mon_lightning_orb_part_weapon": {
+      "file": "assets/sprites/mon_lightning_orb_part_weapon.png",
+      "w": 6,
+      "h": 24
+    },
+    "mon_fire_imp_part_torso": {
+      "file": "assets/sprites/mon_fire_imp_part_torso.png",
+      "w": 28,
+      "h": 20
+    },
+    "mon_fire_imp_part_head": {
+      "file": "assets/sprites/mon_fire_imp_part_head.png",
+      "w": 22,
+      "h": 20
+    },
+    "mon_fire_imp_part_arm": {
+      "file": "assets/sprites/mon_fire_imp_part_arm.png",
+      "w": 11,
+      "h": 16
+    },
+    "mon_fire_imp_part_leg": {
+      "file": "assets/sprites/mon_fire_imp_part_leg.png",
+      "w": 22,
+      "h": 20
+    },
+    "mon_fire_imp_part_weapon": {
+      "file": "assets/sprites/mon_fire_imp_part_weapon.png",
+      "w": 6,
+      "h": 24
+    },
+    "mon_storm_elemental_part_torso": {
+      "file": "assets/sprites/mon_storm_elemental_part_torso.png",
+      "w": 28,
+      "h": 20
+    },
+    "mon_storm_elemental_part_head": {
+      "file": "assets/sprites/mon_storm_elemental_part_head.png",
+      "w": 22,
+      "h": 20
+    },
+    "mon_storm_elemental_part_arm": {
+      "file": "assets/sprites/mon_storm_elemental_part_arm.png",
+      "w": 11,
+      "h": 16
+    },
+    "mon_storm_elemental_part_leg": {
+      "file": "assets/sprites/mon_storm_elemental_part_leg.png",
+      "w": 22,
+      "h": 20
+    },
+    "mon_storm_elemental_part_weapon": {
+      "file": "assets/sprites/mon_storm_elemental_part_weapon.png",
+      "w": 6,
+      "h": 24
+    },
+    "mon_void_walker_part_torso": {
+      "file": "assets/sprites/mon_void_walker_part_torso.png",
+      "w": 28,
+      "h": 20
+    },
+    "mon_void_walker_part_head": {
+      "file": "assets/sprites/mon_void_walker_part_head.png",
+      "w": 22,
+      "h": 20
+    },
+    "mon_void_walker_part_arm": {
+      "file": "assets/sprites/mon_void_walker_part_arm.png",
+      "w": 11,
+      "h": 16
+    },
+    "mon_void_walker_part_leg": {
+      "file": "assets/sprites/mon_void_walker_part_leg.png",
+      "w": 22,
+      "h": 20
+    },
+    "mon_void_walker_part_weapon": {
+      "file": "assets/sprites/mon_void_walker_part_weapon.png",
+      "w": 6,
+      "h": 24
     }
   },
   "lifecycle": {

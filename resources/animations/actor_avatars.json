@@ -51,6 +51,34 @@
     "mon_blood_leech": {
       "skeleton": "resources/animations/mon_blood_leech_skeleton.json",
       "anim": "resources/animations/player_anim.json"
+    },
+    "mon_golem": {
+      "skeleton": "resources/animations/mon_golem_skeleton.json",
+      "anim": "resources/animations/player_anim.json"
+    },
+    "mon_stone_guardian": {
+      "skeleton": "resources/animations/mon_stone_guardian_skeleton.json",
+      "anim": "resources/animations/player_anim.json"
+    },
+    "mon_iron_sentinel": {
+      "skeleton": "resources/animations/mon_iron_sentinel_skeleton.json",
+      "anim": "resources/animations/player_anim.json"
+    },
+    "mon_lightning_orb": {
+      "skeleton": "resources/animations/mon_lightning_orb_skeleton.json",
+      "anim": "resources/animations/player_anim.json"
+    },
+    "mon_fire_imp": {
+      "skeleton": "resources/animations/mon_fire_imp_skeleton.json",
+      "anim": "resources/animations/player_anim.json"
+    },
+    "mon_storm_elemental": {
+      "skeleton": "resources/animations/mon_storm_elemental_skeleton.json",
+      "anim": "resources/animations/player_anim.json"
+    },
+    "mon_void_walker": {
+      "skeleton": "resources/animations/mon_void_walker_skeleton.json",
+      "anim": "resources/animations/player_anim.json"
     }
   }
 }
