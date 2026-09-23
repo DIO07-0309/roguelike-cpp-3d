@@ -1,0 +1,112 @@
+{
+  "pixels_per_unit": 0.8,
+  "anchor": [
+    24,
+    62
+  ],
+  "bones": [
+    {
+      "name": "root"
+    },
+    {
+      "name": "hips",
+      "parent": "root",
+      "y": 20
+    },
+    {
+      "name": "torso",
+      "parent": "hips",
+      "y": 6
+    },
+    {
+      "name": "head",
+      "parent": "torso",
+      "y": 11
+    },
+    {
+      "name": "arm_back",
+      "parent": "torso",
+      "x": -3,
+      "y": 9
+    },
+    {
+      "name": "weapon",
+      "parent": "arm_back",
+      "y": -5
+    },
+    {
+      "name": "arm_front",
+      "parent": "torso",
+      "x": 4,
+      "y": 9
+    },
+    {
+      "name": "leg_front",
+      "parent": "hips",
+      "x": 3
+    },
+    {
+      "name": "leg_back",
+      "parent": "hips",
+      "x": -3
+    }
+  ],
+  "parts": [
+    {
+      "bone": "leg_back",
+      "file": "assets/sprites/mon_necromancer_part_leg.png",
+      "pivot": [
+        6,
+        20
+      ]
+    },
+    {
+      "bone": "arm_back",
+      "file": "assets/sprites/mon_necromancer_part_arm.png",
+      "pivot": [
+        4,
+        16
+      ]
+    },
+    {
+      "bone": "weapon",
+      "file": "assets/sprites/mon_necromancer_part_weapon.png",
+      "pivot": [
+        3,
+        24
+      ]
+    },
+    {
+      "bone": "torso",
+      "file": "assets/sprites/mon_necromancer_part_torso.png",
+      "pivot": [
+        13,
+        10
+      ]
+    },
+    {
+      "bone": "head",
+      "file": "assets/sprites/mon_necromancer_part_head.png",
+      "pivot": [
+        11,
+        7
+      ]
+    },
+    {
+      "bone": "arm_front",
+      "file": "assets/sprites/mon_necromancer_part_arm.png",
+      "pivot": [
+        4,
+        16
+      ]
+    },
+    {
+      "bone": "leg_front",
+      "file": "assets/sprites/mon_necromancer_part_leg.png",
+      "pivot": [
+        6,
+        20
+      ]
+    }
+  ]
+}

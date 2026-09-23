@@ -501,12 +501,12 @@
     },
     "mon_orc_part_arm": {
       "file": "assets/sprites/mon_orc_part_arm.png",
-      "w": 9,
+      "w": 11,
       "h": 16
     },
     "mon_orc_part_leg": {
       "file": "assets/sprites/mon_orc_part_leg.png",
-      "w": 12,
+      "w": 22,
       "h": 20
     },
     "mon_orc_part_weapon": {
@@ -526,12 +526,12 @@
     },
     "mon_elite_orc_part_arm": {
       "file": "assets/sprites/mon_elite_orc_part_arm.png",
-      "w": 9,
+      "w": 11,
       "h": 16
     },
     "mon_elite_orc_part_leg": {
       "file": "assets/sprites/mon_elite_orc_part_leg.png",
-      "w": 12,
+      "w": 22,
       "h": 20
     },
     "mon_elite_orc_part_weapon": {
@@ -551,12 +551,12 @@
     },
     "mon_archer_part_arm": {
       "file": "assets/sprites/mon_archer_part_arm.png",
-      "w": 9,
+      "w": 11,
       "h": 16
     },
     "mon_archer_part_leg": {
       "file": "assets/sprites/mon_archer_part_leg.png",
-      "w": 12,
+      "w": 22,
       "h": 20
     },
     "mon_archer_part_weapon": {
@@ -576,12 +576,12 @@
     },
     "mon_shaman_part_arm": {
       "file": "assets/sprites/mon_shaman_part_arm.png",
-      "w": 9,
+      "w": 11,
       "h": 16
     },
     "mon_shaman_part_leg": {
       "file": "assets/sprites/mon_shaman_part_leg.png",
-      "w": 12,
+      "w": 22,
       "h": 20
     },
     "mon_shaman_part_weapon": {
@@ -601,12 +601,12 @@
     },
     "mon_goblin_hunter_part_arm": {
       "file": "assets/sprites/mon_goblin_hunter_part_arm.png",
-      "w": 9,
+      "w": 11,
       "h": 16
     },
     "mon_goblin_hunter_part_leg": {
       "file": "assets/sprites/mon_goblin_hunter_part_leg.png",
-      "w": 12,
+      "w": 22,
       "h": 20
     },
     "mon_goblin_hunter_part_weapon": {
@@ -626,12 +626,12 @@
     },
     "mon_tank_part_arm": {
       "file": "assets/sprites/mon_tank_part_arm.png",
-      "w": 9,
+      "w": 11,
       "h": 16
     },
     "mon_tank_part_leg": {
       "file": "assets/sprites/mon_tank_part_leg.png",
-      "w": 12,
+      "w": 22,
       "h": 20
     },
     "mon_tank_part_weapon": {
@@ -651,12 +651,12 @@
     },
     "mon_bone_soldier_part_arm": {
       "file": "assets/sprites/mon_bone_soldier_part_arm.png",
-      "w": 9,
+      "w": 11,
       "h": 16
     },
     "mon_bone_soldier_part_leg": {
       "file": "assets/sprites/mon_bone_soldier_part_leg.png",
-      "w": 12,
+      "w": 22,
       "h": 20
     },
     "mon_bone_soldier_part_weapon": {
@@ -676,12 +676,12 @@
     },
     "mon_skeleton_archer_part_arm": {
       "file": "assets/sprites/mon_skeleton_archer_part_arm.png",
-      "w": 9,
+      "w": 11,
       "h": 16
     },
     "mon_skeleton_archer_part_leg": {
       "file": "assets/sprites/mon_skeleton_archer_part_leg.png",
-      "w": 12,
+      "w": 22,
       "h": 20
     },
     "mon_skeleton_archer_part_weapon": {
@@ -986,6 +986,156 @@
     },
     "mon_void_walker_part_weapon": {
       "file": "assets/sprites/mon_void_walker_part_weapon.png",
+      "w": 6,
+      "h": 24
+    },
+    "mon_charger_part_torso": {
+      "file": "assets/sprites/mon_charger_part_torso.png",
+      "w": 28,
+      "h": 20
+    },
+    "mon_charger_part_head": {
+      "file": "assets/sprites/mon_charger_part_head.png",
+      "w": 22,
+      "h": 20
+    },
+    "mon_charger_part_arm": {
+      "file": "assets/sprites/mon_charger_part_arm.png",
+      "w": 11,
+      "h": 16
+    },
+    "mon_charger_part_leg": {
+      "file": "assets/sprites/mon_charger_part_leg.png",
+      "w": 22,
+      "h": 20
+    },
+    "mon_charger_part_weapon": {
+      "file": "assets/sprites/mon_charger_part_weapon.png",
+      "w": 6,
+      "h": 24
+    },
+    "mon_summoner_part_torso": {
+      "file": "assets/sprites/mon_summoner_part_torso.png",
+      "w": 28,
+      "h": 20
+    },
+    "mon_summoner_part_head": {
+      "file": "assets/sprites/mon_summoner_part_head.png",
+      "w": 22,
+      "h": 20
+    },
+    "mon_summoner_part_arm": {
+      "file": "assets/sprites/mon_summoner_part_arm.png",
+      "w": 11,
+      "h": 16
+    },
+    "mon_summoner_part_leg": {
+      "file": "assets/sprites/mon_summoner_part_leg.png",
+      "w": 22,
+      "h": 20
+    },
+    "mon_summoner_part_weapon": {
+      "file": "assets/sprites/mon_summoner_part_weapon.png",
+      "w": 6,
+      "h": 24
+    },
+    "mon_necromancer_part_torso": {
+      "file": "assets/sprites/mon_necromancer_part_torso.png",
+      "w": 28,
+      "h": 20
+    },
+    "mon_necromancer_part_head": {
+      "file": "assets/sprites/mon_necromancer_part_head.png",
+      "w": 22,
+      "h": 20
+    },
+    "mon_necromancer_part_arm": {
+      "file": "assets/sprites/mon_necromancer_part_arm.png",
+      "w": 11,
+      "h": 16
+    },
+    "mon_necromancer_part_leg": {
+      "file": "assets/sprites/mon_necromancer_part_leg.png",
+      "w": 22,
+      "h": 20
+    },
+    "mon_necromancer_part_weapon": {
+      "file": "assets/sprites/mon_necromancer_part_weapon.png",
+      "w": 6,
+      "h": 24
+    },
+    "mon_ice_warden_part_torso": {
+      "file": "assets/sprites/mon_ice_warden_part_torso.png",
+      "w": 28,
+      "h": 20
+    },
+    "mon_ice_warden_part_head": {
+      "file": "assets/sprites/mon_ice_warden_part_head.png",
+      "w": 22,
+      "h": 20
+    },
+    "mon_ice_warden_part_arm": {
+      "file": "assets/sprites/mon_ice_warden_part_arm.png",
+      "w": 11,
+      "h": 16
+    },
+    "mon_ice_warden_part_leg": {
+      "file": "assets/sprites/mon_ice_warden_part_leg.png",
+      "w": 22,
+      "h": 20
+    },
+    "mon_ice_warden_part_weapon": {
+      "file": "assets/sprites/mon_ice_warden_part_weapon.png",
+      "w": 6,
+      "h": 24
+    },
+    "mon_blood_priest_part_torso": {
+      "file": "assets/sprites/mon_blood_priest_part_torso.png",
+      "w": 28,
+      "h": 20
+    },
+    "mon_blood_priest_part_head": {
+      "file": "assets/sprites/mon_blood_priest_part_head.png",
+      "w": 22,
+      "h": 20
+    },
+    "mon_blood_priest_part_arm": {
+      "file": "assets/sprites/mon_blood_priest_part_arm.png",
+      "w": 11,
+      "h": 16
+    },
+    "mon_blood_priest_part_leg": {
+      "file": "assets/sprites/mon_blood_priest_part_leg.png",
+      "w": 22,
+      "h": 20
+    },
+    "mon_blood_priest_part_weapon": {
+      "file": "assets/sprites/mon_blood_priest_part_weapon.png",
+      "w": 6,
+      "h": 24
+    },
+    "mon_dark_mage_part_torso": {
+      "file": "assets/sprites/mon_dark_mage_part_torso.png",
+      "w": 28,
+      "h": 20
+    },
+    "mon_dark_mage_part_head": {
+      "file": "assets/sprites/mon_dark_mage_part_head.png",
+      "w": 22,
+      "h": 20
+    },
+    "mon_dark_mage_part_arm": {
+      "file": "assets/sprites/mon_dark_mage_part_arm.png",
+      "w": 11,
+      "h": 16
+    },
+    "mon_dark_mage_part_leg": {
+      "file": "assets/sprites/mon_dark_mage_part_leg.png",
+      "w": 22,
+      "h": 20
+    },
+    "mon_dark_mage_part_weapon": {
+      "file": "assets/sprites/mon_dark_mage_part_weapon.png",
       "w": 6,
       "h": 24
     }

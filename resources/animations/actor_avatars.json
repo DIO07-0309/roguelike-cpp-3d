@@ -79,6 +79,30 @@
     "mon_void_walker": {
       "skeleton": "resources/animations/mon_void_walker_skeleton.json",
       "anim": "resources/animations/player_anim.json"
+    },
+    "mon_charger": {
+      "skeleton": "resources/animations/mon_charger_skeleton.json",
+      "anim": "resources/animations/player_anim.json"
+    },
+    "mon_summoner": {
+      "skeleton": "resources/animations/mon_summoner_skeleton.json",
+      "anim": "resources/animations/player_anim.json"
+    },
+    "mon_necromancer": {
+      "skeleton": "resources/animations/mon_necromancer_skeleton.json",
+      "anim": "resources/animations/player_anim.json"
+    },
+    "mon_ice_warden": {
+      "skeleton": "resources/animations/mon_ice_warden_skeleton.json",
+      "anim": "resources/animations/player_anim.json"
+    },
+    "mon_blood_priest": {
+      "skeleton": "resources/animations/mon_blood_priest_skeleton.json",
+      "anim": "resources/animations/player_anim.json"
+    },
+    "mon_dark_mage": {
+      "skeleton": "resources/animations/mon_dark_mage_skeleton.json",
+      "anim": "resources/animations/player_anim.json"
     }
   }
 }

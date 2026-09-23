@@ -31,6 +31,24 @@ FAMILIES = {
     "bone_white": {"s": (126, 120, 98), "m": (176, 170, 144), "l": (214, 208, 182),
                    "h": (240, 236, 214), "r": (122, 84, 54), "R": (162, 116, 70),
                    "p": (206, 160, 102), "b": (70, 64, 52), "g": (110, 96, 72)},
+    "orc_crimson": {"s": (88, 30, 34), "m": (140, 48, 46), "l": (192, 78, 62),
+                    "h": (234, 132, 96), "r": (122, 60, 40), "R": (166, 86, 54),
+                    "p": (236, 208, 160), "b": (42, 24, 26), "g": (124, 96, 64)},
+    "goblin_amber": {"s": (70, 56, 34), "m": (120, 92, 48), "l": (170, 136, 70),
+                     "h": (222, 188, 112), "r": (110, 82, 44), "R": (152, 118, 66),
+                     "p": (248, 196, 84), "b": (48, 40, 32), "g": (120, 102, 66)},
+    "necro_rot": {"s": (36, 48, 40), "m": (58, 82, 60), "l": (92, 126, 88),
+                  "h": (144, 180, 122), "r": (104, 74, 50), "R": (146, 106, 68),
+                  "p": (216, 220, 186), "b": (24, 30, 26), "g": (110, 96, 72)},
+    "frost_ice": {"s": (48, 78, 110), "m": (80, 124, 164), "l": (126, 172, 206),
+                  "h": (198, 230, 246), "r": (46, 60, 92), "R": (78, 98, 138),
+                  "p": (236, 248, 255), "b": (30, 44, 62), "g": (96, 90, 76)},
+    "blood_crimson": {"s": (58, 20, 32), "m": (98, 30, 46), "l": (148, 46, 64),
+                      "h": (198, 72, 90), "r": (170, 130, 52), "R": (214, 172, 84),
+                      "p": (240, 60, 70), "b": (34, 16, 24), "g": (110, 90, 70)},
+    "void_dark": {"s": (34, 26, 48), "m": (56, 44, 80), "l": (86, 70, 122),
+                  "h": (126, 110, 168), "r": (58, 50, 70), "R": (90, 80, 110),
+                  "p": (104, 180, 110), "b": (22, 18, 32), "g": (96, 88, 70)},
 }
 MONSTERS = {
     "orc": ("orc_green", "standard", "cleaver"),
@@ -41,6 +59,12 @@ MONSTERS = {
     "tank": ("guard_steel", "bulk", "greatsword"),
     "bone_soldier": ("bone_white", "gaunt", "sword"),
     "skeleton_archer": ("bone_white", "gaunt", "bow"),
+    "charger": ("orc_crimson", "standard", "lance"),
+    "summoner": ("goblin_amber", "runt", "tome"),
+    "necromancer": ("necro_rot", "gaunt", "scythe"),
+    "ice_warden": ("frost_ice", "bulk", "greatsword"),
+    "blood_priest": ("blood_crimson", "standard", "bloodstaff"),
+    "dark_mage": ("void_dark", "gaunt", "staff"),
 }
 # ppu 全档 0.8: 对齐磁盘 14 骨架约定 (9e6d6fc 曾把 JSON 0.45/0.5→0.8, 生成器同步)
 TIERS = {"standard": (1.0, 1.0, 0.8), "runt": (1.0, 1.0, 0.8),
@@ -75,9 +99,23 @@ DAGGER = ("......|......|......|......|......|......|......|......|......|"
 GREATSWORD = ("..oooo|.ohhlo|.ohhlo|.ohhlo|.ohhlo|.ohhlo|.ohhlo|.ohhlo|"
               ".ohhlo|.ohhlo|.ohhlo|.ohhlo|.ohhlo|orrrro|oooooo|.oggo.|"
               ".oggo.|.oggo.|.oggo.|.oggo.|.obbo.|.obbo.|.obbo.|..oo..")
+LANCE = ("..oo..|.ohhlo|ohhmmo|.ohhlo|orRrro|.rrrr.|..rr..|..gg..|..gg..|"
+         "..gg..|..gg..|..gg..|..gg..|..gg..|..gg..|..gg..|..gg..|..gg..|.oggo.|"
+         "..gg..|..gg..|..gg..|.oooo.|..oo..")
+SCYTHE = ("...ooo|..ohhl|.ohhlo|ohhlo.|ohlo..|.oo...|..gg..|..gg..|..gg..|"
+          "..gg..|..gg..|..gg..|..gg..|..gg..|..gg..|..gg..|..gg..|..gg..|"
+          "..gg..|..gg..|..gg..|..gg..|.oooo.|..oo..")
+TOME = (".oooo.|orrrro|orhhro|orhhro|orRRro|orhhro|orhhro|orrrro|orhhro|"
+        "orhhro|orRRro|orhhro|orrrro|.oooo.|..gg..|..gg..|.oggo.|..gg..|"
+        "..gg..|..gg..|..gg..|.oooo.|..oo..|......")
+BLOODSTAFF = ("..oo..|.orrro|orRRro|orrrro|.oRro.|..r...|..gg..|..gg..|"
+              "..gg..|..gg..|..gg..|..gg..|..gg..|..gg..|..gg..|..gg..|"
+              "..gg..|..gg..|..gg..|..gg..|..gg..|..gg..|.oooo.|..oo..")
 WEAPONS = {"sword": list(PART_ROWS["weapon"]), "cleaver": CLEAVER.split("|"),
            "bow": BOW.split("|"), "staff": STAFF.split("|"),
-           "dagger": DAGGER.split("|"), "greatsword": GREATSWORD.split("|")}
+           "dagger": DAGGER.split("|"), "greatsword": GREATSWORD.split("|"),
+           "lance": LANCE.split("|"), "scythe": SCYTHE.split("|"),
+           "tome": TOME.split("|"), "bloodstaff": BLOODSTAFF.split("|")}
 
 
 def build_palette(family):
