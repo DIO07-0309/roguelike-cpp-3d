@@ -1,0 +1,112 @@
+{
+  "pixels_per_unit": 0.8,
+  "anchor": [
+    34,
+    87
+  ],
+  "bones": [
+    {
+      "name": "root"
+    },
+    {
+      "name": "hips",
+      "parent": "root",
+      "y": 28
+    },
+    {
+      "name": "torso",
+      "parent": "hips",
+      "y": 8
+    },
+    {
+      "name": "head",
+      "parent": "torso",
+      "y": 15
+    },
+    {
+      "name": "arm_back",
+      "parent": "torso",
+      "x": -4,
+      "y": 13
+    },
+    {
+      "name": "weapon",
+      "parent": "arm_back",
+      "y": -7
+    },
+    {
+      "name": "arm_front",
+      "parent": "torso",
+      "x": 6,
+      "y": 13
+    },
+    {
+      "name": "leg_front",
+      "parent": "hips",
+      "x": 4
+    },
+    {
+      "name": "leg_back",
+      "parent": "hips",
+      "x": -4
+    }
+  ],
+  "parts": [
+    {
+      "bone": "leg_back",
+      "file": "assets/sprites/boss_vampire_part_leg.png",
+      "pivot": [
+        8,
+        28
+      ]
+    },
+    {
+      "bone": "arm_back",
+      "file": "assets/sprites/boss_vampire_part_arm.png",
+      "pivot": [
+        6,
+        22
+      ]
+    },
+    {
+      "bone": "weapon",
+      "file": "assets/sprites/boss_vampire_part_weapon.png",
+      "pivot": [
+        4,
+        30
+      ]
+    },
+    {
+      "bone": "torso",
+      "file": "assets/sprites/boss_vampire_part_torso.png",
+      "pivot": [
+        18,
+        14
+      ]
+    },
+    {
+      "bone": "head",
+      "file": "assets/sprites/boss_vampire_part_head.png",
+      "pivot": [
+        15,
+        10
+      ]
+    },
+    {
+      "bone": "arm_front",
+      "file": "assets/sprites/boss_vampire_part_arm.png",
+      "pivot": [
+        6,
+        22
+      ]
+    },
+    {
+      "bone": "leg_front",
+      "file": "assets/sprites/boss_vampire_part_leg.png",
+      "pivot": [
+        8,
+        28
+      ]
+    }
+  ]
+}

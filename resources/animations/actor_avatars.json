@@ -159,6 +159,26 @@
     "npc_140": {
       "skeleton": "resources/animations/npc_140_skeleton.json",
       "anim": "resources/animations/player_anim.json"
+    },
+    "boss_shadow_knight": {
+      "skeleton": "resources/animations/boss_shadow_knight_skeleton.json",
+      "anim": "resources/animations/boss_anim.json"
+    },
+    "boss_necromancer": {
+      "skeleton": "resources/animations/boss_necromancer_skeleton.json",
+      "anim": "resources/animations/boss_anim.json"
+    },
+    "boss_vampire": {
+      "skeleton": "resources/animations/boss_vampire_skeleton.json",
+      "anim": "resources/animations/boss_anim.json"
+    },
+    "boss_fire_demon": {
+      "skeleton": "resources/animations/boss_fire_demon_skeleton.json",
+      "anim": "resources/animations/boss_anim.json"
+    },
+    "boss_self": {
+      "skeleton": "resources/animations/boss_demon_lord_skeleton.json",
+      "anim": "resources/animations/boss_anim.json"
     }
   }
 }

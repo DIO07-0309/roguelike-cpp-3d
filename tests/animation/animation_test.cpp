@@ -682,7 +682,7 @@ TEST(ActorAvatarDefs, RepoDefaultWhitelistCoversA6HumanoidFamily) {
     std::string err;
     auto out = load_actor_avatars_file("resources/animations/actor_avatars.json", err);
     ASSERT_TRUE(out.has_value()) << err;
-    // A6-S2 批次1 (人形) + 批次2 (软体) + 批次3 (浮灵/魔像) + 批次4 (人形补充) + 批次5 (影武者/毒液蠕虫) + 批次6 (NPC)
+    // A6-S2 批次1-7: 人形/软体/浮灵魔像/人形补充/影武者毒液蠕虫/NPC/5 Boss
     const std::set<std::string> expected = {"mon_orc", "mon_elite_orc", "mon_archer",
                                             "mon_shaman", "mon_goblin_hunter", "mon_tank",
                                             "mon_bone_soldier", "mon_skeleton_archer",
@@ -699,7 +699,10 @@ TEST(ActorAvatarDefs, RepoDefaultWhitelistCoversA6HumanoidFamily) {
                                             "mon_poison_wyrm",
                                             "npc_20", "npc_30", "npc_40", "npc_60",
                                             "npc_70", "npc_80", "npc_90", "npc_110",
-                                            "npc_120", "npc_140"};
+                                            "npc_120", "npc_140",
+                                            "boss_shadow_knight", "boss_necromancer",
+                                            "boss_vampire", "boss_fire_demon",
+                                            "boss_self"};
     ASSERT_EQ(out->size(), expected.size());
     for (const auto& key : expected) {
         auto it = out->find(key);
@@ -707,8 +710,15 @@ TEST(ActorAvatarDefs, RepoDefaultWhitelistCoversA6HumanoidFamily) {
         EXPECT_FALSE(it->second.skeleton.empty());
         EXPECT_FALSE(it->second.anim.empty());
         EXPECT_TRUE(std::filesystem::exists(it->second.skeleton)) << key;
+        EXPECT_TRUE(std::filesystem::exists(it->second.anim)) << key;
+        std::string parse_err;
+        auto sk = load_skeleton_file(it->second.skeleton, parse_err);
+        ASSERT_TRUE(sk.has_value()) << key << " " << parse_err;
+        EXPECT_EQ(sk->bones.size(), 9u) << key;
+        EXPECT_EQ(sk->parts.size(), 7u) << key;
+        auto anim = load_anim_file(it->second.anim, *sk, parse_err);
+        ASSERT_TRUE(anim.has_value()) << key << " " << parse_err;
     }
-    EXPECT_TRUE(std::filesystem::exists(out->begin()->second.anim));
 }
 
 // ���� A6-S1: SkeletonAvatar ͨ�ú��� (hp ���ػ��� + ��Ⱦ�㳯��) ����������
