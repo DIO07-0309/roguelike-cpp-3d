@@ -1,0 +1,86 @@
+{
+  "default": "slime",
+  "aliases": {
+    "elite": ["elite_slime", "elite_orc"]
+  },
+  "slots": [
+    {
+      "archetype": "NORMAL",
+      "candidates": [
+        { "id": "orc", "weight": 1 },
+        { "id": "slime", "weight": 2 }
+      ]
+    },
+    {
+      "archetype": "Archer",
+      "candidates": [
+        { "id": "archer", "weight": 1 }
+      ]
+    },
+    {
+      "archetype": "Shaman",
+      "candidates": [
+        { "id": "shaman", "weight": 1 }
+      ]
+    },
+    {
+      "archetype": "Bomber",
+      "candidates": [
+        { "id": "bomber", "weight": 1 }
+      ]
+    },
+    {
+      "archetype": "Tank",
+      "candidates": [
+        { "id": "tank", "weight": 1 }
+      ]
+    },
+    {
+      "archetype": "Elite",
+      "candidates": [
+        { "id": "elite", "weight": 1 }
+      ]
+    },
+    {
+      "archetype": "Charger",
+      "candidates": [
+        { "id": "lightning_orb", "weight": 1, "floors": [6, 10] },
+        { "id": "charger", "weight": 1 }
+      ]
+    },
+    {
+      "archetype": "Summoner",
+      "candidates": [
+        { "id": "summoner", "weight": 1 }
+      ]
+    },
+    {
+      "archetype": "Sniper",
+      "candidates": [
+        { "id": "skeleton_archer", "weight": 1 },
+        { "id": "goblin_hunter", "weight": 1 }
+      ]
+    },
+    {
+      "archetype": "Controller",
+      "candidates": [
+        { "id": "dark_mage", "weight": 1 },
+        { "id": "void_walker", "weight": 1 }
+      ]
+    },
+    {
+      "archetype": "Ambush",
+      "candidates": [
+        { "id": "shadow_assassin", "weight": 1 },
+        { "id": "night_stalker", "weight": 1 }
+      ]
+    },
+    {
+      "archetype": "Guardian",
+      "candidates": [
+        { "id": "stone_guardian", "weight": 1 },
+        { "id": "iron_sentinel", "weight": 1 }
+      ]
+    }
+  ]
+}

@@ -8,6 +8,7 @@
 #include "config.h"
 #include "floor_config.h"
 #include "growth_curve.h"
+#include "spawn_tables.h"   // A6-S2 批次9: 槽位 -> 具体怪 id (resources/enemy_slots.json)
 
 // D1: 从 FloorConfig 读取概率 → 返回怪物类型 (G5.3: 12 slots)
 static const char* _pick_monster_type(const FloorConfig& cfg) {
@@ -21,22 +22,12 @@ static const char* _pick_monster_type(const FloorConfig& cfg) {
     for (int i = 0; i < 12; i++) {
         if (w[i] == 0) continue;
         sum += w[i];
-        if (roll < sum) {
-            switch (i) {
-                case 0: return (rng() % 3 == 0) ? "orc" : "slime";
-                case 1: return "archer";
-                case 2: return "shaman";
-                case 3: return "bomber";
-                case 4: return "tank";
-                case 5: return "elite";
-                case 6: return (cfg.floor >= 6 && cfg.floor <= 10 && rng() % 2 == 0) ? "lightning_orb" : "charger";   // D8; 批次8: F6-10 火山轮换
-                case 7: return "summoner";  // D8
-                case 8: return (rng()%2==0)?"skeleton_archer":"goblin_hunter";   // G5.3: Sniper
-                case 9: return (rng()%2==0)?"dark_mage":"void_walker";           // G5.3: Controller
-                case 10:return (rng()%2==0)?"shadow_assassin":"night_stalker";   // G5.3: Ambush
-                case 11:return (rng()%2==0)?"stone_guardian":"iron_sentinel";    // G5.3: Guardian
+            if (roll < sum) {
+                // 批次9: 槽位 -> 具体怪 id 迁至 resources/enemy_slots.json
+                // 加权抽签与旧 switch 逐位等价 (单候选不掷骰), 见设计 §6
+                const std::string* id = pick_slot_monster(i, cfg.floor);
+                return id ? id->c_str() : g_spawn_default.c_str();
             }
-        }
     }
     return "slime";
 }

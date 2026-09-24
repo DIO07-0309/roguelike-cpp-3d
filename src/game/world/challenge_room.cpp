@@ -7,6 +7,7 @@
 #include "reward_manager.h"
 #include "growth_curve.h"
 #include "core/logger.h"
+#include "spawn_tables.h"    // A6-S2 批次9: 挑战房刷怪池
 #include <algorithm>
 #include <cmath>
 
@@ -15,38 +16,10 @@ static constexpr int MAX_CHALLENGE_MONSTERS = 12;
 const char* ChallengeRoomController::_pick_monster_type(
     int floor, int wave, uint32_t rng) {
 
-    // Pool by biome (floor range) and wave difficulty
-    struct Pool { const char* types[4]; int count; };
-
-    auto pick = [](const Pool& p, uint32_t r) -> const char* {
-        return p.types[r % (uint32_t)p.count];
-    };
-
-    if (floor <= 5) {
-        // Prison: weak melee → ranged+support → elites
-        const Pool pools[3] = {
-            {{"slime", "skeleton_archer", "bone_soldier"}, 3},
-            {{"orc", "shadow_stalker", "blood_leech"}, 3},
-            {{"elite_slime", "charger", "summoner", "orc"}, 4},
-        };
-        return pick(pools[wave], rng);
-    }
-    if (floor <= 10) {
-        // Volcano: fire/explosive → casters+tanks → heavy hitters
-        const Pool pools[3] = {
-            {{"fire_imp", "bomber", "frost_slime", "lightning_orb"}, 4},   // 批次8: 火山波1 池加满
-            {{"orc", "shaman", "poison_wyrm"}, 3},
-            {{"storm_elemental", "golem", "necromancer"}, 3},
-        };
-        return pick(pools[wave], rng);
-    }
-    // Abyss: assassins → hybrid elite → boss-tier
-    const Pool pools[3] = {
-        {{"shadow_stalker", "void_walker", "dark_mage"}, 3},
-        {{"ice_warden", "blood_priest", "night_stalker"}, 3},
-        {{"stone_guardian", "iron_sentinel", "elite_orc"}, 3},
-    };
-    return pick(pools[wave], rng);
+    // 批次9: 9 个池子迁至 resources/challenge_pools.json (3 群系 x 3 波, 均匀抽签)
+    // rng 由调用方以 wave_seed 派生, 不触碰全局 rng() — 见设计 §6.1
+    const std::string* id = pick_challenge_monster(floor, wave, rng);
+    return id ? id->c_str() : "slime";
 }
 
 // Deterministic seed: avalanche hash_combine (no XOR collision)

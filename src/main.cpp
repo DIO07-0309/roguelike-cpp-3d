@@ -26,6 +26,7 @@
 #include "world/biome.h"
 #include "world/landmark.h"
 #include "world/encounter.h"
+#include "spawn_tables.h"      // A6-S2 批次9: 楼层槽位选怪表 + 挑战房刷怪池
 #include "data/vfx_recipe.h"
 #include "core/sim/sim_runner.h"      // G5.6
 #include "core/mod_manager.h"         // G4.4
@@ -307,6 +308,12 @@ int main(int argc, char** argv) {
     load_biome_defs("resources/biomes.json");
     load_landmark_defs("resources/landmarks.json");
     load_encounter_defs("resources/encounters.json");
+
+    // A6-S2 批次9: 刷怪表数据化 — 加载失败必须响亮, 否则全图静默刷 default 怪
+    if (!load_spawn_slots("resources/enemy_slots.json") ||
+        !load_challenge_pools("resources/challenge_pools.json")) {
+        LOG_ERROR("Spawn tables 加载失败: 楼层刷怪将全部回退 default, 请检查 resources/enemy_slots.json 与 challenge_pools.json");
+    }
 
     // Font 通过 ResourceManager 加载
     load_fonts();

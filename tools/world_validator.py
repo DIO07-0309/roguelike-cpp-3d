@@ -342,6 +342,64 @@ if cam:
     if ks.get("shake_frequency", 0) <= 0:
         err("boss_camera: kill_stun.shake_frequency must be > 0")
 
+# ═══ A6-S2 批次9: spawn tables 前后向交叉校验 ═══
+# enemy_slots.json (12 槽位 -> 候选怪) + challenge_pools.json (3 群系 x 3 波)
+# 前向: 候选 id 必须是真敌人或已声明别名; 反向: enemies.json 每个敌人必须可达
+_spawn_slot_ok = os.path.exists(os.path.join(RES_DIR, "enemy_slots.json"))
+_spawn_pool_ok = os.path.exists(os.path.join(RES_DIR, "challenge_pools.json"))
+if not (_spawn_slot_ok and _spawn_pool_ok):
+    print("  [INFO] spawn tables 未就绪, 跳过 A6-S2 批次9 校验")
+else:
+    spawn_slots = load_json("enemy_slots.json")
+    spawn_pools = load_json("challenge_pools.json")
+    slot_list = spawn_slots.get("slots", []) if isinstance(spawn_slots, dict) else []
+    aliases = spawn_slots.get("aliases", {}) if isinstance(spawn_slots, dict) else {}
+    alias_keys = set(aliases.keys())
+
+    def _resolve(eid):
+        return set(aliases[eid]) if eid in aliases else {eid}
+
+    reachable = set()
+    challenge_only = set()
+
+    if len(slot_list) != 12:
+        err(f"enemy_slots.json: slots 数量 {len(slot_list)} != 12 (需与 FloorConfig::enemy_weights[12] 对齐)")
+    for i, sl in enumerate(slot_list):
+        ctx = f"enemy_slots.json slot[{i}] {sl.get('archetype', '?')}"
+        cands = sl.get("candidates", [])
+        if not cands:
+            err(f"{ctx}: 空 candidates")
+        for c in cands:
+            cid = c.get("id", "")
+            if cid not in enemy_ids and cid not in alias_keys:
+                err(f"BROKEN REF: {ctx} candidate '{cid}' not in enemies.json / aliases")
+            if c.get("weight", 0) <= 0:
+                err(f"{ctx} candidate '{cid}': weight must be > 0")
+            fl = c.get("floors")
+            if fl is not None and (not isinstance(fl, list) or len(fl) != 2
+                                   or fl[0] <= 0 or fl[1] > 15 or fl[0] > fl[1]):
+                err(f"{ctx} candidate '{cid}': floors {fl} 非法 (需闭区间 1..15)")
+            reachable.update(_resolve(cid))
+
+    for bi, bm in enumerate(spawn_pools.get("biomes", []) if isinstance(spawn_pools, dict) else []):
+        ctx = f"challenge_pools.json biome[{bi}]"
+        fl = bm.get("floors")
+        if not isinstance(fl, list) or len(fl) != 2 or fl[0] <= 0 or fl[1] > 15 or fl[0] > fl[1]:
+            err(f"{ctx}: floors {fl} 非法 (需闭区间 1..15)")
+        for wi, wv in enumerate(bm.get("waves", [])):
+            if not wv:
+                err(f"{ctx} wave[{wi}]: 空池")
+            for x in wv:
+                if x not in enemy_ids and x not in alias_keys:
+                    err(f"BROKEN REF: {ctx} wave[{wi}] '{x}' not in enemies.json / aliases")
+                challenge_only.update(_resolve(x))
+
+    for e in sorted(enemy_ids - reachable - challenge_only):
+        err(f"UNREACHABLE: enemies.json '{e}' 不在 enemy_slots.json 或 challenge_pools.json (运行时永不刷出)")
+    only_challenge = sorted((challenge_only - reachable) & enemy_ids)
+    print(f"  [INFO] spawn: {len(enemy_ids)} enemies, 直达 {len(reachable & enemy_ids)}, "
+          f"仅经挑战房(需钥匙) {len(only_challenge)}: {', '.join(only_challenge)}")
+
 # ═══ Report ═══
 print(f"\n{'='*60}")
 print(f"  WORLD VALIDATOR REPORT")

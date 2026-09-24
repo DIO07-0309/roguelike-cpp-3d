@@ -1,0 +1,28 @@
+{
+  "biomes": [
+    {
+      "floors": [1, 5],
+      "waves": [
+        ["slime", "skeleton_archer", "bone_soldier"],
+        ["orc", "shadow_stalker", "blood_leech"],
+        ["elite_slime", "charger", "summoner", "orc"]
+      ]
+    },
+    {
+      "floors": [6, 10],
+      "waves": [
+        ["fire_imp", "bomber", "frost_slime", "lightning_orb"],
+        ["orc", "shaman", "poison_wyrm"],
+        ["storm_elemental", "golem", "necromancer"]
+      ]
+    },
+    {
+      "floors": [11, 15],
+      "waves": [
+        ["shadow_stalker", "void_walker", "dark_mage"],
+        ["ice_warden", "blood_priest", "night_stalker"],
+        ["stone_guardian", "iron_sentinel", "elite_orc"]
+      ]
+    }
+  ]
+}
