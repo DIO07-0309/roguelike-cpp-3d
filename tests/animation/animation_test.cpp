@@ -682,7 +682,7 @@ TEST(ActorAvatarDefs, RepoDefaultWhitelistCoversA6HumanoidFamily) {
     std::string err;
     auto out = load_actor_avatars_file("resources/animations/actor_avatars.json", err);
     ASSERT_TRUE(out.has_value()) << err;
-    // A6-S2 批次1 (人形) + 批次2 (软体) + 批次3 (浮灵/魔像) + 批次4 (人形补充) + 批次5 (影武者/毒液蠕虫)
+    // A6-S2 批次1 (人形) + 批次2 (软体) + 批次3 (浮灵/魔像) + 批次4 (人形补充) + 批次5 (影武者/毒液蠕虫) + 批次6 (NPC)
     const std::set<std::string> expected = {"mon_orc", "mon_elite_orc", "mon_archer",
                                             "mon_shaman", "mon_goblin_hunter", "mon_tank",
                                             "mon_bone_soldier", "mon_skeleton_archer",
@@ -696,7 +696,10 @@ TEST(ActorAvatarDefs, RepoDefaultWhitelistCoversA6HumanoidFamily) {
                                             "mon_ice_warden", "mon_blood_priest",
                                             "mon_dark_mage", "mon_shadow_stalker",
                                             "mon_shadow_assassin", "mon_night_stalker",
-                                            "mon_poison_wyrm"};
+                                            "mon_poison_wyrm",
+                                            "npc_20", "npc_30", "npc_40", "npc_60",
+                                            "npc_70", "npc_80", "npc_90", "npc_110",
+                                            "npc_120", "npc_140"};
     ASSERT_EQ(out->size(), expected.size());
     for (const auto& key : expected) {
         auto it = out->find(key);

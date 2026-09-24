@@ -2438,6 +2438,7 @@ void GameScene::_render() {
             _ensure_player_avatar();
             _player_avatar_tick();
             _monster_avatars_tick();
+            _npc_avatars_tick();
             hd2d.set_camera_shake(shake_ox, shake_oy);
             hd2d.render_frame(*this);
             _render_hd2d_ui_bridge(sw, sh);   // M6-v2a: HUD + 全 overlay 桥
@@ -2448,6 +2449,7 @@ void GameScene::_render() {
     _ensure_player_avatar();
     _player_avatar_tick();
     _monster_avatars_tick();
+    _npc_avatars_tick();
     _draw_map();
     _draw_ground_items();
     _draw_entities();
@@ -3018,6 +3020,51 @@ void GameScene::_monster_avatars_tick() {
     }
 }
 
+SkeletonAvatar* GameScene::npc_avatar(int npc_id) {
+    auto it = _npc_avatars.find(npc_id);
+    return it == _npc_avatars.end() ? nullptr : it->second.get();
+}
+
+// A6-S2 批次6: NPC 骨骼 — 白名单命中懒建一次 (成败都缓存), idle-only
+void GameScene::_npc_avatars_tick() {
+    if (!_actor_avatars_loaded) {
+        _actor_avatars_loaded = true;
+        std::string conf_err;
+        auto conf = load_actor_avatars_file("resources/animations/actor_avatars.json",
+                                            conf_err);
+        if (conf) _actor_avatars = std::move(*conf);
+        else LOG_WARN("A6: actor_avatars.json invalid, all fallback (%s)",
+                      conf_err.c_str());
+    }
+    if (_actor_avatars.empty()) return;
+    const float dt = GetFrameTime();
+    for (int i = 0; i < _npc_count; i++) {
+        if (_npc_state[i].finished) continue;
+        const int id = _npc_state[i].id;
+        auto found = _npc_avatars.find(id);
+        if (found == _npc_avatars.end()) {
+            const std::string key = "npc_" + std::to_string(id);
+            auto it = _actor_avatars.find(key);
+            std::unique_ptr<SkeletonAvatar> avatar;
+            if (it != _actor_avatars.end()) {
+                avatar = std::make_unique<SkeletonAvatar>();
+                std::string avatar_err;
+                if (avatar->try_init(it->second.skeleton, it->second.anim, avatar_err))
+                    LOG_INFO("A6: npc avatar active (%s)", key.c_str());
+                else {
+                    LOG_WARN("A6: npc avatar inactive (%s): %s",
+                             key.c_str(), avatar_err.c_str());
+                    avatar.reset();
+                }
+            }
+            found = _npc_avatars.emplace(id, std::move(avatar)).first;
+        }
+        auto* avatar = found->second.get();
+        if (!avatar || !avatar->active()) continue;
+        avatar->advance(dt, AnimInput{});   // NPC 静止 → 默认全 false = idle
+    }
+}
+
 void GameScene::_draw_entities() {
     // G9.4: 玩家瓦片 (交互相邻判断)
     std::pair<int,int> ppl = player && game_map
@@ -3109,18 +3156,22 @@ void GameScene::_draw_entities() {
             nn = lk.name;
             break;
         }
-        SpriteDef sdef;
-        Texture2D stex = ResourceManager::inst().sprite_by_key(
-            npc_sprite_key(current_floor), sdef);
         float s = TILE_SIZE - 4;
         float sx = nx - s/2, sy = ny - s/2;
-        if (stex.id > 0) {
-            SpriteRenderer::draw_sprite(stex, sdef, 0, {sx, sy, s, s});
+        SkeletonAvatar* npc_sk = npc_avatar(_npc_state[i].id);
+        if (npc_sk && npc_sk->active()) {
+            npc_sk->draw_at({nx, ny + s * 0.5f}, 1.f, 255);
         } else {
-            // 素材缺失回退: 历史绿点
-            float pulse = 4 + sinf((float)GetTime() * 4) * 2;
-            DrawCircle(nx, ny - 10, pulse, {100, 220, 140, 180});
-            DrawCircle(nx, ny - 10, 3, {60, 180, 80, 255});
+            SpriteDef sdef;
+            Texture2D stex = ResourceManager::inst().sprite_by_key(
+                npc_sprite_key(current_floor), sdef);
+            if (stex.id > 0) {
+                SpriteRenderer::draw_sprite(stex, sdef, 0, {sx, sy, s, s});
+            } else {
+                float pulse = 4 + sinf((float)GetTime() * 4) * 2;
+                DrawCircle(nx, ny - 10, pulse, {100, 220, 140, 180});
+                DrawCircle(nx, ny - 10, 3, {60, 180, 80, 255});
+            }
         }
         // G9: NPC name label
         if (g_font_loaded) {
@@ -3370,7 +3421,7 @@ std::vector<GameScene::NpcView> GameScene::npc_views() const {
     std::vector<NpcView> out;
     for (int i = 0; i < _npc_count; i++) {
         if (_npc_state[i].finished) continue;
-        out.push_back({_npc_tile_x[i], _npc_tile_y[i], false});
+        out.push_back({_npc_tile_x[i], _npc_tile_y[i], false, _npc_state[i].id});
     }
     return out;
 }

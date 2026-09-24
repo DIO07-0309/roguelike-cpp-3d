@@ -182,11 +182,13 @@ public:
     Object::Signal<int> on_player_leveled;
 
     // ── M6-HD2D: 3D 表现层只读访问器 (rendering3d 只读红线; 不暴露可变引用) ──
-    struct NpcView {                       // NPC 快照 (坐标 tile + 是否完成对话)
+    struct NpcView {                       // NPC 快照 (坐标 tile + 是否完成对话 + id)
         int tile_x = 0, tile_y = 0;
         bool finished = false;
+        int npc_id = 0;                    // A6-S2 批次6: floor*10+slot
     };
     std::vector<NpcView> npc_views() const;          // 未完成对话的在图 NPC
+    SkeletonAvatar* npc_avatar(int npc_id);   // A6-S2 批次6: HD2D/2D 只读查骨骼
     const std::vector<DroppedItem>& dropped_items() const { return ground_items; }
     bool in_challenge_arena() const { return _world_mode == WorldMode::CHALLENGE_ARENA; }
     const BossSystemDirector& boss_ctrl() const { return _boss; }  // M6-v2b: 危险区只读
@@ -381,6 +383,7 @@ private:
     void _ensure_player_avatar();
     void _player_avatar_tick();
     void _monster_avatars_tick();   // A6-S1: 怪物骨骼皮肤懒建+驱动 (与玩家同款, sim/无头不触达)
+    void _npc_avatars_tick();   // A6-S2 批次6: NPC 骨骼懒建+idle 驱动
     void _draw_ground_items();
     void _draw_arena_map();
     void _draw_arena_entities();
@@ -429,6 +432,9 @@ private:
     // A6-S1: actor_avatars.json 皮肤白名单 (首版空 = 全回退); 渲染路径懒载一次
     std::map<std::string, ActorAvatarDef> _actor_avatars;
     bool _actor_avatars_loaded = false;
+
+    // A6-S2 批次6: NPC 骨骼缓存 (键 npc_id; 未入 map=未尝试, nullptr=失败已缓存)
+    std::map<int, std::unique_ptr<SkeletonAvatar>> _npc_avatars;
 
     // Phase 1: FOV — 玩家跨 tile 时更新
     int _last_player_tile_x = -1;

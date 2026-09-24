@@ -977,16 +977,25 @@ static void _build_npcs(GameScene& gs, std::vector<HD2DDrawItem>& out) {
     const char* skey = npc_sprite_key(gs.current_floor);
     for (const auto& npc : gs.npc_views()) {
         if (gs.game_map && !gs.game_map->isVisible(npc.tile_x, npc.tile_y)) continue;
+        const float wx = (float)npc.tile_x * TILE_SIZE + TILE_SIZE * 0.5f;
+        const float wz = (float)npc.tile_y * TILE_SIZE + TILE_SIZE * 0.5f;
+        if (auto* skav = gs.npc_avatar(npc.npc_id); skav && skav->active()) {
+            const auto parts = skav->part_draws({}, false);
+            if (!parts.empty()) {
+                appendAvatarParts(parts, {wx, 0, wz},
+                                  (float)npc.tile_y * TILE_SIZE, 255, 0.f, out);
+                continue;
+            }
+        }
         HD2DDrawItem item;
         item.kind = HD2DDrawItem::Kind::ENTITY_BILLBOARD;
-        item.world_pos = {(float)npc.tile_x * TILE_SIZE + TILE_SIZE * 0.5f, 0,
-                          (float)npc.tile_y * TILE_SIZE + TILE_SIZE * 0.5f};
+        item.world_pos = {wx, 0, wz};
         item.size = 34.0f;
         item.sort_y = (float)npc.tile_y * TILE_SIZE;
-        item.outline = true;                   // A1.1: NPC 与玩家/怪同等待遇描边
+        item.outline = true;
         SpriteDef def;
         item.texture = res.sprite_by_key(skey, def);
-        if (item.texture.id <= 0) continue;     // 缺素材回退: 2D 有绿点, 3D 跳过
+        if (item.texture.id <= 0) continue;
         item.tex_src = SpriteRenderer::frame_rect(def, 0);
         item.tint = WHITE;
         out.push_back(item);

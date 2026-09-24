@@ -1238,6 +1238,256 @@
       "file": "assets/sprites/mon_poison_wyrm_part_weapon.png",
       "w": 6,
       "h": 24
+    },
+    "npc_20_part_torso": {
+      "file": "assets/sprites/npc_20_part_torso.png",
+      "w": 28,
+      "h": 20
+    },
+    "npc_20_part_head": {
+      "file": "assets/sprites/npc_20_part_head.png",
+      "w": 22,
+      "h": 20
+    },
+    "npc_20_part_arm": {
+      "file": "assets/sprites/npc_20_part_arm.png",
+      "w": 11,
+      "h": 16
+    },
+    "npc_20_part_leg": {
+      "file": "assets/sprites/npc_20_part_leg.png",
+      "w": 22,
+      "h": 20
+    },
+    "npc_20_part_weapon": {
+      "file": "assets/sprites/npc_20_part_weapon.png",
+      "w": 6,
+      "h": 24
+    },
+    "npc_30_part_torso": {
+      "file": "assets/sprites/npc_30_part_torso.png",
+      "w": 28,
+      "h": 20
+    },
+    "npc_30_part_head": {
+      "file": "assets/sprites/npc_30_part_head.png",
+      "w": 22,
+      "h": 20
+    },
+    "npc_30_part_arm": {
+      "file": "assets/sprites/npc_30_part_arm.png",
+      "w": 11,
+      "h": 16
+    },
+    "npc_30_part_leg": {
+      "file": "assets/sprites/npc_30_part_leg.png",
+      "w": 22,
+      "h": 20
+    },
+    "npc_30_part_weapon": {
+      "file": "assets/sprites/npc_30_part_weapon.png",
+      "w": 6,
+      "h": 24
+    },
+    "npc_40_part_torso": {
+      "file": "assets/sprites/npc_40_part_torso.png",
+      "w": 28,
+      "h": 20
+    },
+    "npc_40_part_head": {
+      "file": "assets/sprites/npc_40_part_head.png",
+      "w": 22,
+      "h": 20
+    },
+    "npc_40_part_arm": {
+      "file": "assets/sprites/npc_40_part_arm.png",
+      "w": 11,
+      "h": 16
+    },
+    "npc_40_part_leg": {
+      "file": "assets/sprites/npc_40_part_leg.png",
+      "w": 22,
+      "h": 20
+    },
+    "npc_40_part_weapon": {
+      "file": "assets/sprites/npc_40_part_weapon.png",
+      "w": 6,
+      "h": 24
+    },
+    "npc_60_part_torso": {
+      "file": "assets/sprites/npc_60_part_torso.png",
+      "w": 28,
+      "h": 20
+    },
+    "npc_60_part_head": {
+      "file": "assets/sprites/npc_60_part_head.png",
+      "w": 22,
+      "h": 20
+    },
+    "npc_60_part_arm": {
+      "file": "assets/sprites/npc_60_part_arm.png",
+      "w": 11,
+      "h": 16
+    },
+    "npc_60_part_leg": {
+      "file": "assets/sprites/npc_60_part_leg.png",
+      "w": 22,
+      "h": 20
+    },
+    "npc_60_part_weapon": {
+      "file": "assets/sprites/npc_60_part_weapon.png",
+      "w": 6,
+      "h": 24
+    },
+    "npc_70_part_torso": {
+      "file": "assets/sprites/npc_70_part_torso.png",
+      "w": 28,
+      "h": 20
+    },
+    "npc_70_part_head": {
+      "file": "assets/sprites/npc_70_part_head.png",
+      "w": 22,
+      "h": 20
+    },
+    "npc_70_part_arm": {
+      "file": "assets/sprites/npc_70_part_arm.png",
+      "w": 11,
+      "h": 16
+    },
+    "npc_70_part_leg": {
+      "file": "assets/sprites/npc_70_part_leg.png",
+      "w": 22,
+      "h": 20
+    },
+    "npc_70_part_weapon": {
+      "file": "assets/sprites/npc_70_part_weapon.png",
+      "w": 6,
+      "h": 24
+    },
+    "npc_80_part_torso": {
+      "file": "assets/sprites/npc_80_part_torso.png",
+      "w": 28,
+      "h": 20
+    },
+    "npc_80_part_head": {
+      "file": "assets/sprites/npc_80_part_head.png",
+      "w": 22,
+      "h": 20
+    },
+    "npc_80_part_arm": {
+      "file": "assets/sprites/npc_80_part_arm.png",
+      "w": 11,
+      "h": 16
+    },
+    "npc_80_part_leg": {
+      "file": "assets/sprites/npc_80_part_leg.png",
+      "w": 22,
+      "h": 20
+    },
+    "npc_80_part_weapon": {
+      "file": "assets/sprites/npc_80_part_weapon.png",
+      "w": 6,
+      "h": 24
+    },
+    "npc_90_part_torso": {
+      "file": "assets/sprites/npc_90_part_torso.png",
+      "w": 28,
+      "h": 20
+    },
+    "npc_90_part_head": {
+      "file": "assets/sprites/npc_90_part_head.png",
+      "w": 22,
+      "h": 20
+    },
+    "npc_90_part_arm": {
+      "file": "assets/sprites/npc_90_part_arm.png",
+      "w": 11,
+      "h": 16
+    },
+    "npc_90_part_leg": {
+      "file": "assets/sprites/npc_90_part_leg.png",
+      "w": 22,
+      "h": 20
+    },
+    "npc_90_part_weapon": {
+      "file": "assets/sprites/npc_90_part_weapon.png",
+      "w": 6,
+      "h": 24
+    },
+    "npc_110_part_torso": {
+      "file": "assets/sprites/npc_110_part_torso.png",
+      "w": 28,
+      "h": 20
+    },
+    "npc_110_part_head": {
+      "file": "assets/sprites/npc_110_part_head.png",
+      "w": 22,
+      "h": 20
+    },
+    "npc_110_part_arm": {
+      "file": "assets/sprites/npc_110_part_arm.png",
+      "w": 11,
+      "h": 16
+    },
+    "npc_110_part_leg": {
+      "file": "assets/sprites/npc_110_part_leg.png",
+      "w": 22,
+      "h": 20
+    },
+    "npc_110_part_weapon": {
+      "file": "assets/sprites/npc_110_part_weapon.png",
+      "w": 6,
+      "h": 24
+    },
+    "npc_120_part_torso": {
+      "file": "assets/sprites/npc_120_part_torso.png",
+      "w": 28,
+      "h": 20
+    },
+    "npc_120_part_head": {
+      "file": "assets/sprites/npc_120_part_head.png",
+      "w": 22,
+      "h": 20
+    },
+    "npc_120_part_arm": {
+      "file": "assets/sprites/npc_120_part_arm.png",
+      "w": 11,
+      "h": 16
+    },
+    "npc_120_part_leg": {
+      "file": "assets/sprites/npc_120_part_leg.png",
+      "w": 22,
+      "h": 20
+    },
+    "npc_120_part_weapon": {
+      "file": "assets/sprites/npc_120_part_weapon.png",
+      "w": 6,
+      "h": 24
+    },
+    "npc_140_part_torso": {
+      "file": "assets/sprites/npc_140_part_torso.png",
+      "w": 28,
+      "h": 20
+    },
+    "npc_140_part_head": {
+      "file": "assets/sprites/npc_140_part_head.png",
+      "w": 22,
+      "h": 20
+    },
+    "npc_140_part_arm": {
+      "file": "assets/sprites/npc_140_part_arm.png",
+      "w": 11,
+      "h": 16
+    },
+    "npc_140_part_leg": {
+      "file": "assets/sprites/npc_140_part_leg.png",
+      "w": 22,
+      "h": 20
+    },
+    "npc_140_part_weapon": {
+      "file": "assets/sprites/npc_140_part_weapon.png",
+      "w": 6,
+      "h": 24
     }
   },
   "lifecycle": {
