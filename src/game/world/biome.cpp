@@ -62,6 +62,9 @@ bool load_biome_defs(const char* json_path) {
             b.ambient = _parse_ambient(obj);   // G11.2: ambient 段
             if (obj.contains("enemy_pool")) {
                 for (auto& e : obj["enemy_pool"]) b.enemy_pool.push_back(e.get<std::string>());
+            }
+            // 批次8: 必须各自判 contains — 缺 enemy_weights 时 obj[] 会构造 null 节点, push_back 抛异常被下方 catch 吞掉 → 全 15 层 biome(palette/ambient/bgm/boss_id)静默加载失败
+            if (obj.contains("enemy_weights")) {
                 for (auto& w : obj["enemy_weights"]) b.enemy_weights.push_back(w.get<float>());
             }
             b.boss_id = obj.value("boss_id", "");

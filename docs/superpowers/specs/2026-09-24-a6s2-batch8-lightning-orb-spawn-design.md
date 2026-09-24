@@ -106,13 +106,21 @@ if (obj.contains("enemy_weights")) {
 1. **构建**：`cmake --build build --config Release -- -j 4` 0 error
 2. **ctest**：`ctest --test-dir build` → **68/68**（测试数不变；本批无新增断言）
 3. **World Validator**：`conda run python tools/world_validator.py` → **0 错误 0 警告**
-4. **sim A/B 对照**（替代逐字节一致）：
-   - `--sim 12 --sim-seed 3` 跑修改前/后两次，比对 sha256 与行数
-   - **必须变化**（slot6 与火山池分布变了），但 diff 中**只允许出现怪物 id / 怪物名相关行**
-   - **不得出现**：崩溃、`NaN`、异常打印、楼层推进中断、行数异常增减
-   - 同时确认 `src/game/world/biome.cpp` 修改后仍打印 `[Biome] Loaded 3 biomes`
-5. **零回归断言**：`enemies.json` 不改、`floor_config.cpp` 权重表不改、`biomes.json`/`world/*.json` 不改 —— 本批**零 JSON 改动**
-6. **实机验收**（用户门禁）：F6-10 常规层跑几层，确认能刷出电光之核且骨骼/镜像/脚贴地正常；挑战房火山波 1 确认池内可见
+4. **静态接线证明**：`grep "lightning_orb" src/` 命中数由 **1**（仅 `monster.cpp:398` 配色）变为 **3**（+ `floor_manager.cpp:32`、`challenge_room.cpp:37`）。这是自动化层面唯一能证明「接线完成」的检查。
+5. **sim A/B 对照 —— 已确认结构性无效，降为信息性记录**：
+   - 实测基线 `--sim 12 --sim-seed 3` 结果 `wins:0, avg_floor:1.33` —— **12 个 agent 全部死在 F1-2**。
+   - slot 6 权重在 F1-F3 恒为 `0`（`floor_config.cpp:14-16`），F4 起才为 2。即 **sim 的可达楼层范围内 slot 6 永不激活**，本批改动在 sim 路径上根本不可达。
+   - 基线 DMG 日志只出现 3 个实体名（史莱姆普攻 1459 / poison 151 / 兽人普攻 80），`电光之核` 与 `冲锋兽人` 命中数**均为 0** —— 后者同样证明「靠 sim 日志验证刷怪」这条路本身不通，即便 charger 从 F4 就能刷。
+   - 因此：跑修改前/后两次仅用于**记录 sha256 变化**（预期无 diff 或只有 `__DATE__/__TIME__` 启动行）。**若出现启动行以外的 diff，说明改动比预期更大，必须停下来排查。**
+   - 确认 `biome.cpp` 修改后仍打印 `[Biome] Loaded 3 biomes`。
+6. **零回归断言**：`enemies.json`、`floor_config.cpp` 权重表、`biomes.json`、`world/*.json` 一律不改 —— 本批**零 JSON、零资源改动**
+7. **实机验收（用户门禁）—— 本批唯一有效证明**：sim 证明不了的事，只有真人打到 F6-10 能证明。F6-10 常规层多跑几层确认能刷出电光之核且骨骼/镜像/脚贴地正常；挑战房火山波 1 确认池内可见。
+
+### §4 附带说明：为什么本批不加单元测试
+
+`ChallengeRoomController::_pick_monster_type` 是 `private static`（`challenge_room.h:95`），`FloorManager::_pick_monster_type` 是文件内 `static`（`floor_manager.cpp:13`），两者都无法直接单测。要走公共接口测 spawn，必须先构造合法 `GameMap` + 房间布局 + Registry 启动 `enemy_defs`。`tests/economy/challenge_room_test.cpp:92` 已有先例注释：`"(actual spawn test would need full map setup)"` —— 团队已知这条路的成本。为一个 4 行的字面量改动搭这套基础设施，收益不成比例。
+
+**遗留教训（记录，不在本批解决）**：lightning_orb 的缺口连跨了 3 个批次（批次3 骨骼化 → 批次5 数据面清偿 → 批次8 才发现刷不出），根因正是**没有任何可达性断言**。真正该修的是「刷怪表本身应该是数据而非 C++ 字面量」——那属于 §0 范围外的数据驱动刷怪管线。
 
 ## §5 提交策略
 

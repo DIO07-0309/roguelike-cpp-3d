@@ -34,7 +34,7 @@ const char* ChallengeRoomController::_pick_monster_type(
     if (floor <= 10) {
         // Volcano: fire/explosive → casters+tanks → heavy hitters
         const Pool pools[3] = {
-            {{"fire_imp", "bomber", "frost_slime"}, 3},
+            {{"fire_imp", "bomber", "frost_slime", "lightning_orb"}, 4},   // 批次8: 火山波1 池加满
             {{"orc", "shaman", "poison_wyrm"}, 3},
             {{"storm_elemental", "golem", "necromancer"}, 3},
         };

@@ -29,7 +29,7 @@ static const char* _pick_monster_type(const FloorConfig& cfg) {
                 case 3: return "bomber";
                 case 4: return "tank";
                 case 5: return "elite";
-                case 6: return "charger";   // D8
+                case 6: return (cfg.floor >= 6 && cfg.floor <= 10 && rng() % 2 == 0) ? "lightning_orb" : "charger";   // D8; 批次8: F6-10 火山轮换
                 case 7: return "summoner";  // D8
                 case 8: return (rng()%2==0)?"skeleton_archer":"goblin_hunter";   // G5.3: Sniper
                 case 9: return (rng()%2==0)?"dark_mage":"void_walker";           // G5.3: Controller
