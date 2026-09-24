@@ -120,46 +120,6 @@
       "skeleton": "resources/animations/mon_poison_wyrm_skeleton.json",
       "anim": "resources/animations/player_anim.json"
     },
-    "npc_20": {
-      "skeleton": "resources/animations/npc_20_skeleton.json",
-      "anim": "resources/animations/player_anim.json"
-    },
-    "npc_30": {
-      "skeleton": "resources/animations/npc_30_skeleton.json",
-      "anim": "resources/animations/player_anim.json"
-    },
-    "npc_40": {
-      "skeleton": "resources/animations/npc_40_skeleton.json",
-      "anim": "resources/animations/player_anim.json"
-    },
-    "npc_60": {
-      "skeleton": "resources/animations/npc_60_skeleton.json",
-      "anim": "resources/animations/player_anim.json"
-    },
-    "npc_70": {
-      "skeleton": "resources/animations/npc_70_skeleton.json",
-      "anim": "resources/animations/player_anim.json"
-    },
-    "npc_80": {
-      "skeleton": "resources/animations/npc_80_skeleton.json",
-      "anim": "resources/animations/player_anim.json"
-    },
-    "npc_90": {
-      "skeleton": "resources/animations/npc_90_skeleton.json",
-      "anim": "resources/animations/player_anim.json"
-    },
-    "npc_110": {
-      "skeleton": "resources/animations/npc_110_skeleton.json",
-      "anim": "resources/animations/player_anim.json"
-    },
-    "npc_120": {
-      "skeleton": "resources/animations/npc_120_skeleton.json",
-      "anim": "resources/animations/player_anim.json"
-    },
-    "npc_140": {
-      "skeleton": "resources/animations/npc_140_skeleton.json",
-      "anim": "resources/animations/player_anim.json"
-    },
     "boss_shadow_knight": {
       "skeleton": "resources/animations/boss_shadow_knight_skeleton.json",
       "anim": "resources/animations/boss_anim.json"
