@@ -42,7 +42,7 @@ namespace {
 constexpr int kBossWaveSlot = 99;
 constexpr int kBossWaveChancePct = 25;
 
-// B4-T4: 奖励结算参数. 基础三项是现状契约; 压轴加成仅在 boss_cleared 时叠加,
+// B4-T4: 奖励结算参数. 基础三项是现状契约; 压轴加成仅在 boss_wave_pending 时叠加,
 // 不改写基础项, 因此未出 boss 的房间与改造前逐字节一致.
 constexpr int kBaseRewardItems = 3;
 constexpr int kBaseRewardRetries = 5;
@@ -301,13 +301,13 @@ void ChallengeRoomController::_spawn_boss_wave(
     LOG_INFO("[CHALLENGE] Boss wave spawned at tile %d,%d (floor %d)", cx, cy, floor);
 }
 
-RewardPlan ChallengeRoomController::decide_reward_plan(int floor, bool boss_cleared) {
+RewardPlan ChallengeRoomController::decide_reward_plan(int floor, bool boss_wave_pending) {
     RewardPlan plan;
     plan.base_item_count = kBaseRewardItems;
     plan.base_retry_cap = kBaseRewardRetries;
     plan.base_rarity_floor = static_cast<int>(Rarity::RARE);
     plan.gold = kRewardGoldBase + floor * kRewardGoldPerFloor;
-    if (boss_cleared) {
+    if (boss_wave_pending) {
         plan.bonus_item_count = kBossBonusItems;
         plan.bonus_retry_cap = kBossBonusRetries;
         plan.bonus_rarity_floor = static_cast<int>(Rarity::EPIC);
@@ -318,8 +318,8 @@ RewardPlan ChallengeRoomController::decide_reward_plan(int floor, bool boss_clea
 
 void ChallengeRoomController::grant_rewards_for_test(Player& player, GameMap* map, int floor,
                                                       std::vector<DroppedItem>& ground_items,
-                                                      bool boss_cleared) {
-    _grant_rewards(player, map, floor, ground_items, boss_cleared);
+                                                      bool boss_wave_pending) {
+    _grant_rewards(player, map, floor, ground_items, boss_wave_pending);
 }
 
 int ChallengeRoomController::_grant_items(Player& player,
@@ -344,14 +344,14 @@ int ChallengeRoomController::_grant_items(Player& player,
 
 void ChallengeRoomController::_grant_rewards(Player& player, GameMap* map, int floor,
                                               std::vector<DroppedItem>& ground_items,
-                                              bool boss_cleared) {
-    RewardPlan plan = decide_reward_plan(floor, boss_cleared);
+                                              bool boss_wave_pending) {
+    RewardPlan plan = decide_reward_plan(floor, boss_wave_pending);
     int granted = _grant_items(player, ground_items, plan.base_item_count,
                                plan.base_rarity_floor, plan.base_retry_cap);
-    if (boss_cleared)
+    if (boss_wave_pending)
         granted += _grant_items(player, ground_items, plan.bonus_item_count,
                                 plan.bonus_rarity_floor, plan.bonus_retry_cap);
     RewardManager::grant_gold(player, plan.gold);
     LOG_INFO("[CHALLENGE] Rewards: %d items + %d gold%s",
-             granted, plan.gold, boss_cleared ? " (boss cleared)" : "");
+              granted, plan.gold, boss_wave_pending ? " (boss wave bonus)" : "");
 }

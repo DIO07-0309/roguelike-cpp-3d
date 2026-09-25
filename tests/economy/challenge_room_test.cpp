@@ -418,7 +418,7 @@ RewardObservation run_legacy_reference(int floor, uint32_t seed) {
     return obs;
 }
 
-RewardObservation run_new_path(int floor, uint32_t seed, bool boss_cleared,
+RewardObservation run_new_path(int floor, uint32_t seed, bool boss_wave_pending,
                               int inventory_capacity = 16) {
     rng.seed(seed);
     Player p = make_player(3);
@@ -428,7 +428,7 @@ RewardObservation run_new_path(int floor, uint32_t seed, bool boss_cleared,
     GameMap map(8, 8, 32);
     std::vector<DroppedItem> drops;
     int start_gold = p.gold;
-    c.grant_rewards_for_test(p, &map, floor, drops, boss_cleared);
+    c.grant_rewards_for_test(p, &map, floor, drops, boss_wave_pending);
     RewardObservation obs;
     obs.signatures = signatures_of(p.inventory);
     obs.gold_added = p.gold - start_gold;

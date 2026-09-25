@@ -87,11 +87,11 @@ public:
     static WaveAdvance decide_advance(int wave_after_increment, int total_waves,
                                       bool boss_pending);
 
-    // Batch B4: 奖励隔离 —— 结算参数纯函数; boss_cleared=false 必须逐项等于现状契约
-    static RewardPlan decide_reward_plan(int floor, bool boss_cleared);
+    // Batch B4: 奖励隔离 —— 结算参数纯函数; boss_wave_pending=false 必须逐项等于现状契约
+    static RewardPlan decide_reward_plan(int floor, bool boss_wave_pending);
     void grant_rewards_for_test(Player& player, GameMap* map, int floor,
                                 std::vector<DroppedItem>& ground_items,
-                                bool boss_cleared);
+                                bool boss_wave_pending);
 
     // Batch 3I: Portal/room getters
     int portal_tx() const { return _portal_tx; }

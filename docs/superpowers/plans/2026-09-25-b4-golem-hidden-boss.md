@@ -920,9 +920,23 @@ git status --short assets/sprites resources/animations
 
 - [ ] **Step 6: 登记 sprite**
 
-`resources/sprites.json` 两处追加。
+`resources/sprites.json` 两处追加。**第一处是承重环节，第二处只是素材注册。**
 
-分件 5 条（照 `boss_shadow_knight_part_*` 在 `:1242-1266` 的格式；`w`/`h` 必须与 `gen_boss_parts.py` 的 `SIZES` 一致，与 `boss_fire_demon_part_*` 同尺寸）：
+**整图 1 条（承重，放在 `sprites` 段 `boss_fire_demon` 之后，格式同其旁的 `boss_f10`）：**
+
+```json
+    "boss_golem": {
+      "file": "assets/sprites/mon_golem.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
+```
+
+**为何承重：** `resource_manager.cpp:290` 只从 `j.at("slides")` 以外的 `"sprites"` 段填充 `_sprite_defs`，而 `sprite_by_key`（`:307-313`）只查这张表。`boss.cpp:1213-1220` 用 `vkey = "boss_" + visual_id` 探测：**命中** → `sprite_override = "boss_golem"`；**未命中** → 回落 `"boss_f10"`。骨骼白名单在 `game_scene.cpp:3005` 用 `monster_actor_key(m)` 查表，而 `monster_actor_key`（`monster.cpp:173-175`）就是 `sprite_override` 优先、否则 `m.name`。`boss_f10` 不在 `actor_avatars.json` 白名单里（实测无此键）→ `continue` → **无骨骼** → GOLEM 以火魔静态图渲染。所以缺这一条时，Step 5 的 avatar 登记与 Step 6 的分件注册**全部失效**。
+
+复用 `assets/sprites/mon_golem.png`（16×16，已作为 `mon_golem` 注册，无需新增素材）：整图仅用于遭遇战立绘（`game_renderer.cpp:578-600`，16→48 缩放）与骨骼失败时的静态兜底，战斗内走骨骼分件。造型是石头魔像而非火魔，退化方向正确。
+
+**分件 5 条**（放在 `skeleton_parts` 段，照 `boss_shadow_knight_part_*` 在 `:1242-1266` 的格式；`w`/`h` 必须与 `gen_boss_parts.py` 的 `SIZES` 一致，与 `boss_fire_demon_part_*` 同尺寸）：
 
 ```json
     "boss_golem_part_torso": {
@@ -961,6 +975,16 @@ git status --short assets/sprites resources/animations
 ```
 
 预期：0 error / 0 warning。若 validator 有精灵↔骨架↔avatar↔def 的交叉校验，此处即验证：`bosses.json.visual_id="golem"` → `boss_golem` avatar → `boss_golem_skeleton.json` → 5 个 PNG 全部存在。
+
+- [ ] **Step 7.5: 更新 `animation_test` 的白名单期望集**
+
+`tests/animation/animation_test.cpp:701-702` 的 `RepoDefaultWhitelistCoversA6HumanoidFamily` 硬编码了 35 键期望集（`:703` 断言 `out->size() == expected.size()`）。Step 5 的 avatar 登记会让它变 36 条而失败。在 `:701` 的 `"boss_fire_demon",` 之后插入一行：
+
+```cpp
+                                             "boss_fire_demon", "boss_golem",
+```
+
+这不是削弱测试：该用例对期望集里每个键还会逐个断言 `skeleton`/`anim` 非空、文件存在、可解析，且 `sk->bones.size() == 9u`、`sk->parts.size() == 7u`（`:714-715`）。所以这一行同时锁定了新骨架的结构维度——生成器必须产出与既有 5 个 boss 同形的 9 骨 7 件骨架。若维度不符，此处即报，不要去改 `9u`/`7u` 的期望值。
 
 - [ ] **Step 8: 构建 + 全量测试**
 
