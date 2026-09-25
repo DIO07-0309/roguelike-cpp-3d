@@ -240,21 +240,56 @@ TEST(ChallengeRoomTest, BossWaveRateMatches25Percent) {
         for (int r = 0; r < 20; r++)
             if (c.has_boss_wave((uint32_t)s, r)) hits++;
     // 2000 pairs, p = 0.25 -> mean 500, sigma = sqrt(2000*.25*.75) = 19.36.
-    // Band [393, 607] is +/-5.5 sigma (two-sided tail ~6e-8): cannot flake.
+    // Band [393, 607] is +/-6.04 sigma (two-sided tail ~1.5e-9).
+    // The 2000 pairs are a fixed deterministic set and the hash is a pure function,
+    // so `hits` is a compile-time constant, not a random variable: flake probability = 0.
     EXPECT_GE(hits, 393);
     EXPECT_LE(hits, 607);
+}
+
+// Room fixed, seed swept. A seed-blind implementation (e.g. `room_index % 4 == 0`)
+// returns a constant here and trips one of the two assertions.
+TEST(ChallengeRoomTest, BossWaveVariesAcrossSeedsFixedRoom) {
+    ChallengeRoomController c;
+    bool saw_hit = false;
+    bool saw_miss = false;
+    for (uint32_t seed = 0; seed < 512u; seed++) {
+        if (c.has_boss_wave(seed, 3)) saw_hit = true;
+        else saw_miss = true;
+    }
+    EXPECT_TRUE(saw_hit)  << "no boss wave over 512 seeds at room 3";
+    EXPECT_TRUE(saw_miss) << "boss wave on every seed at room 3";
+}
+
+// Dual property: seed fixed, room swept. Guards the joint-seed/room degeneration.
+TEST(ChallengeRoomTest, BossWaveVariesAcrossRoomsFixedSeed) {
+    ChallengeRoomController c;
+    bool saw_hit = false;
+    bool saw_miss = false;
+    for (int room = 0; room < 512; room++) {
+        if (c.has_boss_wave(0x12345678u, room)) saw_hit = true;
+        else saw_miss = true;
+    }
+    EXPECT_TRUE(saw_hit)  << "no boss wave over 512 rooms at seed 0x12345678";
+    EXPECT_TRUE(saw_miss) << "boss wave on every room at seed 0x12345678";
 }
 
 TEST(ChallengeRoomTest, BossWaveDoesNotConsumeGlobalRng) {
     ChallengeRoomController c;
     rng.seed(0xC0FFEEu);
+    visual_rng.seed(0xC0FFEEu);
     uint64_t draws_before = rng.draws;
+    uint64_t vdraws_before = visual_rng.draws;
     for (int room = 0; room < 50; room++)
         (void)c.has_boss_wave(0xDEADBEEFu, room);
-    EXPECT_EQ(rng.draws, draws_before);  // pure: zero draws
+    EXPECT_EQ(rng.draws, draws_before);       // pure: zero draws on gameplay stream
+    EXPECT_EQ(visual_rng.draws, vdraws_before);  // and zero on the visual stream
     uint32_t after = rng();              // stream position must be untouched
     rng.seed(0xC0FFEEu);
     EXPECT_EQ(rng(), after);
+    uint32_t vafter = visual_rng();      // visual stream position untouched too
+    visual_rng.seed(0xC0FFEEu);
+    EXPECT_EQ(visual_rng(), vafter);
 }
 
 TEST(ChallengeRoomTest, BossWaveStorageResetsLikeFresh) {

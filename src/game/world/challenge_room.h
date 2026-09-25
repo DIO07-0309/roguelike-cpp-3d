@@ -90,7 +90,9 @@ private:
     int _portal_tx = -1, _portal_ty = -1;
     int _return_portal_tx = -1, _return_portal_ty = -1;
 
-    // Batch B4: 整场只判定一次, 由 _boss_wave_decided 互斥守卫
+    // Batch B4: 压轴判定结果暂存位. 唯一写入点在后序任务的 COMBAT 全灭分支
+    // (置 _boss_wave_decided = true 才实现"本房间只判定一次"; _grant_rewards 读 pending).
+    // 本文件当前仅把它们复位为 false, 尚无写入点, 故两个 getter 现阶段恒为 false.
     bool _boss_wave_decided = false;
     bool _boss_wave_pending = false;
 
