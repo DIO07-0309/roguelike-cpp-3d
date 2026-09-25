@@ -82,6 +82,7 @@ Rarity random_rarity() {
     auto& rc = get_rarity_config();
     int total = 0;
     for (int i = 0; i < 4; i++) total += rc.weights[i];
+    if (total <= 0) return Rarity::COMMON;  // 配置缺失或权重全 0 时兜底, 防 rng() % 0 除零
     int roll = (int)(rng() % total);
     int sum = 0;
     for (int i = 0; i < 4; i++) {

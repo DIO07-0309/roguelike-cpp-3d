@@ -5,6 +5,17 @@
 #include <cstring>
 #include <algorithm>
 
+// 与 save_manager.cpp / q_agent.cpp / sim_runner.cpp 同款: 写盘前确保目录存在。
+// 首次运行目录若没有 saves/, fopen 静默失败 → meta 进度 (灵魂/知识/结局/保底计数)
+// 全部丢档且不报错。save_manager 一直有这步, meta 一直缺。
+#ifdef _WIN32
+#include <direct.h>
+#define meta_mkdir_impl(p) _mkdir(p)
+#else
+#include <sys/stat.h>
+#define meta_mkdir_impl(p) mkdir(p, 0755)
+#endif
+
 MetaSystem g_meta;
 
 // G3.1: 构造器空 — 在 JSON 加载后由 load_from_defs() 填充
@@ -116,6 +127,7 @@ bool MetaSystem::g_readonly = false;  // Q3.1: --sim 只读
 
 bool MetaSystem::save() const {
     if (g_readonly) return false;  // Q3.1: sim 模式不写 meta 存档
+    meta_mkdir_impl("saves");     // 目录不存在则创建; 失败由 fopen 兜底
     FILE* f = fopen("saves/meta_save.json", "w");
     if (!f) return false;
     fprintf(f, "{\n");

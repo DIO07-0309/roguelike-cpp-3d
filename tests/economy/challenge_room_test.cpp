@@ -19,6 +19,23 @@ static Player make_player(int keys = 3) {
     return p;
 }
 
+// 数据集: 本文件多个用例依赖 items.json / weapons.json 注册表 (奖励发道具、
+// 武器倍率)。原先靠 RewardDataJsonLoads 「恰好排在前面」的副作用式加载, 一旦用
+// --gtest_filter 单跑靠后的奖励/tick 用例, 注册表为空 → generate_random_item()
+// 拿不到任何模板, 奖励恒为 0 件 → 断言失败 (更糟的旧症状是 random_rarity() 除零)。
+// 改用 GlobalTestEnvironment: 在全部静态初始化完成后、任何用例之前加载一次,
+// 用例排布顺序从此不再有意义。不能用静态初始化对象 —— 本 TU 链接顺序在 lib 之前,
+// 可能早于 g_item_defs_registry 构造, 构成跨 TU 静态初始化顺序 UB。
+class RewardDataEnvironment : public testing::Environment {
+public:
+    void SetUp() override {
+        (void)load_item_defs("resources/items.json");
+        (void)load_weapon_defs("resources/weapons.json");
+    }
+};
+static testing::Environment* const g_reward_data_env =
+    testing::AddGlobalTestEnvironment(new RewardDataEnvironment);
+
 // --- Q1: State Machine ---
 
 TEST(ChallengeRoomTest, InitialPhaseIsInactive) {
@@ -773,8 +790,9 @@ TEST(ChallengeRoomTest, TickBonusDeltaIsExactlyOneItemAndHalfGold) {
 }
 
 // --- B4-T9: 保底接线 (per-run pity, 端到端) ---
-// 位置要求: 必须排在本文件靠后. tick() 依赖前面奖励用例先触发的全局惰性初始化,
-// 若排到最前会成为首个 tick 驱动用例并 0xC000001C 崩溃 (已实测复现).
+// 顺序无关: tick() 曾依赖前面奖励用例「先跑一遍」触发的 items.json 加载,
+// 排到最前会 0xC000001C (实为 random_rarity() 除零 SIGFPE, 见文件头)。
+// RewardDataEnvironment 已在任何用例前加载注册表, 本组用例现在可以放任意位置。
 
 namespace {
 
