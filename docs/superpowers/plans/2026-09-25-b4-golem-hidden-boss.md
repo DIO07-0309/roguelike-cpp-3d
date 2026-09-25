@@ -348,45 +348,71 @@ git commit -m "feat(b4): 挑战房压轴判定 has_boss_wave
 ### Task 3: 刷出层——压轴波 boss 生成
 
 **Files:**
-- Modify: `src/game/world/challenge_room.h`（加 `_spawn_boss_wave` 声明）
-- Modify: `src/game/world/challenge_room.cpp:134-147`（COMBAT 分支）、`:160`（`_spawn_wave`）、新增 `_spawn_boss_wave`
+- Modify: `src/game/world/challenge_room.h`（加 `WaveAdvance` 枚举、`decide_advance` 静态纯函数、`_spawn_boss_wave` 声明）
+- Modify: `src/game/world/challenge_room.cpp`（实现 `decide_advance`、`:134-147` COMBAT 分支、`:160` `_spawn_wave` 分流、新增 `_spawn_boss_wave`）
 - Modify: `tests/economy/challenge_room_test.cpp`
 
 **Interfaces:**
 - Consumes: `has_boss_wave(uint32_t,int) const`（Task 2）；`boss_factory_create(BossType, int tile_x, int tile_y, int floor)`（`boss.h:317`，后两参有默认值）
-- Produces: `_boss_wave_pending` 在 `_grant_rewards` 调用时反映本场是否有压轴——Task 5 依赖
+- Produces:
+  - `enum class WaveAdvance { WAIT, BOSS_WAIT, REWARD }`（`challenge_room.h`，`ChallengePhase` 附近）
+  - `static WaveAdvance ChallengeRoomController::decide_advance(int wave_after_increment, int total_waves, bool boss_pending)` —— 纯函数，无成员访问，全真值表可测
+  - `_boss_wave_pending` 在 `_grant_rewards` 调用时反映本场是否有压轴——Task 5 依赖
 
-- [ ] **Step 1: 写失败的波次追踪测试**
+- [ ] **Step 1: 写失败的波次推进真值表测试**
 
-`tests/economy/challenge_room_test.cpp` 追加（只测纯成员状态，不构造 `GameMap`——`tick()` 的完整 COMBAT 链路留给实机验收）：
+`tests/economy/challenge_room_test.cpp` 追加。波次分支抽成纯函数 `decide_advance` 后，整条追踪可无副作用地全量断言——不需要构造 `GameMap`/`Player`/`Monster`：
 
 ```cpp
-// --- B4: 压轴波状态 ---
+// --- B4: 波次推进决策 (纯函数真值表) ---
 
-TEST(ChallengeRoomTest, BossWaveFlagsClearedOnReset) {
-    ChallengeRoomController c;
-    c.reset();
-    EXPECT_FALSE(c.boss_wave_pending());
-    EXPECT_FALSE(c.boss_wave_decided());
+TEST(ChallengeRoomTest, WaveAdvanceTraceNoBoss) {
+    EXPECT_EQ(ChallengeRoomController::decide_advance(1, 3, false), WaveAdvance::WAIT);
+    EXPECT_EQ(ChallengeRoomController::decide_advance(2, 3, false), WaveAdvance::WAIT);
+    EXPECT_EQ(ChallengeRoomController::decide_advance(3, 3, false), WaveAdvance::REWARD);
 }
 
-TEST(ChallengeRoomTest, BossWavePendingFalseBeforeTick) {
+TEST(ChallengeRoomTest, WaveAdvanceTraceWithBoss) {
+    EXPECT_EQ(ChallengeRoomController::decide_advance(1, 3, true), WaveAdvance::WAIT);
+    EXPECT_EQ(ChallengeRoomController::decide_advance(2, 3, true), WaveAdvance::WAIT);
+    EXPECT_EQ(ChallengeRoomController::decide_advance(3, 3, true), WaveAdvance::BOSS_WAIT);
+    // boss 波清完后 current=4: 越过 total, 必须回 REWARD 而非再次 BOSS_WAIT
+    EXPECT_EQ(ChallengeRoomController::decide_advance(4, 3, true), WaveAdvance::REWARD);
+}
+
+TEST(ChallengeRoomTest, WaveAdvanceBossFlagCannotTriggerBelowTotal) {
+    EXPECT_EQ(ChallengeRoomController::decide_advance(0, 3, true), WaveAdvance::WAIT);
+    EXPECT_EQ(ChallengeRoomController::decide_advance(1, 3, true), WaveAdvance::WAIT);
+    EXPECT_EQ(ChallengeRoomController::decide_advance(2, 3, true), WaveAdvance::WAIT);
+}
+
+TEST(ChallengeRoomTest, WaveAdvanceTotalWavesUnchanged) {
     ChallengeRoomController c;
+    c.reset();
+    EXPECT_EQ(c.total_waves(), 3);   // 压轴占用波次索引 3, 不改 _total_waves
     EXPECT_FALSE(c.boss_wave_pending());
     EXPECT_FALSE(c.boss_wave_decided());
-    EXPECT_EQ(c.total_waves(), 3);   // _total_waves 不变: 压轴占用波次索引 3
 }
 ```
 
-> **执行者注意：** 判定函数的确定性已由 Task 2 的 4 个用例覆盖，那是本批 RNG 红线的核心。本任务的 `_boss_wave_decided`/`_boss_wave_pending` 置位发生在 `tick()` 的 COMBAT 全灭分支内，需要 `GameMap*`/`Player*`/`monsters` 三个非空实参，单测环境难以安全构造——**该路径的行为追踪改由 Step 5 的 `LOG_INFO("[CHALLENGE] Boss wave roll: ...")` 实机日志验证**，并在 Task 7 的实机验收清单里覆盖。波次追踪逻辑（波0→1→2→判定→boss→REWARD）已在 Step 3 的代码注释中逐步列明，请对照执行。
+> **执行者注意：** `tick()` 的 COMBAT 全灭分支需要 `GameMap*`/`Player*`/`monsters` 三个非空实参，且依赖 `load_challenge_pools` / `load_boss_defs` 先加载才能安全跑通；本批**不把该链路塞进单测**，改由 `decide_advance` 纯函数覆盖分支语义 + Step 5 的 `LOG_INFO` 实机日志覆盖真实时序。`has_boss_wave` 的确定性已由 Task 2 覆盖。两者合起来即本批 RNG 红线与波次追踪的完整覆盖。
 
-- [ ] **Step 2: 加只读 getter**
+- [ ] **Step 2: 加 `WaveAdvance` 枚举、`decide_advance` 与只读 getter**
+
+`challenge_room.h`，在 `ChallengePhase` 枚举之后：
+
+```cpp
+// 波次全灭后的下一步 (纯函数返回值, 便于全真值表测试)
+enum class WaveAdvance { WAIT, BOSS_WAIT, REWARD };
+```
 
 `challenge_room.h` public 段（紧邻 `total_waves()` 之后）：
 
 ```cpp
     bool boss_wave_pending() const { return _boss_wave_pending; }
     bool boss_wave_decided() const { return _boss_wave_decided; }
+    static WaveAdvance decide_advance(int wave_after_increment, int total_waves,
+                                      bool boss_pending);
 ```
 
 `challenge_room.h` private 段追加声明：
@@ -403,6 +429,19 @@ TEST(ChallengeRoomTest, BossWavePendingFalseBeforeTick) {
 #include "boss.h"
 ```
 
+`challenge_room.cpp`，放在 `has_boss_wave` 实现之后：
+
+```cpp
+WaveAdvance ChallengeRoomController::decide_advance(
+    int wave, int total, bool boss_pending) {
+    if (wave == total && boss_pending) return WaveAdvance::BOSS_WAIT;
+    if (wave >= total) return WaveAdvance::REWARD;
+    return WaveAdvance::WAIT;
+}
+```
+
+> `BOSS_WAIT` 与 `WAIT` 在调用处**当前处理相同**（都是 3 秒 → `WAIT_NEXT_WAVE`）：前者是压轴登场前奏，后者是普通波间等待。这个区分是追踪契约，测试靠它证明波 2 清→boss、boss 清→REWARD 不互相串。
+
 - [ ] **Step 3: 改 COMBAT 全灭分支**
 
 `challenge_room.cpp:134-147`，把
@@ -414,31 +453,29 @@ TEST(ChallengeRoomTest, BossWavePendingFalseBeforeTick) {
                 _phase = ChallengePhase::REWARD;
 ```
 
-改为
+改为（保留原有 REWARD 块内的 `_grant_rewards` / return portal / LOG_INFO 语句不动）：
 
 ```cpp
         if (alive <= 0) {
             _current_wave++;
-            if (_current_wave == _total_waves) {
-                if (!_boss_wave_decided) {
-                    _boss_wave_decided = true;
-                    _boss_wave_pending = has_boss_wave(dungeon_seed, room_index);
-                    LOG_INFO("[CHALLENGE] Boss wave roll: %s",
-                             _boss_wave_pending ? "HIT" : "miss");
-                }
-                if (_boss_wave_pending) {
-                    _wave_timer = 3.0f;
-                    _phase = ChallengePhase::WAIT_NEXT_WAVE;
-                    return;
-                }
+            if (_current_wave == _total_waves && !_boss_wave_decided) {
+                _boss_wave_decided = true;
+                _boss_wave_pending = has_boss_wave(dungeon_seed, room_index);
+                LOG_INFO("[CHALLENGE] Boss wave roll: %s",
+                         _boss_wave_pending ? "HIT" : "miss");
             }
-            if (_current_wave >= _total_waves) {
+            WaveAdvance adv =
+                decide_advance(_current_wave, _total_waves, _boss_wave_pending);
+            if (adv == WaveAdvance::WAIT || adv == WaveAdvance::BOSS_WAIT) {
+                _wave_timer = 3.0f;
+                _phase = ChallengePhase::WAIT_NEXT_WAVE;
+            } else {
                 _phase = ChallengePhase::REWARD;
 ```
 
 `_grant_rewards` 调用行保持原样（Task 5 再改签名）。
 
-**波次追踪（`_total_waves = 3`）：** 波0清→`=1`，`1==3` 否 → WAIT → 刷波1；波1清→`=2` → WAIT → 刷波2；波2清→`=3`，`3==3` 命中判定，有压轴则 WAIT → 刷波3(boss)；boss 清→`=4`，`4==3` 否、`4>=3` 是 → REWARD+CLEARED。
+**波次追踪（`_total_waves = 3`）：** 波0清→`=1`，`decide_advance(1,3,·)`→WAIT → 刷波1；波1清→`=2`→WAIT → 刷波2；波2清→`=3`，若 `!_boss_wave_decided` 先判定一次，`decide_advance(3,3,pending)`→BOSS_WAIT 或 REWARD；boss 清→`=4`→`decide_advance(4,3,true)`→REWARD+CLEARED。
 
 - [ ] **Step 4: 实现 `_spawn_boss_wave` 并在 `_spawn_wave` 入口分流**
 
