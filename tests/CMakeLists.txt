@@ -219,6 +219,7 @@ add_roguelike_test(challenge_portal_test  economy/challenge_portal_test.cpp)
 add_roguelike_test(floor_lifecycle_test   world/floor_lifecycle_test.cpp)  # G9.2: 生命周期残留回归 (audit LIFE-001/002/003)
 add_roguelike_test(rng_boundary_test      world/rng_boundary_test.cpp)   # G9.3: RNG 边界 (audit RNG-001/RNG-002)
 add_roguelike_test(door_truth_table_test   world/door_truth_table_test.cpp)  # G9.4: DoorState Truth Table 回归锁定 (audit §9)
+add_roguelike_test(boss_floor_guard_test   world/boss_floor_guard_test.cpp)  # B4-T4: is_boss_floor 真值表契约 + 非 boss 层 Boss 击杀不发主线奖励
 add_roguelike_test(asset_manifest_test   world/asset_manifest_test.cpp)   # G10.2-B1: Asset Manifest 校验 (ERROR/WARNING/INFO 分级)
 add_roguelike_test(door_visual_mapping_test world/door_visual_mapping_test.cpp)  # G10.2-B2: 门视觉资产映射 (与 Truth Table 分层)
 

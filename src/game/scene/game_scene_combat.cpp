@@ -98,8 +98,8 @@ void GameSceneCombat::on_monster_killed(Monster* m) {
     if (leveled) EventBus::inst().emit(GameEventType::PLAYER_LEVEL_UP,
                                         _s.player.get(), _s.player->level);
 
-    // Boss reward
-    if (m->is_boss) {
+    // Boss reward — B4-T4 楼层守卫: 非 5/10/15 层的 is_boss 怪 (挑战房压轴 GOLEM) 落回常规掉落分支
+    if (m->is_boss && is_boss_floor(_s.current_floor)) {
         LOG_INFO("Boss击杀! %s - 第%d层", m->name.c_str(), _s.current_floor);
         _s._boss.notify_death(_s._gameplay.world_state, _s._gameplay.rels,
                               _s._gameplay.quest_mgr);
