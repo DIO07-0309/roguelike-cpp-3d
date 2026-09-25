@@ -102,6 +102,7 @@ add_roguelike_test(room_encounter_test world/room_encounter_test.cpp) # Batch 2C
 add_roguelike_test(entity_center_test world/entity_center_test.cpp)  # Entity 视觉/碰撞中心不变量
 add_roguelike_test(door_renderer_test world/door_renderer_test.cpp)  # Door sprites + anim
 add_roguelike_test(minimap_test     ui/minimap_test.cpp)
+add_roguelike_test(boss_defs_test   boss/boss_defs_test.cpp)   # B4-T1: golem boss def 加载器契约
 add_roguelike_test(action_test      combat/action_test.cpp)
 add_roguelike_test(relic_effect_test combat/relic_effect_test.cpp)
 add_roguelike_test(save_test        save/save_test.cpp)

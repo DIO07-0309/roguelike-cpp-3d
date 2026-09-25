@@ -160,6 +160,35 @@
       {"id": "summon",   "cooldown": 12.0,"damage_mult": 1.0, "windup": 0.0, "range": 80}
     ],
     "arena": {"danger_type": "void_crack", "spawn_interval": 6.0, "max_zones": 8, "zone_duration": 3.5, "spawn_radius": 140}
+  },
+  {
+    "id": "golem",
+    "name": "远古魔像",
+    "title": "挑战房秘藏·远古魔像",
+    "lore": "远古时代的攻城兵器，被遗忘在地牢深处。\n三波小怪之后，它会亲自站起来迎接你。",
+    "visual_id": "golem",
+    "floor": 10,
+    "is_summoner": false,
+    "is_defender": true,
+    "hp": 200, "atk": 13, "pdef": 14, "mdef": 8,
+    "phase2_hp_threshold": 0.50,
+    "phase2_pause": 0.50,
+    "phase2_speed_mult": 1.30,
+    "phase2_atk_mult": 1.20,
+    "phase2_cd_mult": 0.80,
+    "shield_pct": 0.50,
+    "summon_speed": 1.0,
+    "skill_cycle_bias": 6,
+    "skills": [
+      {"id": "charge",   "cooldown": 6.0, "damage_mult": 2.5, "windup": 0.6, "range": 120},
+      {"id": "shockwave","cooldown": 8.0, "damage_mult": 1.6, "windup": 0.7, "range": 100},
+      {"id": "barrage",  "cooldown": 7.0, "damage_mult": 0.35, "windup": 0.5, "range": 40}
+    ],
+    "combos": [
+      {"id": "probe", "commands": ["shockwave","normal","defend","normal"], "interval": 0.6, "end_delay": 1.0},
+      {"id": "rage",  "commands": ["charge","shockwave","barrage","shockwave","normal","charge"], "interval": 0.5, "end_delay": 1.2}
+    ],
+    "arena": {"danger_type": "shadow_wall", "spawn_interval": 10.0, "max_zones": 3, "zone_duration": 3.0, "spawn_radius": 120}
   }
 ]
 
