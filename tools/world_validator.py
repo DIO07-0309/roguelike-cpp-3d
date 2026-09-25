@@ -92,6 +92,57 @@ print(f"  {len(enemy_ids)} enemies, {len(boss_ids)} bosses, {len(skill_ids)} ski
       f"{len(encounter_ids)} encounters")
 
 
+# ── Boss defs 自检 (B4: GOLEM 挑战房压轴 boss) ──
+VALID_BOSS_SKILLS = {"charge", "shockwave", "summon", "barrage", "cone", "blink"}
+VALID_COMBO_CMDS = {"normal", "charge", "shockwave", "summon", "defend",
+                    "barrage", "cone", "blink", "whirlwind"}
+
+if isinstance(bosses, dict):
+    _boss_list = list(bosses.values())
+elif isinstance(bosses, list):
+    _boss_list = list(bosses)
+else:
+    _boss_list = []
+_boss_by_id = {b.get("id"): b for b in _boss_list if b.get("id")}
+
+# get_boss_def_for_floor 是硬编码 switch (boss_defs.cpp:170-176), 目标必须存在
+for _fl, _fid in ((5, "shadow_knight"), (10, "fire_demon"), (15, "demon_lord")):
+    if _fid not in _boss_by_id:
+        err("bosses.json: get_boss_def_for_floor(%d) 硬编码 '%s' 但 JSON 无该条目"
+            % (_fl, _fid))
+
+# BossType 映射一致性: get_boss_def_for_type(4) -> "golem" (boss_defs.cpp:185)
+if "golem" not in _boss_by_id:
+    err("bosses.json: 缺 'golem' — BossType::GOLEM(4) 映射断链, 挑战房压轴不可达")
+else:
+    _g = _boss_by_id["golem"]
+    if not _g.get("is_defender"):
+        err("bosses.json [golem]: is_defender 必须为 true (golem_shield_pct 赋值开关)")
+    if not (_g.get("shield_pct") or 0) > 0:
+        err("bosses.json [golem]: shield_pct 必须 > 0 (boss.cpp:787 生效条件)")
+    # 技能按 id-match 覆盖参数 (boss.cpp:1240-1257), 与数组位置无关
+    _ids = [_s.get("id") for _s in _g.get("skills", [])]
+    for _req in ("charge", "shockwave"):
+        if _req not in _ids:
+            err("bosses.json [golem].skills 缺 '%s' — ai->_%s 参数无法被覆盖"
+                % (_req, _req))
+    if _g.get("skill_cycle_bias") in (4, 6):
+        err("bosses.json [golem].skill_cycle_bias=%s 会让 _next_cycle_skill "
+            "返回 Summon, 与纯 tank 定位冲突" % _g.get("skill_cycle_bias"))
+    if _g.get("is_summoner"):
+        warnings.append("bosses.json [golem].is_summoner=true — 该字段只用于显示串, "
+                        "不 gating 召唤")
+    for _i, _s in enumerate(_g.get("skills", [])):
+        if _s.get("id") not in VALID_BOSS_SKILLS:
+            err("bosses.json [golem].skills[%d].id '%s' 非法"
+                % (_i, _s.get("id")))
+    for _ci, _c in enumerate(_g.get("combos", [])):
+        for _cmd in _c.get("commands", []):
+            if _cmd not in VALID_COMBO_CMDS:
+                err("bosses.json [golem].combos[%d].commands '%s' 非法"
+                    % (_ci, _cmd))
+
+
 # ═══ Step 1: Basic cross-references ═══
 for b in biomes:
     ctx = f"biomes.json [{b['id']}]"
