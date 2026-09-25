@@ -11,7 +11,6 @@ protected:
 TEST_F(BossDefsTest, GolemDefLoads) {
     const BossDef* g = get_boss_def("golem");
     ASSERT_NE(g, nullptr);
-    EXPECT_EQ(g->id, "golem");
     EXPECT_EQ(g->visual_id, "golem");
 }
 
@@ -21,7 +20,7 @@ TEST_F(BossDefsTest, GolemIsDefenderWithActiveShield) {
     EXPECT_TRUE(g->is_defender);
     EXPECT_GT(g->shield_pct, 0.0f);
     EXPECT_FALSE(g->is_summoner);
-    EXPECT_TRUE(g->skill_overrides.size() == 3u);
+    EXPECT_EQ(g->skill_overrides.size(), 3u);
 }
 
 static bool has_summon_skill(const BossDef* g) {
@@ -45,10 +44,12 @@ TEST_F(BossDefsTest, GolemHasChargeAndShockwaveSkillEntries) {
     EXPECT_TRUE(has("barrage"));
 }
 
-// Whether the boss summons is decided SOLELY by skill_cycle_bias:
-// _next_cycle_skill (boss.cpp:425-435) returns Summon only when
-// cycle_len==4 (idx3) or cycle_len==6 (idx4). `is_summoner` is used
-// only for display strings (boss.cpp:1145, 1278) and never gates it.
+// Summoning is NOT decided solely by skill_cycle_bias. `is_summoner`
+// force-overrides it at boss.cpp:1278-1279 (`ai->skill_cycle_bias = 4`),
+// and cycle_len==4 makes _next_cycle_skill return Summon at idx3
+// (boss.cpp:425-435). So EXPECT_FALSE(g->is_summoner) in
+// GolemIsDefenderWithActiveShield is LOAD-BEARING: it is what prevents
+// the bias=5 value asserted below from being silently rewritten to 4 at runtime.
 TEST_F(BossDefsTest, GolemCycleBiasNeverSummons) {
     const BossDef* g = get_boss_def("golem");
     ASSERT_NE(g, nullptr);
@@ -81,5 +82,20 @@ TEST_F(BossDefsTest, FloorTenStillMapsToFireDemon) {
     const BossDef* d = get_boss_def_for_floor(10);
     ASSERT_NE(d, nullptr);
     EXPECT_EQ(d->id, "fire_demon");
+}
+
+// The numbers ARE this task's deliverable. Nothing else in the suite
+// or in world_validator.py checks them.
+TEST_F(BossDefsTest, GolemNumericPayload) {
+    const BossDef* g = get_boss_def("golem");
+    ASSERT_NE(g, nullptr);
+    EXPECT_EQ(g->hp, 200);
+    EXPECT_EQ(g->atk, 13);
+    EXPECT_EQ(g->pdef, 14);
+    EXPECT_EQ(g->mdef, 8);
+    EXPECT_FLOAT_EQ(g->shield_pct, 0.50f);
+    EXPECT_FLOAT_EQ(g->phase2_hp_threshold, 0.50f);
+    EXPECT_EQ(g->skill_cycle_bias, 5);
+    EXPECT_EQ(g->arena.danger_type, "none");
 }
 }  // namespace

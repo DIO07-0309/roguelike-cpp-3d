@@ -74,7 +74,7 @@ struct BossDef {
     // 特殊参数
     float shield_pct = 0.0f;            // Golem: DEFEND 减伤比例
     float summon_speed = 1.0f;          // Necromancer: Phase2 召唤倍率
-    int skill_cycle_bias = 6;           // 技能循环模式 (6=normal, 4=summon-heavy)
+    int skill_cycle_bias = 6;           // 循环长度: 仅 4/6 会让 _next_cycle_skill 返回 Summon (boss.cpp:425-435)
 
     // 技能冷却覆盖 (按 id 匹配，覆盖 BossSkill 默认 CD)
     std::vector<BossSkillDef> skill_overrides;

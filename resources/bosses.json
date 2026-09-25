@@ -188,7 +188,7 @@
       {"id": "probe", "commands": ["shockwave","normal","defend","normal"], "interval": 0.6, "end_delay": 1.0},
       {"id": "rage",  "commands": ["charge","shockwave","barrage","shockwave","normal","charge"], "interval": 0.5, "end_delay": 1.2}
     ],
-    "arena": {"danger_type": "shadow_wall", "spawn_interval": 10.0, "max_zones": 3, "zone_duration": 3.0, "spawn_radius": 120}
+    "arena": {"danger_type": "none", "spawn_interval": 10.0, "max_zones": 3, "zone_duration": 3.0, "spawn_radius": 120}
   }
 ]
 
