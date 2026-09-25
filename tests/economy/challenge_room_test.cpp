@@ -307,3 +307,33 @@ TEST(ChallengeRoomTest, BossWaveStorageResetsLikeFresh) {
     EXPECT_FALSE(fresh.boss_wave_pending());
     EXPECT_FALSE(fresh.boss_wave_decided());
 }
+
+// --- B4-T3: wave-advance truth table (pure function) ---
+
+TEST(ChallengeRoomTest, WaveAdvanceTraceNoBoss) {
+    EXPECT_EQ(ChallengeRoomController::decide_advance(1, 3, false), WaveAdvance::WAIT);
+    EXPECT_EQ(ChallengeRoomController::decide_advance(2, 3, false), WaveAdvance::WAIT);
+    EXPECT_EQ(ChallengeRoomController::decide_advance(3, 3, false), WaveAdvance::REWARD);
+}
+
+TEST(ChallengeRoomTest, WaveAdvanceTraceWithBoss) {
+    EXPECT_EQ(ChallengeRoomController::decide_advance(1, 3, true), WaveAdvance::WAIT);
+    EXPECT_EQ(ChallengeRoomController::decide_advance(2, 3, true), WaveAdvance::WAIT);
+    EXPECT_EQ(ChallengeRoomController::decide_advance(3, 3, true), WaveAdvance::BOSS_WAIT);
+    // boss 波清完后 current=4: 越过 total, 必须回 REWARD 而非再次 BOSS_WAIT
+    EXPECT_EQ(ChallengeRoomController::decide_advance(4, 3, true), WaveAdvance::REWARD);
+}
+
+TEST(ChallengeRoomTest, WaveAdvanceBossFlagCannotTriggerBelowTotal) {
+    EXPECT_EQ(ChallengeRoomController::decide_advance(0, 3, true), WaveAdvance::WAIT);
+    EXPECT_EQ(ChallengeRoomController::decide_advance(1, 3, true), WaveAdvance::WAIT);
+    EXPECT_EQ(ChallengeRoomController::decide_advance(2, 3, true), WaveAdvance::WAIT);
+}
+
+TEST(ChallengeRoomTest, WaveAdvanceTotalWavesUnchanged) {
+    ChallengeRoomController c;
+    c.reset();
+    EXPECT_EQ(c.total_waves(), 3);   // 压轴占用波次索引 3, 不改 _total_waves
+    EXPECT_FALSE(c.boss_wave_pending());
+    EXPECT_FALSE(c.boss_wave_decided());
+}

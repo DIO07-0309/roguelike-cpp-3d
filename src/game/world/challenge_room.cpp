@@ -6,9 +6,11 @@
 #include "item.h"
 #include "reward_manager.h"
 #include "growth_curve.h"
+#include "boss.h"           // B4-T3: 压轴波 boss 工厂
 #include "core/logger.h"
 #include "spawn_tables.h"    // A6-S2 批次9: 挑战房刷怪池
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 
 static constexpr int MAX_CHALLENGE_MONSTERS = 12;
@@ -47,6 +49,13 @@ bool ChallengeRoomController::has_boss_wave(uint32_t dungeon_seed,
     return (int)(boss_seed % 100u) < kBossWaveChancePct;
 }
 
+WaveAdvance ChallengeRoomController::decide_advance(
+    int wave, int total, bool boss_pending) {
+    if (wave == total && boss_pending) return WaveAdvance::BOSS_WAIT;
+    if (wave >= total) return WaveAdvance::REWARD;
+    return WaveAdvance::WAIT;
+}
+
 bool ChallengeRoomController::_room_contains(int tx, int ty) const {
     return tx >= _room_rx && tx < _room_rx + _room_rw &&
            ty >= _room_ry && ty < _room_ry + _room_rh;
@@ -73,6 +82,10 @@ void ChallengeRoomController::on_player_entered() {
 void ChallengeRoomController::on_doors_locked() {
     if (_phase == ChallengePhase::ARMED) {
         _current_wave = 0;
+        // 按房间清判定标记: reset() 是按层粒度, CHALLENGE_ARENA 重入路径
+        // (game_scene.cpp:1294) 直接置 ARMED 而不 reset, 不清则第二间房跳过判定
+        _boss_wave_decided = false;
+        _boss_wave_pending = false;
         _phase = ChallengePhase::WAVE_SPAWNING;
     }
 }
@@ -148,16 +161,24 @@ void ChallengeRoomController::tick(
 
         if (alive <= 0) {
             _current_wave++;
-            if (_current_wave >= _total_waves) {
+            if (_current_wave == _total_waves && !_boss_wave_decided) {
+                _boss_wave_decided = true;
+                _boss_wave_pending = has_boss_wave(dungeon_seed, room_index);
+                LOG_INFO("[CHALLENGE] Boss wave roll: %s",
+                         _boss_wave_pending ? "HIT" : "miss");
+            }
+            WaveAdvance adv =
+                decide_advance(_current_wave, _total_waves, _boss_wave_pending);
+            if (adv == WaveAdvance::WAIT || adv == WaveAdvance::BOSS_WAIT) {
+                _wave_timer = 3.0f;
+                _phase = ChallengePhase::WAIT_NEXT_WAVE;
+            } else {
                 _phase = ChallengePhase::REWARD;
                 _grant_rewards(*player, map, floor, ground_items);
                 _return_portal_tx = _room_rx + _room_rw / 2;
                 _return_portal_ty = _room_ry + _room_rh / 2;
                 _phase = ChallengePhase::CLEARED;
                 LOG_INFO("[CHALLENGE] All waves cleared!");
-            } else {
-                _wave_timer = 3.0f;
-                _phase = ChallengePhase::WAIT_NEXT_WAVE;
             }
         }
         return;
@@ -176,6 +197,12 @@ void ChallengeRoomController::_spawn_wave(
     int wave_index, GameMap* map,
     std::vector<std::unique_ptr<Monster>>& monsters,
     int floor, uint32_t seed, int room_idx) {
+
+    assert(wave_index != kBossWaveSlot);  // 压轴波必须走 _spawn_boss_wave, 禁止静默降级成史莱姆
+    if (wave_index >= _total_waves) {
+        _spawn_boss_wave(map, monsters, floor);
+        return;
+    }
 
     int count = 4;  // monsters per wave
     ChallengeModifier mod;
@@ -216,6 +243,41 @@ void ChallengeRoomController::_spawn_wave(
 
     LOG_INFO("[CHALLENGE] Wave %d spawned, %d monsters alive",
              wave_index + 1, _monsters_alive_this_wave);
+}
+
+void ChallengeRoomController::_spawn_boss_wave(
+    GameMap* map,
+    std::vector<std::unique_ptr<Monster>>& monsters,
+    int floor) {
+
+    int cx = _room_rx + _room_rw / 2;
+    int cy = _room_ry + _room_rh / 2;
+
+    bool ok = map->is_walkable(cx, cy);
+    for (int r = 1; !ok && r <= 4; r++)
+        for (int dy = -r; !ok && dy <= r; dy++)
+            for (int dx = -r; !ok && dx <= r; dx++) {
+                if (map->is_walkable(cx + dx, cy + dy)) {
+                    cx += dx;
+                    cy += dy;
+                    ok = true;
+                }
+            }
+
+    if (!ok) {
+        LOG_WARN("[CHALLENGE] No walkable tile near center, skip boss wave");
+        return;
+    }
+
+    Monster* boss = boss_factory_create(BossType::GOLEM, cx, cy, floor);
+    if (!boss) {
+        LOG_WARN("[CHALLENGE] boss_factory_create returned null");
+        return;
+    }
+
+    monsters.emplace_back(boss);
+    _monsters_alive_this_wave++;
+    LOG_INFO("[CHALLENGE] Boss wave spawned at tile %d,%d (floor %d)", cx, cy, floor);
 }
 
 void ChallengeRoomController::_grant_rewards(Player& player, GameMap* map, int floor,

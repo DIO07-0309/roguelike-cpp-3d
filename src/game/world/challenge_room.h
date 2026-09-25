@@ -25,6 +25,9 @@ enum class ChallengePhase : uint8_t {
     PORTAL_ACTIVE   // Batch 3I: 传送门可见, 等待玩家交互
 };
 
+// 波次全灭后的下一步 (纯函数返回值, 便于全真值表测试)
+enum class WaveAdvance : uint8_t { WAIT, BOSS_WAIT, REWARD };
+
 struct ChallengeModifier {
     float hp_multiplier = 1.5f;
     float attack_multiplier = 1.3f;
@@ -69,6 +72,8 @@ public:
     bool has_boss_wave(uint32_t dungeon_seed, int room_index) const;
     bool boss_wave_pending() const { return _boss_wave_pending; }
     bool boss_wave_decided() const { return _boss_wave_decided; }
+    static WaveAdvance decide_advance(int wave_after_increment, int total_waves,
+                                      bool boss_pending);
 
     // Batch 3I: Portal/room getters
     int portal_tx() const { return _portal_tx; }
@@ -90,15 +95,18 @@ private:
     int _portal_tx = -1, _portal_ty = -1;
     int _return_portal_tx = -1, _return_portal_ty = -1;
 
-    // Batch B4: 压轴判定结果暂存位. 唯一写入点在后序任务的 COMBAT 全灭分支
-    // (置 _boss_wave_decided = true 才实现"本房间只判定一次"; _grant_rewards 读 pending).
-    // 本文件当前仅把它们复位为 false, 尚无写入点, 故两个 getter 现阶段恒为 false.
+    // Batch B4: 压轴判定结果暂存位. 唯一写入点是 COMBAT 全灭分支 (_current_wave 首次
+    // 抵达 _total_waves 时判定一次); 按房间清位在 on_doors_locked(), 按层兜底在 reset().
+    // _grant_rewards 读 pending 以决定是否叠加压轴奖励 (Task 5).
     bool _boss_wave_decided = false;
     bool _boss_wave_pending = false;
 
     void _spawn_wave(int wave_index, GameMap* map,
                      std::vector<std::unique_ptr<Monster>>& monsters,
                      int floor, uint32_t seed, int room_idx);
+    void _spawn_boss_wave(GameMap* map,
+                          std::vector<std::unique_ptr<Monster>>& monsters,
+                          int floor);
     void _grant_rewards(Player& player, GameMap* map, int floor,
                         std::vector<DroppedItem>& ground_items);
     bool _room_contains(int tx, int ty) const;
