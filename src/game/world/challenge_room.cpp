@@ -34,6 +34,19 @@ uint32_t ChallengeRoomController::_deterministic_seed(
     return h;
 }
 
+namespace {
+// B4: 保留波次槽位. 真实波用 0..2, 压轴用 99 —— 与真实波经 avalanche 后
+// 属不同哈希域, 判定不改变小怪波构成, 故存档/回放可比性不被破坏.
+constexpr int kBossWaveSlot = 99;
+constexpr int kBossWaveChancePct = 25;
+}
+
+bool ChallengeRoomController::has_boss_wave(uint32_t dungeon_seed,
+                                            int room_index) const {
+    uint32_t boss_seed = _deterministic_seed(dungeon_seed, room_index, kBossWaveSlot);
+    return (int)(boss_seed % 100u) < kBossWaveChancePct;
+}
+
 bool ChallengeRoomController::_room_contains(int tx, int ty) const {
     return tx >= _room_rx && tx < _room_rx + _room_rw &&
            ty >= _room_ry && ty < _room_ry + _room_rh;
@@ -47,6 +60,8 @@ void ChallengeRoomController::reset() {
     _portal_tx = _portal_ty = -1;
     _return_portal_tx = _return_portal_ty = -1;
     _room_rx = _room_ry = _room_rw = _room_rh = 0;
+    _boss_wave_decided = false;
+    _boss_wave_pending = false;
 }
 
 void ChallengeRoomController::on_player_entered() {

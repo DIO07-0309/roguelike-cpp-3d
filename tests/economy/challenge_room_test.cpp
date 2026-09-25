@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "challenge_room.h"
+#include "combat_system.h"  // 全局 rng (CountingRng::draws 用于证明不消耗)
 #include "player.h"
 
 static Player make_player(int keys = 3) {
@@ -206,4 +207,68 @@ TEST(ChallengeRoomPortal, FullFlow) {
 
     c.set_return_portal(8, 12);
     EXPECT_GT(c.return_portal_tx(), 0);
+}
+
+// --- B4-T2: hidden boss finale wave decision ---
+
+TEST(ChallengeRoomTest, BossWaveIsDeterministic) {
+    ChallengeRoomController c;
+    bool first = c.has_boss_wave(0xDEADBEEFu, 7);
+    for (int i = 0; i < 100; i++)
+        EXPECT_EQ(c.has_boss_wave(0xDEADBEEFu, 7), first);
+}
+
+TEST(ChallengeRoomTest, BossWaveAgreesOnFreshInstances) {
+    ChallengeRoomController a, b;
+    for (int room = 0; room < 40; room++)
+        EXPECT_EQ(a.has_boss_wave(0x12345678u, room),
+                  b.has_boss_wave(0x12345678u, room));
+}
+
+TEST(ChallengeRoomTest, BossWaveIsolationBetweenRooms) {
+    ChallengeRoomController c;
+    bool room3_before = c.has_boss_wave(0xA5A5A5A5u, 3);
+    for (int room = 7; room < 30; room++)
+        (void)c.has_boss_wave(0xA5A5A5A5u, room);
+    EXPECT_EQ(c.has_boss_wave(0xA5A5A5A5u, 3), room3_before);
+}
+
+TEST(ChallengeRoomTest, BossWaveRateMatches25Percent) {
+    ChallengeRoomController c;
+    int hits = 0;
+    for (int s = 0; s < 100; s++)
+        for (int r = 0; r < 20; r++)
+            if (c.has_boss_wave((uint32_t)s, r)) hits++;
+    // 2000 pairs, p = 0.25 -> mean 500, sigma = sqrt(2000*.25*.75) = 19.36.
+    // Band [393, 607] is +/-5.5 sigma (two-sided tail ~6e-8): cannot flake.
+    EXPECT_GE(hits, 393);
+    EXPECT_LE(hits, 607);
+}
+
+TEST(ChallengeRoomTest, BossWaveDoesNotConsumeGlobalRng) {
+    ChallengeRoomController c;
+    rng.seed(0xC0FFEEu);
+    uint64_t draws_before = rng.draws;
+    for (int room = 0; room < 50; room++)
+        (void)c.has_boss_wave(0xDEADBEEFu, room);
+    EXPECT_EQ(rng.draws, draws_before);  // pure: zero draws
+    uint32_t after = rng();              // stream position must be untouched
+    rng.seed(0xC0FFEEu);
+    EXPECT_EQ(rng(), after);
+}
+
+TEST(ChallengeRoomTest, BossWaveStorageResetsLikeFresh) {
+    ChallengeRoomController dirty;
+    Player key_holder = make_player(1);
+    dirty.try_activate(key_holder);
+    dirty.on_player_entered();
+    dirty.on_doors_locked();
+    dirty.reset();
+
+    ChallengeRoomController fresh;
+    EXPECT_EQ(dirty.total_waves(), 3);  // boss 占保留槽位, 不是第 4 波
+    EXPECT_FALSE(dirty.boss_wave_pending());
+    EXPECT_FALSE(dirty.boss_wave_decided());
+    EXPECT_FALSE(fresh.boss_wave_pending());
+    EXPECT_FALSE(fresh.boss_wave_decided());
 }

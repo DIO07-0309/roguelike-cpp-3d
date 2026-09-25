@@ -65,6 +65,11 @@ public:
     int current_wave() const { return _current_wave; }
     int total_waves() const { return _total_waves; }
 
+    // Batch B4: 隐藏压轴波 —— 确定性 25% 判定, 不消耗全局 rng
+    bool has_boss_wave(uint32_t dungeon_seed, int room_index) const;
+    bool boss_wave_pending() const { return _boss_wave_pending; }
+    bool boss_wave_decided() const { return _boss_wave_decided; }
+
     // Batch 3I: Portal/room getters
     int portal_tx() const { return _portal_tx; }
     int portal_ty() const { return _portal_ty; }
@@ -84,6 +89,10 @@ private:
     int _room_rx = 0, _room_ry = 0, _room_rw = 0, _room_rh = 0;
     int _portal_tx = -1, _portal_ty = -1;
     int _return_portal_tx = -1, _return_portal_ty = -1;
+
+    // Batch B4: 整场只判定一次, 由 _boss_wave_decided 互斥守卫
+    bool _boss_wave_decided = false;
+    bool _boss_wave_pending = false;
 
     void _spawn_wave(int wave_index, GameMap* map,
                      std::vector<std::unique_ptr<Monster>>& monsters,
