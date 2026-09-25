@@ -507,6 +507,26 @@ WaveAdvance ChallengeRoomController::decide_advance(
 
 **波次追踪（`_total_waves = 3`）：** 波0清→`=1`，`decide_advance(1,3,·)`→WAIT → 刷波1；波1清→`=2`→WAIT → 刷波2；波2清→`=3`，若 `!_boss_wave_decided` 先判定一次，`decide_advance(3,3,pending)`→BOSS_WAIT 或 REWARD；boss 清→`=4`→`decide_advance(4,3,true)`→REWARD+CLEARED。
 
+- [ ] **Step 3.5: 按房间（而非按层）清判定标记 + 槽位 99 兜底**
+
+Task 2 审查发现两个覆盖空洞，必须在刷出层一并补上：
+
+**① 判定标记的失效时序。** `reset()` 只在 `game_scene.cpp:401`（enter_floor）与 `:3707`（exit_challenge_arena）被调用，是**按层**粒度；而 `game_scene.cpp:1294` 的进场重入路径直接 `_challenge.set_phase_for_test(ChallengePhase::ARMED)`，**不调 `reset()`**。一旦 Step 3 写入 `_boss_wave_decided = true`，同一层内的第二次挑战房会**跳过压轴判定**、永远不出 GOLEM。
+修法是**按房间**清标记，在真正的房间起点 `on_doors_locked()`（`challenge_room.cpp:73-78`，由 `game_scene.cpp:1271` 与 `:1303` 两路到达）追加：
+
+```cpp
+    _boss_wave_decided = false;
+    _boss_wave_pending = false;
+```
+
+`reset()` 里 Task 2 Step 5 的两行**保留**（按层兜底仍有价值）。两处都清，任一生效即可保证语义。
+
+**② 槽位 99 误路由的静默降级。** 若 Step 4 分流写错，`pick_challenge_monster` 对 `wave = 99` 返回 `nullptr`（`spawn_tables.cpp:117` 越界判空），`_pick_monster_type` 静默回落 `"slime"`（`challenge_room.cpp:22`）——「隐藏 Boss 波」会刷出 4 只史莱姆且无任何报错。在 `_spawn_wave` 入口的分流处加显式断言：
+
+```cpp
+    assert(wave_index != kBossWaveSlot);  // 压轴波必须走 _spawn_boss_wave, 禁止静默降级成史莱姆
+```
+
 - [ ] **Step 4: 实现 `_spawn_boss_wave` 并在 `_spawn_wave` 入口分流**
 
 `challenge_room.cpp`，在 `_spawn_wave` 定义之后追加：
