@@ -1,4 +1,40 @@
+# P1-C9 — 挑战房结算回执 + 掉落提示 (2026-09-26)
+
+> 实机打穿压轴那次的日志: `Rewards: 0 items + 345 gold (boss wave bonus)`。
+> 之前 7 次全是 `3 items`, 只有这次是 `0` —— 压轴波尝试给 4 件 (3 基础 + 1 压轴),
+> 4 件全没进背包。背包满时道具落到 `ground_items`, 而 `_grant_rewards` 只把
+> `granted` 打进**开发日志**, 玩家侧一条提示都没有。
+
+- **`RewardReport` 回执** (`src/game/world/challenge_room.h/.cpp`)
+  - 纯数据结构 `{granted, dropped, gold}`, 与既有 `RewardPlan` 同款 (纯数据 + 纯函数)
+  - `_grant_rewards` 唯一写入点; `dropped` 用 `ground_items.size()` **增量**计算 ——
+    该 vector 已含击杀等其它来源掉落, 直接取 `.size()` 会把别人的算成本次的
+  - `reset()` 按层清零, 防下层把上一层回执当成本层结果
+  - 不动 `tick()` 签名 (已有 9 参), 用成员 `_last_reward` + 只读 `last_reward()`
+- **文案纯函数** `reward_message(const RewardReport&)`, 与 `boss_wave_hint` 同款 ——
+  文案与计数同源生成, 改文案不碰结算逻辑, 也便于免 raylib 单测:
+  - 背包满: `挑战完成 · +345 金币 · 背包已满, 4 件道具掉落在房间中央`
+  - 全入包: `挑战完成 · +230 金币 · 3 件道具已入包`
+  - 零产出: `挑战完成 · +230 金币` (不谎称「0 件已入包」)
+- **触发时机** (`game_scene.cpp` DUNGEON + CHALLENGE_ARENA 两处 tick 调用点)
+  - 用**相位跃迁** `phase_before != CLEARED && phase == CLEARED`, 不是「处于 CLEARED」
+    —— 场景的 CLEARED 分支每帧都在跑, 若按状态触发, `room_msg_timer` 会被每帧重置,
+    提示永不消失
+- **已知风险**: `room_msg` 是全局单槽, 与升级/Boss 死亡提示撞帧会被覆盖。
+  挑战清空时机较独立, 风险低; 根治需把 `show_message` 改成队列, 超出本次范围
+- **测试** (6 个新增, `challenge_room_test.cpp`): 全入包 / 全掉地 / **只计本次增量**
+  (预置 1 个旧掉落后断言 `dropped == 3` 而非 4) / 文案三变体 / 文案分支互斥 /
+  reset 清零
+- 门禁: Release 0 error · ctest 72/72 · validator 0 error 0 warning
+- ⚠️ 开发踩坑: 给 `LOG_INFO` 加一个 `%d` 却漏改 `plan.gold` 的 `%s`, 参数错位在
+  `strlen` 里崩 (`0xC000001D`)。格式串无编译器校验, 这类错位只能跑出来才知道
+
 # P1-C8 — 除零崩溃 + 静默丢档 (2026-09-26)
+
+> 编号说明: 本仓库另有 P1-C8 = RNG-002 间歇确定性诊断
+> (`docs/P1C8_INTERMITTENT_NONDETERMINISM_WIP.md`, 2026-09-11 结案)。两个 P1-C8
+> 属不同工作线, 编号撞了 —— 下一案起改用 P1-C9。历史 commit 标题 (`e2200ea` /
+> `607f042`) 已推送, 未 amend。
 
 > 排查 `challenge_room_test` 的「顺序依赖」时挖出两个真实缺陷。gdb 实测堆栈显示
 > 崩溃是 `SIGFPE` (算术异常) 而非栈溢出, 定位到 `rng() % total` 的除数 `total == 0`。
