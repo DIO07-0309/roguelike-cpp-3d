@@ -54,11 +54,11 @@ INACTIVE →(钥匙) PORTAL_ACTIVE → ARMED →(锁门) WAVE_SPAWNING
 | `title` | 挑战房秘藏·远古魔像 | |
 | `floor` | 10 | **纯信息字段**：`get_boss_def_for_floor` 是硬编码 switch（`boss_defs.cpp:170-176`，5→shadow_knight / 10→fire_demon / 15→demon_lord），**不扫描 JSON 的 `floor`** → 填 10 不会与 fire_demon 撞车；数值缩放走 factory 实参 `floor`（`boss.cpp:1200`），也不读此字段 |
 | `is_defender` | `true` | 触发 DEFEND 机制 |
-| `is_summoner` | `false` | 不召唤（技能里不放 summon，见下） |
+| `is_summoner` | `false` | **仅显示串用**（`boss.cpp:1145,1278`），完全不 gating 召唤——真正的开关是 `skill_cycle_bias`（下） |
 | `shield_pct` | `0.50` | DEFEND 时减伤 50%（`boss.cpp:939`：`>0` 则用此值，否则默认 0.70） |
-| `skill_cycle_bias` | 6 | 通用节律 |
+| `skill_cycle_bias` | **5** | **决定召唤的唯一开关**。`_next_cycle_skill()`（`boss.cpp:425-435`）返回固定技能槽，仅在 `cycle_len==4`（idx3）或 `==6`（idx4）时返回 Summon。填 6 会让魔像周期性召唤小怪，与纯 tank 定位冲突，且召唤物会污染挑战房存活计数。取 5 → `Charge, 普攻, Shockwave, 普攻, 普攻`；3、7 亦可 |
 | `behavior_type` | **不填** | 加载器默认 `""`（`boss_defs.cpp:61`）→ 不进领域/镜像；且挑战房路径永不触发 `init_on_spawn`，`_behavior_type` 恒空（§2.7②） |
-| `skills` | `[charge, shockwave, barrage]` | **数组下标 1 必须是 shockwave**——`boss.cpp:790-796` 按 `sk`（即 skills 下标）分发 `sk==0→_charge` / `sk==1→_shockwave`，`:787` 的 DEFEND 覆写写死 `sk == 1` 后改置 `sk = 3`（DEFEND）。另注：`barrage` 的 `range` 字段经 `boss.cpp:1257` 映射为 `spread_deg`（扇形角度），非射程 |
+| `skills` | `[charge, shockwave, barrage]` | `boss.cpp:1240-1257` 按 **id-match** 覆盖技能参数（`sk.id=="charge"` → `ai->_charge` 的 cooldown/damage_mult/windup/range），**与数组位置无关**。必须**包含** `charge` 与 `shockwave` 两条——`sk==0`/`sk==1` 分支用的正是 `ai->_charge`/`ai->_shockwave`。另注：`barrage` 的 `range` 字段经 `boss.cpp:1257` 映射为 `spread_deg`（扇形角度），非射程 |
 | `arena.danger_type` | `shadow_wall` | 通用默认，跨群系安全 |
 | `phase2_hp_threshold` | 0.50 | 通用值；Phase2 三连震为 GOLEM 专属、已实现 |
 
@@ -234,7 +234,7 @@ GOLEM 死亡即落回 `else` 常规掉落分支（`:175`，走 `LOOT_DROP_CHANCE
 |---|---|
 | GOLEM 被 `_get_boss()` 自动捡起，误继承上一层残留的 arena / 领域配置 | `reset_floor()` 经 `FLOOR_ENTER` 事件**每层入场自动清空** `_arena_cfg` / `_behavior_type`，`init_on_spawn` 仅在 boss 层入场调用 → 压轴 GOLEM **不生成 arena zone、不进领域/镜像**（§2.7② 逐行核实；原「小房间被 zone 压迫」风险实际不存在） |
 | GOLEM 死亡触发主线 Boss 奖励（非 boss 层白拿 `sword_legendary` 倚天剑 + 随机圣遗物） | `game_scene_combat.cpp:102` 加 `is_boss_floor` 保护（§2.7③），落回常规掉落分支；加回归测试锁定 |
-| `out_monsters` / `map` 参数类型不匹配，或召唤子怪污染压轴波存活计数 | 两参数当前 `(void)` 未使用，用默认值省略；GOLEM `is_summoner: false` 且技能表不含 summon —— 双保险 |
+| `out_monsters` / `map` 参数类型不匹配，或召唤子怪污染压轴波存活计数 | 两参数当前 `(void)` 未使用，用默认值省略。召唤开关实际是 `skill_cycle_bias`（`is_summoner` **不 gating**，只用于显示串）→ 取 5 彻底避开 Summon 槽，技能表亦无 `summon` 条目，双保险 |
 | `boss_anim.json` 的 `torso y` bind 与 golem 骨架不匹配 | 生成时按批次7 的 rig 契约调 bind；实机看姿态 |
 | 奖励守卫改动影响既有 boss 层流程 | 守卫条件在 F5/F10/F15 恒真 → 主线行为零变化；`Boss1/2/3_Defeated` 本就各自 gate `current_floor`，不受影响 |
 | F15 挑战房压轴 GOLEM 明显弱于终 boss，玩家预期落空 | 定位即「奖金遭遇」；F15 等效 3000/91 仍高于同层小怪数倍，非白给 |
@@ -247,3 +247,13 @@ GOLEM 死亡即落回 `else` 常规掉落分支（`:175`，走 `LOOT_DROP_CHANCE
 - 不改挑战房小怪波数与刷怪池（`challenge_pools.json` 不动）
 - 不新增 arena `danger_type`（用现有 `shadow_wall`）
 - 不改 `boss_defs.h` / `boss.cpp`——字段与行为均已就绪。**Boss 系统本体零改动**；全批唯一的逻辑层改动是 §2.7③ 那行奖励守卫
+
+## 7. 修订记录
+
+**v2（实施 Task 1 中由 subagent 提出、主 agent 逐行复核确认）**——三处调研更正，均源于我初版 spec 对 `boss.cpp` 技能循环机制的误读：
+
+1. **`sk` 不是 JSON `skills` 数组下标**（原 §2.2 `skills` 行、§5 第二行）。`boss.cpp:754` 的 `sk = _next_cycle_skill()` 返回**固定技能槽**（`boss.h:283` 注释 + `boss.cpp:425-435` 实现：`-1`普攻 / 0 Charge / 1 Shockwave / 2 Summon / 3 DEFEND / 4 Whirlwind / 5 Barrage / 6 GravityPull）。JSON `skills` 由 `boss.cpp:1240-1257` 按 **id-match** 覆盖参数，与位置无关。→ 原「`skills[1]` 必须 `shockwave`」是无意义断言，已改为按 id 断言。
+2. **`skill_cycle_bias: 6` 会让 GOLEM 周期性召唤小怪**（原 §2.2 写「通用节律」，§2.7② 与 §5 写「`is_summoner: false` 双保险」）。`_next_cycle_skill` 只在 `cycle_len==4`（idx3）或 `==6`（idx4）返回 Summon；`is_summoner` 只用于显示串（`boss.cpp:1145,1278`），**完全不 gating 召唤**。这是真实设计缺陷——召唤物会污染挑战房存活计数，与「纯 tank」定位冲突。→ 改为 `skill_cycle_bias: 5`，并以 `EXPECT_NE(...,4)` / `EXPECT_NE(...,6)` 加 validator 自检锁定。
+3. 连带更正：计划 Task 1 的测试由位置断言改为 id 断言 + 新增 `GolemCycleBiasNeverSummons`；validator 自检同步改写；验收清单与实机验收项（新增「确认全程不召唤小怪」）同步。
+
+设计结论未变：25% 隐藏 Boss 波、GOLEM 为纯防御坦克、Boss 系统本体零改动。仅修正了让设计**真正成立**的参数。

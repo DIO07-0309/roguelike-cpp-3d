@@ -22,8 +22,8 @@
 - 新增 `.cpp` 靠 `GLOB` 纳入 → **构建前必须重跑 `cmake -B build`**
 - 构建：`cmake --build build --config Release -- -j 4`（**勿用 `/m`**）
 - 测试：`ctest --test-dir build`
-- 校验：`conda run python tools\world_validator.py`（**禁多行 `-c`**）
-- PS 5.1 命令内**禁中文字面量**；构建前 `$env:PATH` 前置 MSVC/WinSDK/Conda/Python/Rust
+- 校验：`& "C:\Users\HP\anaconda3\python.exe" tools\world_validator.py`（**禁多行 `-c`**；本环境 `conda run` 不可用、`C:\Users\HP\miniconda3` 不存在，实测 `anaconda3\python.exe` 为 3.13.5 可直接跑）
+- PS 5.1 命令内**禁中文字面量**；构建前 `$env:PATH` 前置 MSVC/WinSDK/Anaconda/Python/Rust
 - 写文件后必读回校验；跑 sim 前 `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8`
 - 门禁全绿 → 同步桌面 `C:\Users\HP\Desktop\Roguelike-CPP-3D版`（exe 到包根）
 
@@ -34,7 +34,10 @@
 | JSON `skills` 加载到 `def.skill_overrides`（不是 `def.skills`） | `boss_defs.cpp:79-82` |
 | `BossSkillDef.id` 合法集：`charge`/`shockwave`/`summon`/`barrage`/`cone`/`blink` | `boss_defs.h:14-26` |
 | `ComboDef.commands` 合法集：`normal`/`charge`/`shockwave`/`summon`/`defend`/`barrage`/`cone`/`blink`/`whirlwind` | `boss_defs.h:47` |
-| DEFEND 覆写：`golem_shield_pct>0 && sk==1 && (skill_cycle_index%12)<6 → sk=3`；`sk` 是 skills 数组下标 | `boss.cpp:787-788` |
+| DEFEND 覆写：`golem_shield_pct>0 && sk==1 && (skill_cycle_index%12)<6 → sk=3`。`sk` 来自 `_next_cycle_skill()`（`boss.cpp:754`）返回的**固定技能槽**（`-1`普攻/0 Charge/1 Shockwave/2 Summon/3 DEFEND/4 Whirlwind/5 Barrage/6 GravityPull），**不是 JSON `skills` 数组下标** | `boss.cpp:787-788, 425-435` |
+| **决定召唤的唯一开关是 `skill_cycle_bias`**：`_next_cycle_skill` 只在 `cycle_len==4`（idx3）或 `==6`（idx4）时返回 Summon；其余值绝不召唤。填 6 的 GOLEM 会周期性召唤小怪 | `boss.cpp:425-435` |
+| `is_summoner` **只用于显示串**，完全不 gating 召唤——不可当「不召唤」依据 | `boss.cpp:1145,1278` |
+| JSON `skills` 由 **id-match** 覆盖技能参数，与数组位置无关 | `boss.cpp:1240-1257` |
 | `boss_factory_create` 内部已乘 `boss_hp_scale`/`boss_atk_scale` | `boss.cpp:1200-1201` |
 | factory 的 `out_monsters`/`map` 参数 `(void)` 未使用 | `boss.cpp:1285` |
 | `boss_factory_create` 取 **tile** 坐标（内部 `*TILE_SIZE`） | `boss.cpp:1203` |
@@ -75,6 +78,11 @@ protected:
     void SetUp() override { load_boss_defs("resources/bosses.json"); }
 };
 
+bool has_summon_skill(const BossDef* g) {
+    for (const auto& s : g->skill_overrides) if (s.id == "summon") return true;
+    return false;
+}
+
 TEST_F(BossDefsTest, GolemDefLoads) {
     const BossDef* g = get_boss_def("golem");
     ASSERT_NE(g, nullptr);
@@ -87,17 +95,33 @@ TEST_F(BossDefsTest, GolemIsDefenderWithActiveShield) {
     ASSERT_NE(g, nullptr);
     EXPECT_TRUE(g->is_defender);          // 触发 golem_shield_pct 赋值 (boss.cpp:1281)
     EXPECT_GT(g->shield_pct, 0.0f);       // boss.cpp:787 要求 golem_shield_pct > 0
-    EXPECT_FALSE(g->is_summoner);         // 技能表不放 summon, 避免污染存活计数
+    EXPECT_FALSE(g->is_summoner);         // 仅显示串 (boss.cpp:1145,1278), 不 gating 召唤
     EXPECT_TRUE(g->skill_overrides.size() == 3u);
 }
 
-// DEFEND 覆写写死在 sk==1 (boss.cpp:787), 技能数组下标 1 必须是 shockwave
-TEST_F(BossDefsTest, GolemShockwaveAtSkillIndexOne) {
+TEST_F(BossDefsTest, GolemHasChargeAndShockwaveSkillEntries) {
+    // 技能按 id-match 覆盖 ai->_charge / ai->_shockwave (boss.cpp:1240-1257),
+    // 与数组位置无关; 缺一条则该技能参数走编译期默认。
     const BossDef* g = get_boss_def("golem");
     ASSERT_NE(g, nullptr);
-    EXPECT_EQ(g->skill_overrides[0].id, "charge");
-    EXPECT_EQ(g->skill_overrides[1].id, "shockwave");
-    EXPECT_EQ(g->skill_overrides[2].id, "barrage");
+    auto has = [&](const std::string& id) {
+        for (const auto& s : g->skill_overrides) if (s.id == id) return true;
+        return false;
+    };
+    EXPECT_TRUE(has("charge"));
+    EXPECT_TRUE(has("shockwave"));
+    EXPECT_TRUE(has("barrage"));
+}
+
+// 真正决定是否召唤的不是技能表, 而是 skill_cycle_bias:
+// _next_cycle_skill (boss.cpp:425-435) 只在 cycle_len==4 或 ==6 时返回 Summon。
+// is_summoner 只用于显示串 (boss.cpp:1145,1278), 完全不 gating 召唤。
+TEST_F(BossDefsTest, GolemCycleBiasNeverSummons) {
+    const BossDef* g = get_boss_def("golem");
+    ASSERT_NE(g, nullptr);
+    EXPECT_NE(g->skill_cycle_bias, 4);   // idx3 -> Summon
+    EXPECT_NE(g->skill_cycle_bias, 6);   // idx4 -> Summon
+    EXPECT_FALSE(has_summon_skill(g));   // 双保险
 }
 
 TEST_F(BossDefsTest, GolemComboCommandsAreLegal) {
@@ -170,7 +194,7 @@ ctest --test-dir build -R boss_defs_test --output-on-failure
     "phase2_cd_mult": 0.80,
     "shield_pct": 0.50,
     "summon_speed": 1.0,
-    "skill_cycle_bias": 6,
+    "skill_cycle_bias": 5,
     "skills": [
       {"id": "charge",   "cooldown": 6.0, "damage_mult": 2.5, "windup": 0.6, "range": 120},
       {"id": "shockwave","cooldown": 8.0, "damage_mult": 1.6, "windup": 0.7, "range": 100},
@@ -184,7 +208,12 @@ ctest --test-dir build -R boss_defs_test --output-on-failure
   }
 ```
 
-要点：`skills[1]` 必须 `shockwave`；`is_defender: true` + `shield_pct > 0`；`arena` 填合法值（本路径不生成 zone，仅为 validator 与 UI 兜底）。
+要点：
+- **`skill_cycle_bias: 5`（关键）**——`_next_cycle_skill`（`boss.cpp:425-435`）只在 `cycle_len==4` 或 `==6` 时返回 Summon。填 6 会让魔像周期性召唤小怪，与 spec 的纯 tank 定位冲突，且召唤物会污染挑战房存活计数。取 3/5/7 均可（idx2 仍给 Shockwave），此处取 5 = `Charge, 普攻, Shockwave, 普攻, 普攻`。
+- `skills` 必须**包含** `charge` 与 `shockwave` 两条——`boss.cpp:1240-1257` 按 **id-match** 覆盖 `ai->_charge` / `ai->_shockwave` 参数，与数组位置无关。
+- `is_defender: true` + `shield_pct > 0`：`:1281` 据此赋 `golem_shield_pct`，`:787` 要求 `> 0` 才启用 DEFEND 覆写。
+- `is_summoner: false` 仅影响显示串（`boss.cpp:1145,1278`），**不 gating 召唤**；真正的召唤开关是上一条的 `skill_cycle_bias`。
+- `arena` 填合法值（本路径不生成 zone，仅为 validator 与 UI 兜底）。
 
 - [ ] **Step 5: 跑测试确认通过**
 
@@ -197,7 +226,7 @@ ctest --test-dir build -R boss_defs_test --output-on-failure
 - [ ] **Step 6: 跑 validator 基线**
 
 ```powershell
-conda run python tools\world_validator.py
+& "C:\Users\HP\anaconda3\python.exe" tools\world_validator.py
 ```
 
 预期：0 error / 0 warning（本任务尚未加 boss 自检，仅确认新 def 不破坏既有校验）。
@@ -209,7 +238,8 @@ git add resources/bosses.json tests/boss/boss_defs_test.cpp tests/CMakeLists.txt
 git commit -m "feat(b4): golem boss def + 加载器契约测试
 
 - resources/bosses.json 追加 golem (defender, hp200/atk13/pdef14/mdef8, shield_pct 0.50)
-- skills[1]=shockwave: boss.cpp:787 的 DEFEND 覆写写死 sk==1
+- skill_cycle_bias=5: 避开 Summon 槽 (cycle_len==4/6 才会召唤, is_summoner 不 gating)
+- skills 按 id-match 覆盖 _charge/_shockwave, 须含 charge+shockwave 两条, 与顺序无关
 - arena 填 shadow_wall 合法值但压轴路径不生成 zone (reset_floor 已清 _arena_cfg)
 - 新测试 6 例含反回归: get_boss_def_for_floor(10) 仍返回 fire_demon"
 ```
@@ -772,7 +802,7 @@ ctest --test-dir build
 - [ ] **Step 5: 跑 validator**
 
 ```powershell
-conda run python tools\world_validator.py
+& "C:\Users\HP\anaconda3\python.exe" tools\world_validator.py
 ```
 
 预期：0 error / 0 warning。
@@ -838,7 +868,7 @@ git commit -m "feat(b4): 压轴 boss 额外奖 (EPIC+ 物品 + 50% 金币)
 - [ ] **Step 3: 运行生成器**
 
 ```powershell
-conda run python tools\gen_boss_parts.py
+& "C:\Users\HP\anaconda3\python.exe" tools\gen_boss_parts.py
 ```
 
 预期输出 `wrote golem parts+skeleton`。
@@ -907,7 +937,7 @@ git status --short assets/sprites resources/animations
 - [ ] **Step 7: 校验四向对齐**
 
 ```powershell
-conda run python tools\world_validator.py
+& "C:\Users\HP\anaconda3\python.exe" tools\world_validator.py
 ```
 
 预期：0 error / 0 warning。若 validator 有精灵↔骨架↔avatar↔def 的交叉校验，此处即验证：`bosses.json.visual_id="golem"` → `boss_golem` avatar → `boss_golem_skeleton.json` → 5 个 PNG 全部存在。
@@ -979,16 +1009,19 @@ else:
         err("bosses.json [golem]: is_defender 必须为 true (golem_shield_pct 赋值开关)")
     if not (_g.get("shield_pct") or 0) > 0:
         err("bosses.json [golem]: shield_pct 必须 > 0 (boss.cpp:787 生效条件)")
-    _sk = _g.get("skills", [])
-    if len(_sk) != 3:
-        err("bosses.json [golem]: skills 必须恰好 3 条")
-    else:
-        if _sk[0].get("id") != "charge":
-            err("bosses.json [golem].skills[0] 必须为 charge (sk==0 分支)")
-        if _sk[1].get("id") != "shockwave":
-            err("bosses.json [golem].skills[1] 必须为 shockwave "
-                "(boss.cpp:787 DEFEND 覆写写死 sk==1)")
-    for _i, _s in enumerate(_sk):
+    # 技能按 id-match 覆盖参数 (boss.cpp:1240-1257), 与数组位置无关
+    _ids = [_s.get("id") for _s in _g.get("skills", [])]
+    for _req in ("charge", "shockwave"):
+        if _req not in _ids:
+            err("bosses.json [golem].skills 缺 '%s' — ai->_%s 参数无法被覆盖"
+                % (_req, _req))
+    if _g.get("skill_cycle_bias") in (4, 6):
+        err("bosses.json [golem].skill_cycle_bias=%s 会让 _next_cycle_skill "
+            "返回 Summon, 与纯 tank 定位冲突" % _g.get("skill_cycle_bias"))
+    if _g.get("is_summoner"):
+        warn("bosses.json [golem].is_summoner=true — 该字段只用于显示串, "
+             "不 gating 召唤")
+    for _i, _s in enumerate(_g.get("skills", [])):
         if _s.get("id") not in VALID_BOSS_SKILLS:
             err("bosses.json [golem].skills[%d].id '%s' 非法"
                 % (_i, _s.get("id")))
@@ -1004,7 +1037,7 @@ else:
 - [ ] **Step 2: 跑 validator**
 
 ```powershell
-conda run python tools\world_validator.py
+& "C:\Users\HP\anaconda3\python.exe" tools\world_validator.py
 ```
 
 预期：**0 error / 0 warning**。
@@ -1032,7 +1065,7 @@ ctest --test-dir build
 ```powershell
 cmake --build build --config Release -- -j 4
 ctest --test-dir build
-conda run python tools\world_validator.py
+& "C:\Users\HP\anaconda3\python.exe" tools\world_validator.py
 ```
 
 预期：build 0 error；ctest 全绿；validator 0/0。
@@ -1052,15 +1085,16 @@ git commit -m "docs(b4): validator boss 自检 + CHANGELOG"
 
 请用户用桌面包根目录的 `roguelike_cpp.exe` 验证：
 1. **2D + HD2D 各打一场有压轴的**：3 波小怪清完后等 3 秒刷出远古魔像，观察 DEFEND 减伤姿态、Phase2 三连震、boss HUD
-2. **打一场没有压轴的**：3 波后直接结算，奖励与现状一致
-3. **确认 GOLEM 死后不掉倚天剑 / 圣遗物**（奖励隔离守卫生效）
-4. **确认造型是石头魔像而非 fire_demon**（`boss_golem` avatar 命中，未回落 `boss_f10`）
+2. **确认魔像全程不召唤小怪**（`skill_cycle_bias=5` 避开了 Summon 槽）
+3. **打一场没有压轴的**：3 波后直接结算，奖励与现状一致
+4. **确认 GOLEM 死后不掉倚天剑 / 圣遗物**（奖励隔离守卫生效）
+5. **确认造型是石头魔像而非 fire_demon**（`boss_golem` avatar 命中，未回落 `boss_f10`）
 
 ---
 
 ## 验收清单
 
-- [ ] `bosses.json` 有 `golem` def，`skills[1] == "shockwave"`
+- [ ] `bosses.json` 有 `golem` def，`skills` 含 `charge`+`shockwave`，`skill_cycle_bias ∉ {4,6}`（不召唤）
 - [ ] `get_boss_def_for_floor(10)` 仍返回 `fire_demon`（未 shadow）
 - [ ] `has_boss_wave` 确定性 25%，不消耗全局 `rng`
 - [ ] 波次追踪：波0→1→2→(判定)→boss→REWARD+CLEARED
