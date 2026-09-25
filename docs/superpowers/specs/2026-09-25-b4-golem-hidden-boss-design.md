@@ -163,9 +163,11 @@ bool has_boss_wave(uint32_t dungeon_seed, int room_index) const {
 
 ### 2.6 奖励
 
-`_grant_rewards`（`:206-234`，现有签名 `_grant_rewards(Player&, GameMap&, int floor, std::vector<GroundItem>&)`）现有：3 件物品（重试 5 次至 RARE+）+ 金币 `50 + floor*15`。
+`_grant_rewards`（`:206-234`，现有签名 `_grant_rewards(Player& player, GameMap* map, int floor, std::vector<DroppedItem>& ground_items)`，见 `challenge_room.h:91-92`）现有：3 件物品（重试 5 次至 RARE+）+ 金币 `50 + floor*15`。
 
 追加 `bool boss_cleared` 入参，调用处传 `_boss_wave_pending`。为真时额外：1 件物品（**重试 8 次至 EPIC+**）+ 50% 额外金币。`Rarity` 枚举上限 `LEGENDARY=3`（COMMON 0 / RARE 1 / EPIC 2 / LEGENDARY 3）。未触发压轴则 `boss_cleared` 为假，奖励完全不变。
+
+**RNG 影响面**：`generate_random_item()` 消耗全局 `rng`（`item.cpp:188`）。但现有奖励路径本就调用它 3+ 次，全局流今天就在扰动。本任务的增量只发生在**压轴触发（25%）**那 1/4 的场次；另外 75% 场次的全局 RNG 流与现状**逐位一致**。批次9 的刷怪 oracle 测试用注入 rng、不经过奖励路径，不受影响。
 
 ## 2.7 Boss 归属与奖励隔离（关键，含一处必要的越界改动）
 
