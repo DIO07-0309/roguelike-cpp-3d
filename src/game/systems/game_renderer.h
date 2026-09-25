@@ -104,7 +104,7 @@ public:
     void draw_challenge_portal(float cam_x, float cam_y, int portal_tx, int portal_ty,
                                float pulse_timer, bool is_entry);
     void draw_teleport_fade(int sw, int sh, float fade_timer, bool fading_in);
-    void draw_challenge_choice(int sw, int sh, int cursor);
+    void draw_challenge_choice(int sw, int sh, int cursor, const char* pity_hint);
 
 private:
     static Color _relic_rarity_color(const std::string& rarity);

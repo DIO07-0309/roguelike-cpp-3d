@@ -227,6 +227,47 @@ TEST(SlotApi, DeathHistoryRingAndTopCauses) {
     g_meta.save();
 }
 
+// ── B4-T9: 压轴保底计数 — 必须落盘往返 + 账号级 (删档不丢) + 负数夹取 ──
+// 这条路径是「玩家反复刷同一层也能攒到保底」的全部依赖, 单测必须覆盖.
+TEST(SlotApi, ChallengePityStreakPersistsAcrossReload) {
+    SlotGuard guard;
+    MetaSystem::g_readonly = false;
+    const int baseline = g_meta.challenge_pity_streak();
+
+    g_meta.set_challenge_pity_streak(3);
+    ASSERT_EQ(g_meta.challenge_pity_streak(), 3);
+
+    // 磁盘直查 — 防「load() 找不到文件 → 内存值原地不动」造成的假通过
+    ASSERT_TRUE(file_exists("saves/meta_save.json"))
+        << "meta 存档没写出来, save() 静默失败";
+    {
+        std::ifstream ifs("saves/meta_save.json");
+        std::string raw((std::istreambuf_iterator<char>(ifs)),
+                        std::istreambuf_iterator<char>());
+        EXPECT_NE(raw.find("\"pity\":3"), std::string::npos)
+            << "磁盘上没有 pity:3, 落盘往返并未真正发生";
+    }
+
+    g_meta.load();                              // 内存 → 磁盘 → 内存
+    EXPECT_EQ(g_meta.challenge_pity_streak(), 3)
+        << "保底计数没有落盘往返, 重建 GameScene 后必然清零";
+
+    // 账号级: 删掉整个 slot, 计数仍在
+    Player p(64.0f, 64.0f, 220.0f, 100, 11, 5, 3);
+    ASSERT_TRUE(SaveManager::save_game(1, &p, 1, 1));
+    SaveManager::delete_save(1);
+    g_meta.load();
+    EXPECT_EQ(g_meta.challenge_pity_streak(), 3)
+        << "保底计数跟着 slot 一起丢了, 应为账号级";
+
+    // 夹取: 负数归零
+    g_meta.set_challenge_pity_streak(-4);
+    EXPECT_EQ(g_meta.challenge_pity_streak(), 0);
+
+    g_meta.set_challenge_pity_streak(baseline);   // 还原现场
+    g_meta.save();
+}
+
 // ── B4.7: Mirror 记忆隔离 — 各档独立 ──
 TEST(SlotApi, MirrorMemoryPerSlot) {
     SlotGuard guard;

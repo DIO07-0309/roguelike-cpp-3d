@@ -1165,9 +1165,9 @@ void GameRenderer::draw_teleport_fade(int sw, int sh, float fade_timer, bool fad
     DrawRectangle(0, 0, sw, sh, {0, 0, 0, (unsigned char)(255 * alpha)});
 }
 
-void GameRenderer::draw_challenge_choice(int sw, int sh, int cursor) {
+void GameRenderer::draw_challenge_choice(int sw, int sh, int cursor, const char* pity_hint) {
     if (!g_font_loaded) return;
-    float pw = 320, ph = 140;
+    float pw = 340, ph = 174;
     float cx = sw/2.0f - pw/2, cy = sh/2.0f - ph/2;
     DrawRectangleRounded({cx, cy, pw, ph}, 0.1f, 8, {20, 20, 40, 230});
     DrawRectangleRoundedLines({cx-1, cy-1, pw+2, ph+2}, 0.1f, 8, 2.0f, {80, 180, 255, 200});
@@ -1176,14 +1176,20 @@ void GameRenderer::draw_challenge_choice(int sw, int sh, int cursor) {
     DrawTextEx(g_font_small, title, {cx + pw/2 - tw/2, cy + 12}, 18, 1, {255, 220, 100, 255});
     const char* opts[] = {"开始挑战 (消耗1把钥匙)", "离开"};
     for (int i = 0; i < 2; i++) {
-        float oy = cy + 50 + i * 36;
+        float oy = cy + 48 + i * 34;
         Color c = (i == cursor) ? Color{255, 255, 200, 255} : Color{180, 180, 200, 200};
-        if (i == cursor) DrawRectangleRounded({cx + 15, oy - 2, pw - 30, 30}, 0.1f, 4, {60, 60, 100, 120});
+        if (i == cursor) DrawRectangleRounded({cx + 15, oy - 2, pw - 30, 28}, 0.1f, 4, {60, 60, 100, 120});
         DrawTextEx(g_font_small, opts[i], {cx + 30, oy + 4}, 14, 1, c);
     }
+    // B4-T9: 付费前告知概率与保底, 让玩家分清「手气差」与「坏了」
+    if (pity_hint && pity_hint[0] != '\0') {
+        float hw = MeasureTextEx(g_font_small, pity_hint, 12, 1).x;
+        DrawTextEx(g_font_small, pity_hint, {cx + pw/2 - hw/2, cy + 120}, 12, 1,
+                   {190, 170, 255, 220});
+    }
     const char* hint = "[↑↓选择] [E确认] [ESC离开]";
-    float hw = MeasureTextEx(g_font_small, hint, 11, 1).x;
-    DrawTextEx(g_font_small, hint, {cx + pw/2 - hw/2, cy + ph - 22}, 11, 1, {120, 120, 160, 180});
+    float hb = MeasureTextEx(g_font_small, hint, 11, 1).x;
+    DrawTextEx(g_font_small, hint, {cx + pw/2 - hb/2, cy + ph - 22}, 11, 1, {120, 120, 160, 180});
 }
 
 // ============================================================

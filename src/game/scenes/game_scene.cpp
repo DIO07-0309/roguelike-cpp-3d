@@ -400,6 +400,9 @@ void GameScene::enter_floor(int floor, uint32_t seed) {
     //   RoomManager 房间数据禁止带入 Boss 层 (Boss 层不走 build 分支)。
     _challenge.reset();
     _room_mgr.reset();
+    // B4-T9: 压轴保底是账号级记忆 — 每次进层从 meta 重新载入.
+    // 只靠控制器自持会在 GameScene 重建时清零 (玩家反复进出同层 → 保底永远到不了阈值).
+    _challenge_pity_streak = g_meta.challenge_pity_streak();
 
     if (seed != 0) {
         _dungeon_seed = seed;
@@ -1263,8 +1266,12 @@ void GameScene::_process(double delta) {
             if (game_map->special_rooms[i].type == SpecialRoomType::CHALLENGE)
                 { room_idx = i; break; }
         }
+        int pity_before = _challenge_pity_streak;
         _challenge.tick(dt, game_map.get(), player.get(), monsters,
-                        current_floor, _dungeon_seed, room_idx, ground_items);
+                        current_floor, _dungeon_seed, room_idx, ground_items,
+                        &_challenge_pity_streak);
+        if (_challenge_pity_streak != pity_before)
+            g_meta.set_challenge_pity_streak(_challenge_pity_streak);
         if (_challenge.phase() == ChallengePhase::ARMED) {
             auto& sr = game_map->special_rooms[room_idx];
             game_map->lock_room_doors({});
@@ -1297,8 +1304,12 @@ void GameScene::_process(double delta) {
     }
 
     if (_world_mode == WorldMode::CHALLENGE_ARENA) {
+        int pity_before = _challenge_pity_streak;
         _challenge.tick(dt, game_map.get(), player.get(), monsters,
-                        current_floor, _dungeon_seed, 0, ground_items);
+                        current_floor, _dungeon_seed, 0, ground_items,
+                        &_challenge_pity_streak);
+        if (_challenge_pity_streak != pity_before)
+            g_meta.set_challenge_pity_streak(_challenge_pity_streak);
         if (_challenge.phase() == ChallengePhase::ARMED) {
             _challenge.on_doors_locked();
         }
@@ -2580,7 +2591,8 @@ void GameScene::_render_ui_tail(int sw, int sh) {
     _renderer.draw_teleport_fade(sw, sh, _teleport_fade_timer, _portal_fade_in);
 
     if (challenge_choice_active) {
-        _renderer.draw_challenge_choice(sw, sh, challenge_choice_cursor);
+        _renderer.draw_challenge_choice(sw, sh, challenge_choice_cursor,
+            ChallengeRoomController::boss_wave_hint(_challenge_pity_streak).c_str());
     }
 
     // F15.5.1: Build echo mirror panel data (M6-v2a: 提取为共用方法)

@@ -8,6 +8,7 @@
 #include <gtest/gtest.h>
 
 #include "scenes/game_scene.h"
+#include "meta_progression.h"
 #include "world/challenge_room.h"
 #include "world/room_manager.h"
 #include "world/game_map.h"
@@ -131,3 +132,52 @@ TEST(FloorLifecycle, ArenaRoundTripPreservesExploration) {
         << "arena round trip must not wipe this floor's exploration";
     EXPECT_TRUE(s->game_map->isExplored(qx, qy));
 }
+
+// ── LIFE-004: 挑战压轴保底计数禁止随 GameScene 重建清零 ──────────
+// 实机缺陷 (09-26): 4 次挑战房日志全部 "Boss wave roll: miss (pity 1/3)",
+// 计数从未累积。根因: 计数原存于 ChallengeRoomController::_pity_miss_streak,
+// 而该控制器是 GameScene 成员 — 每次选层新建 GameScene 即随实例销毁清零;
+// 地牢每层仅 1 间挑战房, 单实例内本就攒不到上限。
+// 修复: 计数改为账号级持久化 (saves/meta_save.json "pity"), enter_floor 载入。
+// 本用例驱动 5 次真实「选层 → 进层 → 离场析构」重建, 断言计数跨实例存活。
+// 注: 落盘往返本身由 save_test.ChallengePityStreakPersistsAcrossReload 覆盖,
+//     此处只验 GameScene 生命周期这一环 (旧盲区, 单测原先结构上看不见)。
+TEST(FloorLifecycle, ChallengePitySurvivesGameSceneRebuild) {
+    const int floor = 12;  // 非 boss 层 (5/10/15 为 boss), 保证走正常建图分支
+
+    // 先 load() 让内存与磁盘一致 — 否则 g_meta 内存态是默认值,
+    // 结束时写盘会把仓库真实 meta 冲掉。测试跑完还原回原值。
+    g_meta.load();
+    const int restored_pity = g_meta.challenge_pity_streak();
+    struct RestorePity {
+        int value;
+        ~RestorePity() { g_meta.set_challenge_pity_streak(value); }
+    } restore{restored_pity};
+
+    // 前 3 次挑战房空手 — 每次重新选层都是全新 GameScene 实例
+    for (int miss = 1; miss <= 3; ++miss) {
+        g_meta.set_challenge_pity_streak(miss);
+        auto s = make_scene();
+        s->enter_floor(floor, 4200u + (uint32_t)miss);
+        ASSERT_EQ(s->challenge_pity_streak(), miss)
+            << "fresh GameScene must load persisted pity, not restart from 0";
+    }
+
+    // 第 4 次到达保底上限: 与 seed/房间无关, 必出压轴
+    g_meta.set_challenge_pity_streak(3);
+    {
+        auto s = make_scene();
+        s->enter_floor(floor, 4203u);
+        ASSERT_EQ(s->challenge_pity_streak(), 3);
+        EXPECT_TRUE(s->challenge_ctrl().has_boss_wave(4203u, 0,
+                                                      s->challenge_pity_streak()))
+            << "pity cap must guarantee the boss wave";
+    }
+
+    // 见过压轴后计数归零, 新一轮从头计
+    g_meta.set_challenge_pity_streak(0);
+    auto s_last = make_scene();
+    s_last->enter_floor(floor, 4204u);
+    EXPECT_EQ(s_last->challenge_pity_streak(), 0);
+}
+

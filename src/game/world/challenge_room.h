@@ -66,10 +66,14 @@ public:
     void mark_cleared();
 
     // 每帧 tick
+    // pity_streak: 压轴保底计数的外部引用 —— 账号级持久 (GameScene 持有并落盘).
+    // 本控制器不自持该计数: GameScene 每次进层都会重建, 自持必然清零.
+    // nullptr = 无保底上下文 (单元测试), 判定按 miss_streak=0 处理且不回写.
     void tick(float dt, GameMap* map, Player* player,
               std::vector<std::unique_ptr<Monster>>& monsters,
               int floor, uint32_t dungeon_seed, int room_index,
-              std::vector<DroppedItem>& ground_items);
+              std::vector<DroppedItem>& ground_items,
+              int* pity_streak = nullptr);
 
     void on_player_entered();
     void on_doors_locked();
@@ -81,9 +85,16 @@ public:
     int total_waves() const { return _total_waves; }
 
     // Batch B4: 隐藏压轴波 —— 确定性 25% 判定, 不消耗全局 rng
-    bool has_boss_wave(uint32_t dungeon_seed, int room_index) const;
+    // miss_streak 为本局已累计的空手次数; >= 保底阈值时强制出 boss (见 boss_wave_pity_cap)
+    bool has_boss_wave(uint32_t dungeon_seed, int room_index, int miss_streak = 0) const;
     bool boss_wave_pending() const { return _boss_wave_pending; }
     bool boss_wave_decided() const { return _boss_wave_decided; }
+    static int boss_wave_chance_pct();
+    static int boss_wave_pity_cap();
+
+    // Batch B4-T9: 保底文案 —— 概率与阈值同源生成, 调常量不会文案漂移.
+    // 计数不属于本控制器 (账号级持久, 见 MetaSystem::challenge_pity_streak).
+    static std::string boss_wave_hint(int pity_streak);
     static WaveAdvance decide_advance(int wave_after_increment, int total_waves,
                                       bool boss_pending);
 

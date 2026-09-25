@@ -317,6 +317,49 @@ TEST(ChallengeRoomTest, BossWaveStorageResetsLikeFresh) {
     EXPECT_FALSE(fresh.boss_wave_decided());
 }
 
+// --- B4-T9: 隐藏压轴保底 (账号级 pity) ---
+
+// 保底必须覆盖纯随机: 在 25% 判定为 miss 的 (seed, room) 上, streak 到阈值时强制 HIT.
+TEST(ChallengeRoomTest, PityForcesHitWherePureRollMisses) {
+    ChallengeRoomController c;
+    const int cap = ChallengeRoomController::boss_wave_pity_cap();
+    ASSERT_EQ(cap, 3);
+    int forced = 0;
+    for (uint32_t s = 0; s < 64u; s++)
+        for (int r = 0; r < 16; r++)
+            if (!c.has_boss_wave(s, r) && c.has_boss_wave(s, r, cap))
+                forced++;
+    EXPECT_GT(forced, 0) << "保底从未覆盖过任何一次纯随机 miss";
+}
+
+// 阈值之下保底不得改动判定 —— 否则等于偷偷提高概率, 且破坏存档/回放可比性.
+TEST(ChallengeRoomTest, PityBelowCapLeavesRollUntouched) {
+    ChallengeRoomController c;
+    const int cap = ChallengeRoomController::boss_wave_pity_cap();
+    for (uint32_t s = 0; s < 64u; s++)
+        for (int r = 0; r < 16; r++)
+            for (int streak = 0; streak < cap; streak++)
+                EXPECT_EQ(c.has_boss_wave(s, r, streak), c.has_boss_wave(s, r, 0))
+                    << "streak=" << streak << " 改动了纯随机结果";
+}
+
+
+// UI 提示必须把概率与保底写出来, 让玩家分清「手气差」和「坏了」.
+TEST(ChallengeRoomTest, BossWaveHintSurfacesChanceAndCap) {
+    // 文案与常量同源: 断言走 accessor 而非硬编码字面量, 改概率时测试自动跟随
+    const std::string chance =
+        std::to_string(ChallengeRoomController::boss_wave_chance_pct()) + "%";
+    const std::string hint = ChallengeRoomController::boss_wave_hint(0);
+    EXPECT_NE(hint.find(chance), std::string::npos);
+    EXPECT_NE(hint.find(std::to_string(ChallengeRoomController::boss_wave_pity_cap())),
+              std::string::npos);
+    EXPECT_EQ(hint.find("(已空"), std::string::npos) << "无进度时不应显示连空次数";
+
+    const std::string progressed = ChallengeRoomController::boss_wave_hint(2);
+    EXPECT_NE(progressed.find("(已空2次)"), std::string::npos)
+        << "有进度时必须把连空次数显示给玩家";
+}
+
 // --- B4-T3: wave-advance truth table (pure function) ---
 
 TEST(ChallengeRoomTest, WaveAdvanceTraceNoBoss) {
@@ -727,5 +770,101 @@ TEST(ChallengeRoomTest, TickBonusDeltaIsExactlyOneItemAndHalfGold) {
     EXPECT_EQ(without_bonus.gold, 100 + base_gold);
     EXPECT_EQ(with_bonus.gold, 100 + (int)(base_gold * 1.5f));
     EXPECT_EQ(with_bonus.gold - without_bonus.gold, base_gold / 2);
+}
+
+// --- B4-T9: 保底接线 (per-run pity, 端到端) ---
+// 位置要求: 必须排在本文件靠后. tick() 依赖前面奖励用例先触发的全局惰性初始化,
+// 若排到最前会成为首个 tick 驱动用例并 0xC000001C 崩溃 (已实测复现).
+
+namespace {
+
+// seed 下前 n 个「纯 25% 判定为 miss」的房间号 —— 用例前提自动成立, 不硬编码
+std::vector<int> first_miss_rooms(uint32_t seed, size_t n) {
+    ChallengeRoomController probe;
+    std::vector<int> out;
+    for (int r = 0; r < 4096 && out.size() < n; r++)
+        if (!probe.has_boss_wave(seed, r)) out.push_back(r);
+    return out;
+}
+
+// 在同一个 controller 上打完一间房; 调用方用 reset() 模拟换层
+bool clear_one_room(ChallengeRoomController& c, Player& p, GameMap& map,
+                    std::vector<std::unique_ptr<Monster>>& monsters,
+                    std::vector<DroppedItem>& drops, uint32_t seed, int room,
+                    int* pity_streak = nullptr) {
+    c.try_activate(p);
+    c.on_player_entered();
+    c.on_doors_locked();
+    c.set_room_rect(1, 1, 4, 4);
+    c.set_phase_for_test(ChallengePhase::WAVE_SPAWNING);
+    for (int t = 0; t < 40 && !c.is_cleared(); t++)
+        c.tick(3.5f, &map, &p, monsters, 10, seed, room, drops, pity_streak);
+    monsters.clear();
+    return c.is_cleared();
+}
+
+}  // namespace
+
+// 保底计数由 GameScene 持有并落盘 (账号级), 控制器不自持 —— 否则 GameScene 每次
+// 进层重建就清零, 玩家反复刷同一层时保底永远到不了阈值 (实机已复现).
+// 关键不变量: 计数跨 reset() 累积.
+TEST(ChallengeRoomTest, PityStreakAccumulatesAcrossPerFloorReset) {
+    ChallengeRoomController c;
+    Player p = make_player(8);
+    GameMap map(8, 8, 32);
+    std::vector<std::unique_ptr<Monster>> monsters;
+    std::vector<DroppedItem> drops;
+    const std::vector<int> rooms = first_miss_rooms(0u, 2);
+    ASSERT_EQ(rooms.size(), 2u);
+
+    int pity = 0;
+    ASSERT_TRUE(clear_one_room(c, p, map, monsters, drops, 0u, rooms[0], &pity));
+    ASSERT_EQ(pity, 1);
+    EXPECT_FALSE(c.boss_wave_pending());
+
+    c.reset();                              // 换层
+    EXPECT_EQ(pity, 1) << "换层把保底进度清掉了";
+    EXPECT_FALSE(c.boss_wave_decided());    // 但按房间的判定标记必须清
+
+    ASSERT_TRUE(clear_one_room(c, p, map, monsters, drops, 0u, rooms[1], &pity));
+    EXPECT_EQ(pity, 2) << "跨层未累积 — 保底永远到不了阈值";
+}
+
+// 单元测试 / 无保底上下文: nullptr 入参必须安全, 判定按 miss_streak=0 处理.
+TEST(ChallengeRoomTest, PityNullStreakPointerIsSafe) {
+    ChallengeRoomController c;
+    Player p = make_player(3);
+    GameMap map(8, 8, 32);
+    std::vector<std::unique_ptr<Monster>> monsters;
+    std::vector<DroppedItem> drops;
+    const std::vector<int> rooms = first_miss_rooms(0u, 1);
+    ASSERT_EQ(rooms.size(), 1u);
+    ASSERT_TRUE(clear_one_room(c, p, map, monsters, drops, 0u, rooms[0], nullptr));
+    EXPECT_FALSE(c.boss_wave_pending());
+}
+
+// 端到端: 连续 N 间天然 miss 后, 第 N+1 间必须出压轴 boss, 且计数归零.
+TEST(ChallengeRoomTest, PityGuaranteesBossAfterPityCap) {
+    ChallengeRoomController c;
+    Player p = make_player(8);
+    GameMap map(8, 8, 32);
+    std::vector<std::unique_ptr<Monster>> monsters;
+    std::vector<DroppedItem> drops;
+    const int cap = ChallengeRoomController::boss_wave_pity_cap();
+    const std::vector<int> rooms = first_miss_rooms(0u, cap + 1);
+    ASSERT_EQ(rooms.size(), (size_t)cap + 1);
+
+    int pity = 0;
+    for (int i = 0; i < cap; i++) {
+        ASSERT_TRUE(clear_one_room(c, p, map, monsters, drops, 0u, rooms[i], &pity));
+        EXPECT_FALSE(c.boss_wave_pending());
+        EXPECT_EQ(pity, i + 1);
+        c.reset();                        // 换层, 保底进度必须保留
+        EXPECT_EQ(pity, i + 1);
+    }
+
+    ASSERT_TRUE(clear_one_room(c, p, map, monsters, drops, 0u, rooms[cap], &pity));
+    EXPECT_TRUE(c.boss_wave_pending()) << "第 " << cap + 1 << " 间房未触发保底压轴";
+    EXPECT_EQ(pity, 0) << "出过压轴后计数必须归零, 否则保底会连环触发";
 }
 

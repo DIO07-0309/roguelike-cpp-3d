@@ -130,6 +130,8 @@ bool MetaSystem::save() const {
     fprintf(f, "],\n");
     // G10.9-B2: 账号历史最高层
     fprintf(f, "  \"best_floor\":%d,\n", _save.best_floor);
+    // B4-T9: 挑战房压轴保底计数 (账号级, 跨 run/slot/重启持久)
+    fprintf(f, "  \"pity\":%d,\n", _save.challenge_pity_streak);
     // G10.9-B2: 账号级结局收集
     fprintf(f, "  \"endings\":[");
     for (size_t i = 0; i < _save.unlocked_endings.size(); i++)
@@ -175,6 +177,7 @@ bool MetaSystem::load() {
     _save.currency.knowledge      = parse_int("\"know\"", 0);
     _save.currency.ancient_memory = parse_int("\"memory\"", 0);
     _save.best_floor  = parse_int("\"best_floor\"", 1);
+    _save.challenge_pity_streak = parse_int("\"pity\"", 0);   // B4-T9
     // G10.9-B2: 解析 endings 数组 ("endings":[1,2])
     _save.unlocked_endings.clear();
     if (const char* ep = strstr(buf, "\"endings\"")) {
@@ -292,6 +295,15 @@ void MetaSystem::record_floor_reached(int floor) {
         g_meta._save.best_floor = floor;
         g_meta.save();
     }
+}
+
+// ═══ B4-T9: 挑战房压轴保底 (账号级) ═══
+// 记账即落盘 — 挑战房清空不是存档点, 若只随档位存档写盘, 玩家死亡/退出后进度丢失.
+void MetaSystem::set_challenge_pity_streak(int n) {
+    if (n < 0) n = 0;
+    if (n == g_meta._save.challenge_pity_streak) return;
+    g_meta._save.challenge_pity_streak = n;
+    g_meta.save();
 }
 
 // ── v1.6-B2: 死因史 (最近 8 条环形; 账号级) ──

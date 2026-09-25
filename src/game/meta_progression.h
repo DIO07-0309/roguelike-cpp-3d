@@ -57,6 +57,8 @@ struct MetaSave {
     // G10.9-B2: 账号级数据 (按审计归属矩阵从 save.json 迁入)
     std::vector<int> unlocked_endings;   // EndingType 列表 (账号收集, 删档不丢)
     int best_floor = 1;                  // 账号历史最高层 (展示用; 选关仍读 Slot maxf)
+    // B4-T9: 挑战房压轴保底计数 (账号级 — 局内计数会被 GameScene 重建清零)
+    int challenge_pity_streak = 0;
     // v1.6-B2: 死因史 (最近 8 条, 环形覆盖; 账号级, 删档不丢)
     struct DeathRecord { int floor; std::string cause; };
     std::vector<DeathRecord> death_history;
@@ -114,6 +116,11 @@ public:
     static void debug_reset_collection();
     // v1.6-B2: 测试钩子 — 清空死因史 (仅测试清理用, 业务勿调)
     void _clear_death_history_for_test() { _save.death_history.clear(); }
+
+    // B4-T9: 挑战房压轴保底 — 账号级计数, 连续空手 N 次后下次必出.
+    // 必须账号级: 玩家反复进出同一层会重建 GameScene, 局内计数随之清零.
+    int  challenge_pity_streak() const { return _save.challenge_pity_streak; }
+    void set_challenge_pity_streak(int n);
 
 private:
     MetaSave _save;

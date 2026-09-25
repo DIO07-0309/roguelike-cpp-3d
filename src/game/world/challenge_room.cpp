@@ -41,6 +41,9 @@ namespace {
 // 属不同哈希域, 判定不改变小怪波构成, 故存档/回放可比性不被破坏.
 constexpr int kBossWaveSlot = 99;
 constexpr int kBossWaveChancePct = 25;
+// B4-T9: 保底阈值. 本局连续空手 N 次后下次必出, 消除「整局看不到」的挫败.
+// p=0.25 + 阈值 3 的分布: 第1间 25% / 第2间累计 43.75% / 第3间累计 57.8% / 第4间 100%.
+constexpr int kBossWavePityMisses = 3;
 
 // B4-T4: 奖励结算参数. 基础三项是现状契约; 压轴加成仅在 boss_wave_pending 时叠加,
 // 不改写基础项, 因此未出 boss 的房间与改造前逐字节一致.
@@ -65,9 +68,21 @@ std::shared_ptr<Item> roll_item_at_least(int rarity_floor, int retry_cap) {
 }
 
 bool ChallengeRoomController::has_boss_wave(uint32_t dungeon_seed,
-                                            int room_index) const {
+                                            int room_index, int miss_streak) const {
+    if (miss_streak >= kBossWavePityMisses) return true;  // 保底优先于随机
     uint32_t boss_seed = _deterministic_seed(dungeon_seed, room_index, kBossWaveSlot);
     return (int)(boss_seed % 100u) < kBossWaveChancePct;
+}
+
+int ChallengeRoomController::boss_wave_chance_pct() { return kBossWaveChancePct; }
+int ChallengeRoomController::boss_wave_pity_cap() { return kBossWavePityMisses; }
+
+std::string ChallengeRoomController::boss_wave_hint(int pity_streak) {
+    std::string base = "隐藏压轴 " + std::to_string(kBossWaveChancePct) + "% · 连空"
+                       + std::to_string(kBossWavePityMisses) + "次必出";
+    if (pity_streak > 0)
+        return base + " (已空" + std::to_string(pity_streak) + "次)";
+    return base;
 }
 
 WaveAdvance ChallengeRoomController::decide_advance(
@@ -152,7 +167,7 @@ void ChallengeRoomController::tick(
     float dt, GameMap* map, Player* player,
     std::vector<std::unique_ptr<Monster>>& monsters,
     int floor, uint32_t dungeon_seed, int room_index,
-    std::vector<DroppedItem>& ground_items) {
+    std::vector<DroppedItem>& ground_items, int* pity_streak) {
 
     if (_phase == ChallengePhase::INACTIVE ||
         _phase == ChallengePhase::UNLOCKED ||
@@ -184,9 +199,14 @@ void ChallengeRoomController::tick(
             _current_wave++;
             if (_current_wave == _total_waves && !_boss_wave_decided) {
                 _boss_wave_decided = true;
-                _boss_wave_pending = has_boss_wave(dungeon_seed, room_index);
-                LOG_INFO("[CHALLENGE] Boss wave roll: %s",
-                         _boss_wave_pending ? "HIT" : "miss");
+                int streak = pity_streak ? *pity_streak : 0;
+                _boss_wave_pending =
+                    has_boss_wave(dungeon_seed, room_index, streak);
+                int next = _boss_wave_pending ? 0 : streak + 1;
+                if (pity_streak) *pity_streak = next;   // 回写由 GameScene 落盘
+                LOG_INFO("[CHALLENGE] Boss wave roll: %s (pity %d/%d)",
+                         _boss_wave_pending ? "HIT" : "miss",
+                         next, kBossWavePityMisses);
             }
             WaveAdvance adv =
                 decide_advance(_current_wave, _total_waves, _boss_wave_pending);

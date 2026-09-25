@@ -228,6 +228,7 @@ public:
     RoomManager&       room_mgr()       { return _room_mgr; }
     const RoomManager& room_mgr() const { return _room_mgr; }
     WorldMode          world_mode() const { return _world_mode; }
+    int                challenge_pity_streak() const { return _challenge_pity_streak; }
 
     // G9.3 (RNG-001): 屏震相机偏移计算 — 消耗独立 visual_rng, 严禁触碰 gameplay rng()。
     // _draw() 每帧调用; timer<=0 返回零偏移。static 纯函数以便确定性回归测试。
@@ -355,6 +356,8 @@ private:
     RoomManager _room_mgr;
     // Batch 3F: Challenge Room Controller
     ChallengeRoomController _challenge;
+    // B4-T9: 压轴保底计数 — 账号级, 由 MetaSystem 持久化 (进层载入/判定后回写)
+    int _challenge_pity_streak = 0;
 
     // Batch 3I: WorldMode + Challenge Arena transition state
     WorldMode _world_mode = WorldMode::DUNGEON;
