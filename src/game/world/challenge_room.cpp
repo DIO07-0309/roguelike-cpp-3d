@@ -107,6 +107,7 @@ void ChallengeRoomController::reset() {
     _room_rx = _room_ry = _room_rw = _room_rh = 0;
     _boss_wave_decided = false;
     _boss_wave_pending = false;
+    _last_reward = {};
 }
 
 void ChallengeRoomController::on_player_entered() {
@@ -336,6 +337,16 @@ RewardPlan ChallengeRoomController::decide_reward_plan(int floor, bool boss_wave
     return plan;
 }
 
+std::string ChallengeRoomController::reward_message(const RewardReport& report) {
+    std::string s = "挑战完成 · +" + std::to_string(report.gold) + " 金币";
+    if (report.dropped > 0)
+        return s + " · 背包已满, " + std::to_string(report.dropped)
+                 + " 件道具掉落在房间中央";
+    if (report.granted > 0)
+        return s + " · " + std::to_string(report.granted) + " 件道具已入包";
+    return s;   // 两项都为 0 (如配置缺失未产出道具) 时只报金币, 不谎称"0 件已入包"
+}
+
 void ChallengeRoomController::grant_rewards_for_test(Player& player, GameMap* map, int floor,
                                                       std::vector<DroppedItem>& ground_items,
                                                       bool boss_wave_pending) {
@@ -366,12 +377,17 @@ void ChallengeRoomController::_grant_rewards(Player& player, GameMap* map, int f
                                               std::vector<DroppedItem>& ground_items,
                                               bool boss_wave_pending) {
     RewardPlan plan = decide_reward_plan(floor, boss_wave_pending);
+    size_t drops_before = ground_items.size();   // 地面积已含其他来源掉落, 只计增量
     int granted = _grant_items(player, ground_items, plan.base_item_count,
                                plan.base_rarity_floor, plan.base_retry_cap);
     if (boss_wave_pending)
         granted += _grant_items(player, ground_items, plan.bonus_item_count,
                                 plan.bonus_rarity_floor, plan.bonus_retry_cap);
     RewardManager::grant_gold(player, plan.gold);
-    LOG_INFO("[CHALLENGE] Rewards: %d items + %d gold%s",
-              granted, plan.gold, boss_wave_pending ? " (boss wave bonus)" : "");
+    _last_reward = {granted,
+                    (int)(ground_items.size() - drops_before),
+                    plan.gold};
+    LOG_INFO("[CHALLENGE] Rewards: %d items (+%d dropped) + %d gold%s",
+              granted, _last_reward.dropped, plan.gold,
+              boss_wave_pending ? " (boss wave bonus)" : "");
 }

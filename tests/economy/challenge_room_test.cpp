@@ -653,6 +653,98 @@ TEST(ChallengeRoomTest, BossBonusOverflowsToGroundAtRoomCenter) {
     EXPECT_EQ(p.combat.current_hp, hp_before);
 }
 
+// --- P1-C9: 结算回执 — 掉地上的道具对玩家必须可见 ---
+// 背景: _grant_rewards 原先只把 granted 打进开发日志, 背包满时道具全落到
+// ground_items 而玩家无任何提示。实机日志出现过 "0 items + 345 gold (boss wave
+// bonus)" —— 压轴波尝试给 4 件, 4 件全掉地, 玩家毫不知情。
+
+TEST(ChallengeRoomTest, RewardReportAllGrantedNothingDropped) {
+    ChallengeRoomController c;
+    c.set_room_rect(1, 1, 4, 4);
+    Player p = new_bonus_player(16);   // 空背包, 装得下 3 件基础奖励
+    GameMap map(8, 8, 32);
+    std::vector<DroppedItem> drops;
+    rng.seed(0xC010u);
+    c.grant_rewards_for_test(p, &map, 10, drops, false);
+    ASSERT_TRUE(drops.empty());
+    EXPECT_EQ(c.last_reward().granted, 3);
+    EXPECT_EQ(c.last_reward().dropped, 0);
+    EXPECT_EQ(c.last_reward().gold, 200);
+    EXPECT_EQ(p.inventory.item_count(), 3);
+}
+
+TEST(ChallengeRoomTest, RewardReportFullInventoryCountsDropped) {
+    ChallengeRoomController c;
+    c.set_room_rect(1, 1, 4, 4);
+    Player p = new_bonus_player(2);    // 容量 2
+    fill_inventory(p, 2);              // 填满, 一件都进不去
+    GameMap map(8, 8, 32);
+    std::vector<DroppedItem> drops;
+    rng.seed(0xC011u);
+    c.grant_rewards_for_test(p, &map, 10, drops, true);   // 3 基础 + 1 压轴
+    ASSERT_EQ(drops.size(), 4u);
+    EXPECT_EQ(c.last_reward().granted, 0);
+    EXPECT_EQ(c.last_reward().dropped, 4);
+    EXPECT_EQ(c.last_reward().gold, 300);
+    EXPECT_EQ(p.inventory.item_count(), 2);
+}
+
+TEST(ChallengeRoomTest, RewardReportCountsOnlyThisRoomsDrops) {
+    // ground_items 可能已含其他来源的掉落 (击杀掉落等), 回执只能计本次增量
+    ChallengeRoomController c;
+    c.set_room_rect(1, 1, 4, 4);
+    Player p = new_bonus_player(2);
+    fill_inventory(p, 2);
+    GameMap map(8, 8, 32);
+    std::vector<DroppedItem> drops;
+    drops.push_back(DroppedItem{std::make_shared<EquipmentItem>(
+        "旧掉落", Rarity::COMMON, "armor", 0, 1, 1), 7, 7});
+    rng.seed(0xC012u);
+    c.grant_rewards_for_test(p, &map, 10, drops, false);
+    ASSERT_EQ(drops.size(), 4u);          // 1 旧 + 3 新
+    EXPECT_EQ(c.last_reward().dropped, 3) << "不得把别人的地面积算成本次掉落";
+    EXPECT_EQ(c.last_reward().granted, 0);
+}
+
+TEST(ChallengeRoomTest, RewardMessageVariants) {
+    // 文案与计数同源, 三种情形各自独立断言, 防止改文案时计数逻辑漂移
+    EXPECT_EQ(ChallengeRoomController::reward_message({3, 0, 200}),
+              "挑战完成 · +200 金币 · 3 件道具已入包");
+    EXPECT_EQ(ChallengeRoomController::reward_message({2, 2, 300}),
+              "挑战完成 · +300 金币 · 背包已满, 2 件道具掉落在房间中央");
+    EXPECT_EQ(ChallengeRoomController::reward_message({0, 0, 230}),
+              "挑战完成 · +230 金币");
+}
+
+TEST(ChallengeRoomTest, RewardMessageBranchesAreMutuallyExclusive) {
+    // 掉地时不得同时谎称「已入包」; 零产出时不得谎称「0 件已入包」
+    const std::string dropped = ChallengeRoomController::reward_message({0, 4, 345});
+    EXPECT_NE(dropped.find("背包已满"), std::string::npos);
+    EXPECT_EQ(dropped.find("已入包"), std::string::npos);
+    EXPECT_NE(dropped.find("4 件"), std::string::npos);
+
+    const std::string empty = ChallengeRoomController::reward_message({0, 0, 345});
+    EXPECT_EQ(empty.find("道具"), std::string::npos)
+        << "配置缺失未产出道具时, 不得出现任何道具字样";
+}
+
+TEST(ChallengeRoomTest, RewardReportClearsOnReset) {
+    ChallengeRoomController c;
+    c.set_room_rect(1, 1, 4, 4);
+    Player p = new_bonus_player(2);
+    fill_inventory(p, 2);
+    GameMap map(8, 8, 32);
+    std::vector<DroppedItem> drops;
+    rng.seed(0xC013u);
+    c.grant_rewards_for_test(p, &map, 10, drops, false);
+    ASSERT_GT(c.last_reward().dropped, 0);
+    c.reset();
+    EXPECT_EQ(c.last_reward().granted, 0)
+        << "换层后必须清零, 否则下层会把上一层的回执当成本层结果";
+    EXPECT_EQ(c.last_reward().dropped, 0);
+    EXPECT_EQ(c.last_reward().gold, 0);
+}
+
 // --- the bonus must not be a mainline boss reward ---
 
 TEST(ChallengeRoomTest, BossBonusGrantsNoMainlineBossReward) {

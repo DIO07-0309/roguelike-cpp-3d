@@ -51,6 +51,15 @@ struct RewardPlan {
     int gold = 0;
 };
 
+// 结算结果回执 (纯数据)。granted 进背包, dropped 因背包已满落到房间地面 ——
+// 两者相加才是本次实际产出。原先 _grant_rewards 只把 granted 打进开发日志,
+// 掉地的道具对玩家完全不可见 (实机见过 4 件全掉地而无任何提示)。
+struct RewardReport {
+    int granted = 0;
+    int dropped = 0;
+    int gold = 0;
+};
+
 class ChallengeRoomController {
 public:
     void reset();
@@ -89,6 +98,9 @@ public:
     bool has_boss_wave(uint32_t dungeon_seed, int room_index, int miss_streak = 0) const;
     bool boss_wave_pending() const { return _boss_wave_pending; }
     bool boss_wave_decided() const { return _boss_wave_decided; }
+    // P1-C9: 最近一次结算回执, 由调用方在相位跃迁到 CLEARED 时读取一次。
+    // tick() 对 CLEARED 早退, 故不能用「每帧读」驱动提示, 否则 timer 会被每帧重置。
+    const RewardReport& last_reward() const { return _last_reward; }
     static int boss_wave_chance_pct();
     static int boss_wave_pity_cap();
 
@@ -100,6 +112,9 @@ public:
 
     // Batch B4: 奖励隔离 —— 结算参数纯函数; boss_wave_pending=false 必须逐项等于现状契约
     static RewardPlan decide_reward_plan(int floor, bool boss_wave_pending);
+    // P1-C9: 结算回执 -> 玩家可见单行文案。与 boss_wave_hint 同款纯函数,
+    // 文案与计数同源生成, 改文案不必碰结算逻辑, 也便于免 raylib 单测。
+    static std::string reward_message(const RewardReport& report);
     void grant_rewards_for_test(Player& player, GameMap* map, int floor,
                                 std::vector<DroppedItem>& ground_items,
                                 bool boss_wave_pending);
@@ -129,6 +144,9 @@ private:
     // _grant_rewards 读 pending 以决定是否叠加压轴奖励.
     bool _boss_wave_decided = false;
     bool _boss_wave_pending = false;
+
+    // P1-C9: 结算回执暂存位, _grant_rewards 唯一写入点, reset() 按层清零。
+    RewardReport _last_reward = {};
 
     void _spawn_wave(int wave_index, GameMap* map,
                      std::vector<std::unique_ptr<Monster>>& monsters,

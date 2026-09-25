@@ -1267,6 +1267,7 @@ void GameScene::_process(double delta) {
                 { room_idx = i; break; }
         }
         int pity_before = _challenge_pity_streak;
+        ChallengePhase phase_before = _challenge.phase();
         _challenge.tick(dt, game_map.get(), player.get(), monsters,
                         current_floor, _dungeon_seed, room_idx, ground_items,
                         &_challenge_pity_streak);
@@ -1280,6 +1281,13 @@ void GameScene::_process(double delta) {
         if (_challenge.phase() == ChallengePhase::CLEARED) {
             game_map->open_room_doors({});
         }
+        // P1-C9: 清空瞬间报一次奖励。必须是相位跃迁而非「处于 CLEARED」, 否则
+        // room_msg_timer 会被每帧重置, 提示永不消失。
+        if (phase_before != ChallengePhase::CLEARED &&
+            _challenge.phase() == ChallengePhase::CLEARED)
+            _presentation.show_message(
+                ChallengeRoomController::reward_message(_challenge.last_reward()).c_str(),
+                3.0f);
     }
 
     if (_challenge.phase() == ChallengePhase::PORTAL_ACTIVE ||
@@ -1305,6 +1313,7 @@ void GameScene::_process(double delta) {
 
     if (_world_mode == WorldMode::CHALLENGE_ARENA) {
         int pity_before = _challenge_pity_streak;
+        ChallengePhase phase_before = _challenge.phase();
         _challenge.tick(dt, game_map.get(), player.get(), monsters,
                         current_floor, _dungeon_seed, 0, ground_items,
                         &_challenge_pity_streak);
@@ -1317,6 +1326,11 @@ void GameScene::_process(double delta) {
             _return_portal_tx_arena = _challenge.return_portal_tx();
             _return_portal_ty_arena = _challenge.return_portal_ty();
         }
+        if (phase_before != ChallengePhase::CLEARED &&
+            _challenge.phase() == ChallengePhase::CLEARED)
+            _presentation.show_message(
+                ChallengeRoomController::reward_message(_challenge.last_reward()).c_str(),
+                3.0f);
         // Player movement/attack/input — monsters is already arena monsters
         _player_ctrl.tick(dt);  // includes monster AI (gated by time_stop_remaining)
         // Weapon cooldown tick + specials + projectiles
