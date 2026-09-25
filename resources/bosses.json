@@ -178,7 +178,7 @@
     "phase2_cd_mult": 0.80,
     "shield_pct": 0.50,
     "summon_speed": 1.0,
-    "skill_cycle_bias": 6,
+    "skill_cycle_bias": 5,
     "skills": [
       {"id": "charge",   "cooldown": 6.0, "damage_mult": 2.5, "windup": 0.6, "range": 120},
       {"id": "shockwave","cooldown": 8.0, "damage_mult": 1.6, "windup": 0.7, "range": 100},

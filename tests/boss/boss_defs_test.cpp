@@ -24,13 +24,37 @@ TEST_F(BossDefsTest, GolemIsDefenderWithActiveShield) {
     EXPECT_TRUE(g->skill_overrides.size() == 3u);
 }
 
-TEST_F(BossDefsTest, GolemShockwaveAtSkillIndexOne) {
+static bool has_summon_skill(const BossDef* g) {
+    for (const auto& s : g->skill_overrides) if (s.id == "summon") return true;
+    return false;
+}
+
+// Skill overrides are applied by ID-MATCH at boss.cpp:1240-1257
+// (`sk.id == "charge"` -> ai->_charge cooldown/damage/windup/range).
+// Array position is irrelevant; a missing entry leaves that skill's
+// params at compile-time defaults.
+TEST_F(BossDefsTest, GolemHasChargeAndShockwaveSkillEntries) {
     const BossDef* g = get_boss_def("golem");
     ASSERT_NE(g, nullptr);
-    ASSERT_EQ(g->skill_overrides.size(), 3u);
-    EXPECT_EQ(g->skill_overrides[0].id, "charge");
-    EXPECT_EQ(g->skill_overrides[1].id, "shockwave");
-    EXPECT_EQ(g->skill_overrides[2].id, "barrage");
+    auto has = [&](const std::string& id) {
+        for (const auto& s : g->skill_overrides) if (s.id == id) return true;
+        return false;
+    };
+    EXPECT_TRUE(has("charge"));
+    EXPECT_TRUE(has("shockwave"));
+    EXPECT_TRUE(has("barrage"));
+}
+
+// Whether the boss summons is decided SOLELY by skill_cycle_bias:
+// _next_cycle_skill (boss.cpp:425-435) returns Summon only when
+// cycle_len==4 (idx3) or cycle_len==6 (idx4). `is_summoner` is used
+// only for display strings (boss.cpp:1145, 1278) and never gates it.
+TEST_F(BossDefsTest, GolemCycleBiasNeverSummons) {
+    const BossDef* g = get_boss_def("golem");
+    ASSERT_NE(g, nullptr);
+    EXPECT_NE(g->skill_cycle_bias, 4);   // idx3 -> Summon
+    EXPECT_NE(g->skill_cycle_bias, 6);   // idx4 -> Summon
+    EXPECT_FALSE(has_summon_skill(g));   // belt-and-braces
 }
 
 TEST_F(BossDefsTest, GolemComboCommandsAreLegal) {
