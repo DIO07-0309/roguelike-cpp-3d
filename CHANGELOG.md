@@ -1,3 +1,40 @@
+# P1-C8 — 除零崩溃 + 静默丢档 (2026-09-26)
+
+> 排查 `challenge_room_test` 的「顺序依赖」时挖出两个真实缺陷。gdb 实测堆栈显示
+> 崩溃是 `SIGFPE` (算术异常) 而非栈溢出, 定位到 `rng() % total` 的除数 `total == 0`。
+
+- **`random_rarity()` 除零崩溃** (`src/game/entities/item.cpp`)
+  - `RarityConfig` 原本**没有 in-class 默认值**, 注释写着 `{60,25,12,3}` 但数组是
+    零初始化的 → 稀有度权重之和 `total == 0` → `rng() % total` 除零 SIGFPE
+  - `load_item_defs` 的 rarity 块只写「数组里出现的下标」(`i < r["weights"].size()`),
+    数组写短 2 项时未列出的槽位同样靠零初始化兜底 —— 一个改短的 JSON 就能让游戏在
+    **第一次掉落处**崩溃, 不依赖任何测试环境
+  - 修: `RarityConfig` 补默认值 (取 items.json 现值 `1.0/1.2/1.5/2.0` 与 `60/25/12/3`,
+    顺带修正了注释里过期的 `1.5/2.0/3.0`); `random_rarity()` 加 `total <= 0` 守卫
+    作为纵深防御 (配置被显式写成全 0 时兜底 COMMON, 而非崩)
+- **`MetaSystem::save()` 静默丢档** (`src/game/meta_progression.cpp`)
+  - `fopen("saves/meta_save.json","w")` 前不建目录; 运行目录下没有 `saves/` 时 fopen
+    失败直接返回 false, **无任何日志**。灵魂/知识/结局/保底计数全部丢档且无人知晓
+  - `SaveManager` 一直有 `mkdir_impl(_save_dir())` 这步 (save_manager.cpp:69/652),
+    meta 一直缺 —— 补上同款 `_WIN32` 分支宏 `meta_mkdir_impl`
+- **测试顺序依赖彻底消除** (`tests/economy/challenge_room_test.cpp`)
+  - 原先靠 `RewardDataJsonLoads` 「恰好排在前」副作用式加载 items.json / weapons.json,
+    任何 `--gtest_filter` 单跑奖励/tick 用例都会拿到空注册表: 旧症状是除零崩溃,
+    修完除零后症状变成 `0 items + 200 gold` 断言失败
+  - 改用 `testing::AddGlobalTestEnvironment`: 在全部静态初始化完成、任何用例开始前
+    加载一次, 用例排布顺序从此无意义
+  - 未用静态初始化对象 —— 本 TU 链接顺序在 `roguelike_lib` 之前, 可能早于
+    `g_item_defs_registry` 构造, 构成跨 TU 静态初始化顺序 UB
+- **新增 `rarity_fallback_test`** (独立二进制, 5 用例) —— 本文件是**唯一不调用
+  `load_item_defs`** 的测试, 因此是唯一能复现空注册表前置条件的地方; 放进
+  `challenge_room_test` 会被环境先加载而掩盖缺陷。断言: 权重和 > 0、4 个倍率 > 0、
+  空注册表下 `random_rarity()` 4096 次不崩、`generate_random_item()` 安全返回空、
+  20 万次抽样 LEGENDARY 落在 1%..6% 区间 (锁住权重生效)
+- 门禁: Release 0 error · ctest 72/72 (新增 1 个二进制) · validator 0 error 0 warning
+- 验证: 修复前必崩/失败的 8 条 `--gtest_filter` 单跑现已全部 exit=0, 包含历史
+  `TickGrantsLegacyRewardWhenBossWaveMissed` / `PityStreakAccumulatesAcrossPerFloorReset`
+- 已同步桌面测试包 `Roguelike-CPP-3D版`, `saves/` 与 `3D模式.exe.lnk` 未触碰
+
 # B4-T9 — 隐藏压轴: 保底机制 + 概率提示 (2026-09-25, 09-26 落盘修复)
 
 > 用户反馈「一直没有刷出第四波, 钥匙都快用完了」。查证结论:**功能无 bug**,
@@ -48,10 +85,9 @@
   - `save_test.cpp`: `ChallengePityStreakPersistsAcrossReload` —— 落盘往返 +
     删档不丢 + 负数夹取, 并**直查磁盘文本**断言含 `"pity":3`, 防「load() 找不到
     文件 → 内存值原地不动」造成的假通过
-  - ⚠️ **位置约束**: tick 驱动的用例必须排在 `challenge_room_test.cpp` 靠后 ——
-    tick() 依赖前面奖励用例先触发的全局惰性初始化, 排到最前会 0xC000001C 崩在
-    首个 tick 用例。既有 wiring 用例同性质, 已实测确认非本次回归; 建议后续单独立项
-    排查该全局惰性初始化
+   - ~~⚠️ 位置约束~~ **09-26 已解**: 当时判断为「tick() 依赖前面用例先触发的全局
+     惰性初始化, 排到最前会 0xC000001C」。根因已查明并修复, 见下方 P1-C8 ——
+     实为 `random_rarity()` 除零 SIGFPE, 且顺序依赖已用 `GlobalTestEnvironment` 消除
 - **09-26 补盲区**: `floor_lifecycle_test.cpp` 新增 `ChallengePitySurvivesGameSceneRebuild`
   (LIFE-004)。上面 7 个用例全部在同一 controller 实例内连打房间, 结构上看不见
   「对象寿命」这一维 —— 正是本次事故的失败面。该用例驱动 5 次真实
