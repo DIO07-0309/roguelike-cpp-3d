@@ -1,3 +1,77 @@
+# B4-T9 — 隐藏压轴: 保底机制 + 概率提示 (2026-09-25, 09-26 落盘修复)
+
+> 用户反馈「一直没有刷出第四波, 钥匙都快用完了」。查证结论:**功能无 bug**,
+> 判定确实执行 (game.log 两条 `Boss wave roll: miss`), 命中率实测 25.09%
+> (20 万种子, 桶分布 940–1075 无偏)。连空两次概率 75%²=56.25%, 属正常波动。
+> 真问题是设计: 25% 无保底 + 付费前无告知, 玩家无法区分「手气差」与「坏了」。
+
+- **保底机制** (`src/game/world/challenge_room.h/.cpp`)
+  - `has_boss_wave(dungeon_seed, room_index, miss_streak = 0)`: `miss_streak`
+    >= 阈值 3 时强制 HIT, 否则走原 25% 哈希判定 (阈值之下判定逐字节不变)
+  - `kBossWavePityMisses = 3`。分布: 第1间 25% / 第2间累计 43.75% /
+    第3间累计 57.8% / 第4间 100%
+- **概率提示** (`src/game/systems/game_renderer.cpp`, `game_scene.cpp`)
+  - `draw_challenge_choice` 新增 `pity_hint` 参数, 面板 320×140 → 340×174
+  - 付费**前**在选键对话框显示 `隐藏压轴 25% · 连空3次必出`, 有进度时追加
+    `(已空N次)`, 文本由 `ChallengeRoomController::boss_wave_hint()` 从同一组
+    常量生成, 不会与实现漂移
+
+## 09-26 实机打脸 → 保底计数改账号级落盘
+
+> 上线后用户实测: 打了 4 次挑战房仍是 `pity 1/3`。game.log 四行
+> `Boss wave roll: miss (pity 1/3)` + 奖励恒为 230 gold (50+15×12, 都在 F12),
+> 时间戳 23:44 / 00:09 / 00:11 / 00:34 —— 计数从未累积到 2 或 3。
+>
+> **根因**: 日志链路 `SlotSelectScene → FloorSelectScene → 场景切换 -> GameScene`
+> 证明每次进层都是**全新 GameScene 实例**, 原设计把计数放在
+> `ChallengeRoomController::_pity_miss_streak` 里随实例销毁清零; 而地牢每层只有
+> 1 间挑战房, 同一实例内根本攒不够。单测全绿是因为它们在同一进程同一实例内
+> 连续打房间, 覆盖不到「跨实例」这条真实路径。
+
+- 计数迁到**账号级持久化**: `MetaSave::challenge_pity_streak`, 写入
+  `saves/meta_save.json` 的 `"pity"` 字段 (`parse_int` 读, 缺字段回退 0,
+  老档兼容)
+- `tick()` 增 `int* pity_streak = nullptr` 出参 —— 控制器**不再自持**计数,
+  只读传入值并在判定后回写; `nullptr` 表示无保底上下文 (单元测试路径)
+- `GameScene::_challenge_pity_streak`: `enter_floor` 从 meta 载入; 两处 tick
+  调用点 (DUNGEON / CHALLENGE_ARENA) 判定变更后**立即** `set_challenge_pity_streak`
+  落盘 —— 挑战房清空不是存档点, 若只随档位存档写盘, 死亡/退出即丢
+- 删除 `_pity_miss_streak` 成员与 `reset_pity()`: 竞技场不再是特殊上下文,
+  计数是账号级、跨上下文统一累计
+
+- **测试** (7 个新增用例)
+  - `challenge_room_test.cpp`: `PityForcesHitWherePureRollMisses` /
+    `PityBelowCapLeavesRollUntouched` (纯函数) · `PityStreakAccumulatesAcrossPerFloorReset` /
+    `PityGuaranteesBossAfterPityCap` / `PityNullStreakPointerIsSafe` (tick 驱动,
+    房间号由 `first_miss_rooms()` 运行时探测, 不硬编码前提) ·
+    `BossWaveHintSurfacesChanceAndCap`
+  - `save_test.cpp`: `ChallengePityStreakPersistsAcrossReload` —— 落盘往返 +
+    删档不丢 + 负数夹取, 并**直查磁盘文本**断言含 `"pity":3`, 防「load() 找不到
+    文件 → 内存值原地不动」造成的假通过
+  - ⚠️ **位置约束**: tick 驱动的用例必须排在 `challenge_room_test.cpp` 靠后 ——
+    tick() 依赖前面奖励用例先触发的全局惰性初始化, 排到最前会 0xC000001C 崩在
+    首个 tick 用例。既有 wiring 用例同性质, 已实测确认非本次回归; 建议后续单独立项
+    排查该全局惰性初始化
+- **09-26 补盲区**: `floor_lifecycle_test.cpp` 新增 `ChallengePitySurvivesGameSceneRebuild`
+  (LIFE-004)。上面 7 个用例全部在同一 controller 实例内连打房间, 结构上看不见
+  「对象寿命」这一维 —— 正是本次事故的失败面。该用例驱动 5 次真实
+  `make_unique<GameScene>() → enter_floor() → 析构` 重建循环, 断言计数跨实例存活
+  且在第 4 次到达保底上限 (与 seed/房间无关必出)。配合既有
+  `save_test.ChallengePityStreakPersistsAcrossReload` 覆盖的落盘往返, 持久化链条
+  的「存档 → 读档 → 跨实例」两环均有覆盖; 仅剩 `_process` 内 3 行写盘回接未测
+  (驱动需完整场景武装, 成本不成比例)。`game_scene.h` 加只读 accessor
+  `challenge_pity_streak()`, 与既有 `challenge_ctrl()` / `room_mgr()` 同区同款
+  (G9.2 测试访问器), 业务逻辑无需穿透
+  - 注: 该用例会写 `saves/meta_save.json`, 故开头 `g_meta.load()` 对齐内存与磁盘、
+    结束 RAII 还原原值 —— 否则内存默认态写盘会把真实存档冲成空档
+- 门禁: Release 0 error · ctest 71/71 (gtest 用例数 71 → 72) · validator 0 error 0 warning
+- 已同步桌面测试包 `Roguelike-CPP-3D版`, `saves/` 与 `3D模式.exe.lnk` 未触碰
+- 另: 用户桌面存档已手工回填 `"pity":3` (原文件无此字段, 4 次空手未记账),
+  备份 `meta_save.json.bak.pity_backfill`; 字节级校验中文 `deaths` 逐字节未变,
+  字段顺序与 `save()` 一致
+- ⚠️ 顺带发现 (未改, 待立项): `MetaSystem::save()` 不像 `SaveManager::save_game`
+  那样先 `mkdir_impl("saves")`, 若运行目录下无 `saves/` 则 meta 写入静默失败
+
 # P1-C7 — walkable 判定语义统一 (2026-09-22)
 
 > 统一 `_tile_rect_walkable` / `_sim_tile_passable` / `is_rect_walkable` 三套 walkable
