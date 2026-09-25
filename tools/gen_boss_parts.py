@@ -1,4 +1,4 @@
-# A6-S2 批次7: Boss 骨骼分件生成器 (5 Boss / 大 rig 1.4x / 独立骨架)
+# A6-S2 批次7: Boss 骨骼分件生成器 (6 Boss / 大 rig 1.4x / 独立骨架)
 # 产出 boss_<id>_part_*.png + boss_<id>_skeleton.json; 共享 boss_anim.json
 import argparse
 import json
@@ -52,9 +52,13 @@ PALETTES = {
                    "R": (226, 92, 32), "p": (252, 214, 120),
                    "b": (40, 16, 12), "g": (150, 110, 70)},
     "mirror_void": {"s": (30, 26, 52), "m": (54, 46, 88), "l": (84, 72, 132),
-                    "h": (120, 106, 176), "r": (64, 54, 96),
-                    "R": (96, 84, 144), "p": (168, 152, 214),
-                    "b": (16, 12, 28), "g": (96, 88, 70)},
+                     "h": (120, 106, 176), "r": (64, 54, 96),
+                     "R": (96, 84, 144), "p": (168, 152, 214),
+                     "b": (16, 12, 28), "g": (96, 88, 70)},
+    "golem_boss": {"s": (38, 38, 48), "m": (78, 78, 92), "l": (122, 122, 140),
+                   "h": (166, 166, 186), "r": (112, 96, 80),
+                   "R": (146, 144, 162), "p": (204, 204, 220),
+                   "b": (22, 22, 30), "g": (96, 88, 70)},
 }
 
 RAPIER = "|".join(["...ohhl..."] * 26 + ["..oohhho..", "....go....", "....go....", "...oggo..."])
@@ -72,8 +76,9 @@ BOSS = {
     "vampire": ("vampire_boss", "rapier"),
     "fire_demon": ("fire_demon", None),
     "demon_lord": ("mirror_void", "mirror_blade"),
+    "golem": ("golem_boss", None),
 }
-assert len(BOSS) == 5, "BOSS must have exactly 5 entries"
+assert len(BOSS) == 6, "BOSS must have exactly 6 entries"
 
 DECOR = {
     ("shadow_knight", "head"): [(1, 3, 12, 18, "R")],
@@ -89,6 +94,11 @@ DECOR = {
                               (19, 20, 13, 23, "r")],
     ("demon_lord", "head"): [(8, 9, 9, 20, "h")],
     ("demon_lord", "torso"): [(6, 7, 6, 33, "p"), (14, 15, 10, 29, "R")],
+    ("golem", "head"): [(2, 4, 10, 25, "b"), (8, 10, 8, 27, "R")],
+    ("golem", "torso"): [(5, 7, 6, 20, "b"), (12, 14, 22, 35, "R"),
+                         (18, 19, 10, 30, "b")],
+    ("golem", "arm"): [(5, 7, 4, 13, "l")],
+    ("golem", "leg"): [(8, 10, 8, 24, "b")],
 }
 
 

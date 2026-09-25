@@ -207,6 +207,11 @@
       "frame_w": 16,
       "frame_h": 16
     },
+    "boss_golem": {
+      "file": "assets/sprites/mon_golem.png",
+      "frame_w": 16,
+      "frame_h": 16
+    },
     "wall": {
       "file": "assets/sprites/wall.png",
       "frame_w": 16,
@@ -1361,6 +1366,31 @@
     },
     "boss_demon_lord_part_weapon": {
       "file": "assets/sprites/boss_demon_lord_part_weapon.png",
+      "w": 10,
+      "h": 30
+    },
+    "boss_golem_part_torso": {
+      "file": "assets/sprites/boss_golem_part_torso.png",
+      "w": 40,
+      "h": 28
+    },
+    "boss_golem_part_head": {
+      "file": "assets/sprites/boss_golem_part_head.png",
+      "w": 30,
+      "h": 26
+    },
+    "boss_golem_part_arm": {
+      "file": "assets/sprites/boss_golem_part_arm.png",
+      "w": 16,
+      "h": 22
+    },
+    "boss_golem_part_leg": {
+      "file": "assets/sprites/boss_golem_part_leg.png",
+      "w": 32,
+      "h": 28
+    },
+    "boss_golem_part_weapon": {
+      "file": "assets/sprites/boss_golem_part_weapon.png",
       "w": 10,
       "h": 30
     }

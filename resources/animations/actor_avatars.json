@@ -136,6 +136,10 @@
       "skeleton": "resources/animations/boss_fire_demon_skeleton.json",
       "anim": "resources/animations/boss_anim.json"
     },
+    "boss_golem": {
+      "skeleton": "resources/animations/boss_golem_skeleton.json",
+      "anim": "resources/animations/boss_anim.json"
+    },
     "boss_self": {
       "skeleton": "resources/animations/boss_demon_lord_skeleton.json",
       "anim": "resources/animations/boss_anim.json"

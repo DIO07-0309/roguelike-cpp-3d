@@ -698,7 +698,7 @@ TEST(ActorAvatarDefs, RepoDefaultWhitelistCoversA6HumanoidFamily) {
                                             "mon_shadow_assassin", "mon_night_stalker",
                                             "mon_poison_wyrm",
                                             "boss_shadow_knight", "boss_necromancer",
-                                            "boss_vampire", "boss_fire_demon",
+                                            "boss_vampire", "boss_fire_demon", "boss_golem",
                                             "boss_self"};
     ASSERT_EQ(out->size(), expected.size());
     for (const auto& key : expected) {
