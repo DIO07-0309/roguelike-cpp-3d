@@ -1,7 +1,16 @@
 #include <gtest/gtest.h>
+#include <sstream>
+#include <vector>
+#include <memory>
 #include "challenge_room.h"
 #include "combat_system.h"  // 全局 rng (CountingRng::draws 用于证明不消耗)
 #include "player.h"
+#include "item.h"
+#include "reward_manager.h"
+#include "game_map.h"
+#include "monster.h"
+#include "data/item_defs.h"
+#include "data/weapon_defs.h"
 
 static Player make_player(int keys = 3) {
     Player p(0, 0, 200, 100, 10, 5, 3);
@@ -337,3 +346,386 @@ TEST(ChallengeRoomTest, WaveAdvanceTotalWavesUnchanged) {
     EXPECT_FALSE(c.boss_wave_pending());
     EXPECT_FALSE(c.boss_wave_decided());
 }
+
+// ============================================================
+// B4-T4: reward isolation.
+//   The hidden-boss bonus must be additive, so a room that did NOT roll a boss
+//   must receive byte-identical rewards to the pre-B4 code.
+// ============================================================
+
+namespace {
+
+std::string item_signature(const Item& it) {
+    std::ostringstream os;
+    os << it.base_name << "|r" << (int)it.rarity;
+    if (const auto* ch = dynamic_cast<const CharmItem*>(&it)) {
+        os << "|slot=" << ch->slot << "|atk=" << ch->atk_bonus
+           << "|pdef=" << ch->pdef_bonus << "|mdef=" << ch->mdef_bonus
+           << "|wid=" << ch->weapon_def_id << "|skill=" << ch->skill_class_name;
+    } else if (const auto* eq = dynamic_cast<const EquipmentItem*>(&it)) {
+        os << "|slot=" << eq->slot << "|atk=" << eq->atk_bonus
+           << "|pdef=" << eq->pdef_bonus << "|mdef=" << eq->mdef_bonus
+           << "|wid=" << eq->weapon_def_id;
+    } else if (const auto* cs = dynamic_cast<const ConsumableItem*>(&it)) {
+        os << "|eff=" << cs->effect_type << "|val=" << cs->effect_value
+           << "|buf=" << cs->buff_id << "|trig=" << cs->triggers.size();
+    }
+    return os.str();
+}
+
+std::vector<std::string> signatures_of(const Inventory& inv) {
+    std::vector<std::string> sigs;
+    for (const auto& it : inv.items) sigs.push_back(item_signature(*it));
+    return sigs;
+}
+
+struct RewardObservation {
+    std::vector<std::string> signatures;
+    int gold_added = 0;
+    int granted = 0;
+    int dropped = 0;
+    uint64_t draws = 0;
+};
+
+// Verbatim replica of the pre-B4 _grant_rewards body, used as the reference oracle.
+// The drop branch is only reachable when the inventory is full; the tests below
+// that compare draws/gold run it against an empty 16-slot inventory.
+RewardObservation run_legacy_reference(int floor, uint32_t seed) {
+    rng.seed(seed);
+    Player p = make_player(3);
+    RewardObservation obs;
+    obs.gold_added = -p.gold;
+    for (int i = 0; i < 3; i++) {
+        auto item = generate_random_item();
+        int tries = 0;
+        while (item && item->rarity < Rarity::RARE && tries < 5) {
+            item = generate_random_item();
+            tries++;
+        }
+        if (!item) continue;
+        if (p.inventory.add(item, &p)) {
+            obs.granted++;
+        } else {
+            obs.dropped++;
+            (void)item;
+        }
+    }
+    int gold = 50 + floor * 15;
+    RewardManager::grant_gold(p, gold);
+    obs.signatures = signatures_of(p.inventory);
+    obs.gold_added += p.gold;
+    obs.draws = rng.draws;
+    return obs;
+}
+
+RewardObservation run_new_path(int floor, uint32_t seed, bool boss_cleared,
+                              int inventory_capacity = 16) {
+    rng.seed(seed);
+    Player p = make_player(3);
+    p.inventory.max_size = inventory_capacity;
+    ChallengeRoomController c;
+    c.set_room_rect(1, 1, 4, 4);
+    GameMap map(8, 8, 32);
+    std::vector<DroppedItem> drops;
+    int start_gold = p.gold;
+    c.grant_rewards_for_test(p, &map, floor, drops, boss_cleared);
+    RewardObservation obs;
+    obs.signatures = signatures_of(p.inventory);
+    obs.gold_added = p.gold - start_gold;
+    obs.granted = p.inventory.item_count();
+    obs.dropped = (int)drops.size();
+    obs.draws = rng.draws;
+    return obs;
+}
+
+void fill_inventory(Player& p, int count) {
+    for (int i = 0; i < count; i++)
+        p.inventory.items.push_back(
+            std::make_shared<EquipmentItem>("filler", Rarity::COMMON, "armor", 0, 1, 1));
+}
+
+Player new_bonus_player(int inventory_capacity = 16) {
+    Player p = make_player(3);
+    p.inventory.max_size = inventory_capacity;
+    return p;
+}
+
+std::shared_ptr<Item> bonus_item_only(uint32_t seed, int inventory_capacity) {
+    Player p = new_bonus_player(inventory_capacity);
+    fill_inventory(p, inventory_capacity);
+    ChallengeRoomController c;
+    c.set_room_rect(1, 1, 4, 4);
+    GameMap map(8, 8, 32);
+    std::vector<DroppedItem> drops;
+    rng.seed(seed);
+    c.grant_rewards_for_test(p, &map, 1, drops, true);
+    return drops.empty() ? nullptr : drops.back().item;
+}
+
+}  // namespace
+
+TEST(ChallengeRoomTest, RewardDataJsonLoads) {
+    ASSERT_TRUE(load_item_defs("resources/items.json"));
+    ASSERT_TRUE(load_weapon_defs("resources/weapons.json"));
+    ASSERT_TRUE(is_item_defs_loaded());
+    ASSERT_TRUE(is_weapon_defs_loaded());
+}
+
+// --- decide_reward_plan: full truth table over floors 1..30 ---
+
+TEST(ChallengeRoomTest, RewardPlanNoBossMatchesLegacyContract) {
+    for (int floor = 1; floor <= 30; floor++) {
+        RewardPlan plan = ChallengeRoomController::decide_reward_plan(floor, false);
+        EXPECT_EQ(plan.base_item_count, 3)      << "floor " << floor;
+        EXPECT_EQ(plan.base_retry_cap, 5)       << "floor " << floor;
+        EXPECT_EQ(plan.base_rarity_floor, (int)Rarity::RARE) << "floor " << floor;
+        EXPECT_EQ(plan.bonus_item_count, 0)     << "floor " << floor;
+        EXPECT_EQ(plan.bonus_retry_cap, 0)      << "floor " << floor;
+        EXPECT_EQ(plan.bonus_rarity_floor, 0)   << "floor " << floor;
+        EXPECT_EQ(plan.gold, 50 + floor * 15)   << "floor " << floor;
+    }
+}
+
+TEST(ChallengeRoomTest, RewardPlanBossBonusIsAdditiveOnly) {
+    for (int floor = 1; floor <= 30; floor++) {
+        RewardPlan base = ChallengeRoomController::decide_reward_plan(floor, false);
+        RewardPlan boss = ChallengeRoomController::decide_reward_plan(floor, true);
+        // the three base fields must be copied verbatim, never perturbed
+        EXPECT_EQ(boss.base_item_count, base.base_item_count)     << "floor " << floor;
+        EXPECT_EQ(boss.base_retry_cap, base.base_retry_cap)       << "floor " << floor;
+        EXPECT_EQ(boss.base_rarity_floor, base.base_rarity_floor) << "floor " << floor;
+        EXPECT_EQ(boss.bonus_item_count, 1)                       << "floor " << floor;
+        EXPECT_EQ(boss.bonus_retry_cap, 8)                        << "floor " << floor;
+        EXPECT_EQ(boss.bonus_rarity_floor, (int)Rarity::EPIC)     << "floor " << floor;
+        EXPECT_EQ(boss.gold, (int)((50 + floor * 15) * 1.5f))     << "floor " << floor;
+    }
+}
+
+// --- byte-identity: non-boss run must equal the pre-B4 reference oracle ---
+
+TEST(ChallengeRoomTest, NonBossRewardsByteIdenticalToLegacy) {
+    for (uint32_t seed = 1u; seed <= 64u; seed++) {
+        for (int floor = 1; floor <= 5; floor++) {
+            RewardObservation legacy = run_legacy_reference(floor, seed);
+            RewardObservation actual = run_new_path(floor, seed, false);
+            EXPECT_EQ(actual.gold_added, legacy.gold_added)
+                << "floor " << floor << " seed " << seed;
+            EXPECT_EQ(actual.granted, legacy.granted)
+                << "floor " << floor << " seed " << seed;
+            EXPECT_EQ(actual.draws, legacy.draws)
+                << "floor " << floor << " seed " << seed
+                << " RNG stream perturbed by the additive branch";
+            ASSERT_EQ(actual.signatures.size(), legacy.signatures.size())
+                << "floor " << floor << " seed " << seed;
+            for (size_t i = 0; i < legacy.signatures.size(); i++)
+                EXPECT_EQ(actual.signatures[i], legacy.signatures[i])
+                    << "floor " << floor << " seed " << seed << " slot " << i;
+        }
+    }
+}
+
+// --- additivity: the boss run's base items are untouched, exactly one is added ---
+
+TEST(ChallengeRoomTest, BossBonusAppendsExactlyOneItemAfterBase) {
+    for (uint32_t seed = 1u; seed <= 64u; seed++) {
+        for (int floor = 1; floor <= 5; floor++) {
+            RewardObservation base = run_new_path(floor, seed, false);
+            RewardObservation boss = run_new_path(floor, seed, true);
+            ASSERT_EQ(base.signatures.size(), 3u);
+            EXPECT_EQ(boss.signatures.size(), base.signatures.size() + 1u)
+                << "floor " << floor << " seed " << seed;
+            for (size_t i = 0; i < base.signatures.size(); i++)
+                EXPECT_EQ(boss.signatures[i], base.signatures[i])
+                    << "floor " << floor << " seed " << seed << " slot " << i
+                    << " bonus branch must run after the base branch";
+            EXPECT_EQ(boss.gold_added, (int)((50 + floor * 15) * 1.5f))
+                << "floor " << floor << " seed " << seed;
+            EXPECT_GT(boss.draws, base.draws)
+                << "floor " << floor << " seed " << seed;
+        }
+    }
+}
+
+// --- the EPIC floor is reachable through the bonus retry cap, and the cap is respected ---
+
+TEST(ChallengeRoomTest, BossBonusRetriesReachEpic) {
+    int epic_reached = 0;
+    for (uint32_t seed = 1u; seed <= 500u; seed++) {
+        std::shared_ptr<Item> bonus = bonus_item_only(seed, 3);
+        ASSERT_NE(bonus, nullptr) << "seed " << seed << " bonus was never dropped";
+        if (bonus->rarity >= Rarity::EPIC) epic_reached++;
+    }
+    EXPECT_GT(epic_reached, 0)
+        << "EPIC never reached across 500 seeds: bonus floor or retry cap is broken";
+}
+
+TEST(ChallengeRoomTest, BossBonusNeverDrawsBeyondRetryCap) {
+    // Each generate_random_item() consumes 2-5 rng draws (rarity + category +
+    // up to 3 value rolls), so 8 retries + the initial roll caps at 9 * 5 draws.
+    constexpr int kMaxDrawsPerItem = 5;
+    constexpr int kBonusAttempts = 8 + 1;
+    for (uint32_t seed = 1u; seed <= 200u; seed++) {
+        RewardObservation base = run_new_path(1, seed, false);
+        RewardObservation boss = run_new_path(1, seed, true);
+        EXPECT_LE((int)(boss.draws - base.draws), kBonusAttempts * kMaxDrawsPerItem)
+            << "seed " << seed << " bonus consumed more than 8 retries + 1 initial roll";
+    }
+}
+
+// --- inventory overflow: the bonus item falls to the room center ---
+
+TEST(ChallengeRoomTest, BossBonusOverflowsToGroundAtRoomCenter) {
+    ChallengeRoomController c;
+    c.set_room_rect(1, 1, 4, 4);
+    // Exactly 3 slots: the 3 base items fill it, so only the bonus can overflow.
+    Player p = new_bonus_player(3);
+    GameMap map(8, 8, 32);
+    std::vector<DroppedItem> drops;
+    int hp_before = p.combat.current_hp;
+    rng.seed(0xB055u);
+    c.grant_rewards_for_test(p, &map, 1, drops, true);
+    ASSERT_EQ(drops.size(), 1u)
+        << "only the bonus may overflow a 3-slot inventory";
+    EXPECT_EQ(drops[0].tile_x, 3);
+    EXPECT_EQ(drops[0].tile_y, 3);
+    EXPECT_NE(drops[0].item, nullptr);
+    EXPECT_EQ(p.inventory.item_count(), 3);
+    EXPECT_EQ(p.combat.current_hp, hp_before);
+}
+
+// --- the bonus must not be a mainline boss reward ---
+
+TEST(ChallengeRoomTest, BossBonusGrantsNoMainlineBossReward) {
+    ChallengeRoomController c;
+    c.set_room_rect(1, 1, 4, 4);
+    Player p = new_bonus_player(16);
+    GameMap map(8, 8, 32);
+    std::vector<DroppedItem> drops;
+    int hp_before = p.combat.current_hp;
+    int max_hp_before = p.combat.max_hp;
+    const size_t relics_before = p.relics.size();
+    rng.seed(0x601E5u);
+    c.grant_rewards_for_test(p, &map, 10, drops, true);
+    EXPECT_EQ(p.combat.current_hp, hp_before);
+    EXPECT_EQ(p.combat.max_hp, max_hp_before);
+    EXPECT_EQ(p.relics.size(), relics_before)
+        << "the bonus leaked onto the mainline boss relic path";
+    EXPECT_EQ(drops.size(), 0u);
+}
+
+// --- wiring: tick() must gate the bonus on the actual has_boss_wave roll ---
+
+namespace {
+
+struct TickedResult {
+    bool cleared = false;
+    bool pending = false;
+    int items = 0;
+    int gold = 0;
+    int ticks = 0;
+};
+
+TickedResult run_to_cleared(uint32_t seed, int room) {
+    ChallengeRoomController c;
+    Player p = make_player(3);
+    std::vector<std::unique_ptr<Monster>> monsters;
+    std::vector<DroppedItem> drops;
+    GameMap map(8, 8, 32);
+    c.try_activate(p);
+    c.on_player_entered();
+    c.on_doors_locked();
+    c.set_room_rect(1, 1, 4, 4);
+    c.set_phase_for_test(ChallengePhase::WAVE_SPAWNING);
+    TickedResult out;
+    for (int i = 0; i < 40 && !c.is_cleared(); i++) {
+        c.tick(3.5f, &map, &p, monsters, 10, seed, room, drops);
+        out.ticks++;
+    }
+    out.cleared = c.is_cleared();
+    out.pending = c.boss_wave_pending();
+    out.items = p.inventory.item_count();
+    out.gold = p.gold;
+    return out;
+}
+
+}  // namespace
+
+TEST(ChallengeRoomTest, TickGrantsLegacyRewardWhenBossWaveMissed) {
+    ChallengeRoomController probe;
+    uint32_t miss_seed = 0;
+    int miss_room = 0;
+    bool found = false;
+    for (uint32_t seed = 0; seed < 4096u && !found; seed++) {
+        for (int room = 0; room < 64 && !found; room++) {
+            if (!probe.has_boss_wave(seed, room)) {
+                miss_seed = seed;
+                miss_room = room;
+                found = true;
+            }
+        }
+    }
+    ASSERT_TRUE(found);
+    TickedResult res = run_to_cleared(miss_seed, miss_room);
+    ASSERT_TRUE(res.cleared) << "seed " << miss_seed << " room " << miss_room
+                             << " reached " << res.ticks << " ticks without clearing";
+    EXPECT_FALSE(res.pending);
+    EXPECT_EQ(res.items, 3);
+    EXPECT_EQ(res.gold, 100 + 50 + 10 * 15);
+}
+
+TEST(ChallengeRoomTest, TickGrantsBonusOnlyWhenBossWaveRolled) {
+    ChallengeRoomController probe;
+    uint32_t hit_seed = 0;
+    int hit_room = 0;
+    bool found = false;
+    for (uint32_t seed = 0; seed < 4096u && !found; seed++) {
+        for (int room = 0; room < 64 && !found; room++) {
+            if (probe.has_boss_wave(seed, room)) {
+                hit_seed = seed;
+                hit_room = room;
+                found = true;
+            }
+        }
+    }
+    ASSERT_TRUE(found);
+    TickedResult res = run_to_cleared(hit_seed, hit_room);
+    ASSERT_TRUE(res.cleared) << "seed " << hit_seed << " room " << hit_room
+                             << " reached " << res.ticks << " ticks without clearing";
+    EXPECT_TRUE(res.pending);
+    EXPECT_EQ(res.items, 4);
+    EXPECT_EQ(res.gold, 100 + (int)((50 + 10 * 15) * 1.5f));
+}
+
+// Same seed/room, boss rolled and not rolled: the two runs must differ by exactly
+// one item and by the 1.5x gold delta, proving the gate is the whole difference.
+TEST(ChallengeRoomTest, TickBonusDeltaIsExactlyOneItemAndHalfGold) {
+    ChallengeRoomController probe;
+    uint32_t boss_seed = 0;
+    int boss_room = 0;
+    uint32_t none_seed = 0;
+    int none_room = 0;
+    bool found = false;
+    for (uint32_t seed = 0; seed < 4096u && !found; seed++) {
+        for (int room = 0; room < 64 && !found; room++) {
+            if (probe.has_boss_wave(seed, room) &&
+                !probe.has_boss_wave(seed, room + 1)) {
+                boss_seed = none_seed = seed;
+                boss_room = room;
+                none_room = room + 1;
+                found = true;
+            }
+        }
+    }
+    ASSERT_TRUE(found);
+    TickedResult with_bonus = run_to_cleared(boss_seed, boss_room);
+    TickedResult without_bonus = run_to_cleared(none_seed, none_room);
+    ASSERT_TRUE(with_bonus.cleared);
+    ASSERT_TRUE(without_bonus.cleared);
+    EXPECT_EQ(without_bonus.items, 3);
+    EXPECT_EQ(with_bonus.items, without_bonus.items + 1);
+    const int base_gold = 50 + 10 * 15;
+    EXPECT_EQ(without_bonus.gold, 100 + base_gold);
+    EXPECT_EQ(with_bonus.gold, 100 + (int)(base_gold * 1.5f));
+    EXPECT_EQ(with_bonus.gold - without_bonus.gold, base_gold / 2);
+}
+

@@ -39,6 +39,18 @@ struct ChallengeWave {
     float spawn_delay = 3.0f;
 };
 
+// 奖励结算计划 (纯数据, 由 decide_reward_plan 纯函数产出, 便于全真值表测试)
+// *_rarity_floor 存 Rarity 秩 (int), 避免本头文件包含 item.h (后者牵连 raylib.h)
+struct RewardPlan {
+    int base_item_count = 0;
+    int bonus_item_count = 0;
+    int base_retry_cap = 0;
+    int bonus_retry_cap = 0;
+    int base_rarity_floor = 0;
+    int bonus_rarity_floor = 0;
+    int gold = 0;
+};
+
 class ChallengeRoomController {
 public:
     void reset();
@@ -75,6 +87,12 @@ public:
     static WaveAdvance decide_advance(int wave_after_increment, int total_waves,
                                       bool boss_pending);
 
+    // Batch B4: 奖励隔离 —— 结算参数纯函数; boss_cleared=false 必须逐项等于现状契约
+    static RewardPlan decide_reward_plan(int floor, bool boss_cleared);
+    void grant_rewards_for_test(Player& player, GameMap* map, int floor,
+                                std::vector<DroppedItem>& ground_items,
+                                bool boss_cleared);
+
     // Batch 3I: Portal/room getters
     int portal_tx() const { return _portal_tx; }
     int portal_ty() const { return _portal_ty; }
@@ -97,7 +115,7 @@ private:
 
     // Batch B4: 压轴判定结果暂存位. 唯一写入点是 COMBAT 全灭分支 (_current_wave 首次
     // 抵达 _total_waves 时判定一次); 按房间清位在 on_doors_locked(), 按层兜底在 reset().
-    // _grant_rewards 读 pending 以决定是否叠加压轴奖励 (Task 5).
+    // _grant_rewards 读 pending 以决定是否叠加压轴奖励.
     bool _boss_wave_decided = false;
     bool _boss_wave_pending = false;
 
@@ -108,7 +126,10 @@ private:
                           std::vector<std::unique_ptr<Monster>>& monsters,
                           int floor);
     void _grant_rewards(Player& player, GameMap* map, int floor,
-                        std::vector<DroppedItem>& ground_items);
+                        std::vector<DroppedItem>& ground_items, bool boss_cleared);
+    // rarity_floor 以 int 传 Rarity 秩, 避免本头文件包含 item.h (后者牵连 raylib.h)
+    int _grant_items(Player& player, std::vector<DroppedItem>& ground_items,
+                     int count, int rarity_floor, int retry_cap);
     bool _room_contains(int tx, int ty) const;
     uint32_t _deterministic_seed(uint32_t dungeon_seed, int room_index, int wave_index) const;
     static const char* _pick_monster_type(int floor, int wave, uint32_t rng);

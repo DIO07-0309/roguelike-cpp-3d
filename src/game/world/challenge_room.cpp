@@ -41,6 +41,27 @@ namespace {
 // 属不同哈希域, 判定不改变小怪波构成, 故存档/回放可比性不被破坏.
 constexpr int kBossWaveSlot = 99;
 constexpr int kBossWaveChancePct = 25;
+
+// B4-T4: 奖励结算参数. 基础三项是现状契约; 压轴加成仅在 boss_cleared 时叠加,
+// 不改写基础项, 因此未出 boss 的房间与改造前逐字节一致.
+constexpr int kBaseRewardItems = 3;
+constexpr int kBaseRewardRetries = 5;
+constexpr int kBossBonusItems = 1;
+constexpr int kBossBonusRetries = 8;
+constexpr int kRewardGoldBase = 50;
+constexpr int kRewardGoldPerFloor = 15;
+constexpr float kBossRewardGoldMult = 1.5f;
+
+// 复刻现状内联重试: 先抽一次, 稀有度不足且未超上限则重抽.
+std::shared_ptr<Item> roll_item_at_least(int rarity_floor, int retry_cap) {
+    std::shared_ptr<Item> item = generate_random_item();
+    int tries = 0;
+    while (item && item->rarity < static_cast<Rarity>(rarity_floor) && tries < retry_cap) {
+        item = generate_random_item();
+        tries++;
+    }
+    return item;
+}
 }
 
 bool ChallengeRoomController::has_boss_wave(uint32_t dungeon_seed,
@@ -174,7 +195,7 @@ void ChallengeRoomController::tick(
                 _phase = ChallengePhase::WAIT_NEXT_WAVE;
             } else {
                 _phase = ChallengePhase::REWARD;
-                _grant_rewards(*player, map, floor, ground_items);
+                _grant_rewards(*player, map, floor, ground_items, _boss_wave_pending);
                 _return_portal_tx = _room_rx + _room_rw / 2;
                 _return_portal_ty = _room_ry + _room_rh / 2;
                 _phase = ChallengePhase::CLEARED;
@@ -280,32 +301,57 @@ void ChallengeRoomController::_spawn_boss_wave(
     LOG_INFO("[CHALLENGE] Boss wave spawned at tile %d,%d (floor %d)", cx, cy, floor);
 }
 
-void ChallengeRoomController::_grant_rewards(Player& player, GameMap* map, int floor,
-                                              std::vector<DroppedItem>& ground_items) {
-    int granted = 0;
-    for (int i = 0; i < 3; i++) {
-        auto item = generate_random_item();
-        int tries = 0;
-        while (item && item->rarity < Rarity::RARE && tries < 5) {
-            item = generate_random_item();
-            tries++;
-        }
-        if (!item) continue;
+RewardPlan ChallengeRoomController::decide_reward_plan(int floor, bool boss_cleared) {
+    RewardPlan plan;
+    plan.base_item_count = kBaseRewardItems;
+    plan.base_retry_cap = kBaseRewardRetries;
+    plan.base_rarity_floor = static_cast<int>(Rarity::RARE);
+    plan.gold = kRewardGoldBase + floor * kRewardGoldPerFloor;
+    if (boss_cleared) {
+        plan.bonus_item_count = kBossBonusItems;
+        plan.bonus_retry_cap = kBossBonusRetries;
+        plan.bonus_rarity_floor = static_cast<int>(Rarity::EPIC);
+        plan.gold = static_cast<int>(plan.gold * kBossRewardGoldMult);
+    }
+    return plan;
+}
 
+void ChallengeRoomController::grant_rewards_for_test(Player& player, GameMap* map, int floor,
+                                                      std::vector<DroppedItem>& ground_items,
+                                                      bool boss_cleared) {
+    _grant_rewards(player, map, floor, ground_items, boss_cleared);
+}
+
+int ChallengeRoomController::_grant_items(Player& player,
+                                          std::vector<DroppedItem>& ground_items,
+                                          int count, int rarity_floor, int retry_cap) {
+    int granted = 0;
+    for (int i = 0; i < count; i++) {
+        std::shared_ptr<Item> item = roll_item_at_least(rarity_floor, retry_cap);
+        if (!item) continue;
         if (player.inventory.add(item, &player)) {
             granted++;
-        } else {
-            int cx = _room_rx + _room_rw / 2;
-            int cy = _room_ry + _room_rh / 2;
-            DroppedItem di;
-            di.item = std::move(item);
-            di.tile_x = cx;
-            di.tile_y = cy;
-            ground_items.push_back(std::move(di));
+            continue;
         }
+        DroppedItem di;
+        di.item = std::move(item);
+        di.tile_x = _room_rx + _room_rw / 2;
+        di.tile_y = _room_ry + _room_rh / 2;
+        ground_items.push_back(std::move(di));
     }
+    return granted;
+}
 
-    int gold = 50 + floor * 15;
-    RewardManager::grant_gold(player, gold);
-    LOG_INFO("[CHALLENGE] Rewards: %d items + %d gold", granted, gold);
+void ChallengeRoomController::_grant_rewards(Player& player, GameMap* map, int floor,
+                                              std::vector<DroppedItem>& ground_items,
+                                              bool boss_cleared) {
+    RewardPlan plan = decide_reward_plan(floor, boss_cleared);
+    int granted = _grant_items(player, ground_items, plan.base_item_count,
+                               plan.base_rarity_floor, plan.base_retry_cap);
+    if (boss_cleared)
+        granted += _grant_items(player, ground_items, plan.bonus_item_count,
+                                plan.bonus_rarity_floor, plan.bonus_retry_cap);
+    RewardManager::grant_gold(player, plan.gold);
+    LOG_INFO("[CHALLENGE] Rewards: %d items + %d gold%s",
+             granted, plan.gold, boss_cleared ? " (boss cleared)" : "");
 }
