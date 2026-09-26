@@ -5,12 +5,36 @@
 #include "config.h"
 #include "audio_server.h"
 #include "rendering/sprite_renderer.h"
+#include "rendering/effect_drawer.h"      // G10.11: 通用特效原语 (ring/spark)
+#include "systems/vfx_server.h"           // G10.11: 拾取 VFX
 #include "resources/resource_manager.h"
 #include "core/logger.h"
+#include <algorithm>
 #include <cmath>
 
 extern Font g_font, g_font_small;
 extern bool g_font_loaded;
+
+// G10.11: 交互提示气泡 — 黑底黄字小标签 (镜像 game_scene.cpp 同名实现)
+static void _draw_interact_hint(const char* text, float cx, float cy) {
+    if (!g_font_loaded) return;
+    float tw = MeasureTextEx(g_font_small, text, 10, 1).x;
+    DrawRectangle((int)(cx - tw/2 - 4), (int)(cy - 5), (int)(tw + 8), 17,
+                  {25, 25, 30, 210});
+    DrawRectangleLines((int)(cx - tw/2 - 4), (int)(cy - 5), (int)(tw + 8), 17,
+                       {255, 210, 60, 220});
+    DrawTextEx(g_font_small, text, {cx - tw/2, cy - 3}, 10, 1,
+               {255, 225, 110, 255});
+}
+
+// G10.11: 拾取距离判定 — 与 _input 的实际拾取半径同源, 提示不会撒谎
+static bool _in_pickup_range(const Player* p, const DroppedItem& d) {
+    float ix = p->entity.rect.x + p->entity.rect.width/2;
+    float iy = p->entity.rect.y + p->entity.rect.height/2;
+    float tx = d.tile_x * TILE_SIZE + TILE_SIZE/2;
+    float ty = d.tile_y * TILE_SIZE + TILE_SIZE/2;
+    return std::hypot(ix - tx, iy - ty) <= PICKUP_RANGE * TILE_SIZE;
+}
 
 void TutorialScene::_ready() {
     name = "TutorialScene";
@@ -27,6 +51,9 @@ void TutorialScene::_ready() {
     monsters.clear();
     monsters.push_back(create_tutorial_dummy(8, 4));
     ground_items = create_tutorial_items(6, 5);
+    effects.clear();          // G10.11: 重进教程不复用上次特效
+    pickup_msg.clear();
+    pickup_msg_timer = 0.0f;
 
     // G10.8-fix: 教程漆黑回归 — G10.4 后地图渲染依赖 is_explored,
     // 教程从未调用 update_fov → 全部 tile 被可见性剔除 → 黑屏
@@ -39,6 +66,10 @@ void TutorialScene::_ready() {
 void TutorialScene::_process(double delta) {
     if (!player) return;
     float dt = (float)delta;
+
+    // G10.11: 特效计时与飘字 — 放在 HitStop 之前, 停顿期间视觉继续走完
+    effect_drawer::update_effects(effects, dt);
+    if (pickup_msg_timer > 0.0f) pickup_msg_timer -= dt;
 
     // G10.8-B1: HitStop 冻结期间暂停模拟 (表现层停顿)
     if (_tutorial_hitstop > 0.0f) {
@@ -108,29 +139,28 @@ void TutorialScene::_render() {
     // 实体
     for (auto& m : monsters) m->draw(cam_x, cam_y);
     if (player) player->draw_no_cam(cam_x, cam_y);
+    _draw_monster_labels();   // G10.11: 怪物名条 (与主游戏一致)
 
-    // 掉落物 (M3: 与主游戏同款 — 数据驱动精灵 + 稀有度光环, 替代纯色块)
-    for (auto& d : ground_items) {
-        float px = d.tile_x * TILE_SIZE - cam_x + 2;
-        float py = d.tile_y * TILE_SIZE - cam_y + 2;
-        float size = TILE_SIZE - 4;
-        float cx = px + size / 2, cy = py + size / 2;
-        const char* ikey = item_icon_key(d.item.get());
-        bool drew = false;
-        if (ikey) {
-            SpriteDef xd; xd.frame_w = 16; xd.frame_h = 16;
-            Texture2D itex = ResourceManager::inst().sprite_by_key(ikey, xd);
-            if (itex.id > 0) {
-                float pulse = 6 + sinf((float)GetTime() * 5 + px * 0.1f) * 3;
-                DrawRectangleLinesEx({cx - pulse, cy - pulse, pulse * 2, pulse * 2}, 1,
-                                     rarity_color(d.item->rarity));
-                SpriteRenderer::draw_sprite(itex, xd, 0,
-                    {cx - size/2, cy - size/2, size, size});
-                drew = true;
-            }
-        }
-        if (!drew)   // 贴图缺失 fallback: 原色块 + 光环
-            DrawRectangle(px, py, size, size, d.item->color);
+    // 掉落物 (G10.11: 与主游戏 _draw_ground_items 同构)
+    _draw_ground_items();
+
+    // G10.11: 特效 (世界坐标, 盖在实体之上)
+    for (auto& e : effects) {
+        float t = e.elapsed - e.start_delay;
+        if (t < 0.0f) continue;
+        effect_drawer::draw_generic_effect(e, e.world_x - cam_x,
+                                           e.world_y - cam_y, t);
+    }
+
+    // G10.11: 拾取飘字 — 居中确认, 末尾 0.3s 淡出 (与主游戏 room_msg 同款)
+    if (g_font_loaded && !pickup_msg.empty() && pickup_msg_timer > 0.0f) {
+        std::string line = "+ " + pickup_msg;
+        float tw = MeasureTextEx(g_font_small, line.c_str(), 18, 1).x;
+        unsigned char a = (unsigned char)std::min(255.0f,
+                              pickup_msg_timer / 0.3f * 255.0f);
+        DrawTextEx(g_font_small, line.c_str(),
+            {(float)sw/2 - tw/2, (float)sh/2 - 60}, 18, 1,
+            Color{255, 215, 110, a});
     }
 
     // 背包面板
@@ -216,6 +246,69 @@ void TutorialScene::_render() {
         DrawTextEx(g_font_small, "WASD移动 | 空格攻击 | E交互 | B背包 | Shift翻滚 | P跳过本步 | T退出",
             {(float)sw/2 - 260, (float)(sh - 24)}, 14, 1, {140, 140, 140, 255});
     }
+}
+
+void TutorialScene::_draw_ground_items() {
+    for (auto& d : ground_items) {
+        if (!game_map->isVisible(d.tile_x, d.tile_y)) continue;   // 可见性门控
+        float px = d.tile_x * TILE_SIZE - cam_x;
+        float py = d.tile_y * TILE_SIZE - cam_y;
+        float size = TILE_SIZE - 4;
+        float cx = px + TILE_SIZE/2, cy = py + TILE_SIZE/2;
+        float pulse = 6 + sinf((float)GetTime() * 5 + px * 0.1f) * 3;
+        bool drew = false;
+
+        const char* ikey = item_icon_key(d.item.get());
+        if (ikey) {
+            SpriteDef xd;   // sprite_by_key 会从 sprites.json 覆写帧尺寸
+            Texture2D itex = ResourceManager::inst().sprite_by_key(ikey, xd);
+            if (itex.id > 0) {
+                DrawRectangleLinesEx({cx - pulse, cy - pulse, pulse * 2, pulse * 2}, 1,
+                                     rarity_color(d.item->rarity));
+                SpriteRenderer::draw_sprite(itex, xd, 0,
+                    {cx - size/2, cy - size/2, size, size});
+                drew = true;
+            }
+        }
+        if (!drew) {   // 贴图缺失回退: 圆角 + 描边 + 压暗光环 (与主游戏一致)
+            DrawRectangleLinesEx({cx - pulse, cy - pulse, pulse * 2, pulse * 2}, 1,
+                                 Color{(unsigned char)(d.item->color.r / 3),
+                                        (unsigned char)(d.item->color.g / 3),
+                                        (unsigned char)(d.item->color.b / 3), 200});
+            DrawRectangleRounded({px + 2, py + 2, size, size}, 0.1f, 4, d.item->color);
+            DrawRectangleRoundedLines({px + 2, py + 2, size, size}, 0.1f, 4, 1, BLACK);
+        }
+        if (player && _in_pickup_range(player.get(), d))
+            _draw_interact_hint("E 拾取", cx, cy - TILE_SIZE/2 - 8);
+    }
+}
+
+void TutorialScene::_draw_monster_labels() {
+    if (!g_font_loaded) return;
+    for (auto& m : monsters) {
+        if (m->name.empty()) continue;
+        if (!game_map->isVisible((int)(m->entity.rect.x / TILE_SIZE),
+                                 (int)(m->entity.rect.y / TILE_SIZE))) continue;
+        float mx = m->entity.rect.x + m->entity.rect.width/2 - cam_x;
+        float my = m->entity.rect.y - 14 - cam_y;
+        Color nc = m->is_boss  ? Color{255, 80, 40, 200}
+                  : m->is_elite ? Color{255, 180, 60, 180}
+                  : Color{200, 200, 200, 140};
+        float tw = MeasureTextEx(g_font_small, m->name.c_str(), 10, 1).x;
+        DrawTextEx(g_font_small, m->name.c_str(), {mx - tw/2, my - 4}, 10, 1, nc);
+    }
+}
+
+void TutorialScene::_on_pickup(const std::string& name) {
+    get_tree()->get_audio()->play_sfx("pickup", 0.55f);   // 与主游戏音量对齐
+    float px = player->entity.rect.x + player->entity.rect.width/2;
+    float py = player->entity.rect.y + player->entity.rect.height/2;
+    VFXServer vfx;
+    vfx.ring(px, py, 22.0f, Color{255, 200, 120, 200}, 2, 0.35f);
+    vfx.spark_burst(px, py, 8, Color{255, 220, 160, 210}, 0.30f);
+    for (auto& e : vfx.effects) effects.push_back(e);
+    pickup_msg = "拾取: " + name;
+    pickup_msg_timer = 2.5f;
 }
 
 void TutorialScene::_input(const InputMap& input) {
@@ -334,11 +427,14 @@ void TutorialScene::_input(const InputMap& input) {
                                      player->entity.rect.y + player->entity.rect.height/2 - py);
             if (dist < bd) { bd = dist; best = &d; }
         }
-        if (best && player->inventory.add(best->item, player.get())) {
-            auto it = std::find_if(ground_items.begin(), ground_items.end(),
-                [&](auto& x) { return &x == best; });
-            if (it != ground_items.end()) ground_items.erase(it);
-            get_tree()->get_audio()->play_sfx("pickup");
+        if (best) {
+            std::string name = best->item->base_name;
+            if (player->inventory.add(best->item, player.get())) {
+                auto it = std::find_if(ground_items.begin(), ground_items.end(),
+                    [&](auto& x) { return &x == best; });
+                if (it != ground_items.end()) ground_items.erase(it);
+                _on_pickup(name);   // G10.11: 音效 + VFX + 飘字
+            }
         }
     }
     if (input.is_action_just_pressed("inventory")) {

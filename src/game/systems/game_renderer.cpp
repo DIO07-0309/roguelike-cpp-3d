@@ -16,6 +16,7 @@
 #include "resource_manager.h"                 // M4f.2
 #include "game/rendering/sprite_renderer.h"   // M4f.2
 #include "particle_system.h"                 // A9: 粒子系统
+#include "rendering/effect_drawer.h"         // G10.11: 通用特效原语
 #include <cmath>
 #include <algorithm>
 #include <cstdio>
@@ -238,29 +239,16 @@ static void _draw_slash_arc(const Effect& e, float sx, float sy,
     }
 }
 
-// M4f.2: 纹理爆点 (VFX 接入管线; 缺纹理回退几何圆)
+// M4f.2: 纹理爆点 — 委托共享实现 (G10.11 抽出, TutorialScene 复用)
 static void _draw_fx_blast(float sx, float sy, float base_r,
-                           const Color& c, int alpha_scale) {
-    char key[28];
-    snprintf(key, sizeof(key), "fx_%02x%02x%02x", c.r, c.g, c.b);
-    Texture2D tex = ResourceManager::inst().procedural_fx(
-        key, (Color){c.r, c.g, c.b, 255});
-    if (tex.id > 0) {
-        SpriteDef sd; sd.frame_w = 32; sd.frame_h = 32;
-        float r = base_r * 2;
-        SpriteRenderer::draw_sprite(tex, sd, 0,
-            {sx - r, sy - r, r * 2, r * 2},
-            Color{255, 255, 255, (unsigned char)alpha_scale});
-    } else {
-        DrawCircle(sx, sy, base_r, c);
-    }
+                            const Color& c, int alpha_scale) {
+    effect_drawer::draw_blast(sx, sy, base_r, c, alpha_scale);
 }
 
 // 环形脉冲 (pulse/ring/默认分支共用)
 static void _draw_fx_ring(float sx, float sy, float radius, float prog,
                           const Color& c, int seg) {
-    float r = radius * (0.5f + 0.5f * prog);
-    DrawRing({sx, sy}, r * 0.6f, r, 0, 360, seg, c);
+    effect_drawer::draw_ring(sx, sy, radius, prog, c, seg);
 }
 
 // ============================================================
