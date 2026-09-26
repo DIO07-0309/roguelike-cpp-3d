@@ -95,11 +95,11 @@ F15 镜像 Boss 读你的行为画像（攻防倾向/走位偏好/技能习惯�
 
 ## 技术细节（开发者看这）
 
-- **61 个 ctest 全绿** · 确定性模拟器（同种子字节级复现，`--sim N` 批量平衡评估）
+- **72 个 ctest 全绿** · 确定性模拟器（同种子字节级复现，`--sim N` 批量平衡评估）
 - **AI 研究平台**：行为树 / MCTS / Q-Learning / 镜像学习（行为克隆 + n-gram 战术链 + Thompson 采样五层仲裁）
 - **架构**：组合优于继承（5 Director 组合）、EventBus 45 事件、数据驱动 Registry、函数 ≤40 行规范
 
-→ 完整技术文档：**[docs/TECH.md](docs/TECH.md)** · 架构权威：[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · 开发流水：[CHANGELOG.md](CHANGELOG.md)
+→ 完整技术文档：**[docs/TECH.md](https://github.com/DIO07-0309/roguelike-cpp/blob/master/docs/TECH.md)** · 架构权威：[docs/ARCHITECTURE.md](https://github.com/DIO07-0309/roguelike-cpp/blob/master/docs/ARCHITECTURE.md) · 开发流水：[CHANGELOG.md](https://github.com/DIO07-0309/roguelike-cpp/blob/master/CHANGELOG.md)
 
 ## Current Limitations
 
