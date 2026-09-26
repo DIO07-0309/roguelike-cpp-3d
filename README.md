@@ -1,4 +1,4 @@
-<p align="center"><img src="assets/brand/roguelike.png" width="160" alt="回响深渊 Abyssal Echo 剑与门图标"></p>
+﻿<p align="center"><img src="assets/brand/roguelike.png" width="160" alt="回响深渊 Abyssal Echo 剑与门图标"></p>
 
 <h1 align="center">回响深渊 Abyssal Echo</h1>
 
@@ -28,13 +28,13 @@
 
 ## 快速开始
 
-**方式一 · 即玩（推荐）**：GitHub [Release 页](https://github.com/DIO07-0309/roguelike-cpp/releases) 下载 zip → 解压 → 双击 `roguelike_cpp.exe`。exe 自包含运行库，无需任何环境。
+**方式一 · 即玩（推荐）**：GitHub [Release 页](https://github.com/DIO07-0309/roguelike-cpp-3d/releases) 下载 zip → 解压 → 双击 `roguelike_cpp.exe`。exe 自包含运行库，无需任何环境。
 
 **方式二 · 源码构建**（第三方库已入库，clone 即编译）：
 
 ```bash
-git clone https://github.com/DIO07-0309/roguelike-cpp.git
-cd roguelike-cpp
+git clone https://github.com/DIO07-0309/roguelike-cpp-3d.git
+cd roguelike-cpp-3d
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 build/roguelike_cpp.exe
@@ -99,7 +99,7 @@ F15 镜像 Boss 读你的行为画像（攻防倾向/走位偏好/技能习惯�
 - **AI 研究平台**：行为树 / MCTS / Q-Learning / 镜像学习（行为克隆 + n-gram 战术链 + Thompson 采样五层仲裁）
 - **架构**：组合优于继承（5 Director 组合）、EventBus 45 事件、数据驱动 Registry、函数 ≤40 行规范
 
-→ 完整技术文档：**[docs/TECH.md](https://github.com/DIO07-0309/roguelike-cpp/blob/master/docs/TECH.md)** · 架构权威：[docs/ARCHITECTURE.md](https://github.com/DIO07-0309/roguelike-cpp/blob/master/docs/ARCHITECTURE.md) · 开发流水：[CHANGELOG.md](https://github.com/DIO07-0309/roguelike-cpp/blob/master/CHANGELOG.md)
+→ 完整技术文档：**[docs/TECH.md](https://github.com/DIO07-0309/roguelike-cpp-3d/blob/master/docs/TECH.md)** · 架构权威：[docs/ARCHITECTURE.md](https://github.com/DIO07-0309/roguelike-cpp-3d/blob/master/docs/ARCHITECTURE.md) · 开发流水：[CHANGELOG.md](https://github.com/DIO07-0309/roguelike-cpp-3d/blob/master/CHANGELOG.md)
 
 ## Current Limitations
 
