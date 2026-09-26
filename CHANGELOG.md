@@ -1,3 +1,29 @@
+# P1-C10 — 文档欠账清理 + 一处误判撤销 (2026-09-26)
+
+> 触发点: 盘点下一步时, 发现文档里两条「遗留技术债」其实早已收口, 是文档过期
+> 而非代码欠账。按过期 TODO 照做会白做一轮。
+
+- **README P1-C7 遗留 TODO 已过期** (`README.md`)
+  - 原文说 `_tile_rect_walkable` / `is_rect_walkable` / `_sim_tile_passable` **三套**
+    walkable 语义不统一, 需单一入口 + 判定测试矩阵
+  - 复核实际状态: `_sim_tile_passable` **已删除** (全仓库仅存于历史注释);
+    Sim 单 tile 判定已统一到 `GameMap::is_passable_sim` (唯一真源, 含
+    LOCKED/SEALED 门阻断)。`_tile_rect_walkable` 只是它的 3 行 null 保护 wrapper
+  - 真正剩下的分叉: 矩形级 `is_rect_walkable` 走 `_tiles[].is_walkable` 标志位、
+    与门状态不联动。而 `player_controller.cpp:194` 已注明这是**有意的边界处理**,
+    不是缺陷。结论: 该专项已收口, 非缺陷
+- **CHANGELOG mkdir 待立项条目已过期** —— 见该条目自身的撤销标记 (P1-C8 已修)
+- **`sim_ai.cpp` 历史注释引用已删函数** (`_sim_tile_passable`) —— 重写为当前状态,
+  并补上「矩形级 is_rect_walkable 与门状态不联动」的边界说明指向
+- **一处误判撤销: `mark_cleared()` 不是死代码**
+  - 初判「零调用方」是因为只 grep 了 `src/`。补查 `tests/` 后它有 9 个调用点
+    (`challenge_portal_test.cpp` ×7, `challenge_room_test.cpp` ×2)
+  - 它是合法的测试钩子, 与既有 `set_phase_for_test` / `grant_rewards_for_test`
+    同类 (生产不接、测试驱动状态机)。已保留, 未删
+  - 教训: 判定死代码必须全仓库搜, 测试目录是生产代码合法消费者的常见来源
+- 门禁: Release 0 error · ctest 72/72 · validator 0 error 0 warning
+- 代码改动仅注释, 无逻辑变更; 未触碰 JSON
+
 # P1-C9 — 挑战房结算回执 + 掉落提示 (2026-09-26)
 
 > 实机打穿压轴那次的日志: `Rewards: 0 items + 345 gold (boss wave bonus)`。
@@ -141,8 +167,10 @@
 - 另: 用户桌面存档已手工回填 `"pity":3` (原文件无此字段, 4 次空手未记账),
   备份 `meta_save.json.bak.pity_backfill`; 字节级校验中文 `deaths` 逐字节未变,
   字段顺序与 `save()` 一致
-- ⚠️ 顺带发现 (未改, 待立项): `MetaSystem::save()` 不像 `SaveManager::save_game`
-  那样先 `mkdir_impl("saves")`, 若运行目录下无 `saves/` 则 meta 写入静默失败
+- ~~⚠️ 顺带发现 (未改, 待立项): `MetaSystem::save()` 不像 `SaveManager::save_game`
+  那样先 `mkdir_impl("saves")`, 若运行目录下无 `saves/` 则 meta 写入静默失败~~
+  **已在 P1-C8 修复** (2026-09-26) —— 见下方 P1-C8 章节。此条目当时确实待立项,
+  修完后忘了回来销账, 属文档欠账 (P1-C10 一并清理)
 
 # P1-C7 — walkable 判定语义统一 (2026-09-22)
 

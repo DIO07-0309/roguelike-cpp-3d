@@ -380,9 +380,10 @@ static bool _boss_winding_up(const Monster* m) {
 }
 
 // Q3.2: tile 级 rect 碰撞判定 — BFS 与真实移动(rect)对齐, 防 tile可行走但玩家进不去导致的卡墙
-// P1-C7: Sim 决策走判定 — 统一入口 GameMap::is_passable_sim.
-//        原实现 (CLOSED 特判 + is_rect_walkable) 与 _sim_tile_passable 语义分歧,
-//        现已合并 (见 game_map.cpp is_passable_sim 注释).
+// P1-C7: Sim 单 tile 通行性已统一到 GameMap::is_passable_sim (唯一真源, 含
+//        LOCKED/SEALED 门阻断); 本函数只做 null 保护。旧的双轨实现
+//        _sim_tile_passable 已删除。矩形级 is_rect_walkable 仍走 tile 标志位、
+//        与门状态不联动, 该边界见 player_controller.cpp:194 注释 (有意为之)。
 static bool _tile_rect_walkable(const GameMap* map, int tx, int ty) {
     return map ? map->is_passable_sim(tx, ty) : false;
 }

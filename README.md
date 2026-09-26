@@ -170,7 +170,7 @@ F15 镜像 Boss 读你的行为画像（攻防倾向/走位偏好/技能习惯�
   - **卡死行为链**：BFS 定向朝怪 / 近身直接攻击 / 近身战豁免 / progressed 三源信号 / 传送失败反向拉怪 / 强开 3x3 CLOSED 门；传送落 CLOSED 门允许+落地即开。
   - **sim 整格步进**（位置恒格点、rect 落单 tile，决策/执行一致）；**拾取冷却+3 次失败放弃**（破 pickup 死循环）；**路径记忆等距锁定**（破对称双路径震荡）；怪物生成排除门 tile + rect 级校验。
   - 门禁：Release 0 error · ctest 68/68 · World Validator 0/0。avg_floor 1.0 → 1.1~4.5。
-  - 遗留 TODO（P1-C7 专项）：`_tile_rect_walkable` / `is_rect_walkable` / `_sim_tile_passable` 三套 walkable 语义不统一，需单一入口 + 判定测试矩阵。
+  - ~~遗留 TODO（P1-C7 专项）：`_tile_rect_walkable` / `is_rect_walkable` / `_sim_tile_passable` 三套 walkable 语义不统一，需单一入口 + 判定测试矩阵。~~ **已收口**（2026-09-26 复核）：`_sim_tile_passable` 已删除，Sim 单 tile 判定统一到 `GameMap::is_passable_sim`（唯一真源，含 LOCKED/SEALED 门阻断）。仅剩矩形级 `is_rect_walkable` 走 tile 标志位、与门状态不联动，且 `player_controller.cpp:194` 已注明是有意的边界处理 —— 非缺陷。
 - G13（开发版，未发布）：sim 卡死脱困死锁修复 + 卡死看门狗。
   - **死锁**：卡死 ≥8s 后调用兜底传送，成功与失败都无条件 `return "none"` 且不重置计时；传送失败（最近怪隔墙不同房间）即每帧空转直到烧满 36000 帧。修复为传送失败回落旋转脱困。原 50 行卡死判定块从 `best_action()` 抽出为 `_stuck_escape` (38 行) + `_rotation_escape` (12 行)。
   - **看门狗**：新信号 `sim_stuck_watchdog`，按本局**累计卡死时长** 120s（36000 帧预算约 600s 的 1/5）强制结算为 `STUCK_RECOVERED`。不用"传送失败次数"——传送会周期性成功清零计数，seed21 五局全部因此漏报。阈值取值实测调优，240s 反而更差。
