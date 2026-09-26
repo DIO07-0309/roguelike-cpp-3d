@@ -36,6 +36,9 @@ SceneTree::SceneTree(int w, int h, const char* title) {
         }
     }
     InitAudioDevice();
+    // raylib 5.0 把 InitAudioDevice 改为 void, 失败需用 IsAudioDeviceReady 探测
+    if (!IsAudioDeviceReady())
+        LOG_WARN("音频: 音频设备不可用 — 全程静音, 渲染/输入不受影响");
     SetExitKey(0);
     center_active_window();
     // M6-i.1: 取证静默 — 仅移出屏幕 (不最小化: 最小化会触发 OS 帧节流,
@@ -55,6 +58,10 @@ SceneTree::SceneTree(int w, int h, const char* title) {
 
 SceneTree::~SceneTree() {
     if (_root) { _root->_propagate_exit_tree(); _root.reset(); }
+    // 释放 SFX/BGM 缓冲: AudioServer::close 此前零调用点 → 全部泄漏到进程退出
+    // (main 已先调 CloseAudioDevice; UnloadAudioStream 在 audioDevice.isReady==false
+    //  时跳过 Pa_StopStream 只释放缓冲区, 故此处顺序安全)
+    if (_audio) _audio->close();
     UnloadRenderTexture(_target);
     CloseWindow();
 }

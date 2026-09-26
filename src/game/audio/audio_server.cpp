@@ -5,6 +5,7 @@
 #include <cmath>
 #include <random>
 #include <cstring>
+#include <unordered_set>
 
 // ---- 将样本数组打包为 Raylib Sound ----
 static Sound _vec_to_sound(const std::vector<short>& data) {
@@ -175,6 +176,23 @@ static Sound _compile_ui_confirm() {
     return _vec_to_sound(result);
 }
 
+// 门开启 — 门轴摩擦噪声 + 低频沉降
+// (此前 player_controller/game_scene_input 共 4 处 play_sfx("door_open") 从未注册, 开门完全无声)
+static Sound _compile_door_open() {
+    float dur = 0.28f; int n = (int)(SR * dur);
+    auto creak = noise_wave(n, spike(0.26f, 0.05f, dur));
+    auto low   = sine_wave(n, [=](float t){return 110.0f - 42.0f * (t/dur);}, decay(0.30f, dur));
+    return _vec_to_sound(mix({&creak, &low}));
+}
+
+// 领域扩张 — 低频上扬轰鸣 (assets/domain_expand.* 缺失时的合成回退, 对齐 timestop 的做法)
+static Sound _compile_domain_expand() {
+    float dur = 0.7f; int n = (int)(SR * dur);
+    auto swell = sine_wave(n, [=](float t){return 60.0f + 90.0f * (t/dur);}, decay(0.32f, dur));
+    auto body  = square_wave(n, [=](float t){return 52.0f + 28.0f * (t/dur);}, decay(0.15f, dur));
+    return _vec_to_sound(mix({&swell, &body}));
+}
+
 static Sound _compile_levelup() {
     float dur = 0.5f; int n = (int)(SR * dur);
     std::vector<short> result(n, 0);
@@ -250,6 +268,7 @@ void AudioServer::init() {
     _sfx["summon"]      = _compile_summon();       // Q4.6: recipe 音效
     _sfx["ui_click"]    = _compile_ui_click();     // Q4.5: UI 点击
     _sfx["ui_confirm"]  = _compile_ui_confirm();   // Q4.5: UI 确认
+    _sfx["door_open"]   = _compile_door_open();    // 门开启: 4 处调用点此前无注册 → 完全无声
 
     // timestop: 直接从已知路径加载 (ResourceManager 在 AudioServer 之后初始化)
     _sfx["timestop"] = _compile_bolt();  // fallback
@@ -274,6 +293,7 @@ void AudioServer::init() {
     }
 
     // domain_expand: 直接从已知路径加载
+    _sfx["domain_expand"] = _compile_domain_expand();  // fallback: 文件缺失不再静默无声
     {
         const char* paths[] = {"assets/domain_expand.wav", "assets/domain_expand.mp3"};
         for (auto p : paths) {
@@ -300,17 +320,22 @@ void AudioServer::init() {
         "death_normal", "death_elite", "death_boss",
         "skill_cast", "ui_click", "ui_select"
     };
+    int sfx_loaded = 0;
     for (const char* sfx : sfx_list) {
         std::string path = _sfx_path + sfx + ".wav";
         if (FileExists(path.c_str())) {
             _sfx[sfx] = LoadSound(path.c_str());
+            sfx_loaded++;
         }
     }
+    if (sfx_loaded == 0)
+        LOG_WARN("音频: %s 下 0/%d 个 Kenney SFX 命中 — 该层静默缺失, 全程仅用合成音",
+                 _sfx_path.c_str(), (int)(sizeof(sfx_list) / sizeof(sfx_list[0])));
 
     // BGM
     LOG_INFO("音频: 合成BGM(4支)...");
     _bgm.init();
-    LOG_INFO("音频: 就绪 (8SFX + 4BGM)");
+    LOG_INFO("音频: 就绪 (SFX %d 项, 其中文件 %d 项) + BGM 4 支", (int)_sfx.size(), sfx_loaded);
 }
 
 void AudioServer::close() {
@@ -333,7 +358,11 @@ void AudioServer::stop_bgm(float) {
 void AudioServer::play_sfx(const std::string& name, float vol) {
     if (g_muted) return;  // Q3.1
     auto it = _sfx.find(name);
-    if (it != _sfx.end()) { SetSoundVolume(it->second, vol); PlaySound(it->second); }
+    if (it != _sfx.end()) { SetSoundVolume(it->second, vol); PlaySound(it->second); return; }
+    // 未注册名此前静默丢弃: 每个名字首次告警一次, 避免每帧刷屏
+    static std::unordered_set<std::string> warned;
+    if (warned.insert(name).second)
+        LOG_WARN("音频: play_sfx('%s') 未注册 — 静默丢弃 (漏注册或配置空串)", name.c_str());
 }
 
 void AudioServer::update(float dt) { _bgm.update(dt); }
