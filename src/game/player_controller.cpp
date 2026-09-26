@@ -128,7 +128,7 @@ void PlayerController::tick(float dt) {
         return;
     }
 
-    if (!gs.inventory_open && !gs._is_event_running() && !gs._dialogue.active && !gs._quest_log_open) {
+    if (!gs.inventory_open && !gs.gamble_open && !gs._is_event_running() && !gs._dialogue.active && !gs._quest_log_open) {
         Vector2 move = gs.player->handle_input(gs.get_tree()->get_input());
         if (gs._sim_mode) {
             // Q3.1: headless 无真实键盘 — SimAI 决定移动方向与朝向

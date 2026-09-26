@@ -1010,7 +1010,7 @@ void GameRenderer::draw_inventory_panel(const Player* player, int cursor, int sw
     DrawRectangle(0, 0, sw, sh, {0, 0, 0, 180});
     float pw = 500, ph = 480;
     Rectangle pr = {sw / 2.0f - pw / 2, sh / 2.0f - ph / 2, pw, ph};
-    draw_panel(pr, "背包 B关闭");
+    draw_panel(pr, "背包 B/ESC关闭");
 
     auto& inv = player->inventory;
     float x0 = pr.x + 30;
@@ -1133,7 +1133,7 @@ void GameRenderer::draw_gamble_panel(const Player* player, const std::string& re
     }
 
     // Controls
-    DrawTextEx(g_font_small, "[E] 抽奖   [B] 关闭",
+    DrawTextEx(g_font_small, "[E] 抽奖   [B/ESC] 关闭",
                {pr.x + (pw - 180) / 2, pr.y + ph - 20}, 14, 1, {140, 140, 140, 255});
 }
 

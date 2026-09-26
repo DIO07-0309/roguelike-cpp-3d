@@ -82,6 +82,13 @@ void GameSceneInput::handle_input(const InputMap& input) {
     }
 
     if (_s._is_action_just_pressed(input,"cancel")) {
+        // B3H-fix: 背包/赌局是全屏压暗模态, ESC 先关面板再走保存退出
+        if (_s.inventory_open || _s.gamble_open) {
+            _s.inventory_open = false;
+            _s.gamble_open = false;
+            _s.get_tree()->get_audio()->play_sfx("ui_click", 0.35f);
+            return;
+        }
         if (_s.state == GameState::PLAYING && _s.player->combat.is_alive) {
             if (!_s.is_save_blocked()) {
                 _s.max_unlocked_floor = std::max(_s.max_unlocked_floor, _s.current_floor);

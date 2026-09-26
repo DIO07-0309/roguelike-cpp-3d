@@ -450,7 +450,7 @@ void TitleScene::_render() {
         const char* lines[] = {
             "操作说明",
             "WASD/方向键 - 移动",
-            "J - 攻击   K - 技能",
+            "空格 - 攻击   1~4 - 技能",
             "E - 交互   B - 背包   F1 - 日志",
             "Shift - 翻滚",
             "R - 圣物   M - 小地图   G - 全屏",

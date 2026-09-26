@@ -2724,6 +2724,7 @@ void GameScene::_render_ui_tail(int sw, int sh) {
 
     // D4.6 Step1: F8 Growth Curve debug
     // F15.2: F9 — print player behavior stats
+#ifdef _DEBUG
     if (IsKeyPressed(KEY_F9)) {
         g_show_mirror_acc = !g_show_mirror_acc;   // 验收: toggle MIRROR AI 统计
         char dbg[256];
@@ -2747,6 +2748,7 @@ void GameScene::_render_ui_tail(int sw, int sh) {
                        {230, 160, 120, 230});
         }
     }
+#endif
 
     if (_presentation.show_growth_debug && g_font_loaded) {
         const GrowthCurve& gc = g_growth.curve(current_floor);

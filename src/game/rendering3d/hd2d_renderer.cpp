@@ -287,7 +287,9 @@ void HD2DRenderer::render_frame(GameScene& gs) {
     // 1.5. 天气系统更新
     auto& weather = Game::WeatherSystem::inst();
     
-    // DEBUG: F8 切换天气类型测试（覆盖 biome 映射）
+    // DEBUG: F8 切换天气类型测试（覆盖 biome 映射）— 仅调试构建; 发布版恒走 biome 映射
+    bool biome_override_active = false;
+#ifdef _DEBUG
     static Game::WeatherType debug_weather = Game::WeatherType::NONE;
     static bool debug_mode = false;
     
@@ -307,8 +309,10 @@ void HD2DRenderer::render_frame(GameScene& gs) {
         weather.set_weather(debug_weather);
         LOG_INFO("DEBUG: 天气切换为 %d", (int)debug_weather);
     }
+    biome_override_active = debug_mode;
+#endif
     
-    if (gs.game_map && !debug_mode) {
+    if (gs.game_map && !biome_override_active) {
         // 正常模式：使用 biome 映射
         weather.set_weather_from_biome(gs.game_map->biome_id());
     }
