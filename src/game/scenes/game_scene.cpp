@@ -1,4 +1,5 @@
 #include "game_scene.h"
+#include "game/rendering3d/hd2d_scene_view.h"   // G12-4: hd2d_view() 组装只读视图
 #include "game/animation/player_avatar.h"   // A5: 玩家骨骼形象 (渲染路径懒建)
 #include "systems/hit_stop.h"               // A6-T2: HitStop 击杀顿帧
 #include "data/camera_defs.h"               // A6-T1: 摄像机语言数据加载
@@ -28,7 +29,6 @@
 #include "systems/first_hint.h"       // G10.8-B4: 首遇提示
 #include "vfx_server.h"              // G9: spear lightning VFX
 #include "data/weapon_defs.h"        // G9: Boss drop
-#include "data/element_defs.h"       // G10: element select screen
 #include "systems/collision_utils.h"
 #include "core/sim/sim_ai.h"         // G5.6
 #include "core/sim/sim_runner.h"     // G5.6
@@ -2335,99 +2335,11 @@ void GameScene::_drop_boss_reward(Monster* boss) {
 void GameScene::_render() {
     int sw = get_tree()->get_width(), sh = get_tree()->get_height();
 
-    // G10.1: Element Select Screen
-    if (element_select_active) {
-        ClearBackground({20, 15, 30, 255});
-        const ElementDef* defs[3] = {
-            get_element_def("fire"), get_element_def("ice"), get_element_def("poison")
-        };
-        const char* icons[] = {
-            "[火] 火焰核心", "[冰] 冰霜核心", "[毒] 剧毒核心"
-        };
-        const char* long_desc[] = {
-            "每次攻击有概率触发火焰暴击\n暴击伤害 x1.5\nLv1 暴击率 15%，Lv20 约 30%",
-            "每击附加减速\n累计减速层数触发冻结(1秒)\nLv1 冻结率 10%，Lv20 约 100%",
-            "每击附加持续毒伤\nDOT = 本次伤害 x 比例\nLv1 毒伤 5%，Lv20 约 15%"
-        };
-        const Color colors[] = {
-            {255,120,30,255}, {100,200,255,255}, {80,220,80,255}
-        };
-        const char* title = "选择你的元素核心";
-        float tw = MeasureTextEx(g_font_small, title, 28, 1).x;
-        DrawTextEx(g_font_small, title, {sw/2.0f - tw/2, 40}, 28, 1, {255,220,180,255});
+    // G12-2: 全屏状态界面委托 (元素核心选择)
+    if (_render_pass.draw_element_select(sw, sh)) return;
 
-        float card_w = 280, card_h = 300, gap = 20;
-        float start_x = sw/2.0f - (card_w * 3 + gap * 2)/2.0f;
-        for (int i = 0; i < 3; i++) {
-            float cx = start_x + i * (card_w + gap);
-            float cy = (sh - card_h)/2.0f + 20;
-            bool selected = (i == element_select_cursor);
-            Color bg = selected ? Color{50,50,80,255} : Color{25,25,45,255};
-            Color border = selected ? colors[i] : Color{50,50,75,220};
-
-            DrawRectangleRounded({cx, cy, card_w, card_h}, 0.1f, 8, bg);
-            DrawRectangleRoundedLines({cx-1, cy-1, card_w+2, card_h+2}, 0.1f, 8, 2.5f, border);
-
-            float iw = MeasureTextEx(g_font_small, icons[i], 32, 1).x;
-            DrawTextEx(g_font_small, icons[i], {cx + card_w/2 - iw/2, cy + 25}, 32, 1, colors[i]);
-
-            // Multi-line description
-            float dy = cy + 80;
-            const char* desc = long_desc[i];
-            std::string line;
-            for (const char* p = desc; *p; p++) {
-                if (*p == '\n') {
-                    float lw = MeasureTextEx(g_font_small, line.c_str(), 13, 1).x;
-                    DrawTextEx(g_font_small, line.c_str(),
-                        {cx + card_w/2 - lw/2, dy}, 13, 1, {200,210,200,200});
-                    dy += 22;
-                    line.clear();
-                } else {
-                    line += *p;
-                }
-            }
-            if (!line.empty()) {
-                float lw = MeasureTextEx(g_font_small, line.c_str(), 13, 1).x;
-                DrawTextEx(g_font_small, line.c_str(),
-                    {cx + card_w/2 - lw/2, dy}, 13, 1, {200,210,200,200});
-            }
-
-            if (selected) {
-                DrawTextEx(g_font_small, "[←/→选择] [空格/E 确认]",
-                    {cx + card_w/2 - 110, cy + card_h - 35}, 14, 1, {255,255,180,220});
-            }
-        }
-        const char* ft = "选择后永久绑定，本局及以后所有存档不可更改";
-        float fw = MeasureTextEx(g_font_small, ft, 14, 1).x;
-        DrawTextEx(g_font_small, ft, {sw/2.0f - fw/2, (float)(sh - 30)}, 14, 1, {150,150,150,180});
-        return;
-    }
-
-    if (state == GameState::BOSS_INTRO) {
-        // F15.5: Mirror analysis panel for Ending Echo
-        if (boss_floor == 15 && _boss._behavior_type == "mirror") {
-            _draw_mirror_analysis_panel(sw, sh);
-        } else {
-            _renderer.draw_boss_intro(sw, sh, boss_intro_title, boss_intro_lore,
-                                       boss_intro_skills, boss_intro_color, boss_floor,
-                                       boss_intro_visual);
-        }
-        // D4 Step5.5: BossNarrative覆盖对话 (显示在面板下方)
-        if (!_presentation.boss_intro_text.empty() && g_font_loaded) {
-            float tw = MeasureTextEx(g_font_small, _presentation.boss_intro_text.c_str(), 17, 1).x;
-            DrawTextEx(g_font_small, _presentation.boss_intro_text.c_str(),
-                       {sw/2.0f - tw/2, (float)(sh - 100)}, 17, 1, {255, 220, 100, 240});
-        }
-        // D5 Step1: BossModifier文字 (金色Warning风格)
-        if (!_presentation.boss_modifier_text.empty() && g_font_loaded) {
-            float mw = MeasureTextEx(g_font_small, _presentation.boss_modifier_text.c_str(), 15, 1).x;
-            DrawRectangle(sw/2.0f - mw/2 - 12, (float)(sh - 72), mw + 24, 24,
-                          {30, 15, 15, 200});
-            DrawTextEx(g_font_small, _presentation.boss_modifier_text.c_str(),
-                       {sw/2.0f - mw/2, (float)(sh - 68)}, 15, 1, {255, 80, 40, 240});
-        }
-        return;
-    }
+    // G12-2: 全屏状态界面委托 (Boss 出场介绍)
+    if (_render_pass.draw_boss_intro_screen(sw, sh)) return;
 
     ClearBackground(BLACK);
     _renderer.update_camera(_cam_x, _cam_y, player.get(), game_map.get(), sw, sh);
@@ -2465,7 +2377,7 @@ void GameScene::_render() {
             _monster_avatars_tick();
             _npc_avatars_tick();
             hd2d.set_camera_shake(shake_ox, shake_oy);
-            hd2d.render_frame(*this);
+            hd2d.render_frame(hd2d_view());
             _render_hd2d_ui_bridge(sw, sh);   // M6-v2a: HUD + 全 overlay 桥
             return;
         }
@@ -3048,7 +2960,7 @@ void GameScene::_monster_avatars_tick() {
     }
 }
 
-SkeletonAvatar* GameScene::npc_avatar(int npc_id) {
+SkeletonAvatar* GameScene::npc_avatar(int npc_id) const {
     auto it = _npc_avatars.find(npc_id);
     return it == _npc_avatars.end() ? nullptr : it->second.get();
 }
@@ -3445,13 +3357,37 @@ void GameScene::_fill_echo_buffs(CharacterPanelData& echo) const {
 }
 
 // ── M6-HD2D: 3D 表现层只读快照 (rendering3d 只读红线, 不给可变访问) ──
-std::vector<GameScene::NpcView> GameScene::npc_views() const {
+std::vector<NpcView> GameScene::npc_views() const {
     std::vector<NpcView> out;
     for (int i = 0; i < _npc_count; i++) {
         if (_npc_state[i].finished) continue;
         out.push_back({_npc_tile_x[i], _npc_tile_y[i], false, _npc_state[i].id});
     }
     return out;
+}
+
+// G12-4: 组装 3D 只读视图 —— hd2d 渲染器/scene_builder 从此不依赖 GameScene
+hd2d::SceneView GameScene::hd2d_view() const {
+    hd2d::SceneView v;
+    v.game_map = game_map.get();
+    v.player = player.get();
+    v.monsters = &monsters;
+    v.effects = active_effects;
+    v.dropped = ground_items;
+    v.current_floor = current_floor;
+    v.sim_mode = _sim_mode;
+    v.in_challenge_arena = (_world_mode == WorldMode::CHALLENGE_ARENA);
+    v.camera_def_loaded = _camera_def_loaded;
+    v.tree = get_tree();
+    v.boss_ctrl = &_boss;
+    v.camera_director = &_camera_director;
+    v.challenge_ctrl = &_challenge;
+    v.ambient_layer = &_ambient;
+    v.npc_views = npc_views();
+    v.npc_avatar = [this](int npc_id) { return npc_avatar(npc_id); };
+    v.player_avatar_fn = [this] { return playerAvatar(); };
+    projectiles.for_each([&v](const Projectile& p, int) { v.projectiles.push_back(p); });
+    return v;
 }
 
 void GameScene::_draw_ground_items() {

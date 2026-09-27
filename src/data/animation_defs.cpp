@@ -69,6 +69,7 @@ bool parse_parts(const nlohmann::json& j, SkeletonDef& sk, std::string& err) {
         pd.file = p["file"].get<std::string>();
         pd.dx = get_float(p, "dx", 0.f);
         pd.dy = get_float(p, "dy", 0.f);
+        pd.element_tinted = p.value("element_tinted", false);   // G12-5
         if (p.contains("pivot") && p["pivot"].is_array() && p["pivot"].size() >= 2) {
             pd.pivot_x = p["pivot"][0].get<float>();
             pd.pivot_y = p["pivot"][1].get<float>();

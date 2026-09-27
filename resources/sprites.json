@@ -494,6 +494,11 @@
       "w": 6,
       "h": 24
     },
+    "player_part_cape": {
+      "file": "assets/sprites/player_part_cape.png",
+      "w": 30,
+      "h": 26
+    },
     "mon_orc_part_head": {
       "file": "assets/sprites/mon_orc_part_head.png",
       "w": 22,

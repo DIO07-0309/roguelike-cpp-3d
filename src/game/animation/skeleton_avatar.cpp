@@ -112,5 +112,6 @@ AvatarPartDraw buildAvatarPart(const PartDef& part, const WorldBone& bone,
     if (flip_x) result.pivot.x = result.size.x - result.pivot.x;
     result.rot_deg = -face * bone.rot_deg;
     result.flip_x = flip_x;
+    result.element_tinted = part.element_tinted;   // G12-5
     return result;
 }

@@ -1,10 +1,10 @@
 #pragma once
 #include "raylib.h"
 #include "hd2d_part_geometry.h"
+#include "hd2d_scene_view.h"     // G12-4: 只读场景视图 (解耦 GameScene)
 #include <vector>
 #include <memory>
 
-class GameScene;
 class GameMap;
 struct HD2DDrawItem;
 
@@ -15,7 +15,7 @@ class WeatherSystem;
 // ============================================================
 // M6-HD2D: HD-2D 渲染器 — 2D 逻辑层不动, 3D 表现层切片
 // 设计约束 (P1-C8 教训, 必须遵守):
-//   1. 本模块只读 GameScene 状态, 绝不写 gameplay 状态
+//   1. 本模块只读 SceneView 快照 (G12-4), 绝不写 gameplay 状态
 //   2. 视觉随机只吃 visual_rng (RNG-001/002 红线)
 //   3. sim 无头模式不初始化 3D (main.cpp 已保证)
 //   4. 切换开关 g_hd2d_mode: true 走本渲染器, false 走原 2D 路径
@@ -24,7 +24,7 @@ class WeatherSystem;
 // A2.1: 氛围粒子群系性格 (纯渲染语义, 不进 gameplay)
 enum class MoteStyle : int { DUST = 0, EMBER = 1, FIREFLY = 2 };
 
-// 一帧的 3D 绘制项 (由 HD2DSceneBuilder 从 GameScene 状态提取)
+// 一帧的 3D 绘制项 (由 HD2DSceneBuilder 从只读场景视图提取)
 struct HD2DDrawItem {
     enum class Kind { FLOOR_TILE, WALL_BLOCK, ENTITY_BILLBOARD, FX_QUAD,
                       PORTAL_RING,                    // M6-v2a: 挑战传送门竖立光环
@@ -82,9 +82,9 @@ public:
     void shutdown();
     bool is_ready() const { return _ready; }
 
-    // 主入口: 用 GameScene 状态构建绘制列表并渲染一帧
+    // 主入口: 用只读场景视图构建绘制列表并渲染一帧
     // (内部: clear → 相机 → 场景构建 → 绘制 → 后处理回 2D target)
-    void render_frame(GameScene& gs);
+    void render_frame(const hd2d::SceneView& view);
 
     // M6-v2a: 世界坐标 → 屏幕坐标投影 (名字标签/E 气泡等屏幕空间 UI 用;
     // 相机每帧 render_frame 后有效; 投影失败返回 {-1,-1})
@@ -199,7 +199,7 @@ private:
     void _draw_fx_pass();              // G5.5: FX 特效层 (粒子单批 + 视锥体裁剪)
     void _draw_ambient_batch();     // A2.1: 氛围粒子单批软光 (替 M6-v2e 逐颗球)
     bool _ambient_billboard_basis(Vector3& right, Vector3& up) const;  // A2.1
-    void _apply_post_processing(GameScene& gs);
+    void _apply_post_processing(const hd2d::SceneView& view);
 
     HD2DRenderer(const HD2DRenderer&) = delete;
     HD2DRenderer& operator=(const HD2DRenderer&) = delete;

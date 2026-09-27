@@ -93,8 +93,7 @@ void HD2DShadowCaster::update_light_camera(Vector3 cam_focus,
 
 // ── 深度 pass: 墙 + billboard 实体 (v2f) ──
 void HD2DShadowCaster::render_depth(
-        const GameScene& gs, const std::vector<HD2DDrawItem>& items,
-        unsigned int outer_fbo) {
+        const std::vector<HD2DDrawItem>& items, unsigned int outer_fbo) {
     if (!_ready) return;
     // 备份主相机矩阵 (rlSetMatrix* 直接替换内部状态, 需手动还原)
     Matrix saved_proj = rlGetMatrixProjection();

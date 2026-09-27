@@ -3,11 +3,14 @@
 // 红线: 只读 gs; 无 gameplay 副作用; 视觉随机只吃 visual_rng (本文件未用随机)
 #include "hd2d_scene_builder.h"
 #include "game/animation/player_avatar.h"
-#include "scenes/game_scene.h"
+#include "hd2d_scene_view.h"   // G12-4: 只读场景视图
 #include "world/game_map.h"
 #include "world/challenge_room.h"              // M6-v2a: ChallengePhase
+#include "director/boss_system_director.h"     // G12-4: BossSystemDirector::arena
+#include "world/ambient_layer.h"               // G12-4: AmbientCfg / 氛围粒子
 #include "world/special_room.h"                // M6-v2h: SpecialRoom 图标 key
 #include "entities/player.h"
+#include "components/element_component.h"       // G12-5: ElementType → 骨骼染色/精灵 key
 #include "entities/monster.h"
 #include "entities/item.h"                    // M6-v2a: item_icon_key
 #include "systems/weapon_component.h"         // M6-v2b: WeaponType/range_indicator
@@ -205,14 +208,14 @@ static Color _wall_top_tint(const GameMap& map, const Color& tint) {
                  ch(pal.wall_top.b, pal.wall_face.b), 255};
 }
 
-static void _build_terrain(GameScene& gs, std::vector<HD2DDrawItem>& out) {
-    const GameMap* map = gs.game_map.get();
+static void _build_terrain(const hd2d::SceneView& view, std::vector<HD2DDrawItem>& out) {
+    const GameMap* map = view.game_map;
     if (!map) return;
 
     int cx = 0, cy = 0;
-    if (gs.player) {
-        cx = (int)(gs.player->entity.rect.x / TILE_SIZE);
-        cy = (int)(gs.player->entity.rect.y / TILE_SIZE);
+    if (view.player) {
+        cx = (int)(view.player->entity.rect.x / TILE_SIZE);
+        cy = (int)(view.player->entity.rect.y / TILE_SIZE);
     }
     // 扩大 build 范围: 相机 440 拉近后视野投影超出旧 ±16/±12 (实测 52% 屏幕是 ClearBackground)
     int x0 = std::max(0, cx - 40), x1 = std::min(map->width - 1, cx + 40);
@@ -399,10 +402,33 @@ static const char* _monster_sprite_key_for_3d(const Monster& m) {
     return "mon_orc";
 }
 
-static bool buildPlayerAvatar(const GameScene& scene, std::vector<HD2DDrawItem>& out) {
-    const auto* avatar = scene.playerAvatar();
+// G12-5: 元素核心 → 披风染色。披风贴图是浅灰 (226,228,234), tint 走乘法,
+// 所以这里取饱和色才能出正的 红/蓝/绿; 未选元素 = 白 (浅灰原样, 中性)
+static Color elementCapeTint(ElementType e) {
+    switch (e) {
+        case ElementType::FIRE:   return {245, 95, 80, 255};
+        case ElementType::ICE:    return {95, 165, 255, 255};
+        case ElementType::POISON: return {75, 225, 90, 255};
+        default:                  return {255, 255, 255, 255};
+    }
+}
+
+// G12-5: 元素核心 → billboard 回退精灵 key (镜像 player.cpp::_player_sprite_key)
+static const char* elementPlayerSpriteKey(ElementType e) {
+    switch (e) {
+        case ElementType::FIRE:   return "player_fire";
+        case ElementType::ICE:    return "player_ice";
+        case ElementType::POISON: return "player_poison";
+        default:                  return "player_default";
+    }
+}
+
+static bool buildPlayerAvatar(const hd2d::SceneView& view, std::vector<HD2DDrawItem>& out) {
+    if (!view.player_avatar_fn || !view.player) return false;   // G12-4: 无骨骼形象则走 billboard
+    const auto* avatar = view.player_avatar_fn();
     if (!avatar || !avatar->active()) return false;
-    const auto& player = *scene.player;
+    const auto& player = *view.player;
+    const Color e_tint = elementCapeTint(player.element.type);    // G12-5: 披风染色
     const auto parts = avatar->worldParts(player);
     const auto& rect = player.entity.rect;
     const Vector3 feet = {rect.x + rect.width * 0.5f, 0, rect.y + rect.height * 0.5f};
@@ -412,31 +438,31 @@ static bool buildPlayerAvatar(const GameScene& scene, std::vector<HD2DDrawItem>&
         const Vector3 ghost_feet = {feet.x + ghost.pos.x - player.entity.position.x,
                                    feet.y, feet.z + ghost.pos.y - player.entity.position.y};
         appendAvatarParts(parts, ghost_feet, ghost.pos.y,
-                          static_cast<unsigned char>(alpha), 0, out);
+                          static_cast<unsigned char>(alpha), 0, out, e_tint);
     }
     // A5-T5-fix: avatar parts 不用 blob shadow (矩形 quad 可见), 完全依赖 depth shadow
-    appendAvatarParts(parts, feet, rect.y, 255, 0.f, out);
+    appendAvatarParts(parts, feet, rect.y, 255, 0.f, out, e_tint);
     return true;
 }
 
-static void buildStaticPlayer(GameScene& gs, int anim_frame, std::vector<HD2DDrawItem>& out) {
+static void buildStaticPlayer(const hd2d::SceneView& view, int anim_frame, std::vector<HD2DDrawItem>& out) {
     auto& res = ResourceManager::inst();
     HD2DDrawItem item;
     item.kind = HD2DDrawItem::Kind::ENTITY_BILLBOARD;
-    const auto& r = gs.player->entity.rect;
+    const auto& r = view.player->entity.rect;
     item.world_pos = {r.x + r.width * 0.5f, 0, r.y + r.height * 0.5f};
     item.size = 36.0f;
     item.sort_y = r.y;
     item.outline = true;
     SpriteDef def;
-    item.texture = res.sprite_by_key("player_default", def);
+    item.texture = res.sprite_by_key(elementPlayerSpriteKey(view.player->element.type), def);
     if (item.texture.id > 0)
         item.tex_src = SpriteRenderer::frame_rect(def, anim_frame);
     else item.tint = {90, 160, 255, 255};
-    item.flip_x = (gs.player->direction == Direction::LEFT);
-    Vector2 sq = gs.player->dodge.squash_scale();
+    item.flip_x = (view.player->direction == Direction::LEFT);
+    Vector2 sq = view.player->dodge.squash_scale();
     item.scale_w = sq.x; item.scale_h = sq.y;
-    for (const auto& g : gs.player->dodge.ghosts()) {
+    for (const auto& g : view.player->dodge.ghosts()) {
         float ga = 120.0f * (1.0f - g.age / DodgeComponent::kGhostLife);
         if (ga <= 0.0f) continue;
         HD2DDrawItem gh = item;
@@ -449,14 +475,14 @@ static void buildStaticPlayer(GameScene& gs, int anim_frame, std::vector<HD2DDra
     out.push_back(item);
 }
 
-static void _build_entities(GameScene& gs, std::vector<HD2DDrawItem>& out,
+static void _build_entities(const hd2d::SceneView& view, std::vector<HD2DDrawItem>& out,
                             bool part_color_ready) {
     auto& res = ResourceManager::inst();
     int anim_frame = ((int)(GetTime() * 4)) & 1;
-    if (gs.player && gs.player->combat.is_alive
-        && (!part_color_ready || !buildPlayerAvatar(gs, out)))
-        buildStaticPlayer(gs, anim_frame, out);
-    for (auto& m : gs.monsters) {
+    if (view.player && view.player->combat.is_alive
+        && (!part_color_ready || !buildPlayerAvatar(view, out)))
+        buildStaticPlayer(view, anim_frame, out);
+    for (auto& m : *view.monsters) {
         if (!m || !m->combat.is_alive) continue;
         // A6-S1: 骨骼皮肤命中 → 逐件 pro 片 (无 blob shadow, 依赖 depth shadow), 否则旧 billboard 原样
         if (auto* skav = m->skeleton_avatar(); skav && skav->active()) {
@@ -487,8 +513,8 @@ static void _build_entities(GameScene& gs, std::vector<HD2DDrawItem>& out,
 }
 
 // ── 特效: active_effects 存活项 → 3D 特效 (A10) ──
-static void _build_effects(GameScene& gs, std::vector<HD2DDrawItem>& out) {
-    for (const auto& e : gs.active_effects) {
+static void _build_effects(const hd2d::SceneView& view, std::vector<HD2DDrawItem>& out) {
+    for (const auto& e : view.effects) {
         if (e.elapsed >= e.duration) continue;
         
         HD2DDrawItem item;
@@ -908,10 +934,10 @@ static void _build_effects(GameScene& gs, std::vector<HD2DDrawItem>& out) {
 }
 
 // ── M6-v2a: 地面物品 → 贴地小 billboard (图标与 2D 同源) ──
-static void _build_ground_items(GameScene& gs, std::vector<HD2DDrawItem>& out) {
+static void _build_ground_items(const hd2d::SceneView& view, std::vector<HD2DDrawItem>& out) {
     auto& res = ResourceManager::inst();
-    for (const auto& d : gs.dropped_items()) {
-        if (gs.game_map && !gs.game_map->isVisible(d.tile_x, d.tile_y)) continue;
+    for (const auto& d : view.dropped) {
+        if (view.game_map && !view.game_map->isVisible(d.tile_x, d.tile_y)) continue;
         const char* ikey = item_icon_key(d.item.get());
         if (!ikey) continue;
         HD2DDrawItem item;
@@ -930,8 +956,8 @@ static void _build_ground_items(GameScene& gs, std::vector<HD2DDrawItem>& out) {
 }
 
 // ── M6-k: Arena 物件 → billboard/贴地 (爆炸桶/图腾/毒池/岩石/尖刺) ──
-static void _build_arena_objects(GameScene& gs, std::vector<HD2DDrawItem>& out) {
-    const GameMap* map = gs.game_map.get();
+static void _build_arena_objects(const hd2d::SceneView& view, std::vector<HD2DDrawItem>& out) {
+    const GameMap* map = view.game_map;
     if (!map) return;
     auto& res = ResourceManager::inst();
     static bool logged = false;
@@ -972,14 +998,14 @@ static void _build_arena_objects(GameScene& gs, std::vector<HD2DDrawItem>& out) 
 }
 
 // ── M6-v2a: 未完成 NPC → billboard (npc_sprite_key 楼层映射) ──
-static void _build_npcs(GameScene& gs, std::vector<HD2DDrawItem>& out) {
+static void _build_npcs(const hd2d::SceneView& view, std::vector<HD2DDrawItem>& out) {
     auto& res = ResourceManager::inst();
-    const char* skey = npc_sprite_key(gs.current_floor);
-    for (const auto& npc : gs.npc_views()) {
-        if (gs.game_map && !gs.game_map->isVisible(npc.tile_x, npc.tile_y)) continue;
+    const char* skey = npc_sprite_key(view.current_floor);
+    for (const auto& npc : view.npc_views) {
+        if (view.game_map && !view.game_map->isVisible(npc.tile_x, npc.tile_y)) continue;
         const float wx = (float)npc.tile_x * TILE_SIZE + TILE_SIZE * 0.5f;
         const float wz = (float)npc.tile_y * TILE_SIZE + TILE_SIZE * 0.5f;
-        if (auto* skav = gs.npc_avatar(npc.npc_id); skav && skav->active()) {
+        if (auto* skav = view.npc_avatar(npc.npc_id); skav && skav->active()) {
             const auto parts = skav->part_draws({}, false);
             if (!parts.empty()) {
                 appendAvatarParts(parts, {wx, 0, wz},
@@ -1004,8 +1030,8 @@ static void _build_npcs(GameScene& gs, std::vector<HD2DDrawItem>& out) {
 
 // ── M6-v2h: 特殊房间中心图标 → 贴地小 billboard (2D room_* 素材同源) ──
 // triggered 后不画 (2D 同条件); 缺素材跳过
-static void _build_special_rooms(GameScene& gs, std::vector<HD2DDrawItem>& out) {
-    const GameMap* map = gs.game_map.get();
+static void _build_special_rooms(const hd2d::SceneView& view, std::vector<HD2DDrawItem>& out) {
+    const GameMap* map = view.game_map;
     if (!map) return;
     auto& res = ResourceManager::inst();
     for (const auto& sr : map->special_rooms) {
@@ -1058,9 +1084,10 @@ static void _build_special_rooms(GameScene& gs, std::vector<HD2DDrawItem>& out) 
 
 // ── M6-v2a: 挑战传送门 → 竖立脉冲光环 (2D 双层圆的 3D 对应物) ──
 // 与 2D 分支 (game_scene._render 2222-2237) 同条件: DUNGEON 入口 / ARENA 返回
-static void _build_portals(GameScene& gs, std::vector<HD2DDrawItem>& out) {
-    const auto& challenge = gs.challenge_ctrl();
-    const GameMap* map = gs.game_map.get();
+static void _build_portals(const hd2d::SceneView& view, std::vector<HD2DDrawItem>& out) {
+    if (!view.challenge_ctrl) return;   // G12-4: 无挑战系统的场景跳过
+    const auto& challenge = *view.challenge_ctrl;
+    const GameMap* map = view.game_map;
     if (challenge.phase() == ChallengePhase::PORTAL_ACTIVE && map) {
         for (const auto& sr : map->special_rooms) {
             if (sr.type != SpecialRoomType::CHALLENGE) continue;
@@ -1075,7 +1102,7 @@ static void _build_portals(GameScene& gs, std::vector<HD2DDrawItem>& out) {
             break;                             // 与 2D 同: 只画第一个挑战房
         }
     }
-    if (challenge.phase() == ChallengePhase::CLEARED && gs.in_challenge_arena() &&
+    if (challenge.phase() == ChallengePhase::CLEARED && view.in_challenge_arena &&
         challenge.return_portal_tx() >= 0) {
         HD2DDrawItem item;
         item.kind = HD2DDrawItem::Kind::PORTAL_RING;
@@ -1149,34 +1176,34 @@ static void _build_active_item(const Projectile& p, std::vector<HD2DDrawItem>& o
     out.push_back(item);
 }
 
-static void _build_projectiles(GameScene& gs, std::vector<HD2DDrawItem>& out) {
-    const GameMap* map = gs.game_map.get();
-    gs.projectiles.for_each([map, &out](const Projectile& p, int) {
-        if (!p.alive) return;
+static void _build_projectiles(const hd2d::SceneView& view, std::vector<HD2DDrawItem>& out) {
+    const GameMap* map = view.game_map;
+    for (const auto& p : view.projectiles) {
+        if (!p.alive) continue;
         if (p.active_time < 0.0f) _build_warning_item(p, map, out);
         else _build_active_item(p, out);
-    });
+    }
 }
 
 // ── M6-v2b: 远程武器射程指示环 (玩家 range_indicator_timer 激活时) ──
 // NUNCHAKU=双环带 / SPEAR,CROSSBOW=单环 (对齐 2D 2277-2319)
-static void _build_range_indicator(GameScene& gs, std::vector<HD2DDrawItem>& out) {
-    if (!gs.player || gs.player->weapon.range_indicator_timer <= 0.0f) return;
-    auto wt = gs.player->weapon.weapon_type();
+static void _build_range_indicator(const hd2d::SceneView& view, std::vector<HD2DDrawItem>& out) {
+    if (!view.player || view.player->weapon.range_indicator_timer <= 0.0f) return;
+    auto wt = view.player->weapon.weapon_type();
     if (wt != WeaponType::SPEAR && wt != WeaponType::CROSSBOW
         && wt != WeaponType::NUNCHAKU) return;
-    const auto& r = gs.player->entity.rect;
+    const auto& r = view.player->entity.rect;
     HD2DDrawItem item;
     item.kind = HD2DDrawItem::Kind::WARNING_RING;
     item.world_pos = {r.x + r.width * 0.5f, 0.1f, r.y + r.height * 0.5f};
     item.tint = {235, 175, 95, 200};                 // 2D 同款暖金
-    item.height = gs.player->weapon.range_indicator_timer / 0.25f;  // fade
+    item.height = view.player->weapon.range_indicator_timer / 0.25f;  // fade
     if (wt == WeaponType::NUNCHAKU) {
-        const WeaponDef* def = gs.player->weapon.current_def();
+        const WeaponDef* def = view.player->weapon.current_def();
         item.size = (def ? def->max_range : 5.0f) * TILE_SIZE;      // 外环
         item.element = (def ? def->min_range : 2.0f) * TILE_SIZE;    // 内环(复用)
     } else {
-        item.size = gs.player->weapon.range_indicator_px;
+        item.size = view.player->weapon.range_indicator_px;
         item.element = -1.0f;                        // -1 = 单环
     }
     out.push_back(item);
@@ -1184,8 +1211,8 @@ static void _build_range_indicator(GameScene& gs, std::vector<HD2DDrawItem>& out
 
 // ── M6-v2b: Boss 技能预警 — 弹幕弹道/扇形面/瞬移落点/旋风圈 (只读 BossAI) ──
 // 条件对齐 2D 分支 (game_scene._render 2754-2762: is_boss && ai)
-static void _build_boss_skill_warnings(GameScene& gs, std::vector<HD2DDrawItem>& out) {
-    for (auto& m : gs.monsters) {
+static void _build_boss_skill_warnings(const hd2d::SceneView& view, std::vector<HD2DDrawItem>& out) {
+    for (auto& m : *view.monsters) {
         if (!m || !m->is_boss || !m->ai || !m->combat.is_alive) continue;
         auto* bai = dynamic_cast<BossAI*>(m->ai);
         if (!bai) continue;
@@ -1208,8 +1235,8 @@ static void _build_boss_skill_warnings(GameScene& gs, std::vector<HD2DDrawItem>&
                 out.push_back(item);
             }
             // 蓄力期: 风扇形预警 (朝玩家; half=spread/2)
-            if (sk->windup_left > 0.0f && gs.player) {
-                const auto& pr = gs.player->entity.rect;
+            if (sk->windup_left > 0.0f && view.player) {
+                const auto& pr = view.player->entity.rect;
                 float ang = atan2f(pr.y + pr.height*0.5f - bpos.z,
                                    pr.x + pr.width*0.5f - bpos.x);
                 HD2DDrawItem item;
@@ -1224,8 +1251,8 @@ static void _build_boss_skill_warnings(GameScene& gs, std::vector<HD2DDrawItem>&
         }
         // 扇形斩: 蓄力期面预警 (对齐 2D cone_skill().draw windup)
         if (auto* sk = bai->cone_skill()) {
-            if (sk->windup_left > 0.0f && gs.player) {
-                const auto& pr = gs.player->entity.rect;
+            if (sk->windup_left > 0.0f && view.player) {
+                const auto& pr = view.player->entity.rect;
                 float ang = atan2f(pr.y + pr.height*0.5f - bpos.z,
                                    pr.x + pr.width*0.5f - bpos.x);
                 HD2DDrawItem item;
@@ -1271,8 +1298,9 @@ static void _build_boss_skill_warnings(GameScene& gs, std::vector<HD2DDrawItem>&
 }
 
 // ── M6-v2b: Boss 战场危险区 — 岩浆/影墙/虚空 贴地危险圈 (2D arena.draw 同源) ──
-static void _build_danger_zones(GameScene& gs, std::vector<HD2DDrawItem>& out) {
-    for (const auto& z : gs.boss_ctrl().arena.zones()) {
+static void _build_danger_zones(const hd2d::SceneView& view, std::vector<HD2DDrawItem>& out) {
+    if (!view.boss_ctrl) return;   // G12-4: 无 Boss 系统的场景跳过
+    for (const auto& z : view.boss_ctrl->arena.zones()) {
         HD2DDrawItem item;
         item.kind = HD2DDrawItem::Kind::WARNING_RING;
         item.world_pos = {z.world_x, 0.1f, z.world_y};
@@ -1286,8 +1314,8 @@ static void _build_danger_zones(GameScene& gs, std::vector<HD2DDrawItem>& out) {
 }
 
 // ── M6-v2b: 弱点光环 (F10.2 pulse ring) + Tank 守护连线 (2D 2743-2781 同源) ──
-static void _build_monster_overlays(GameScene& gs, std::vector<HD2DDrawItem>& out) {
-    for (auto& m : gs.monsters) {
+static void _build_monster_overlays(const hd2d::SceneView& view, std::vector<HD2DDrawItem>& out) {
+    for (auto& m : *view.monsters) {
         if (!m || !m->combat.is_alive) continue;
         const auto& r = m->entity.rect;
         Vector3 c = {r.x + r.width * 0.5f, 0, r.y + r.height * 0.5f};
@@ -1376,10 +1404,11 @@ static MoteMotion _mote_motion(const MoteStyle style, float t, float ph,
     return m;
 }
 
-static void _build_ambient(GameScene& gs, std::vector<HD2DDrawItem>& out) {
-    const auto& ambient = gs.ambient_layer();
+static void _build_ambient(const hd2d::SceneView& view, std::vector<HD2DDrawItem>& out) {
+    if (!view.ambient_layer) return;   // G12-4: 无氛围层的场景 (如教程) 跳过
+    const auto& ambient = *view.ambient_layer;
     const auto& cfg = ambient.config();
-    const MoteStyle style = _mote_style_from_cfg(cfg, gs.current_floor);
+    const MoteStyle style = _mote_style_from_cfg(cfg, view.current_floor);
     // A2.2: 群系粒子贴图 (缺失→id=0→renderer 程序化软光回退)
     Texture2D mote_tex = cfg.texture.empty()
         ? Texture2D{} : ResourceManager::inst().load_texture(cfg.texture.c_str());
@@ -1406,8 +1435,8 @@ static void _build_ambient(GameScene& gs, std::vector<HD2DDrawItem>& out) {
 }
 
 // M6-n N1: 脚印 — 复用 2D 版 GameMap::_footsteps 数据，HD2D 表现层贴地 decal
-static void _build_footsteps(GameScene& gs, std::vector<HD2DDrawItem>& out) {
-    const GameMap* map = gs.game_map.get();
+static void _build_footsteps(const hd2d::SceneView& view, std::vector<HD2DDrawItem>& out) {
+    const GameMap* map = view.game_map;
     if (!map) return;
     const auto* fs_arr = map->get_footsteps();
     int head = map->get_footstep_head();
@@ -1435,23 +1464,23 @@ static void _build_footsteps(GameScene& gs, std::vector<HD2DDrawItem>& out) {
     }
 }
 
-void build_scene(GameScene& gs, std::vector<HD2DDrawItem>& out_items,
+void build_scene(const hd2d::SceneView& view, std::vector<HD2DDrawItem>& out_items,
                  bool part_color_ready) {
-    _build_terrain(gs, out_items);
-    _build_footsteps(gs, out_items);
-    _build_entities(gs, out_items, part_color_ready);
-    _build_effects(gs, out_items);
-    _build_ground_items(gs, out_items);   // M6-v2a
-    _build_arena_objects(gs, out_items);  // M6-k
-    _build_special_rooms(gs, out_items);   // M6-v2h
-    _build_npcs(gs, out_items);           // M6-v2a
-    _build_portals(gs, out_items);        // M6-v2a
-    _build_projectiles(gs, out_items);    // M6-v2b
-    _build_range_indicator(gs, out_items);// M6-v2b
-    _build_boss_skill_warnings(gs, out_items);  // M6-v2b
-    _build_danger_zones(gs, out_items);         // M6-v2b
-    _build_monster_overlays(gs, out_items);     // M6-v2b
-    _build_ambient(gs, out_items);              // M6-v2e
+    _build_terrain(view, out_items);
+    _build_footsteps(view, out_items);
+    _build_entities(view, out_items, part_color_ready);
+    _build_effects(view, out_items);
+    _build_ground_items(view, out_items);   // M6-v2a
+    _build_arena_objects(view, out_items);  // M6-k
+    _build_special_rooms(view, out_items);   // M6-v2h
+    _build_npcs(view, out_items);           // M6-v2a
+    _build_portals(view, out_items);        // M6-v2a
+    _build_projectiles(view, out_items);    // M6-v2b
+    _build_range_indicator(view, out_items);// M6-v2b
+    _build_boss_skill_warnings(view, out_items);  // M6-v2b
+    _build_danger_zones(view, out_items);         // M6-v2b
+    _build_monster_overlays(view, out_items);     // M6-v2b
+    _build_ambient(view, out_items);              // M6-v2e
 }
 
 } // namespace hd2d

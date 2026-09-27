@@ -5,6 +5,7 @@
     { "name": "root" },
     { "name": "hips", "parent": "root", "y": 18 },
     { "name": "torso", "parent": "hips", "y": 7 },
+    { "name": "cape", "parent": "torso" },
     { "name": "head", "parent": "torso", "y": 11 },
     { "name": "arm_back", "parent": "torso", "x": -3, "y": 9 },
     { "name": "weapon", "parent": "arm_back", "y": -5 },
@@ -14,6 +15,8 @@
   ],
   "parts": [
     { "bone": "leg_back", "file": "assets/sprites/player_part_leg.png", "pivot": [11, 20] },
+    { "bone": "cape", "file": "assets/sprites/player_part_cape.png",
+      "pivot": [13, 25], "dx": -4, "dy": 9, "element_tinted": true },
     { "bone": "arm_back", "file": "assets/sprites/player_part_arm.png", "pivot": [5, 16] },
     { "bone": "weapon", "file": "assets/sprites/player_part_weapon.png", "pivot": [3, 24] },
     { "bone": "torso", "file": "assets/sprites/player_part_torso.png", "pivot": [13, 10] },

@@ -1,3 +1,126 @@
+# G12-5 — 教程木桩骨骼化 + 主角 3D 元素披风 (2026-09-27)
+
+> 起因: 验收教程 3D 后指出两个缺口 —— ①教程里的怪还是 2D 贴图 ②2D 版选完元素主角
+> 形象会随元素变化，3D 版还没补齐。
+
+- **①教程木桩骨骼化**: `create_tutorial_dummy` 造出的怪名叫「训练木桩」且
+  `sprite_override` 为空 → `monster_actor_key` 返回名字 → **不在骨骼白名单**
+  → 渲染器静默回退 billboard。修法是在 `resources/animations/actor_avatars.json`
+  加一条 `"训练木桩"` → `mon_golem_skeleton.json`（选魔像: 体型大、天然静止、
+  和真敌人区分开）。纯数据改动，2D 外观不受影响。同步更新
+  `ActorAvatarDefs.RepoDefaultWhitelistCoversA6HumanoidFamily` 的 expected 集合 ——
+  该测试加载真实 JSON 并断言 size，正好顺带验证了中文 key 的 UTF-8 往返
+- **②主角 3D 元素外观 = 元素披风**: 3D 只有一份 `player_skeleton.json`，没有分元素
+  骨骼素材。第一版做整套骨架染色，验收反馈"三个元素完全没区别" —— 改成给玩家
+  骨架加一件**披风**，只染披风
+  - 新素材 `assets/sprites/player_part_cape.png` (30x26, 浅灰 226,228,234 剪影,
+    上窄下宽 + 波浪底边)
+  - `player_skeleton.json` 加 `cape` 骨 (parent torso) + 部件，插在 `leg_back` 之后
+    —— parts 数组序 = 绘制序 (后→前)，所以披风压在身体后面；`dx: -4` 挂背侧
+  - 新字段 `PartDef::element_tinted` 标记"这件要按玩家元素染色"，避免整套一起变色。
+    管线零改动: `appendAvatarParts` 收一个 tint，只有标记件吃，其余保持原色
+  - `elementCapeTint()`: 火 {245,95,80} / 冰 {95,165,255} / 毒 {75,225,90} /
+    未选 白。tint 走乘法，浅灰底必须配饱和色才出正的 红/蓝/绿
+  - `buildStaticPlayer` 的 billboard 回退也从写死的 `player_default` 改成按元素取
+    `player_fire`/`player_ice`/`player_poison`（镜像 2D 的 `_player_sprite_key`）
+- **新增测试**: `SkeletonDef.ElementTintedParsesAndDefaultsFalse` +
+  `RepoPlayerCapeIsElementTintedAndDrawnBehindBody`（校验披风存在/纹理存在/
+  dx<0 挂背侧/绘制序在躯干之前/顶部落在肩高 20~32px）
+- **资产清单**: `resources/sprites.json` 登记 `player_part_cape`，否则
+  `AssetManifest.ManagedNoOrphans` 报孤儿
+- **影响面**: 主游戏 3D 与教程 3D 共用同一条路径，两处都会变
+- **门禁**: build 0 err 0 warning · ctest 72/72 · world_validator 0 Errors 0 Warnings ·
+  启动无 crash.log
+- **未验证 (需肉眼)**: 披风的位置/比例/颜色观感 —— 我只能测几何区间，判断不了好不好看
+
+---
+
+# G12-4 — 3D 渲染链解耦 GameScene + 教程 3D 化 (2026-09-27)
+
+> 起因: `HD2DRenderer::render_frame(GameScene&)` 把 3D 表现层焊死在唯一的游戏场景上，
+> 教程想 3D 只能重写一遍渲染。耦合面实测 `hd2d_scene_builder.cpp` 44 处 +
+> `hd2d_renderer.cpp` 14 处 `gs.<字段>` 读、共 17 个字段，**全是只读，0 处写 gameplay**。
+> 做法: 加一个只读视图结构，两个场景各自填 —— 渲染器从此不认识任何场景类。
+
+- **新增 `hd2d::SceneView` 只读视图** (`src/game/rendering3d/hd2d_scene_view.h`, 55 行)
+  - 单例/可选子系统用指针 (`game_map` `player` `monsters` `boss_ctrl`
+    `camera_director` `challenge_ctrl` `ambient_layer`)
+  - per-frame 集合一律值快照 (`effects` `dropped` `projectiles` `npc_views`) ——
+    空 vector 即"该场景没有这类东西"，使用方无需判空
+  - 两处查询用 callable (`npc_avatar` `player_avatar_fn`)，避免视图依赖 ObjectPool
+- **`rendering3d/` 目录彻底不再引用 `GameScene`** (112 处 `gs.` 机械改名 + 签名换型)
+  - `build_scene` / `render_frame` / `_apply_post_processing` 全改吃 `const SceneView&`
+  - 4 处空判: `boss_ctrl` `challenge_ctrl` `ambient_layer` 可空 +
+    `camera_director` 加指针判空
+  - **`_shadow_caster.render_depth()` 的空 `GameScene& gs` 参数直接删掉** —— 它从未被用过
+- **`NpcView` 从 `GameScene` 嵌套类型抽出** (`src/game/scenes/npc_view.h`) ——
+  3D 层为了拿一个 4 字段结构而 include 整个 `game_scene.h` 是不必要的耦合
+- **两个适配器**
+  - `GameScene::hd2d_view()` 填全 17 个字段 (行为不变)
+  - `TutorialScene::hd2d_view()` 只填 5 个 (地图/玩家/怪/特效/掉落)
+- **教程接入 3D**: `TutorialScene::_render` 加 3D 分支 —— 地形/实体/掉落/特效交给
+  hd2d 渲染器，教程 UI（背包/元素选择/提示框/按键说明）保持 2D 叠加不变
+- **教程骨骼形象 (验收时抓出的真 bug)**: 教程 3D 首版出来的是 2D 精灵贴图。根因是
+  渲染器**建不出骨骼就静默回退 billboard**，而教程只调了 `render_frame`、没走懒建流程。
+  补上 `_ensure_player_avatar` / `_player_avatar_tick` / `_monster_avatars_tick`，
+  且在 `render_frame` **之前**调用。已确认无交叉污染: 2D 路径不进成功分支、不建骨骼
+- **已知债务 (未做)**: 上面三段懒建逻辑是**复制**自 game_scene.cpp —— 与教程已有的
+  `_draw_interact_hint` 镜像写法一致。干净做法是抽 `AvatarDirector` 组合类两处共用，
+  但那要动刚被验证过的 GameScene 3D 路径，而我无法运行时验证 3D，所以先不动
+- **`npc_avatar()` 改 const** —— `hd2d_view()` 是 const，纯查表函数本就该 const
+- 顺带确认: `game_scene.h` 仍不 include 任何 `rendering3d/` 头文件，
+  依赖方向保持「rendering3d 在 scenes 下游」不变
+
+- 门禁: Release 0 error 0 warning; ctest 72/72; world_validator 0 error 0 warning;
+  启动无 crash.log; 标题界面 6 项菜单渲染正常无重叠
+- **未验证(如实标注)**: 3D 路径无运行时视觉验证。仓库无可重放 replay 文件、
+  键盘无法自动化注入，所以 `--hd2d` 下渲染一致性只能靠用户肉眼看。
+  请跑两把确认: ①`--hd2d` 主游戏 3D 与之前一致 ②标题按 `T` 进教程看 3D 效果
+- 已同步桌面包 `Roguelike-CPP-3D版`; `Roguelike-CPP-初代版`(2D) 未触碰
+
+# G12-3 — 撤销标题界面 3D 开关 (2026-09-27)
+
+> 起因: 标题界面的 3D 开关未经确认就做上线了 (G11.1)。玩家不需要在标题界面选 2D/3D，
+> 这个入口是我自己提的选项、不该推给玩家批。3D 表现层保留 `--hd2d` 命令行入口;
+> 3D 的下一步应该是「教程也能 3D」, 而不是再多一个开关。
+
+- 撤回 `src/game/scenes/title_scene.cpp`:
+  - 删菜单项 `[3] 3D 表现层`、`_activate` 的 `hd2d` 分支、`KEY_THREE` 快捷键、
+    行内 `● 已开启 / ○ 已关闭` 状态后缀、已成死代码的 `hd2d_renderer.h` include
+  - 面板几何回到 6 项布局: `ph 366→320` / 行高 `36→38` / 行距 `40→42`
+- **保留** `_open_slot_select()` 抽取 (合并新游戏/继续/选关三个入口, `_activate` 51→39 行)
+  —— 它与 3D 开关无关, 是独立的 40 行规则收益, 不回退
+- `g_hd2d_mode` 写入点回到 3 处: `hd2d_renderer.cpp` 定义 / `main.cpp --hd2d` /
+  `game_scene.cpp` 初始化失败回退 2D
+- 门禁: Release 0 error 0 warning; ctest 72/72; 启动无 crash.log;
+  截图确认 6 项菜单、`选单` 标题与底部版权行无重叠
+- 已同步桌面包 `Roguelike-CPP-3D版`; `Roguelike-CPP-初代版`(2D) 未触碰
+
+# G12-2 — 拆 GameScene::_render 的全屏状态界面 (2026-09-27)
+
+> 起因: `game_scene.cpp` 69 个方法中 13 个超「函数 ≤40 行」硬规则, `_render` 独占 257 行。
+> 其中「元素核心选择屏」与「Boss 介绍屏」都是整屏覆盖绘制、有独立早退分支, 是天然切缝。
+> 沿用既有 `GameSceneInput` / `GameSceneCombat` / `GameSceneInteraction` 的组合模式, 加第四个模块。
+
+- **新增 `GameSceneRenderPass` 模块** (`src/game/scene/game_scene_render_pass.h/.cpp`, 26+114 行)
+  - 组合而非继承: 持 `GameScene& _s` + `friend class`, 接线与现有三模块一致
+  - `game_scene.cpp` -93/+7, 两处块改为 `if (_render_pass.draw_xxx(sw, sh)) return;`
+  - **`_render` 257 → 169 行**
+  - 新函数全部 ≤40 行: `draw_element_select` 22 / `draw_element_card` 30 /
+    `draw_card_description` 21 / `draw_boss_intro_screen` 27
+  - **中途返工一次**: 首版把 66 行元素选择屏整体搬出, 超规总数 152→153 反而上涨;
+    拆到卡片级(`draw_element_card` + `draw_card_description`)后回落到 152, 才真正达标
+- **顺手清死代码**
+  - 删 `game_scene.cpp` 已成死代码的 `#include "data/element_defs.h"`
+  - 删元素选择屏中从未使用的 `const ElementDef* defs[3]`
+- 保真策略: 逐行照搬仅加 `_s.` 前缀, 绘制顺序与坐标一个不动
+- 门禁: Release 0 error 0 warning; ctest 72/72; world_validator 0 error 0 warning;
+  启动无 crash.log; 标题界面 7 项菜单渲染正常
+- **未验证(诚实标注)**: 两个被搬的界面需键盘才能到达 (raylib raw input 无法进程外注入,
+  `--input-diag` 只统计不合成), 结论来自静态保真 + 编译 + 72 项测试, 非运行时截图
+- 超规函数现状: 全仓 2254 个函数, 152 个超 40 行 (本次持平, 无回退)
+- 已同步桌面包 `Roguelike-CPP-3D版`; `Roguelike-CPP-初代版`(2D) 未触碰
+
 # G11.1 — 标题界面 3D 表现层开关 + 教程反馈层补齐 (2026-09-27)
 
 > 触发点: 验收教程时发现标题界面根本没有 3D 入口——`g_hd2d_mode` 的唯一写入点原本只在

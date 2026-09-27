@@ -631,6 +631,47 @@ TEST(HD2DPartGeometry, RealIdlePartsStayAboveFeetWithoutUnitRescaling) {
     }
 }
 
+TEST(SkeletonDef, ElementTintedParsesAndDefaultsFalse) {
+    std::string err;
+    auto j = nlohmann::json::parse(R"({"pixels_per_unit":0.8,
+        "bones":[{"name":"root"},{"name":"torso","parent":"root"}],
+        "parts":[{"bone":"torso","file":"a.png","element_tinted":true},
+                 {"bone":"root","file":"b.png"}]})");
+    auto sk = parse_skeleton(j, err);
+    ASSERT_TRUE(sk) << err;
+    EXPECT_TRUE(sk->parts[0].element_tinted);
+    EXPECT_FALSE(sk->parts[1].element_tinted);   // 缺省 = false
+}
+
+TEST(SkeletonDef, RepoPlayerCapeIsElementTintedAndDrawnBehindBody) {
+    std::string err;
+    const auto sk = load_skeleton_file("resources/animations/player_skeleton.json", err);
+    ASSERT_TRUE(sk) << err;
+    std::string::size_type cape = std::string::npos, torso = std::string::npos;
+    for (size_t i = 0; i < sk->parts.size(); ++i) {
+        if (sk->parts[i].file.find("cape") != std::string::npos) cape = i;
+        if (sk->parts[i].file.find("torso") != std::string::npos) torso = i;
+    }
+    ASSERT_NE(cape, std::string::npos);
+    EXPECT_TRUE(sk->parts[cape].element_tinted);
+    EXPECT_TRUE(std::filesystem::exists(sk->parts[cape].file));
+    EXPECT_LT(sk->parts[cape].dx, 0.f);      // 挂背侧
+    EXPECT_LT(cape, torso);                  // parts 数组序 = 绘制序 (后→前)
+
+    // 披风顶部应落在肩高: 实体中心上方 20~32px 之间
+    const auto anim = load_anim_file("resources/animations/player_anim.json", *sk, err);
+    ASSERT_TRUE(anim) << err;
+    const auto pose = compute_pose(*sk, &anim->clips.at("idle"), 0);
+    Image img = LoadImage(sk->parts[cape].file.c_str());
+    ASSERT_NE(img.data, nullptr);
+    const Texture2D tex{1, img.width, img.height, 1, img.format};
+    UnloadImage(img);
+    const auto geom = buildAvatarPart(sk->parts[cape], pose[sk->parts[cape].bone],
+                                       tex, sk->pixels_per_unit, false);
+    EXPECT_GT(geom.offset.y, 20.f);
+    EXPECT_LT(geom.offset.y, 32.f);
+}
+
 TEST(AvatarAnimator, HeavyScalesDuration) {
     AvatarAnimator an; AnimInput in;
     in.attacking = true; in.attack_recovery_ratio = 1.8f;
@@ -698,8 +739,9 @@ TEST(ActorAvatarDefs, RepoDefaultWhitelistCoversA6HumanoidFamily) {
                                             "mon_shadow_assassin", "mon_night_stalker",
                                             "mon_poison_wyrm",
                                             "boss_shadow_knight", "boss_necromancer",
-                                            "boss_vampire", "boss_fire_demon", "boss_golem",
-                                            "boss_self"};
+                                             "boss_vampire", "boss_fire_demon", "boss_golem",
+                                             "boss_self",
+                                             "训练木桩"};   // G12-5: 教程木桩 3D 骨骼化
     ASSERT_EQ(out->size(), expected.size());
     for (const auto& key : expected) {
         auto it = out->find(key);

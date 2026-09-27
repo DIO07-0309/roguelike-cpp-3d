@@ -9,8 +9,8 @@
 
 namespace hd2d {
 void appendAvatarParts(const std::vector<AvatarPartDraw>& parts, Vector3 feet_world,
-                       float sort_y, unsigned char alpha, float blob_width,
-                       std::vector<HD2DDrawItem>& out_items) {
+                        float sort_y, unsigned char alpha, float blob_width,
+                        std::vector<HD2DDrawItem>& out_items, Color tint) {
     for (const auto& part : parts) {
         HD2DDrawItem item;
         item.kind = HD2DDrawItem::Kind::ENTITY_BILLBOARD;
@@ -24,7 +24,9 @@ void appendAvatarParts(const std::vector<AvatarPartDraw>& parts, Vector3 feet_wo
         item.texture = part.tex;
         item.flip_x = part.flip_x;
         item.sort_y = sort_y;
-        item.tint = {255, 255, 255, alpha};
+        // G12-5: 只有标记 element_tinted 的件 (披风) 才吃元素染色, 其余保持原色
+        const Color c = part.element_tinted ? tint : WHITE;
+        item.tint = {c.r, c.g, c.b, alpha};
         item.blob_width = blob_width;
         out_items.push_back(item);
         blob_width = 0;

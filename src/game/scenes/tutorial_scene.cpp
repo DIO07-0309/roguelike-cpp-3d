@@ -6,6 +6,9 @@
 #include "audio_server.h"
 #include "rendering/sprite_renderer.h"
 #include "rendering/effect_drawer.h"      // G10.11: 通用特效原语 (ring/spark)
+#include "rendering3d/hd2d_renderer.h"    // G12-4: 3D 表现层
+#include "rendering3d/hd2d_scene_view.h"  // G12-4: 只读场景视图
+#include "animation/skeleton_avatar.h"    // G12-4: 怪物骨骼形象
 #include "systems/vfx_server.h"           // G10.11: 拾取 VFX
 #include "resources/resource_manager.h"
 #include "core/logger.h"
@@ -14,6 +17,7 @@
 
 extern Font g_font, g_font_small;
 extern bool g_font_loaded;
+extern bool g_hd2d_mode;   // G12-4: 3D 表现层开关
 
 // G10.11: 交互提示气泡 — 黑底黄字小标签 (镜像 game_scene.cpp 同名实现)
 static void _draw_interact_hint(const char* text, float cx, float cy) {
@@ -130,26 +134,31 @@ void TutorialScene::_process(double delta) {
 }
 
 void TutorialScene::_render() {
-    ClearBackground(BLACK);
     int sw = get_tree()->get_width(), sh = get_tree()->get_height();
 
-    // 地图
-    if (game_map) game_map->draw(cam_x, cam_y, sw, sh);
+    // G12-4: 3D 表现层 —— 地形/实体/掉落/特效交给 hd2d 渲染器, 教程 UI 保持 2D 叠加
+    bool use_3d = _try_render_hd2d(sw, sh);
+    if (!use_3d) {
+        ClearBackground(BLACK);
 
-    // 实体
-    for (auto& m : monsters) m->draw(cam_x, cam_y);
-    if (player) player->draw_no_cam(cam_x, cam_y);
-    _draw_monster_labels();   // G10.11: 怪物名条 (与主游戏一致)
+        // 地图
+        if (game_map) game_map->draw(cam_x, cam_y, sw, sh);
 
-    // 掉落物 (G10.11: 与主游戏 _draw_ground_items 同构)
-    _draw_ground_items();
+        // 实体
+        for (auto& m : monsters) m->draw(cam_x, cam_y);
+        if (player) player->draw_no_cam(cam_x, cam_y);
+        _draw_monster_labels();   // G10.11: 怪物名条 (2D 坐标, 3D 下会错位故跳过)
 
-    // G10.11: 特效 (世界坐标, 盖在实体之上)
-    for (auto& e : effects) {
-        float t = e.elapsed - e.start_delay;
-        if (t < 0.0f) continue;
-        effect_drawer::draw_generic_effect(e, e.world_x - cam_x,
-                                           e.world_y - cam_y, t);
+        // 掉落物 (G10.11: 与主游戏 _draw_ground_items 同构)
+        _draw_ground_items();
+
+        // G10.11: 特效 (世界坐标, 盖在实体之上)
+        for (auto& e : effects) {
+            float t = e.elapsed - e.start_delay;
+            if (t < 0.0f) continue;
+            effect_drawer::draw_generic_effect(e, e.world_x - cam_x,
+                                               e.world_y - cam_y, t);
+        }
     }
 
     // G10.11: 拾取飘字 — 居中确认, 末尾 0.3s 淡出 (与主游戏 room_msg 同款)
@@ -245,6 +254,85 @@ void TutorialScene::_render() {
     if (g_font_loaded && guide.stage != TutorialStage::WELCOME) {
         DrawTextEx(g_font_small, "WASD移动 | 空格攻击 | E交互 | B背包 | Shift翻滚 | P跳过本步 | T退出",
             {(float)sw/2 - 260, (float)(sh - 24)}, 14, 1, {140, 140, 140, 255});
+    }
+}
+
+// G12-4: 3D 表现层 —— 初始化成功则渲染世界返回 true; 失败则本次会话回退 2D
+bool TutorialScene::_try_render_hd2d(int sw, int sh) {
+    if (!g_hd2d_mode) return false;
+    auto& hd2d = HD2DRenderer::inst();
+    if (hd2d.ensure_init(sw, sh)) {
+        // 必须先建骨骼形象再渲染 —— 没建的话渲染器会回退 2D 精灵贴图
+        _ensure_player_avatar();
+        _player_avatar_tick();
+        _monster_avatars_tick();
+        hd2d.render_frame(hd2d_view());
+        return true;
+    }
+    g_hd2d_mode = false;   // 初始化失败: 回退 2D, 不再重试
+    return false;
+}
+
+// G12-4: 教程的 3D 只读视图 —— 只填教程实际拥有的子系统, 其余留空
+hd2d::SceneView TutorialScene::hd2d_view() const {
+    hd2d::SceneView v;
+    v.game_map = game_map.get();
+    v.player = player.get();
+    v.monsters = &monsters;
+    v.effects = effects;
+    v.dropped = ground_items;
+    v.player_avatar_fn = [this] { return _player_avatar.get(); };
+    return v;
+}
+
+// G12-4: 玩家骨骼形象 —— 与 game_scene.cpp 同名实现一致 (懒建一次)
+void TutorialScene::_ensure_player_avatar() {
+    if (!player || _player_avatar) return;
+    auto avatar = std::make_unique<PlayerAvatar>();
+    std::string avatar_err;
+    if (avatar->try_init("resources/animations", avatar_err))
+        LOG_INFO("G12-4: tutorial player avatar active (skeletal)");
+    else
+        LOG_WARN("G12-4: tutorial avatar inactive, fallback static (%s)", avatar_err.c_str());
+    _player_avatar = std::move(avatar);
+}
+
+// G12-4: 玩家骨骼驱动
+void TutorialScene::_player_avatar_tick() {
+    if (_player_avatar && _player_avatar->active() && player)
+        _player_avatar->update(GetFrameTime(), *player);
+}
+
+// G12-4: 怪物骨骼皮肤 —— 白名单命中懒建一次 (成败都缓存), 与玩家同款渲染驱动
+void TutorialScene::_monster_avatars_tick() {
+    if (!_actor_avatars_loaded) {
+        _actor_avatars_loaded = true;
+        std::string conf_err;
+        auto conf = load_actor_avatars_file("resources/animations/actor_avatars.json", conf_err);
+        if (conf) _actor_avatars = std::move(*conf);
+        else LOG_WARN("G12-4: actor_avatars.json invalid, all fallback (%s)", conf_err.c_str());
+    }
+    if (_actor_avatars.empty()) return;    // 白名单空 = 零开销全回退
+    const float dt = GetFrameTime();
+    const float now_wall = (float)GetTime();
+    for (auto& m : monsters) {
+        if (!m || !m->combat.is_alive) continue;
+        if (!m->skeleton_avatar()) {
+            auto it = _actor_avatars.find(monster_actor_key(*m));
+            if (it == _actor_avatars.end()) continue;
+            auto avatar = std::make_unique<SkeletonAvatar>();
+            std::string avatar_err;
+            if (avatar->try_init(it->second.skeleton, it->second.anim, avatar_err))
+                LOG_INFO("G12-4: tutorial monster avatar active (%s)", it->first.c_str());
+            else
+                LOG_WARN("G12-4: tutorial monster avatar inactive (%s): %s",
+                         it->first.c_str(), avatar_err.c_str());
+            m->set_skeleton_avatar(std::move(avatar));   // 成功/失败都缓存不重试
+        }
+        auto* avatar = m->skeleton_avatar();
+        if (!avatar || !avatar->active()) continue;
+        avatar->advance(dt, monster_anim_input(*m, avatar->hp_state(), now_wall));
+        avatar->track_facing(m->entity.position);        // 渲染层朝向镜像
     }
 }
 

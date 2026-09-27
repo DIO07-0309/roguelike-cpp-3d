@@ -15,6 +15,7 @@ struct AvatarPartDraw {
     Vector2 size = {};
     float rot_deg = 0;
     bool flip_x = false;
+    bool element_tinted = false;   // G12-5: 该件按玩家元素核心染色 (披风)
 };
 
 AvatarPartDraw buildAvatarPart(const PartDef& part, const WorldBone& bone,

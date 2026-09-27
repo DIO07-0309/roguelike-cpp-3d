@@ -16,6 +16,7 @@ struct PartDef {
     int bone = -1;
     std::string file;
     float dx = 0, dy = 0;
+    bool element_tinted = false;      // G12-5: 按玩家元素核心染色 (披风)
     float pivot_x = 0, pivot_y = 0;   // 贴图内锚点, 左下原点像素坐标
 };
 

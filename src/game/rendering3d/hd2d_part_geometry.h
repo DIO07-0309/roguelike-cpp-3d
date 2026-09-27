@@ -8,9 +8,11 @@ struct HD2DDrawItem;
 struct AvatarPartDraw;
 
 namespace hd2d {
+// G12-5: tint = 形象整体乘法染色 (玩家元素核心), 默认白 = 原样
 void appendAvatarParts(const std::vector<AvatarPartDraw>& parts, Vector3 feet_world,
-                       float sort_y, unsigned char alpha, float blob_width,
-                       std::vector<HD2DDrawItem>& out_items);
+                        float sort_y, unsigned char alpha, float blob_width,
+                        std::vector<HD2DDrawItem>& out_items,
+                        Color tint = {255, 255, 255, 255});
 
 struct PartQuad {
     std::array<Vector3, 4> positions;

@@ -277,12 +277,12 @@ void HD2DRenderer::_setup_camera() {
     _camera_yaw = 0.0f;
 }
 
-void HD2DRenderer::render_frame(GameScene& gs) {
+void HD2DRenderer::render_frame(const hd2d::SceneView& view) {
     if (!_ready) return;
  
     // 1. 只读提取绘制列表 (scene_builder 无 gameplay 副作用)
     _draw_items.clear();
-    hd2d::build_scene(gs, _draw_items, _part_color.ready());
+    hd2d::build_scene(view, _draw_items, _part_color.ready());
     
     // 1.5. 天气系统更新
     auto& weather = Game::WeatherSystem::inst();
@@ -312,29 +312,29 @@ void HD2DRenderer::render_frame(GameScene& gs) {
     biome_override_active = debug_mode;
 #endif
     
-    if (gs.game_map && !biome_override_active) {
+    if (view.game_map && !biome_override_active) {
         // 正常模式：使用 biome 映射
-        weather.set_weather_from_biome(gs.game_map->biome_id());
+        weather.set_weather_from_biome(view.game_map->biome_id());
     }
     weather.update(GetFrameTime());
     
     // 2. 相机聚焦玩家世界坐标 (+ M6-v2e: shake 偏移, 帧内消费)
     _camera_focus = {0, 0, 0};
-    if (gs.player) {
-        _camera_focus.x = gs.player->entity.rect.x + gs.player->entity.rect.width / 2;
-        _camera_focus.z = gs.player->entity.rect.y + gs.player->entity.rect.height / 2;
+    if (view.player) {
+        _camera_focus.x = view.player->entity.rect.x + view.player->entity.rect.width / 2;
+        _camera_focus.z = view.player->entity.rect.y + view.player->entity.rect.height / 2;
     }
     _camera_focus.x += _shake_offset.x;
     _camera_focus.z += _shake_offset.z;
     _shake_offset = {0, 0, 0};
     
     // A6-T4: CameraDirector 焦点偏移 + FOV 缩放 (3D 渲染)
-    if (gs.camera_def_loaded() && !gs.sim_mode()) {
-        Vector2 cam_offset = gs.camera_director().focus_offset();
+    if (view.camera_def_loaded && !view.sim_mode && view.camera_director) {
+        Vector2 cam_offset = view.camera_director->focus_offset();
         _camera_focus.x += cam_offset.x;
         _camera_focus.z += cam_offset.y;
         // FOV 缩放: 0.75 = 拉近 (Boss 战), 1.0 = 原始
-        float fov_scale = gs.camera_director().fov_scale();
+        float fov_scale = view.camera_director->fov_scale();
         _camera.fovy = 50.0f * fov_scale;
     }
     // 3. 相机定位 (v2f: 提前到深度 pass 前 — billboard 深度几何朝向
@@ -353,15 +353,15 @@ void HD2DRenderer::render_frame(GameScene& gs) {
     // 深度 pass 后必须恢复主 RT 绑定, 否则主场景画到屏幕 FBO 上丢失)
     {
         auto& shadow = HD2DShadowCaster::inst();
-        auto* tree = gs.get_tree();
+        auto* tree = view.tree;
         if (shadow.ensure_init(_target_w, _target_h) && tree) {
             shadow.update_light_camera(_camera_focus, &_camera);
-            shadow.render_depth(gs, _draw_items, tree->main_target().id);
+            shadow.render_depth(_draw_items, tree->main_target().id);
         }
     }
     _draw_scene();
     _draw_weather_particles(weather);  // 渲染天气粒子
-    _apply_post_processing(gs);
+    _apply_post_processing(view);
 }
 
 // ── 场景绘制: 分 kind 绘制 (地形 → 实体 → 特效; 相机已在 render_frame 定位) ──
@@ -1325,12 +1325,12 @@ void HD2DRenderer::_draw_weather_particles(Game::WeatherSystem& weather) {
 // bloom: 场景 RT → 亮部提取/模糊 (PostFX 内部嵌套 RT, 已自恢复 FBO);
 //   之后 additive 叠加回本层 (当前绘制目标 = scene_tree 主 RT)
 // 夜色/雾带: 2D 叠加保留 (与 bloom 不冲突; 雾带在 bloom 之下画)
-void HD2DRenderer::_apply_post_processing(GameScene& gs) {
+void HD2DRenderer::_apply_post_processing(const hd2d::SceneView& view) {
     // 1. bloom 链 (需要场景已画完; 当前在 scene_tree 主 RT 绘制流内)
     auto& fx = HD2DPostFX::inst();
-    auto* tree = gs.get_tree();
+    auto* tree = view.tree;
     if (tree && fx.ensure_init(_target_w, _target_h)) {
-        _apply_bloom_biome_preset(gs.game_map.get());   // M6-v2g 手调三档
+        _apply_bloom_biome_preset(view.game_map);   // M6-v2g 手调三档
         fx.process(tree->main_target());
         // 夜色分级 + 地平雾带 (bloom 之下)
         // i.1-fix2: 夜色从蓝 (20,18,46) 改暖暗 (30,24,18) — 蓝罩把全屏

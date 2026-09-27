@@ -15,7 +15,10 @@
 class DecisionAgent;
 class BTAgent;
 class PlayerAvatar;   // A5: 渲染路径懒建, 仅前向声明
+
+namespace hd2d { struct SceneView; }   // G12-4: 3D 只读视图 (定义在 rendering3d/)
 #include "item.h"
+#include "npc_view.h"
 #include "game_map.h"
 #include "vfx_server.h"
 #include "game_renderer.h"
@@ -58,6 +61,7 @@ class PlayerAvatar;   // A5: 渲染路径懒建, 仅前向声明
 #include "scene/game_scene_input.h"
 #include "scene/game_scene_combat.h"
 #include "scene/game_scene_interaction.h"
+#include "scene/game_scene_render_pass.h"   // G12-2: 全屏状态绘制 (元素选择/Boss介绍)
 #include "world/ambient_layer.h"   // G11.2: 氛围层 (粒子+情绪 vignette)
 
 // ── G4.5: Replay ──
@@ -104,6 +108,7 @@ class GameScene : public Node {
     friend class GameSceneInput;
     friend class GameSceneCombat;
     friend class GameSceneInteraction;
+    friend class GameSceneRenderPass;
 public:
     GameScene();
     ~GameScene();  // G8.1: defined in .cpp (needed for unique_ptr<DecisionAgent/BTAgent>)
@@ -182,13 +187,8 @@ public:
     Object::Signal<int> on_player_leveled;
 
     // ── M6-HD2D: 3D 表现层只读访问器 (rendering3d 只读红线; 不暴露可变引用) ──
-    struct NpcView {                       // NPC 快照 (坐标 tile + 是否完成对话 + id)
-        int tile_x = 0, tile_y = 0;
-        bool finished = false;
-        int npc_id = 0;                    // A6-S2 批次6: floor*10+slot
-    };
     std::vector<NpcView> npc_views() const;          // 未完成对话的在图 NPC
-    SkeletonAvatar* npc_avatar(int npc_id);   // A6-S2 批次6: HD2D/2D 只读查骨骼
+    SkeletonAvatar* npc_avatar(int npc_id) const;   // A6-S2 批次6: HD2D/2D 只读查骨骼
     const std::vector<DroppedItem>& dropped_items() const { return ground_items; }
     bool in_challenge_arena() const { return _world_mode == WorldMode::CHALLENGE_ARENA; }
     const BossSystemDirector& boss_ctrl() const { return _boss; }  // M6-v2b: 危险区只读
@@ -197,6 +197,9 @@ public:
     bool camera_def_loaded() const { return _camera_def_loaded; }
     bool sim_mode() const { return _sim_mode; }
     const CameraLanguageDirector& camera_director() const { return _camera_director; }
+
+    // G12-4: 组装 3D 只读视图 —— hd2d 渲染器/scene_builder 从此不再依赖本类
+    hd2d::SceneView hd2d_view() const;
 
     // 生命周期
     void _ready() override;
@@ -345,6 +348,7 @@ private:
     GameSceneInput  _input_handler{*this};
     GameSceneCombat _combat{*this};
     GameSceneInteraction _interaction{*this};
+    GameSceneRenderPass _render_pass{*this};
     GameRenderer _renderer;
     InteractionHandler _interact;
 

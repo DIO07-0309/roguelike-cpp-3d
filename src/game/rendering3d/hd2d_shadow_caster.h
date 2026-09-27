@@ -30,8 +30,7 @@ public:
     // 画进深度 fbo; 无贴图实体跳过 (罕见降级路径, blob shadow 兜底)
     // outer_fbo: 深度 pass 完成后必须恢复绑定的外层渲染目标
     // (raylib 5.0 无查询当前 FBO API; 由 caller 注入 — 通常为主 RT fbo)
-    void render_depth(const class GameScene& gs,
-                      const std::vector<struct HD2DDrawItem>& items,
+    void render_depth(const std::vector<struct HD2DDrawItem>& items,
                       unsigned int outer_fbo);
 
     // 主 pass 采样用: 光空间 view/proj 分开暴露 (shader 内 mat 相乘;
