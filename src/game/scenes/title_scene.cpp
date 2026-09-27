@@ -10,7 +10,6 @@
 #include "core/logger.h"
 #include "resources/resource_manager.h"     // G10.7-B2: 舞台层素材
 #include "game/rendering/sprite_renderer.h"  // G10.7-B2: draw_sprite
-#include "game/rendering3d/hd2d_renderer.h"   // G11.1: g_hd2d_mode (3D 表现层开关)
 #include <cmath>
 
 extern Font g_font, g_font_small;
@@ -34,14 +33,6 @@ bool TitleScene::_activate(const std::string& action) {
         ts->name = "TutorialScene";
         tree->change_scene(ts);
         LOG_INFO("进入教程");
-        return true;
-    }
-    if (action == "hd2d") {
-        // G11.1: 3D 表现层开关 — 标题界面直达, 不再只能靠 --hd2d 命令行参数
-        // 本开关是进程内全局, 返回标题后再进游戏仍保持; 3D 初始化失败时 GameScene 自行回退 2D
-        g_hd2d_mode = !g_hd2d_mode;
-        LOG_INFO("3D 表现层: %s (标题/教程界面本身仍为 2D, 主游戏生效)",
-                 g_hd2d_mode ? "开启" : "关闭");
         return true;
     }
     if (action == "fullscreen") {
@@ -90,7 +81,6 @@ void TitleScene::_ready() {
         {"C", "继续游戏", "continue", {100, 200, 100, 255}},
         {"F", "选关", "select", {100, 180, 255, 255}},
         {"T", "新手教程", "tutorial", {200, 180, 120, 255}},
-        {"3", "3D 表现层", "hd2d", {180, 220, 255, 255}},
         {"G", "全屏切换", "fullscreen", {160, 160, 200, 255}},
         {"Esc", "退出", "quit", {200, 100, 100, 255}},
     };
@@ -390,8 +380,7 @@ void TitleScene::_render() {
     }
 
     // 面板 (老师反馈: 菜单字号 16→20, 面板加宽加高, 下移让出标题区)
-    // G11.1: 6→7 项菜单 (含 3D 开关) → 行距 42→40 / 行高 38→36 / ph 320→366 恰好容纳
-    float pw = 360, ph = 366;
+    float pw = 360, ph = 320;
     Rectangle pr = {sw/2.0f - pw/2, 205, pw, ph};
     DrawRectangleRounded(pr, 0.08f, 8, {20, 20, 40, 230});
     DrawRectangleRoundedLines(pr, 0.08f, 8, 2, {100, 100, 180, 255});
@@ -423,7 +412,7 @@ void TitleScene::_render() {
         if (mi.action == "continue" && !has_save) c = {80, 80, 80, 255};
         if (mi.action == "select" && !has_save) c = {80, 80, 80, 255};
 
-        Rectangle item_rect = {(float)(pr.x + 40), y, pw - 80, 36};
+        Rectangle item_rect = {(float)(pr.x + 40), y, pw - 80, 38};
         if (CheckCollisionPointRec(mouse, item_rect)
             && !(mi.action == "continue" && !has_save)
             && !(mi.action == "select" && !has_save)) {
@@ -440,16 +429,7 @@ void TitleScene::_render() {
             std::string txt = "[" + mi.key + "] " + mi.action;
             DrawText(txt.c_str(), (int)pr.x + 66, (int)y + 8, 20, c);
         }
-        // G11.1: 3D 开关当前状态跟在标签后, 玩家不查日志也知道模式; 紧跟标签避免与行尾对齐计算冲突
-        if (mi.action == "hd2d" && g_font_loaded) {
-            const char* state_txt = g_hd2d_mode ? "● 已开启" : "○ 已关闭";
-            Color state_c = g_hd2d_mode ? Color{120, 255, 150, 255} : Color{150, 150, 175, 255};
-            std::string label = "[" + mi.key + "] " + mi.label;
-            float label_w = MeasureTextEx(g_font_small, label.c_str(), 20, 1).x;
-            DrawTextEx(g_font_small, state_txt,
-                       {(float)(pr.x + 66 + label_w + 14), y + 8}, 20, 1, state_c);
-        }
-        y += 40;
+        y += 42;
     }
     if (new_hover != hover_index) {
         if (new_hover >= 0 && get_tree())
@@ -506,7 +486,6 @@ void TitleScene::_input(const InputMap& input) {
     if (IsKeyPressed(KEY_C)) { if (has_save) _activate("continue"); return; }
     if (IsKeyPressed(KEY_F)) { _activate("select"); return; }
     if (IsKeyPressed(KEY_T)) { _activate("tutorial"); return; }
-    if (IsKeyPressed(KEY_THREE)) { _activate("hd2d"); return; }  // G11.1: 3D 表现层开关
 
     // Q4.5: 鼠标点击菜单项
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && hover_index >= 0
