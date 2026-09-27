@@ -7,6 +7,14 @@
 - 不引入第三方 ECS；使用组合优于继承的手工架构
 - 构建：`vendor/raylib/` (include+lib) + `vendor/json/` (header-only)
 
+## 版本策略（2026-09-27 定，最高优先级）
+- **本仓库 = 3D 版。2D 开发已停止，新功能一律往 3D 做。**
+- `C:\Users\HP\Desktop\Roguelike-CPP-初代版` 是 **2D 最终保留包**，已冻结，
+  禁止任何改动/同步（除非修致命 bug，且需用户明确同意）。
+- 本仓库不再做「2D/3D 二选一」的开关、兼容层或双模式菜单——游戏是 3D，
+  2D 绘制路径属于遗留代码，只在修 3D 问题时被动触碰，不主动投入重构。
+- 涉及表现层的改动前，先确认目标形态是 3D，不是 2D。
+
 ## 开发命令
 - 构建 Release：`cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build`
 - 构建 Debug：`cmake -B build -DCMAKE_BUILD_TYPE=Debug && cmake --build build`
@@ -55,6 +63,8 @@
 - `vendor/` — 第三方库：raylib 5.0 (`include/` + `lib/`)，nlohmann/json (`include/` header-only)
 
 ## 不要做
+- 不要新增 2D 功能或 2D/3D 双模式菜单（2D 开发已停止，见上方版本策略）
+- 不要为遗留 2D 绘制路径做美化或大重构（除非它在阻塞 3D 工作）
 - 不要安装新的 C++ 第三方库除非我明确同意
 - 不要修改 CMakeLists.txt 的编译器标志（UTF-8 配置已验证）
 - 不要直接 `new` 创建对象，使用工厂方法或智能指针
