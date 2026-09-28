@@ -236,6 +236,8 @@ add_roguelike_test(vfx_test              vfx/vfx_test.cpp)                # A9-T
 
 add_roguelike_test(team_coordinator_test systems/team_coordinator_test.cpp)  # G13: evaluate() 角色分支拆分行为回归
 
+add_roguelike_test(mod_dependency_test   core/mod_dependency_test.cpp)      # G13: 拓扑排序/循环检测拆分行为回归
+
 # G10.2-B3B: font_manifest_test 处于 Review Gate (候选 A 缺 11 符号) — 未录用前不注册, 决策后启用或按裁决移除
 
 
