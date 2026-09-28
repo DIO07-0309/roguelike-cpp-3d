@@ -12,7 +12,7 @@ public:
     // 全有才 true (all-or-nothing): 两 JSON + 全部件贴图, 任一失败 → active()=false 走静帧回退
     bool try_init(const std::string& anim_dir, std::string& err);
     void update(float dt, const Player& pl);                      // hp 边沿/武器/移动 → animator
-    void draw(const Player& pl, float cam_x, float cam_y, const GameMap* view_map);  // 7 件 + ghost
+    void draw(const Player& pl, float cam_x, float cam_y, const GameMap* view_map) const;  // 7 件 + ghost
     bool active() const { return _core.active(); }
     const std::string& current_clip() const { return _core.current_clip(); }
     float time() const { return _core.time(); }

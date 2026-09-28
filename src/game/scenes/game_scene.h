@@ -9,7 +9,7 @@
 #include "node.h"
 #include "player.h"
 #include "monster.h"
-#include "data/actor_avatar_defs.h"   // A6-S1: 怪物骨骼皮肤白名单
+#include "game/animation/avatar_director.h"   // G12-6: 骨骼形象懒建 + 驱动 (玩家/怪物/白名单)
 
 // G8.1: AI agent forward declarations (global scope)
 class DecisionAgent;
@@ -125,7 +125,7 @@ public:
 
     // M6-v2e: 氛围层只读视图 (3D 渲染层画粒子 billboard 用)
     const AmbientLayer& ambient_layer() const { return _ambient; }
-    const PlayerAvatar* playerAvatar() const { return _player_avatar.get(); }
+    const PlayerAvatar* playerAvatar() const { return _avatars.player_avatar(); }
 
     // 核心数据
     std::unique_ptr<Player> player;
@@ -387,10 +387,7 @@ private:
     // 渲染辅助 (保留 GameScene 中的轻量级方法)
     void _draw_map();
     void _draw_entities();
-    void _ensure_player_avatar();
-    void _player_avatar_tick();
-    void _monster_avatars_tick();   // A6-S1: 怪物骨骼皮肤懒建+驱动 (与玩家同款, sim/无头不触达)
-    void _npc_avatars_tick();   // A6-S2 批次6: NPC 骨骼懒建+idle 驱动
+    void _npc_avatars_tick();   // A6-S2 批次6: NPC 骨骼懒建+idle 驱动 (白名单取自 _avatars)
     void _draw_ground_items();
     void _draw_arena_map();
     void _draw_arena_entities();
@@ -433,12 +430,8 @@ private:
     // A6-T2: HitStop — 击杀/重击时短暂暂停游戏逻辑 (wall clock, 独立于 PresentationSystem)
     HitStop _hit_stop;
 
-    // A5: 玩家骨骼形象 — 首次渲染帧懒建, 失败也缓存不重试 (无头 sim 不实例化)
-    std::unique_ptr<PlayerAvatar> _player_avatar;
-
-    // A6-S1: actor_avatars.json 皮肤白名单 (首版空 = 全回退); 渲染路径懒载一次
-    std::map<std::string, ActorAvatarDef> _actor_avatars;
-    bool _actor_avatars_loaded = false;
+    // G12-6: 骨骼形象懒建 + 驱动 (玩家/怪物/皮肤白名单) —— 与教程共用同一实现
+    AvatarDirector _avatars;
 
     // A6-S2 批次6: NPC 骨骼缓存 (键 npc_id; 未入 map=未尝试, nullptr=失败已缓存)
     std::map<int, std::unique_ptr<SkeletonAvatar>> _npc_avatars;

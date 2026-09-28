@@ -1,3 +1,51 @@
+# G12-6 — AvatarDirector 消重 + 教程 3D 名条 + 披风动画 + 教程函数瘦身 (2026-09-28)
+
+> 起因: G12-5 后三笔技术债 —— ①教程和主游戏各写了一遍骨骼懒建/驱动 ②3D 教程
+> 完全没有怪物名条 ③`player_anim.json` 里没有 `cape` 轨，披风只能静止悬挂。
+
+- **①抽出 `AvatarDirector`**: 新增 `src/game/animation/avatar_director.{h,cpp}`
+  (声明 38 行 / 实现 66 行)，一个类管三件事：懒加载 `actor_avatars.json` 白名单、
+  懒建玩家骨架、驱动怪物骨架。`GameScene` 与 `TutorialScene` 各自的
+  `_ensure_player_avatar` / `_player_avatar_tick` / `_monster_avatars_tick` 三个复制版
+  方法连同三个成员全部删除，改为持有 `AvatarDirector _avatars`。行为完全等价
+  (同一份 `load_actor_avatars_file` 路径)。`PlayerAvatar::draw` 顺手改成 `const`
+  —— `player_avatar()` 返回 `const` 指针，原来非 const 定义在
+  `game_scene.cpp:3023` 触发 discards qualifiers
+- **②教程 3D 怪物名条**: 原来 `_draw_monster_labels()` 只在 `!use_3d` 分支被调用，
+  3D 教程**一个名条都没有**。新增 `_draw_monster_labels_3d()`，照抄主游戏
+  `GameScene::_render_hd2d_monster_labels()` 的投影写法
+  (`world_to_screen(wpos, 58.0f)` 头顶高度 + `has_line_of_sight` 裁剪 + Boss/精英/普通三色)，
+  在 `_try_render_hd2d()` 的 `render_frame` 之后调用。2D 版保留原样
+- **③披风动画**: `player_anim.json` 四个 clip 各加一条 `cape` 轨 —— idle 微摆
+  (±2.5°) / walk 随步伐摆 (±3~4°, 对齐 torso 的 0.175s 节拍) / attack 甩动
+  (−6→12°) / hit 被击飞 (−16°)。pivot 在披风顶中央，绕挂点摆动
+- **④解析器改为容忍缺骨 (设计变更，若不同意可回退)**: 怪物骨架全部共用
+  `player_anim.json`，但没有任何怪物骨架有 `cape` 骨 → 新增 cape 轨后
+  `parse_anim` 直接 `track bone unknown` 报错，`RepoDefaultWhitelistCoversA6HumanoidFamily`
+  失败。共享动画集跨骨架复用是既定模式，改 `parse_clip` 跳过未知骨的轨
+  (`animation_defs.cpp:92`)。副作用: 拼错骨名从"编译期报错"变"静默丢动画"，
+  补了守护测试 `AnimSet.SharedAnimSkipsUnknownBonesAndPlayerLosesNothing`
+  (逐条比对玩家动画集原始 JSON 与解析结果，确保零轨被跳过)；原
+  `AnimationDefs.RejectsUnknownTrackBone` 按新语义改写为 `SkipsUnknownTrackBone`
+- **⑤教程函数瘦身 (规则1: ≤40 行)**: `tutorial_scene.cpp` 原本 3 个超规
+  (`_input` 137 / `_render` 123 / `_process` 65)，全部拆完 → **0 个超规**。
+  `_process` → `_tick_movement` / `_update_camera_and_fov`；`_render` →
+  `_render_world_2d` / `_draw_pickup_msg` / `_draw_inventory_panel` /
+  `_draw_element_select` / `_draw_tutorial_hints` + 静态 `_draw_wrapped_desc`；
+  `_input` → `_input_quit_or_skip` / `_input_gate_stage` / `_input_element_select` /
+  `_tick_cooldown_stage` / `_input_inventory` / `_input_actions` /
+  `_try_pickup_nearest` / `_advance_stage_if_needed`。纯搬移，无逻辑变更。
+  顺带删了 COOLDOWN 分支里一个空的 `else { }` 死块。`game_scene.cpp` 另有 13 个
+  历史超规函数，不在本轮范围
+- **新增测试**: `AvatarDirector.OwnsWhitelistAndStartsEmpty`（初始空、空 vector 触发
+  懒载、白名单含「训练木桩」）· `AnimSet.PlayerCapeIsAnimatedInEveryClip`（4 个 clip
+  都有 cape 轨，防僵死）· `AnimSet.SharedAnimSkipsUnknownBonesAndPlayerLosesNothing`
+- **门禁**: build 0 err 0 warning · **ctest 72/72** · world_validator 0 Errors 0 Warnings
+- **未验证 (需肉眼)**: 披风四个动作的摆动幅度/方向是否好看 · 教程 3D 名条的字号与
+  位置 · 教程 3D 怪物是否真的不再"没名字"
+
+---
+
 # G12-5 — 教程木桩骨骼化 + 主角 3D 元素披风 (2026-09-27)
 
 > 起因: 验收教程 3D 后指出两个缺口 —— ①教程里的怪还是 2D 贴图 ②2D 版选完元素主角

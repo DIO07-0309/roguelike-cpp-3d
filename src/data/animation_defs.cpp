@@ -89,7 +89,7 @@ bool parse_clip(const nlohmann::json& c, const std::map<std::string, int>& bone_
         TrackDef tr;
         if (!t.contains("bone") || !t["bone"].is_string()) { err = "anim: track missing bone"; return false; }
         auto it = bone_idx.find(t["bone"].get<std::string>());
-        if (it == bone_idx.end()) { err = "anim: track bone unknown"; return false; }
+        if (it == bone_idx.end()) continue;   // G12-6: 共享动画集跨骨架复用, 该角色没有这根骨就跳过
         tr.bone = it->second;
         if (!t.contains("keys") || !t["keys"].is_array() || t["keys"].empty()) {
             err = "anim: track keys missing/empty";

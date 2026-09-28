@@ -6,6 +6,7 @@
 #include "game/rendering3d/hd2d_part_geometry.h"
 #include "game/animation/player_avatar.h"
 #include "game/animation/skeleton_avatar.h"
+#include "game/animation/avatar_director.h"
 #include "data/actor_avatar_defs.h"
 #include "entities/monster.h"
 #include "entities/ai.h"
@@ -13,6 +14,7 @@
 #include <cmath>
 #include <algorithm>
 #include <filesystem>
+#include <fstream>
 #include <limits>
 #include <set>
 #include <string>
@@ -146,13 +148,17 @@ TEST(AnimationDefs, RejectsLoopMissingEndKey) {
     EXPECT_FALSE(err.empty());
 }
 
-TEST(AnimationDefs, RejectsUnknownTrackBone) {
+// G12-6: 共享动画集跨骨架复用 —— 该角色没有的骨直接跳过, 不再整体报错
+// (拼错骨名的守护见 AnimSet.SharedAnimSkipsUnknownBonesAndPlayerLosesNothing)
+TEST(AnimationDefs, SkipsUnknownTrackBone) {
     nlohmann::json sk_j = nlohmann::json::parse(R"({"bones":[{"name":"root"}],"parts":[]})");
     std::string err;
     SkeletonDef sk = *parse_skeleton(sk_j, err);
     auto a = nlohmann::json::parse(R"({"animations":{"idle":{"loop":false,"dur":1.0,
       "tracks":[{"bone":"nope","keys":[{"t":0},{"t":1.0}]}]}}})");
-    EXPECT_FALSE(parse_anim(a, sk, err).has_value());
+    const auto set = parse_anim(a, sk, err);
+    ASSERT_TRUE(set.has_value()) << err;
+    EXPECT_TRUE(set->clips.at("idle").tracks.empty());   // 唯一轨被跳过 → 空 clip
 }
 
 // ── A5-T2: skeleton_pose 求值器 ─────────────────────────────
@@ -672,6 +678,47 @@ TEST(SkeletonDef, RepoPlayerCapeIsElementTintedAndDrawnBehindBody) {
     EXPECT_LT(geom.offset.y, 32.f);
 }
 
+// G12-6: 披风每个 clip 都要有轨, 否则某个状态下披风僵死 (静止悬挂)
+TEST(AnimSet, PlayerCapeIsAnimatedInEveryClip) {
+    std::string err;
+    const auto sk = load_skeleton_file("resources/animations/player_skeleton.json", err);
+    ASSERT_TRUE(sk) << err;
+    const auto set = load_anim_file("resources/animations/player_anim.json", *sk, err);
+    ASSERT_TRUE(set) << err;
+    for (const auto& clip : set->clips) {
+        bool has_cape = false;
+        for (const auto& tr : clip.second.tracks)
+            has_cape |= (sk->bones[tr.bone].name == "cape");
+        EXPECT_TRUE(has_cape) << "clip '" << clip.first << "' 缺 cape 轨";
+    }
+}
+
+// G12-6: 共享动画集会为缺骨角色跳过轨 (怪物骨架无 cape), 代价是拼错骨名会变静默丢动画。
+// 守护: 玩家自己的动画集一条轨都不能被跳过; 怪物共享集仍必须成功加载
+TEST(AnimSet, SharedAnimSkipsUnknownBonesAndPlayerLosesNothing) {
+    std::string err;
+    const auto psk = load_skeleton_file("resources/animations/player_skeleton.json", err);
+    ASSERT_TRUE(psk) << err;
+
+    std::ifstream ifs("resources/animations/player_anim.json");
+    const nlohmann::json j = nlohmann::json::parse(ifs);
+    for (const auto& [clip_name, clip] : j["animations"].items()) {
+        for (const auto& tr : clip["tracks"]) {
+            const std::string bone = tr["bone"];
+            bool resolves = false;
+            for (const auto& b : psk->bones) resolves |= (b.name == bone);
+            EXPECT_TRUE(resolves) << "player_anim clip '" << clip_name
+                                  << "' 轨 '" << bone << "' 被静默跳过";
+        }
+    }
+
+    const auto msk = load_skeleton_file("resources/animations/mon_archer_skeleton.json", err);
+    ASSERT_TRUE(msk) << err;
+    const auto anim = load_anim_file("resources/animations/player_anim.json", *msk, err);
+    ASSERT_TRUE(anim) << err;
+    EXPECT_FALSE(anim->clips.empty());
+}
+
 TEST(AvatarAnimator, HeavyScalesDuration) {
     AvatarAnimator an; AnimInput in;
     in.attacking = true; in.attack_recovery_ratio = 1.8f;
@@ -704,6 +751,19 @@ TEST(ActorAvatarDefs, ParsesWhitelistEntries) {
     EXPECT_EQ((*out)["mon_fire_imp"].skeleton, "resources/animations/imp_skeleton.json");
     EXPECT_EQ((*out)["mon_fire_imp"].anim, "resources/animations/imp_anim.json");
 }
+
+// G12-6: 皮肤白名单由 AvatarDirector 单一持有 —— 主游戏/教程共用一份,
+// 此前 game_scene.cpp 与 tutorial_scene.cpp 各自加载一份, 会漂移
+TEST(AvatarDirector, OwnsWhitelistAndStartsEmpty) {
+    AvatarDirector dir;
+    EXPECT_EQ(dir.player_avatar(), nullptr);
+    EXPECT_TRUE(dir.actor_defs().empty());
+    std::vector<std::unique_ptr<Monster>> none;
+    dir.tick_monsters(none);                 // 空怪列表 = 只触发白名单懒载
+    EXPECT_FALSE(dir.actor_defs().empty());
+    EXPECT_NE(dir.actor_defs().find("训练木桩"), dir.actor_defs().end());
+}
+
 TEST(ActorAvatarDefs, EmptyOrDefaultActorsMeanFullFallback) {
     std::string err;
     auto empty = parse_actor_avatars(nlohmann::json::parse(R"({"actors":{}})"), err);

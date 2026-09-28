@@ -9,8 +9,7 @@
 #include "combat_feel.h"    // G10.8-B1: HitStop 常量
 #include "systems/weapon_executor.h"  // G10.8-B1: 正式战斗链
 #include "systems/vfx_server.h"       // G10.11: 拾取 VFX (ring + spark_burst)
-#include "data/actor_avatar_defs.h"   // G12-4: 怪物骨骼皮肤白名单
-#include "animation/player_avatar.h"  // G12-4: 玩家骨骼形象 (3D 路径)
+#include "game/animation/avatar_director.h"   // G12-6: 骨骼形象懒建 + 驱动
 #include <map>
 #include <memory>
 #include <string>
@@ -46,15 +45,26 @@ public:
 
 private:
     bool _try_render_hd2d(int sw, int sh);   // G12-4: 3D 表现层 (成功则返回 true)
-    // G12-4: 骨骼形象懒建 (镜像 game_scene.cpp 同名实现) —— 渲染器建不出骨骼就
-    // 会回退 2D 精灵贴图, 所以教程 3D 必须走同一套流程
-    void _ensure_player_avatar();
-    void _player_avatar_tick();
-    void _monster_avatars_tick();
-    std::unique_ptr<PlayerAvatar> _player_avatar;
-    std::map<std::string, ActorAvatarDef> _actor_avatars;
-    bool _actor_avatars_loaded = false;
+    // G12-6: 骨骼形象懒建 + 驱动 —— 渲染器建不出骨骼就回退 2D 精灵贴图,
+    // 所以教程 3D 必须走同一套流程; 现在与主游戏共用 AvatarDirector
+    AvatarDirector _avatars;
+    void _tick_movement(float dt);              // G12-6: 玩家移动 (_process 拆出)
+    void _update_camera_and_fov();              // G12-6: 摄像机跟随 + FOV (_process 拆出)
+    void _render_world_2d(int sw, int sh);      // G12-6: 2D 世界绘制 (_render 拆出)
+    void _draw_pickup_msg(int sw, int sh);      // G12-6: 拾取飘字 (_render 拆出)
+    void _draw_inventory_panel(int sw, int sh); // G12-6: 背包面板 (_render 拆出)
+    void _draw_element_select(int sw, int sh);  // G12-6: 元素三卡片选择 (_render 拆出)
+    void _draw_tutorial_hints(int sw, int sh);  // G12-6: 提示框 + 底部按键 (_render 拆出)
+    bool _input_quit_or_skip(const InputMap& input);   // G12-6: 退出/跳过 (_input 拆出)
+    bool _input_gate_stage(const InputMap& input);     // G12-6: 阻挡型阶段 (_input 拆出)
+    void _input_element_select(const InputMap& input); // G12-6: 元素卡片导航 (_input 拆出)
+    void _tick_cooldown_stage();                        // G12-6: 冷却观察计时 (_input 拆出)
+    void _input_inventory(const InputMap& input);       // G12-6: 背包交互 (_input 拆出)
+    void _input_actions(const InputMap& input);         // G12-6: 战斗/拾取/技能 (_input 拆出)
+    void _try_pickup_nearest();                         // G12-6: 就近拾取 (_input 拆出)
+    void _advance_stage_if_needed();                    // G12-6: 阶段推进 (_input 拆出)
     void _draw_ground_items();                  // G10.11: 掉落物 (可见性门控+精灵+圆角回退+E拾取提示)
-    void _draw_monster_labels();                // G10.11: 怪物名条
+    void _draw_monster_labels();                // G10.11: 怪物名条 (2D 平面偏移)
+    void _draw_monster_labels_3d();             // G12-6: 3D 版 (世界坐标投影, 2D 偏移会错位)
     void _on_pickup(const std::string& name);   // G10.11: 拾取反馈 (音效+VFX+飘字)
 };

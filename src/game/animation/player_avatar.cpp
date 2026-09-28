@@ -69,7 +69,7 @@ static Vector2 _feet_of(const Player& pl, float cam_x, float cam_y,
     return { hx + hw / 2, hy + hh };
 }
 
-void PlayerAvatar::draw(const Player& pl, float cam_x, float cam_y, const GameMap* view_map) {
+void PlayerAvatar::draw(const Player& pl, float cam_x, float cam_y, const GameMap* view_map) const {
     if (!_core.active()) return;
     auto pose = _core.pose(_overlay(pl));
     Vector2 feet = _feet_of(pl, cam_x, cam_y, view_map);

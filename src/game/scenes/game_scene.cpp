@@ -2372,9 +2372,9 @@ void GameScene::_render() {
     if (g_hd2d_mode) {
         auto& hd2d = HD2DRenderer::inst();
         if (hd2d.ensure_init(sw, sh)) {
-            _ensure_player_avatar();
-            _player_avatar_tick();
-            _monster_avatars_tick();
+            _avatars.ensure_player(player.get());
+            _avatars.tick_player(player.get());
+            _avatars.tick_monsters(monsters);
             _npc_avatars_tick();
             hd2d.set_camera_shake(shake_ox, shake_oy);
             hd2d.render_frame(hd2d_view());
@@ -2383,9 +2383,9 @@ void GameScene::_render() {
         }
         g_hd2d_mode = false;  // 初始化失败: 本次会话回退 2D
     }
-    _ensure_player_avatar();
-    _player_avatar_tick();
-    _monster_avatars_tick();
+    _avatars.ensure_player(player.get());
+    _avatars.tick_player(player.get());
+    _avatars.tick_monsters(monsters);
     _npc_avatars_tick();
     _draw_map();
     _draw_ground_items();
@@ -2911,54 +2911,8 @@ static void _draw_interact_hint(const char* text, float cx, float cy) {
                {255, 225, 110, 255});
 }
 
-void GameScene::_ensure_player_avatar() {
-    if (!player || _player_avatar) return;
-    auto avatar = std::make_unique<PlayerAvatar>();
-    std::string avatar_err;
-    if (avatar->try_init("resources/animations", avatar_err))
-        LOG_INFO("A5: player avatar active (skeletal)");
-    else
-        LOG_WARN("A5: avatar inactive, fallback static (%s)", avatar_err.c_str());
-    _player_avatar = std::move(avatar);
-}
-
-void GameScene::_player_avatar_tick() {
-    if (_player_avatar && _player_avatar->active() && player)
-        _player_avatar->update(GetFrameTime(), *player);
-}
-
-// A6-S1: 怪物骨骼皮肤 — 白名单命中懒建一次 (成败都缓存), 与玩家同款渲染驱动
-void GameScene::_monster_avatars_tick() {
-    if (!_actor_avatars_loaded) {
-        _actor_avatars_loaded = true;
-        std::string conf_err;
-        auto conf = load_actor_avatars_file("resources/animations/actor_avatars.json", conf_err);
-        if (conf) _actor_avatars = std::move(*conf);
-        else LOG_WARN("A6: actor_avatars.json invalid, all fallback (%s)", conf_err.c_str());
-    }
-    if (_actor_avatars.empty()) return;    // 白名单空 = 零开销全回退
-    const float dt = GetFrameTime();
-    const float now_wall = (float)GetTime();
-    for (auto& m : monsters) {
-        if (!m || !m->combat.is_alive) continue;
-        if (!m->skeleton_avatar()) {
-            auto it = _actor_avatars.find(monster_actor_key(*m));
-            if (it == _actor_avatars.end()) continue;
-            auto avatar = std::make_unique<SkeletonAvatar>();
-            std::string avatar_err;
-            if (avatar->try_init(it->second.skeleton, it->second.anim, avatar_err))
-                LOG_INFO("A6: monster avatar active (%s)", it->first.c_str());
-            else
-                LOG_WARN("A6: monster avatar inactive (%s): %s",
-                         it->first.c_str(), avatar_err.c_str());
-            m->set_skeleton_avatar(std::move(avatar));   // 成功/失败都缓存不重试
-        }
-        auto* avatar = m->skeleton_avatar();
-        if (!avatar || !avatar->active()) continue;
-        avatar->advance(dt, monster_anim_input(*m, avatar->hp_state(), now_wall));
-        avatar->track_facing(m->entity.position);        // 渲染层朝向镜像
-    }
-}
+// G12-6: 玩家/怪物骨骼懒建+驱动已抽到 AvatarDirector (avatar_director.cpp),
+// TutorialScene 组合同一实现 —— 此前两处复制, 容易漂移
 
 SkeletonAvatar* GameScene::npc_avatar(int npc_id) const {
     auto it = _npc_avatars.find(npc_id);
@@ -2967,16 +2921,8 @@ SkeletonAvatar* GameScene::npc_avatar(int npc_id) const {
 
 // A6-S2 批次6: NPC 骨骼 — 白名单命中懒建一次 (成败都缓存), idle-only
 void GameScene::_npc_avatars_tick() {
-    if (!_actor_avatars_loaded) {
-        _actor_avatars_loaded = true;
-        std::string conf_err;
-        auto conf = load_actor_avatars_file("resources/animations/actor_avatars.json",
-                                            conf_err);
-        if (conf) _actor_avatars = std::move(*conf);
-        else LOG_WARN("A6: actor_avatars.json invalid, all fallback (%s)",
-                      conf_err.c_str());
-    }
-    if (_actor_avatars.empty()) return;
+    const auto& defs = _avatars.actor_defs();   // G12-6: 与怪物共用同一份白名单
+    if (defs.empty()) return;
     const float dt = GetFrameTime();
     for (int i = 0; i < _npc_count; i++) {
         if (_npc_state[i].finished) continue;
@@ -2984,9 +2930,9 @@ void GameScene::_npc_avatars_tick() {
         auto found = _npc_avatars.find(id);
         if (found == _npc_avatars.end()) {
             const std::string key = "npc_" + std::to_string(id);
-            auto it = _actor_avatars.find(key);
+            auto it = defs.find(key);
             std::unique_ptr<SkeletonAvatar> avatar;
-            if (it != _actor_avatars.end()) {
+            if (it != defs.end()) {
                 avatar = std::make_unique<SkeletonAvatar>();
                 std::string avatar_err;
                 if (avatar->try_init(it->second.skeleton, it->second.anim, avatar_err))
@@ -3072,8 +3018,9 @@ void GameScene::_draw_entities() {
         }
     }
     if (player) {
-        if (_player_avatar && _player_avatar->active()) {
-            _player_avatar->draw(*player, _cam_x, _cam_y, game_map.get());
+        auto* player_avatar = _avatars.player_avatar();
+        if (player_avatar && player_avatar->active()) {
+            player_avatar->draw(*player, _cam_x, _cam_y, game_map.get());
         } else {
             player->draw_no_cam(_cam_x, _cam_y, game_map.get());
         }
