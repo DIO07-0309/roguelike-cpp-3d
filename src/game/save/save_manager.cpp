@@ -54,7 +54,424 @@ static std::string trim(const std::string& s) {
 // ---- M4e: float 列表解析 (前置声明, 定义在文件末) ----
 static void _parse_float_list(const std::string& s, std::vector<float>& out);
 
-// ---- 序列�?----
+// ---- B8: spr 序列化 (前置声明, 定义在文件末) ----
+static std::string _encode_spr(const std::vector<bool>& v);
+static std::vector<bool> _decode_spr(const std::string& s);
+
+// ---- G13: load_game 拆分用的行级访问器 ("key:value" 格式) ----
+struct SaveTokens {
+    std::vector<std::string> lines;
+    int getV(const char* key, int def = 0) const {
+        const std::string prefix = std::string(key) + ":";
+        for (const auto& l : lines)
+            if (l.compare(0, prefix.size(), prefix) == 0)
+                return atoi(l.c_str() + prefix.size());
+        return def;
+    }
+    std::string getS(const char* key) const {
+        const std::string prefix = std::string(key) + ":";
+        for (const auto& l : lines)
+            if (l.compare(0, prefix.size(), prefix) == 0) return l.substr(prefix.size());
+        return "";
+    }
+};
+
+// 读整个存档文件为行列表 (跳过空行)
+static SaveTokens _read_save_lines(const std::string& path) {
+    SaveTokens tk;
+    FILE* f = fopen(path.c_str(), "rb");
+    if (!f) return tk;
+    char buf[4096];
+    while (fgets(buf, sizeof(buf), f)) {
+        std::string line = trim(buf);
+        if (!line.empty()) tk.lines.push_back(line);
+    }
+    fclose(f);
+    return tk;
+}
+
+// "a,b,c" -> ["a","b","c"]
+static void _split_csv(const std::string& s, std::vector<std::string>& out) {
+    out.clear();
+    for (size_t i = 0, last = 0; i <= s.size(); i++) {
+        if (i == s.size() || s[i] == ',') {
+            out.push_back(s.substr(last, i - last));
+            last = i + 1;
+        }
+    }
+}
+
+// G3.2: 旧档 skill 名映射 ("Slash"->"slash" ...)
+static std::string _map_old_skill_name(const std::string& nm) {
+    if (nm == "Slash")     return "slash";
+    if (nm == "Fireball")  return "fireball";
+    if (nm == "SelfHeal")  return "self_heal";
+    if (nm == "TheWorld")  return "the_world";
+    if (nm == "IronSkin")  return "iron_skin";
+    if (nm == "Berserk")   return "berserk";
+    return nm;   // G3.2+ 新格式已是正确 id
+}
+
+// 单条 "name,lv,evo,use" -> Skill (格式不符/未知 id 返回 nullptr)
+static std::unique_ptr<Skill> _parse_skill_token(const std::string& tok) {
+    const size_t comma1 = tok.find(',');
+    if (comma1 == std::string::npos) return nullptr;
+    const std::string nm = _map_old_skill_name(tok.substr(0, comma1));
+    const size_t comma2 = tok.find(',', comma1 + 1);
+    const std::string lvStr = (comma2 != std::string::npos)
+        ? tok.substr(comma1 + 1, comma2 - comma1 - 1) : tok.substr(comma1 + 1);
+    int lvl = atoi(lvStr.c_str());
+    int evo = 0, use = 0;
+    int commas = 0;
+    for (char c : tok) if (c == ',') commas++;
+    if (commas >= 3 && comma2 != std::string::npos) {
+        const size_t comma3 = tok.find(',', comma2 + 1);
+        const std::string evoStr = (comma3 != std::string::npos)
+            ? tok.substr(comma2 + 1, comma3 - comma2 - 1) : tok.substr(comma2 + 1);
+        evo = atoi(evoStr.c_str());
+        if (comma3 != std::string::npos) use = atoi(tok.substr(comma3 + 1).c_str());
+    }
+    std::unique_ptr<Skill> sk = skill_factory_create(nm);
+    if (!sk) return nullptr;
+    while (sk->level < lvl) sk->upgrade();
+    sk->evolution_level = evo;
+    sk->use_count = use;
+    return sk;
+}
+
+// "name,lv,evo,use;..." (act / pas 同格式, 合并为一份解析)
+static void _parse_skill_list(const SaveTokens& tk, const char* key, Player* p) {
+    const std::string list = tk.getS(key);
+    for (size_t pos = 0; pos < list.size(); ) {
+        const size_t semi = list.find(';', pos);
+        if (semi == std::string::npos) break;
+        const std::string tok = list.substr(pos, semi - pos);
+        pos = semi + 1;
+        std::unique_ptr<Skill> sk = _parse_skill_token(tok);
+        if (!sk) continue;
+        p->skills.learn(std::move(sk));
+    }
+}
+
+// Batch 3A: RUN relics "id,scope;..."
+static void _parse_relics(const SaveTokens& tk, Player* p) {
+    const std::string list = tk.getS("rlc");
+    for (size_t pos = 0; pos < list.size(); ) {
+        const size_t semi = list.find(';', pos);
+        const std::string tok = list.substr(
+            pos, (semi != std::string::npos ? semi - pos : std::string::npos));
+        pos = (semi != std::string::npos) ? semi + 1 : std::string::npos;
+        if (tok.empty()) break;
+        const size_t comma = tok.find(',');
+        if (comma == std::string::npos) continue;
+        const std::string rid = tok.substr(0, comma);
+        const int scope_val = std::atoi(tok.substr(comma + 1).c_str());
+        if (scope_val == static_cast<int>(PersistenceScope::RUN) && !rid.empty())
+            if (get_relic_def(rid)) p->add_relic(rid, PersistenceScope::RUN);
+    }
+}
+
+// "name,RARITY,type,v1,v2,v3[,wpn_id];..."
+static void _parse_inventory(const SaveTokens& tk, Player* p) {
+    const std::string list = tk.getS("inv");
+    for (size_t pos = 0; pos < list.size(); ) {
+        const size_t semi = list.find(';', pos);
+        if (semi == std::string::npos) break;
+        const std::string tok = list.substr(pos, semi - pos);
+        pos = semi + 1;
+
+        std::vector<std::string> parts;
+        _split_csv(tok, parts);
+        if (parts.size() < 3) continue;
+        const std::string nm = parts[0];
+        const Rarity rar = (Rarity)atoi(parts[1].c_str());
+        const std::string typ = parts[2];
+
+        if ((typ == "heal" || typ == "buff") && parts.size() >= 4) {
+            const std::string buf = (parts.size() >= 5) ? parts[4] : "";
+            p->inventory.items.push_back(
+                std::make_shared<ConsumableItem>(nm, rar, typ, atoi(parts[3].c_str()), buf));
+        } else if (parts.size() >= 6) {
+            auto ei = std::make_shared<EquipmentItem>(
+                nm, rar, typ, atoi(parts[3].c_str()), atoi(parts[4].c_str()),
+                atoi(parts[5].c_str()), false);
+            if (parts.size() >= 7 && !parts[6].empty()) ei->weapon_def_id = parts[6];
+            p->inventory.items.push_back(ei);
+        }
+    }
+}
+
+// "name,rarity,type,atk,pdef,mdef"
+static std::shared_ptr<EquipmentItem> _parse_equip_line(const std::string& s) {
+    if (s.empty()) return nullptr;
+    std::vector<std::string> parts;
+    _split_csv(s, parts);
+    if (parts.size() < 6) return nullptr;
+    return std::make_shared<EquipmentItem>(
+        parts[0], (Rarity)atoi(parts[1].c_str()), parts[2],
+        atoi(parts[3].c_str()), atoi(parts[4].c_str()), atoi(parts[5].c_str()),
+        false);
+}
+
+// eqw / eqa / wpn 三行: 装备应用到玩家并回填 inventory.equipped
+static void _parse_equipment(const SaveTokens& tk, Player* p) {
+    auto eqw = _parse_equip_line(tk.getS("eqw"));
+    if (eqw) { eqw->apply(p); p->inventory.equipped["weapon"] = eqw; }
+    auto eqa = _parse_equip_line(tk.getS("eqa"));
+    if (eqa) { eqa->apply(p); p->inventory.equipped["armor"] = eqa; }
+
+    const std::string wpn_id = tk.getS("wpn");
+    if (wpn_id.empty()) return;
+    if (eqw) eqw->weapon_def_id = wpn_id;
+    p->weapon.equip(wpn_id);
+}
+
+// "id,stacks,remaining,tick_timer;..." (过期/空条目标记跳过并计入统计)
+static void _parse_buffs(const SaveTokens& tk, Player* p) {
+    const std::string list = tk.getS("buf");
+    int restored = 0, skipped = 0;
+    for (size_t pos = 0; pos < list.size(); ) {
+        const size_t semi = list.find(';', pos);
+        if (semi == std::string::npos) break;
+        const std::string tok = list.substr(pos, semi - pos);
+        pos = semi + 1;
+
+        std::vector<std::string> parts;
+        _split_csv(tok, parts);
+        if (parts.size() < 4) {
+            LOG_WARN("[BUF] 读档跳过坏条目: %s", tok.c_str());
+            skipped++; continue;
+        }
+        const std::string id = parts[0];
+        if (id.empty()) { skipped++; continue; }
+        BuffInstance bi;
+        bi.id = id;
+        bi.stacks     = atoi(parts[1].c_str());
+        bi.remaining  = (float)atof(parts[2].c_str());
+        bi.tick_timer = (float)atof(parts[3].c_str());
+        if (bi.stacks <= 0 || bi.remaining <= 0) { skipped++; continue; }
+        p->active_buffs.push_back(bi);
+        restored++;
+    }
+    if (restored > 0 || skipped > 0)
+        LOG_INFO("读档Buff: 恢复%d 跳过%d", restored, skipped);
+}
+
+// "qid=state;qid=state;..."
+static void _parse_quest_states(const SaveTokens& tk, SaveData* d) {
+    const std::string list = tk.getS("qst");
+    for (size_t pos = 0; pos < list.size(); ) {
+        const size_t semi = list.find(';', pos);
+        const std::string tok = list.substr(
+            pos, (semi != std::string::npos ? semi - pos : std::string::npos));
+        pos = (semi != std::string::npos ? semi + 1 : list.size());
+        const size_t eq = tok.find('=');
+        if (eq != std::string::npos)
+            d->quest_states[atoi(tok.substr(0, eq).c_str())] =
+                atoi(tok.substr(eq + 1).c_str());
+    }
+}
+
+// "key=val;key=val;..."
+static void _parse_rule_counters(const SaveTokens& tk, SaveData* d) {
+    const std::string list = tk.getS("rul");
+    for (size_t pos = 0; pos < list.size(); ) {
+        const size_t semi = list.find(';', pos);
+        const std::string tok = list.substr(
+            pos, (semi != std::string::npos ? semi - pos : std::string::npos));
+        pos = (semi != std::string::npos ? semi + 1 : list.size());
+        const size_t eq = tok.find('=');
+        if (eq == std::string::npos) continue;
+        const std::string key = tok.substr(0, eq);
+        if (!key.empty()) d->rule_counters[key] = atoi(tok.substr(eq + 1).c_str());
+    }
+}
+
+// G10.1: "type,level,exp,init" (Player 与 SaveData 双写)
+static void _parse_element(const SaveTokens& tk, Player* p, SaveData* d) {
+    const std::string elem = tk.getS("elem");
+    if (elem.empty()) return;
+
+    int parts[4] = {0, 1, 0, 0};
+    for (int i = 0, pi = 0; i < (int)elem.size() && pi < 4; ) {
+        const int comma = (int)elem.find(',', i);
+        const std::string tok = elem.substr(i, (comma < 0 ? (int)elem.size() : comma) - i);
+        if (!tok.empty()) parts[pi] = atoi(tok.c_str());
+        i = (comma < 0 ? (int)elem.size() : comma + 1);
+        pi++;
+    }
+    static const ElementType map[] = {
+        ElementType::NONE, ElementType::FIRE, ElementType::ICE, ElementType::POISON
+    };
+    const int et = (parts[0] >= 0 && parts[0] < 4) ? parts[0] : 0;
+    p->element.type        = map[et];
+    p->element.level       = std::max(1, parts[1]);
+    p->element.experience  = std::max(0, parts[2]);
+    p->element.initialized = (parts[3] != 0);
+    d->element_type        = parts[0];
+    d->element_level       = parts[1];
+    d->element_exp         = parts[2];
+    d->element_initialized = (parts[3] != 0);
+}
+
+// ---- G13: save_game 分段序列化 (key:value 行序即存档格式, 仅拆函数不改字节) ----
+// G10.9-B2: v:5 是首个真正被读取的版本号; 新增 time: 字段
+static void _write_player_base(FILE* f, Player* p, int floor, int max_f, float play_time) {
+    auto& c = p->combat;
+    fprintf(f, "v:5\n");
+    fprintf(f, "floor:%d\n", floor);
+    fprintf(f, "maxf:%d\n", max_f);
+    fprintf(f, "lv:%d\n", p->level);
+    fprintf(f, "xp:%d\n", p->xp);
+    fprintf(f, "xpt:%d\n", p->xp_to_next);
+    fprintf(f, "mhp:%d\n", c.max_hp);
+    fprintf(f, "chp:%d\n", c.current_hp);
+    fprintf(f, "atk:%d\n", c.attack);           // 基础值（每次升级+2）
+    fprintf(f, "pd:%d\n", c.physical_defense);
+    fprintf(f, "md:%d\n", c.magical_defense);
+    fprintf(f, "gld:%d\n", p->gold);
+    fprintf(f, "key:%d\n", p->key_count);
+    fprintf(f, "time:%.0f\n", play_time);       // G10.9-B2: 本档累计时长(秒)
+}
+
+// 主动/被动技能 "id,lv,evo,use;..." (G3.2: _skill_id 替代 dynamic_cast)
+static void _write_skills(FILE* f, Player* p) {
+    fprintf(f, "act:");
+    for (auto& s : p->skills.active_skills) {
+        const char* nm = s->_skill_id.empty() ? "slash" : s->_skill_id.c_str();
+        fprintf(f, "%s,%d,%d,%d;", nm, s->level, s->evolution_level, s->use_count);
+    }
+    fprintf(f, "\n");
+    fprintf(f, "pas:");
+    for (auto& s : p->skills.passives) {
+        const char* nm = s->_skill_id.empty() ? "iron_skin" : s->_skill_id.c_str();
+        fprintf(f, "%s,%d,%d,%d;", nm, s->level, s->evolution_level, s->use_count);
+    }
+    fprintf(f, "\n");
+}
+
+// 背包物品 "name,RARITY,type,val1,val2,val3[,wpn_id];..." (G9: wpn_id 追加在武器后)
+static void _write_inventory(FILE* f, Inventory& inv) {
+    fprintf(f, "inv:");
+    for (auto& item : inv.items) {
+        auto* eq = dynamic_cast<EquipmentItem*>(item.get());
+        auto* cn = dynamic_cast<ConsumableItem*>(item.get());
+        if (eq && eq->slot != "charm") {
+            fprintf(f, "%s,%d,%s,%d,%d,%d",
+                eq->base_name.c_str(), (int)eq->rarity, eq->slot.c_str(),
+                eq->atk_bonus, eq->pdef_bonus, eq->mdef_bonus);
+            if (!eq->weapon_def_id.empty())
+                fprintf(f, ",%s", eq->weapon_def_id.c_str());
+            fprintf(f, ";");
+        } else if (eq) {   // charm
+            fprintf(f, "%s,%d,charm,0,0,0;", eq->base_name.c_str(), (int)eq->rarity);
+        } else if (cn) {
+            fprintf(f, "%s,%d,%s,%d,%s;",
+                cn->base_name.c_str(), (int)cn->rarity, cn->effect_type.c_str(),
+                cn->effect_value, cn->buff_id.c_str());
+        }
+    }
+    fprintf(f, "\n");
+}
+
+// 装备三行: eqw / wpn / eqa
+static void _write_equipment(FILE* f, Inventory& inv) {
+    fprintf(f, "eqw:");
+    if (inv.equipped["weapon"]) {
+        auto& eq = inv.equipped["weapon"];
+        fprintf(f, "%s,%d,%s,%d,%d,%d", eq->base_name.c_str(), (int)eq->rarity,
+                eq->slot.c_str(), eq->atk_bonus, eq->pdef_bonus, eq->mdef_bonus);
+    }
+    fprintf(f, "\n");
+    fprintf(f, "wpn:%s\n",   // G9: weapon_def_id for equipped weapon
+        inv.equipped["weapon"] && !inv.equipped["weapon"]->weapon_def_id.empty()
+            ? inv.equipped["weapon"]->weapon_def_id.c_str() : "");
+    fprintf(f, "eqa:");
+    if (inv.equipped["armor"]) {
+        auto& eq = inv.equipped["armor"];
+        fprintf(f, "%s,%d,%s,%d,%d,%d", eq->base_name.c_str(), (int)eq->rarity,
+                eq->slot.c_str(), eq->atk_bonus, eq->pdef_bonus, eq->mdef_bonus);
+    }
+    fprintf(f, "\n");
+}
+
+// Buff 状态 (玩家) "id,stacks,remaining,tick_timer;..."
+static void _write_buffs(FILE* f, const std::vector<BuffInstance>& buffs) {
+    fprintf(f, "buf:");
+    for (auto& b : buffs)
+        fprintf(f, "%s,%d,%.2f,%.2f;", b.id.c_str(), b.stacks, b.remaining, b.tick_timer);
+    fprintf(f, "\n");
+}
+
+// B8: 特殊房间状态 + Batch 3A: RUN relics
+static void _write_special_and_relics(FILE* f, uint32_t dungeon_seed,
+                                      const std::vector<bool>& special_triggered,
+                                      const std::vector<bool>& special_discovered,
+                                      const std::vector<RelicInstance>& relics) {
+    fprintf(f, "seed:%u\n", dungeon_seed);
+    fprintf(f, "spr:%s\n", _encode_spr(special_triggered).c_str());
+    fprintf(f, "spd:%s\n", _encode_spr(special_discovered).c_str());
+    fprintf(f, "rlc:");
+    for (auto& r : relics)
+        if (r.scope == PersistenceScope::RUN)
+            fprintf(f, "%s,%d;", r.id.c_str(), static_cast<int>(r.scope));
+    fprintf(f, "\n");
+}
+
+// G1 Step7: 普攻进化 + 规则计数 (rul:key=val;...) + G2.4: 任务状态 (qst:id=state;...)
+static void _write_rules_and_quests(FILE* f, Player* p,
+                                    const std::unordered_map<std::string, int>& rule_counters,
+                                    const std::unordered_map<int, int>& quest_states) {
+    fprintf(f, "atl:%d\n", p->attack_evo.level);
+    fprintf(f, "rul:");
+    if (!rule_counters.empty()) {
+        bool first = true;
+        for (auto& kv : rule_counters) {
+            if (!first) fprintf(f, ";");
+            fprintf(f, "%s=%d", kv.first.c_str(), kv.second);
+            first = false;
+        }
+    }
+    fprintf(f, "\n");
+    fprintf(f, "qst:");
+    if (!quest_states.empty()) {
+        bool first = true;
+        for (auto& kv : quest_states) {
+            if (!first) fprintf(f, ";");
+            fprintf(f, "%d=%d", kv.first, kv.second);
+            first = false;
+        }
+    }
+    fprintf(f, "\n");
+}
+
+// G10.1: 元素核心 + M4e: 跨对局镜像记忆
+static void _write_element_and_mirror(FILE* f, Player* p,
+                                      const std::vector<float>& mra,
+                                      const std::vector<float>& mrb) {
+    fprintf(f, "elem:%d,%d,%d,%d\n",   // M4b-fix: 存 int 而非名字
+        (int)p->element.type, p->element.level, p->element.experience,
+        p->element.initialized ? 1 : 0);
+
+    // G10.9-B2: end: 行已移除 — unlocked_endings 迁移 meta_save.json (账号级),
+    // 解锁时由 EndingDirector 调 MetaSystem::unlock_ending 立即落盘
+    if (mra.empty() || mrb.empty()) return;
+    fprintf(f, "mra:");
+    for (size_t i = 0; i < mra.size(); i++) {
+        if (i > 0) fprintf(f, ",");
+        fprintf(f, "%.4f", mra[i]);
+    }
+    fprintf(f, "\n");
+    fprintf(f, "mrb:");
+    for (size_t i = 0; i < mrb.size(); i++) {
+        if (i > 0) fprintf(f, ",");
+        fprintf(f, "%.4f", mrb[i]);
+    }
+    fprintf(f, "\n");
+}
+
+// ---- 序列化 ----
+// G13: 各段序列化拆到文件内 static 辅助, save_game 只做编排 (调用顺序即存档行序)
 bool SaveManager::save_game(int slot_id, Player* player, int floor, int max_f,
                               uint32_t dungeon_seed,
                               const std::vector<bool>& special_triggered,
@@ -69,526 +486,94 @@ bool SaveManager::save_game(int slot_id, Player* player, int floor, int max_f,
     mkdir_impl(_save_dir().c_str());
     FILE* f = fopen(_slot_path(slot_id).c_str(), "wb");
     if (!f) { LOG_ERROR("存档无法写入 (slot %d)", slot_id); return false; }
-    auto& c = player->combat;
     auto& inv = player->inventory;
 
-    // G10.9-B2: v:5 �?首个真正被读取的版本�? 新增 time: 字段
-    // (v�? 老档�?load �?getV 默认值兜�? �?_load_impl)
-    fprintf(f, "v:5\n");
-    fprintf(f, "floor:%d\n", floor);
-    fprintf(f, "maxf:%d\n", max_f);
-    fprintf(f, "lv:%d\n", player->level);
-    fprintf(f, "xp:%d\n", player->xp);
-    fprintf(f, "xpt:%d\n", player->xp_to_next);
-    fprintf(f, "mhp:%d\n", c.max_hp);
-    fprintf(f, "chp:%d\n", c.current_hp);
-    fprintf(f, "atk:%d\n", c.attack);           // 基础值（每次升级+2�?
-    fprintf(f, "pd:%d\n", c.physical_defense);
-    fprintf(f, "md:%d\n", c.magical_defense);
-    fprintf(f, "gld:%d\n", player->gold);
-    fprintf(f, "key:%d\n", player->key_count);
-    fprintf(f, "time:%.0f\n", play_time);       // G10.9-B2: 本档累计时长(�?
-
-    // 主动技�? id,lv,evo,use;... (G3.2: _skill_id 替代 dynamic_cast)
-    fprintf(f, "act:");
-    for (auto& s : player->skills.active_skills) {
-        const char* nm = s->_skill_id.empty() ? "slash" : s->_skill_id.c_str();
-        fprintf(f, "%s,%d,%d,%d;", nm, s->level, s->evolution_level, s->use_count);
-    }
-    fprintf(f, "\n");
-
-    // 被动技�?(G3.2: _skill_id)
-    fprintf(f, "pas:");
-    for (auto& s : player->skills.passives) {
-        const char* nm = s->_skill_id.empty() ? "iron_skin" : s->_skill_id.c_str();
-        fprintf(f, "%s,%d,%d,%d;", nm, s->level, s->evolution_level, s->use_count);
-    }
-    fprintf(f, "\n");
-
-    // 背包物品: name,RARITY,type,val1,val2,val3;... G9: ,wpn_id appended for weapons
-    fprintf(f, "inv:");
-    for (auto& item : inv.items) {
-        auto* eq = dynamic_cast<EquipmentItem*>(item.get());
-        auto* cn = dynamic_cast<ConsumableItem*>(item.get());
-        if (eq && eq->slot != "charm") {
-            fprintf(f, "%s,%d,%s,%d,%d,%d",
-                eq->base_name.c_str(), (int)eq->rarity, eq->slot.c_str(),
-                eq->atk_bonus, eq->pdef_bonus, eq->mdef_bonus);
-            if (!eq->weapon_def_id.empty())
-                fprintf(f, ",%s", eq->weapon_def_id.c_str());
-            fprintf(f, ";");
-        } else if (eq) { // charm
-            fprintf(f, "%s,%d,charm,0,0,0;", eq->base_name.c_str(), (int)eq->rarity);
-        } else if (cn) {
-            fprintf(f, "%s,%d,%s,%d,%s;",
-                cn->base_name.c_str(), (int)cn->rarity, cn->effect_type.c_str(),
-                cn->effect_value, cn->buff_id.c_str());
-        }
-    }
-    fprintf(f, "\n");
-
-    // 装备: slot:name,rarity,type,atk,pdef,mdef
-    fprintf(f, "eqw:");
-    if (inv.equipped["weapon"]) {
-        auto& eq = inv.equipped["weapon"];
-        fprintf(f, "%s,%d,%s,%d,%d,%d", eq->base_name.c_str(), (int)eq->rarity,
-                eq->slot.c_str(), eq->atk_bonus, eq->pdef_bonus, eq->mdef_bonus);
-    }
-    fprintf(f, "\n");
-
-    // G9: weapon_def_id for equipped weapon
-    fprintf(f, "wpn:%s\n",
-        inv.equipped["weapon"] && !inv.equipped["weapon"]->weapon_def_id.empty()
-            ? inv.equipped["weapon"]->weapon_def_id.c_str() : "");
-
-    fprintf(f, "eqa:");
-    if (inv.equipped["armor"]) {
-        auto& eq = inv.equipped["armor"];
-        fprintf(f, "%s,%d,%s,%d,%d,%d", eq->base_name.c_str(), (int)eq->rarity,
-                eq->slot.c_str(), eq->atk_bonus, eq->pdef_bonus, eq->mdef_bonus);
-    }
-    fprintf(f, "\n");
-
-    // Buff 状�?(玩家)
-    fprintf(f, "buf:");
-    for (auto& b : player->active_buffs) {
-        fprintf(f, "%s,%d,%.2f,%.2f;",
-            b.id.c_str(), b.stacks, b.remaining, b.tick_timer);
-    }
-    fprintf(f, "\n");
-
-    // B8: 特殊房间状�?
-    fprintf(f, "seed:%u\n", dungeon_seed);
-    fprintf(f, "spr:%s\n", _encode_spr(special_triggered).c_str());
-    fprintf(f, "spd:%s\n", _encode_spr(special_discovered).c_str());
-    // Batch 3A: 保存 RUN relics
-    fprintf(f, "rlc:");
-    for (auto& r : player->relics) {
-        if (r.scope == PersistenceScope::RUN)
-            fprintf(f, "%s,%d;", r.id.c_str(), static_cast<int>(r.scope));
-    }
-    fprintf(f, "\n");
-
-    // ── G1 Step7: Save v2 新增 ──
-    fprintf(f, "atl:%d\n", player->attack_evo.level);
-    fprintf(f, "rul:");
-    if (!rule_counters.empty()) {
-        bool first = true;
-        for (auto& kv : rule_counters) {
-            if (!first) fprintf(f, ";");
-            fprintf(f, "%s=%d", kv.first.c_str(), kv.second);
-            first = false;
-        }
-    }
-    fprintf(f, "\n");
-
-    // ── G2.4: Quest state ──
-    fprintf(f, "qst:");
-    if (!quest_states.empty()) {
-        bool first = true;
-        for (auto& kv : quest_states) {
-            if (!first) fprintf(f, ";");
-            fprintf(f, "%d=%d", kv.first, kv.second);
-            first = false;
-        }
-    }
-    fprintf(f, "\n");
-
-    // ── G10.1: Element Core (M4b-fix: �?int 而非名字 �?atoi("fire")=0 曾致元素类型读档丢失) ──
-    fprintf(f, "elem:%d,%d,%d,%d\n",
-        (int)player->element.type,
-        player->element.level,
-        player->element.experience,
-        player->element.initialized ? 1 : 0);
-
-    // G10.9-B2: end: 行已移除 �?unlocked_endings 迁移 meta_save.json (账号�?,
-    // 解锁时由 EndingDirector �?MetaSystem::unlock_ending 立即落盘
-
-    // ── M4e: 跨对局镜像记忆 (逗号分隔 float) ──
-    if (!mirror_prior_alpha.empty() && !mirror_prior_beta.empty()) {
-        fprintf(f, "mra:");
-        for (size_t i = 0; i < mirror_prior_alpha.size(); i++) {
-            if (i > 0) fprintf(f, ",");
-            fprintf(f, "%.4f", mirror_prior_alpha[i]);
-        }
-        fprintf(f, "\n");
-        fprintf(f, "mrb:");
-        for (size_t i = 0; i < mirror_prior_beta.size(); i++) {
-            if (i > 0) fprintf(f, ",");
-            fprintf(f, "%.4f", mirror_prior_beta[i]);
-        }
-        fprintf(f, "\n");
-    }
+    _write_player_base(f, player, floor, max_f, play_time);
+    _write_skills(f, player);
+    _write_inventory(f, inv);
+    _write_equipment(f, inv);
+    _write_buffs(f, player->active_buffs);
+    _write_special_and_relics(f, dungeon_seed, special_triggered,
+                              special_discovered, player->relics);
+    _write_rules_and_quests(f, player, rule_counters, quest_states);
+    _write_element_and_mirror(f, player, mirror_prior_alpha, mirror_prior_beta);
 
     fclose(f);
-    LOG_INFO("存档: �?d�?Lv%d HP:%d/%d %zu技�?%zu物品 %zuBuff seed:%u",
-        floor, player->level, c.current_hp, c.max_hp,
+    LOG_INFO("存档: 第%d层 Lv%d HP:%d/%d %zu技能 %zu物品 %zuBuff seed:%u",
+        floor, player->level, player->combat.current_hp, player->combat.max_hp,
         player->skills.active_skills.size(), inv.items.size(),
         player->active_buffs.size(), dungeon_seed);
     return true;
 }
 
-// ---- 反序列化 ----
-// G10.9-B2: 槽位化读�?�?load_game(slot) 为新入口, load_save() 转发活跃�?
-SaveData* SaveManager::load_game(int slot_id) {
-    if (!slot_exists(slot_id)) return nullptr;
-    FILE* f = fopen(_slot_path(slot_id).c_str(), "rb");
-    if (!f) return nullptr;
-
-    // 读取所有行
-    std::vector<std::string> lines;
-    char buf[4096];
-    while (fgets(buf, sizeof(buf), f)) {
-        std::string line = trim(buf);
-        if (!line.empty()) lines.push_back(line);
-    }
-    fclose(f);
-
-    // 解析�? "key:value"
-    auto getV = [&](const char* key, int def = 0) -> int {
-        std::string prefix = std::string(key) + ":";
-        for (auto& l : lines) {
-            if (l.compare(0, prefix.size(), prefix) == 0) {
-                return atoi(l.c_str() + prefix.size());
-            }
-        }
-        return def;
-    };
-    auto getS = [&](const char* key, const char* def = "") -> std::string {
-        std::string prefix = std::string(key) + ":";
-        for (auto& l : lines) {
-            if (l.compare(0, prefix.size(), prefix) == 0) {
-                return l.substr(prefix.size());
-            }
-        }
-        return def;
-    };
-
-    // G10.9-B2: 版本号真正参与加�?�?v<5 老档�?time: (getV 默认 0), 其他字段本就逐键兜底
-    // 此处仅记�? 后续 v6+ 迁移在此分支处理
-    int save_version = getV("v", 4);
-    (void)save_version;
-
-    int floor = getV("floor", 1);
-    int maxf  = getV("maxf", 1);
-    int lv    = getV("lv", 1);
-    int xp    = getV("xp", 0);
-    int xpt   = getV("xpt", Player::calc_xp_for_level(lv + 1));
-    uint32_t seed = (uint32_t)getV("seed", 0);
-    std::vector<bool> spr = _decode_spr(getS("spr"));
-    std::vector<bool> spd = _decode_spr(getS("spd"));
-    int mhp   = getV("mhp", PLAYER_MAX_HP);
-    int chp   = getV("chp", mhp);
-    int atk   = getV("atk", PLAYER_ATTACK);
-    int pd    = getV("pd", PLAYER_PDEF);
-    int md    = getV("md", PLAYER_MDEF);
-    int gld   = getV("gld", 0);
-    int kcnt  = getV("key", 0);
-
+// G13: 基础数值 -> Player 骨架 (构造参数 6 个, 数值字段 6 个)
+static std::unique_ptr<Player> _build_player_from(const SaveTokens& tk) {
+    const int lv  = tk.getV("lv", 1);
+    const int mhp = tk.getV("mhp", PLAYER_MAX_HP);
     auto p = std::make_unique<Player>(
-        TILE_SIZE * 2, TILE_SIZE * 2, PLAYER_SPEED, mhp, atk, pd, md);
-    p->combat.current_hp = chp;
+        TILE_SIZE * 2, TILE_SIZE * 2, PLAYER_SPEED, mhp,
+        tk.getV("atk", PLAYER_ATTACK), tk.getV("pd", PLAYER_PDEF),
+        tk.getV("md", PLAYER_MDEF));
+    p->combat.current_hp = tk.getV("chp", mhp);
     p->level = lv;
-    p->xp = xp;
-    p->xp_to_next = xpt;
-    p->gold = gld;
-    p->key_count = kcnt;
+    p->xp = tk.getV("xp", 0);
+    p->xp_to_next = tk.getV("xpt", Player::calc_xp_for_level(lv + 1));
+    p->gold = tk.getV("gld", 0);
+    p->key_count = tk.getV("key", 0);
+    return p;
+}
 
-    // Batch 3A: 读取 RUN relics (v4+)
-    std::string rlc_str = getS("rlc");
-    if (!rlc_str.empty()) {
-        for (size_t pos = 0; pos < rlc_str.size(); ) {
-            size_t semi = rlc_str.find(';', pos);
-            std::string tok = rlc_str.substr(pos, (semi != std::string::npos ? semi - pos : std::string::npos));
-            if (tok.empty()) break;
-            size_t comma = tok.find(',');
-            if (comma != std::string::npos) {
-                std::string rid = tok.substr(0, comma);
-                int scope_val = std::atoi(tok.substr(comma + 1).c_str());
-                if (scope_val == static_cast<int>(PersistenceScope::RUN) && !rid.empty()) {
-                    const RelicDef* def = get_relic_def(rid);
-                    if (def) p->add_relic(rid, PersistenceScope::RUN);
-                }
-            }
-            pos = (semi != std::string::npos) ? semi + 1 : std::string::npos;
-        }
-    }
-
-    // 恢复主动技�?(G3.2: SkillFactory 替代 dynamic_cast, 兼容旧格�?name)
-    // G3.2: �?save 名映�?("Slash"�?slash", "Fireball"�?fireball", etc.)
-    static auto _map_old_name = [](const std::string& nm) -> std::string {
-        if (nm == "Slash")     return "slash";
-        if (nm == "Fireball")  return "fireball";
-        if (nm == "SelfHeal")  return "self_heal";
-        if (nm == "TheWorld")  return "the_world";
-        if (nm == "IronSkin")  return "iron_skin";
-        if (nm == "Berserk")   return "berserk";
-        return nm; // G3.2+ new format already has correct id
-    };
-
-    std::string act = getS("act");
-    if (!act.empty()) {
-        for (size_t pos = 0; pos < act.size(); ) {
-            size_t semi = act.find(';', pos);
-            if (semi == std::string::npos) break;
-            std::string tok = act.substr(pos, semi - pos);
-            pos = semi + 1;
-            int commas = 0;
-            for (char c : tok) if (c == ',') commas++;
-            size_t comma1 = tok.find(',');
-            if (comma1 == std::string::npos) continue;
-            std::string nm = _map_old_name(tok.substr(0, comma1));
-            size_t comma2 = tok.find(',', comma1 + 1);
-            std::string lvStr = (comma2 != std::string::npos)
-                ? tok.substr(comma1 + 1, comma2 - comma1 - 1)
-                : tok.substr(comma1 + 1);
-            int lvl = atoi(lvStr.c_str());
-            int evo = 0, use = 0;
-            if (commas >= 3 && comma2 != std::string::npos) {
-                size_t comma3 = tok.find(',', comma2 + 1);
-                std::string evoStr = (comma3 != std::string::npos)
-                    ? tok.substr(comma2 + 1, comma3 - comma2 - 1)
-                    : tok.substr(comma2 + 1);
-                evo = atoi(evoStr.c_str());
-                if (comma3 != std::string::npos)
-                    use = atoi(tok.substr(comma3 + 1).c_str());
-            }
-            // G3.2: SkillFactory::create �?替代 if-else �?
-            std::unique_ptr<Skill> sk = skill_factory_create(nm);
-            if (!sk) continue;
-            while (sk->level < lvl) sk->upgrade();
-            sk->evolution_level = evo;
-            sk->use_count = use;
-            p->skills.learn(std::move(sk));
-        }
-    }
-
-    // 被动 (G3.2: SkillFactory)
-    std::string pas = getS("pas");
-    if (!pas.empty()) {
-        for (size_t pos = 0; pos < pas.size(); ) {
-            size_t semi = pas.find(';', pos);
-            if (semi == std::string::npos) break;
-            std::string tok = pas.substr(pos, semi - pos);
-            pos = semi + 1;
-            int commas = 0;
-            for (char c : tok) if (c == ',') commas++;
-            size_t comma1 = tok.find(',');
-            if (comma1 == std::string::npos) continue;
-            std::string nm = _map_old_name(tok.substr(0, comma1));
-            size_t comma2 = tok.find(',', comma1 + 1);
-            std::string lvStr = (comma2 != std::string::npos)
-                ? tok.substr(comma1 + 1, comma2 - comma1 - 1)
-                : tok.substr(comma1 + 1);
-            int lvl = atoi(lvStr.c_str());
-            int evo = 0, use = 0;
-            if (commas >= 3 && comma2 != std::string::npos) {
-                size_t comma3 = tok.find(',', comma2 + 1);
-                evo = atoi(tok.substr(comma2 + 1,
-                    (comma3 != std::string::npos ? comma3 - comma2 - 1 : std::string::npos)).c_str());
-                if (comma3 != std::string::npos)
-                    use = atoi(tok.substr(comma3 + 1).c_str());
-            }
-            std::unique_ptr<Skill> sk = skill_factory_create(nm);
-            if (!sk) continue;
-            while (sk->level < lvl) sk->upgrade();
-            sk->evolution_level = evo;
-            sk->use_count = use;
-            p->skills.learn(std::move(sk));
-        }
-    }
-    p->attack_evo.level = getV("atl", 1);  // G1 Step7
-    p->skills.apply_all_passives(p.get());
-
-    // 背包物品: name,RARITY,type,v1,v2,v3;...
-    std::string inv_s = getS("inv");
-    if (!inv_s.empty()) {
-        for (size_t pos = 0; pos < inv_s.size(); ) {
-            size_t semi = inv_s.find(';', pos);
-            if (semi == std::string::npos) break;
-            std::string tok = inv_s.substr(pos, semi - pos);
-            pos = semi + 1;
-            // Parse: name,rarity,type,val1,val2,val3
-            std::vector<std::string> parts;
-            for (size_t i = 0, last = 0; i <= tok.size(); i++) {
-                if (i == tok.size() || tok[i] == ',') {
-                    parts.push_back(tok.substr(last, i - last));
-                    last = i + 1;
-                }
-            }
-            if (parts.size() < 3) continue;
-            std::string nm  = parts[0];
-            Rarity rar = (Rarity)atoi(parts[1].c_str());
-            std::string typ = parts[2];
-
-            if ((typ == "heal" || typ == "buff") && parts.size() >= 4) {
-                std::string buf = (parts.size() >= 5) ? parts[4] : "";
-                p->inventory.items.push_back(
-                    std::make_shared<ConsumableItem>(nm, rar, typ, atoi(parts[3].c_str()), buf));
-            } else if (parts.size() >= 6) {
-                int a = atoi(parts[3].c_str());
-                int pd2 = atoi(parts[4].c_str());
-                int md2 = atoi(parts[5].c_str());
-                auto ei = std::make_shared<EquipmentItem>(nm, rar, typ, a, pd2, md2, false);
-                // G9: restore weapon_def_id if present (7th field)
-                if (parts.size() >= 7 && !parts[6].empty())
-                    ei->weapon_def_id = parts[6];
-                p->inventory.items.push_back(ei);
-            }
-        }
-    }
-
-    // 装备
-    auto parseEquip = [&](const char* key) -> std::shared_ptr<EquipmentItem> {
-        std::string s = getS(key);
-        if (s.empty()) return nullptr;
-        std::vector<std::string> parts;
-        for (size_t i = 0, last = 0; i <= s.size(); i++) {
-            if (i == s.size() || s[i] == ',') {
-                parts.push_back(s.substr(last, i - last));
-                last = i + 1;
-            }
-        }
-        if (parts.size() < 6) return nullptr;
-        Rarity rar = (Rarity)atoi(parts[1].c_str());
-        return std::make_shared<EquipmentItem>(
-            parts[0], rar, parts[2],
-            atoi(parts[3].c_str()), atoi(parts[4].c_str()), atoi(parts[5].c_str()),
-            false);
-    };
-
-    auto eqw = parseEquip("eqw");
-    if (eqw) { eqw->apply(p.get()); p->inventory.equipped["weapon"] = eqw; }
-    auto eqa = parseEquip("eqa");
-    if (eqa) { eqa->apply(p.get()); p->inventory.equipped["armor"] = eqa; }
-
-    // G9: restore weapon_def_id for equipped weapon
-    std::string wpn_id = getS("wpn");
-    if (!wpn_id.empty()) {
-        if (eqw) eqw->weapon_def_id = wpn_id;
-        p->weapon.equip(wpn_id);
-    }
-
-    // 恢复 Buff (buf:poison,2,3.50,0.20;attack_up,1,5.80,0.00;)
-    std::string buf_line = getS("buf");
-    if (!buf_line.empty()) {
-        int restored = 0, skipped = 0;
-        for (size_t pos = 0; pos < buf_line.size(); ) {
-            size_t semi = buf_line.find(';', pos);
-            if (semi == std::string::npos) break;
-            std::string tok = buf_line.substr(pos, semi - pos);
-            pos = semi + 1;
-            if (tok.empty()) continue;
-
-            // 解析 id,stacks,remaining,tick_timer
-            std::vector<std::string> parts;
-            for (size_t i = 0, last = 0; i <= tok.size(); i++) {
-                if (i == tok.size() || tok[i] == ',') {
-                    parts.push_back(tok.substr(last, i - last));
-                    last = i + 1;
-                }
-            }
-            if (parts.size() < 4) {
-                LOG_WARN("[BUF] 读档跳过坏条�? %s", tok.c_str());
-                skipped++; continue;
-            }
-            std::string id  = parts[0];
-            if (id.empty()) { skipped++; continue; }
-            BuffInstance bi;
-            bi.id = id;
-            bi.stacks   = atoi(parts[1].c_str());
-            bi.remaining = (float)atof(parts[2].c_str());
-            bi.tick_timer= (float)atof(parts[3].c_str());
-            if (bi.stacks <= 0 || bi.remaining <= 0) {
-                // 过期或无�?buff：跳�?
-                skipped++; continue;
-            }
-            p->active_buffs.push_back(bi);
-            restored++;
-        }
-        if (restored > 0 || skipped > 0)
-            LOG_INFO("读档Buff: 恢复%d 跳过%d", restored, skipped);
-    }
-
-    auto* d = new SaveData;
+// G13: SaveData 元数据填充 (Player 由调用方挂载, element 单独解析)
+static void _fill_save_meta(const SaveTokens& tk, SaveData* d, int floor, int maxf) {
     d->current_floor = floor;
     d->max_unlocked_floor = maxf;
-    d->dungeon_seed = seed;
-    d->special_triggered = spr;
-    d->special_discovered = spd;
+    d->dungeon_seed = (uint32_t)tk.getV("seed", 0);
+    d->special_triggered = _decode_spr(tk.getS("spr"));
+    d->special_discovered = _decode_spr(tk.getS("spd"));
+    _parse_quest_states(tk, d);
+    _parse_rule_counters(tk, d);
+    _parse_float_list(tk.getS("mra"), d->mirror_prior_alpha);
+    _parse_float_list(tk.getS("mrb"), d->mirror_prior_beta);
+    d->attack_evo_level = tk.getV("atl", 1);
+    d->play_time = (float)tk.getV("time", 0);   // G10.9-B2: v<5 老档无此行 -> 0
+}
 
-    // ── G1 Step7: Save v2 新增字段解析 ──
-    // ── G2.4: Parse quest states ──
-    std::string qst = getS("qst");
-    if (!qst.empty()) {
-        for (size_t pos = 0; pos < qst.size(); ) {
-            size_t semi = qst.find(';', pos);
-            std::string tok = qst.substr(pos, (semi != std::string::npos ? semi - pos : std::string::npos));
-            pos = (semi != std::string::npos ? semi + 1 : qst.size());
-            size_t eq = tok.find('=');
-            if (eq != std::string::npos) {
-                int qid = atoi(tok.substr(0, eq).c_str());
-                int st  = atoi(tok.substr(eq + 1).c_str());
-                d->quest_states[qid] = st;
-            }
-        }
-    }
+// ---- 反序列化 ----
+// G10.9-B2: 槽位化读取 — load_game(slot) 为新入口, load_save() 转发活跃槽
+// G13: 各字段解析拆到文件内 static 辅助, load_game 只做编排 (顺序即语义)
+SaveData* SaveManager::load_game(int slot_id) {
+    if (!slot_exists(slot_id)) return nullptr;
 
-    // G10.9-B2: end: 行解析移�?�?endings 迁移 meta_save.json (load_game 不再返回)
-    // 老档 end: 行仍可能存在, 直接忽略 (数据已在 meta 侧由 unlock_ending 接管)
+    const SaveTokens tk = _read_save_lines(_slot_path(slot_id));
 
-    // ── G10.1: Element Core ──
-    {
-        std::string elem = getS("elem");
-        if (!elem.empty()) {
-            int parts[4] = {0, 1, 0, 0}; // type, level, exp, init
-            for (int i = 0, pi = 0; i < (int)elem.size() && pi < 4; ) {
-                int comma = (int)elem.find(',', i);
-                std::string tok = elem.substr(i, (comma < 0 ? (int)elem.size() : comma) - i);
-                if (!tok.empty()) parts[pi] = atoi(tok.c_str());
-                i = (comma < 0 ? (int)elem.size() : comma + 1);
-                pi++;
-            }
-            static const ElementType map[] = {
-                ElementType::NONE, ElementType::FIRE, ElementType::ICE, ElementType::POISON
-            };
-            int et = (parts[0] >= 0 && parts[0] < 4) ? parts[0] : 0;
-            p->element.type    = map[et];
-            p->element.level   = std::max(1, parts[1]);
-            p->element.experience = std::max(0, parts[2]);
-            p->element.initialized = (parts[3] != 0);
-            d->element_type  = parts[0];
-            d->element_level = parts[1];
-            d->element_exp   = parts[2];
-            d->element_initialized = (parts[3] != 0);
-        }
-    }
+    // G10.9-B2: 版本号真正参与加载 — v<5 老档无 time: 行, getV 默认 0 兜底;
+    // 后续 v6+ 迁移在此分支处理
+    const int save_version = tk.getV("v", 4);
+    (void)save_version;
 
-    d->attack_evo_level = getV("atl", 1);
-    d->play_time = (float)getV("time", 0);   // G10.9-B2: v<5 老档无此�?�?0
+    const int floor = tk.getV("floor", 1);
+    const int maxf  = tk.getV("maxf", 1);
+    const int lv    = tk.getV("lv", 1);
+    const int mhp   = tk.getV("mhp", PLAYER_MAX_HP);
+    const int chp   = tk.getV("chp", mhp);
 
-    // ── M4e: 跨对局镜像记忆恢复 ──
-    _parse_float_list(getS("mra"), d->mirror_prior_alpha);
-    _parse_float_list(getS("mrb"), d->mirror_prior_beta);
+    auto p = _build_player_from(tk);
+    _parse_relics(tk, p.get());
+    _parse_skill_list(tk, "act", p.get());   // 主动 (G3.2: SkillFactory)
+    _parse_skill_list(tk, "pas", p.get());   // 被动 (G3.2: SkillFactory)
+    p->attack_evo.level = tk.getV("atl", 1); // G1 Step7 (须早于 apply_all_passives)
+    p->skills.apply_all_passives(p.get());
+    _parse_inventory(tk, p.get());
+    _parse_equipment(tk, p.get());
+    _parse_buffs(tk, p.get());
 
-    std::string rul = getS("rul");
-    if (!rul.empty()) {
-        for (size_t pos = 0; pos < rul.size(); ) {
-            size_t semi = rul.find(';', pos);
-            std::string tok = rul.substr(pos, (semi != std::string::npos ? semi - pos : std::string::npos));
-            pos = (semi != std::string::npos ? semi + 1 : rul.size());
-            size_t eq = tok.find('=');
-            if (eq != std::string::npos) {
-                std::string key = tok.substr(0, eq);
-                int val = atoi(tok.substr(eq + 1).c_str());
-                if (!key.empty()) d->rule_counters[key] = val;
-            }
-        }
-    }
+    auto* d = new SaveData;
+    _fill_save_meta(tk, d, floor, maxf);
+    _parse_element(tk, p.get(), d);
 
     d->player = std::move(p);
 
-    LOG_INFO("读档(slot %d v%d): �?d�?Lv%d HP:%d/%d %zu技�?%zu物品 %zuBuff",
+    LOG_INFO("读档(slot %d v%d): 第%d层 Lv%d HP:%d/%d %zu技能 %zu物品 %zuBuff",
         slot_id, save_version, floor, lv, chp, mhp,
         d->player->skills.active_skills.size(), d->player->inventory.items.size(),
         d->player->active_buffs.size());
@@ -670,7 +655,7 @@ bool SaveManager::migrate_legacy_save() {
 }
 
 // B8: spr 序列�?�?vector<bool> �?"1,0,1"
-std::string SaveManager::_encode_spr(const std::vector<bool>& v) {
+static std::string _encode_spr(const std::vector<bool>& v) {
     std::string out;
     for (size_t i = 0; i < v.size(); i++) {
         if (i > 0) out += ",";
@@ -680,7 +665,7 @@ std::string SaveManager::_encode_spr(const std::vector<bool>& v) {
 }
 
 // B8: spr 反序列化 �?"1,0,1" �?vector<bool>
-std::vector<bool> SaveManager::_decode_spr(const std::string& s) {
+static std::vector<bool> _decode_spr(const std::string& s) {
     std::vector<bool> out;
     if (s.empty()) return out;
     for (size_t pos = 0; pos < s.size(); ) {

@@ -68,12 +68,14 @@ void FloorSelectScene::_draw_floor_cell(int cx, int cy, int floor_num) {
 
     // M3: 解锁格按群系着色; 锁定格暗灰
     const Color bg = selected ? Color{50, 46, 100, 255}
-                  : unlocked ? Color{28 + accent.r / 6, 26 + accent.g / 6,
-                                      44 + accent.b / 6, 255}
+                  : unlocked ? Color{(unsigned char)(28 + accent.r / 6),
+                                     (unsigned char)(26 + accent.g / 6),
+                                     (unsigned char)(44 + accent.b / 6), 255}
                              : Color{22, 20, 30, 255};
     const Color border = selected ? Color{255, 210, 90, 255}
-                     : unlocked ? Color{accent.r / 2 + 60, accent.g / 2 + 60,
-                                         accent.b / 2 + 60, 255}
+                     : unlocked ? Color{(unsigned char)(accent.r / 2 + 60),
+                                         (unsigned char)(accent.g / 2 + 60),
+                                         (unsigned char)(accent.b / 2 + 60), 255}
                                 : Color{60, 58, 72, 255};
     _draw_floor_frame(cx, cy, bg, border, selected ? 2.5f : 1.5f);
 
@@ -106,7 +108,7 @@ void FloorSelectScene::_draw_floor_number(int cx, int cy, int floor_num, bool un
                                   : Color{235, 235, 245, 255};
     if (g_font_loaded) {
         const float nw = MeasureTextEx(g_font, num, 26, 1).x;
-        DrawTextEx(g_font, num, {cx + 50 - nw / 2, cy + 10}, 26, 1, num_c);
+        DrawTextEx(g_font, num, {(float)(cx + 50 - nw / 2), (float)(cy + 10)}, 26, 1, num_c);
     } else {
         DrawText(num, cx + 40, cy + 8, 28, num_c);
     }

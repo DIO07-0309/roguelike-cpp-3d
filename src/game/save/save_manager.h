@@ -81,8 +81,5 @@ private:
     static std::string _save_dir();
     // 旧单槽路径 (仅迁移用)
     static std::string _legacy_save_path();
-    // B8: spr 序列化辅助
-    static std::string _encode_spr(const std::vector<bool>& v);
-    static std::vector<bool> _decode_spr(const std::string& s);
-    // M4e: float 列表序列化辅助 (文件内静态函数, 不占类接口)
+    // B8: spr 序列化辅助 (文件内 static 函数, 不占类接口)
 };
