@@ -1,48 +1,87 @@
-# G13 — 函数长度债清理 第 1 批 + 发布流程补齐 (2026-09-28)
+# G13 — 函数长度债清理（5 批，2026-09-28）
 
 > 起因: 规则 1 规定函数 ≤40 行。G12-6 把 `tutorial_scene.cpp` 清零后，全仓仍有
-> 149 个超规函数。本批先挑**纯逻辑/纯渲染、无 gameplay 状态写入、可单元测试**的
-> 文件，把高风险的 gameplay/3D 渲染批留到下一轮（需要肉眼验收，见文末）。
+> 149 个超规函数。G13 分 5 批拆：**批 1 菜单前逻辑 + 发布流程**、**批 2 菜单渲染**、
+> **批 3/4/5 数据加载器与基建**。`save_manager` / `dungeon_generator` / `boss_defs` /
+> `monster` / `enemy_defs` / `weapon_defs` 等中风险数据批与 `team_coordinator` /
+> `mod_dependency` 都先补测试再拆。高风险的 gameplay / 3D 渲染 / 伤害数值批**未动**
+> （需肉眼验收，见文末）。
 
 - **发布流程补齐**: 补发 `v1.10-A8`、`v1.10-A8-fix` 两个「只打 tag 没建 Release」的
   里程碑 Release（标 Pre-release，不抢 Latest；不附发行包，因为 tag 指向 2026-09-21
   的中间提交，可玩版本统一用 v1.12）。`v1.11-A9` 内容已由 `v1.11` 覆盖，不重复建
-- **`TeamCoordinator::evaluate()` 126 → 22 行**: 5 个 `TeamRole` 分支各拆成独立
-  私有静态函数（`_eval_frontline` / `_eval_backline` / `_eval_support` /
-  `_eval_flank`）。新增 `TeamCtx` 只读上下文结构体（self 中心 / 玩家中心 / 距玩家
-  距离 / 最近 Tank / 地图）替代原来在分支间手抄的 8 个标量参数。三个文件内静态
-  辅助：`move_toward`（归一化朝点移动，`len <= 1` 不动，返回 bool 供调用方决定
-  是否 `return`）、`make_team_ctx`、`collect_nearby_allies`
-  - **行为等价的关键点**: 原 BACKLINE 分支里 `return dec` 嵌在 `if (len > 1)` 内 ——
-    找到掩体但过近时**会继续**尝试 Tank 后退。所以掩体分支必须写成
-    `if (cover && move_toward(...)) return;`，不能拆成两个独立语句
-- **`TutorialGuide::get_instructions()` 84 → 5 行**: 11 个 case 各一个字符串块改成
-  `tutorial_stage_text()` 返回单条 `\n` 分隔字面量 + `split_lines()` 拆分。
-  `!text || !*text` 早退保证未知 stage 仍返回空 vector（原来 `return {}`）
-- **新增测试 `team_coordinator_test`（5 用例，测试数 72 → 73）**:
-  `FrontlineMovesToProtectBackline` / `SupportTargetsWoundedAllyAndRetreats` /
-  `BacklineRetreatsWhenTankIsEngaged` / `LoneMonsterGetsNoAdvice` /
-  `CommandIssuesAuroraAdvice`。这些分支此前**零测试覆盖**，拆分没有回归护栏，
-  这轮补齐
-  - 踩坑: `Entity::sync_rect()` 是 `rect ← position` 方向，且 rect 用
-    `collision_size`、`position` 是视觉框左上角 —— 按中心摆放实体必须用
-    `size`（视觉尺寸）而不是 `rect.width`，否则 Y 轴对不齐 0.007px
-- **门禁**: build 0 err 0 warning · **ctest 73/73** · world_validator 0 Errors 0 Warnings
-- **函数长度**: 149 → **147**（本批清 2 个；`tutorial_scene.cpp` 与
-  `team_coordinator.cpp`、`tutorial_guide.cpp` 现已 0 个超规）
+- **批 1 — 菜单前逻辑**: `TeamCoordinator::evaluate()` **126 → 22**（5 个 `TeamRole`
+  分支各拆 `_eval_*`；`TeamCtx` 只读上下文替代 8 个手抄标量；`move_toward` /
+  `make_team_ctx` / `collect_nearby_allies` 三个文件内静态）、
+  `TutorialGuide::get_instructions()` **84 → 5**（11 个 case 改 `\n` 分隔字面量 +
+  `split_lines`）。**新增 `team_coordinator_test` 5 用例（72 → 73）** —— 这 5 个分支
+  此前零覆盖。踩坑: `Entity::sync_rect()` 是 `rect ← position`，rect 用
+  `collision_size`、`position` 是视觉框左上角，按中心摆放实体必须用 `size`
+- **批 2 — 菜单渲染**: 新增 `src/game/rendering/centered_text.h` 居中排版原语
+  （`draw_small` / `draw_big` / `draw_big_shadow` / `draw_wrapped`，`extern Font` 放
+  **全局作用域**，放进 namespace 会变成 `centered_text::g_font` → linker 报错）。
+  `victory_scene` `_render` 75→11 / `_input` 49→6；`death_scene` `_render` **107→12**；
+  `credits_scene` `_render` **160→12**（6 个 `_render_*`）；`floor_select_scene`
+  `101→12`（5 个 `_draw_floor_*`，顺手清掉 6 个既有 `-Wnarrowing` 警告）；
+  `slot_select_scene` 4 个全清（9 个 `_render_*`/`_draw_*`/`_handle_*` + 文件内静态
+  `DEL_BTN_*`）；`title_scene` 3 个全清（stage 拆 6 层 + `_load_stage_tex`，
+  characters 拆 5 段 + `_draw_char_sprite` / `_draw_loot_item`）。**149 → 135**
+- **批 3 — 存档**: `SaveManager::load_game` **364 → 34**、`save_game` **164 → 27**。
+  新增 `SaveTokens` 行级访问器 + 15 个文件内静态解析函数 + 8 个 `_write_*` 分段
+  （act/pas 技能解析合并）。`_encode_spr` / `_decode_spr` 从类内私有静态改为文件内
+  static（`.h` 删声明）。踩坑: 部分注释字节已损坏（mojibake），`edit` 精确匹配失败
+  → 大段替换必须用 Python 行号 splice；`Inventory&` 必须非 const（`equipped` 是
+  非 const `operator[]`）；调用顺序 = 存档行序，`atl:` 归入 `_write_rules_and_quests`
+  以维持字段写入顺序字节兼容
+- **批 4 — 地牢/内容生成 + 依赖解析**: `dungeon_generator` generate 70→25、
+  `_assign_special_rooms` **75→19**、`_repair_room_apertures` **51→17**（新增
+  `_collect_special_candidates` / `_build_special_pool` / `_assign_one_special_room` /
+  `_maybe_convert_secret` / `_place_challenge_room` / `_make_challenge_room` /
+  `_collect_aperture_gaps` / `_repair_aperture`）；`boss_defs` `_parse_boss` **83→9**
+  （base/domain/skills/arena）；`monster` `spawn_monster` **86→19**（lookup/fallback/
+  identity/combat/skills）。**RNG 消耗顺序逐位保留**（`_rand_int` 调用点顺序 +
+  条件短路求值顺序都影响种子复现，拆完逐一核对）。
+  另拆 `DependencyResolver::resolve` **81→26**（`_collect_missing_deps` /
+  `_build_edges` / `_topo_sort` / `_report_cycles`），**新增 `mod_dependency_test`
+  6 用例（73 → 74）** —— 拓扑排序/循环检测此前零覆盖；边方向（`A load_after B` →
+  `B→A`）、Kahn 出队顺序、跳过依赖不误判循环全部锁定
+- **批 5 — Mod / Registry / 数据加载器**: `mod_provider::create` 51→19
+  （`_fill_manifest_base` / `_provides` / `_deps` + `_log_manifest`；`mod_provider.h`
+  新增 `#include <nlohmann/json.hpp>`，与 `merge_patch.h` 等 4 个 header 同模式）、
+  `mod_manager::scan` 47→10（`_scan_dir` 保留 Win32 `FindFirstFileA` + `_build_mod_info`）、
+  `registry_builder::build_all` 59→12 / `validate` 58→7（`_sort_providers` +
+  `_build_module` + 4 个 `_validate_*` + `_log_validation_summary`；provider 排序键
+  `priority→name→注册序` 与 `MergeMode Skip→MergePatch` 切换点保持）、
+  `encounter::load_encounter_defs` 54→18、`item::generate_random_item` 51→11
+  （`ItemTemplates` + `_collect` / `_pick_category` + 4 个 `_make_random_*`，
+  权重 5/5/2/2 与 RNG 顺序逐位保持）、`special_room` `_try_grant_random_relic`
+  **73→24** + `_exec_treasure` 53→7、`world_reaction::_build_reactions` 54→3
+  （11 条反应改静态表，`find()` 首个匹配的**表内顺序敏感**以注释锁定）
+  - 刻意保留的行为: relic 权重 boost（+60%）**不回写** `total_w`，roll 用的是加权前
+    总权重 —— 与原始实现一致，拆分时未「顺手修正」
+- **门禁（每批实测）**: build 0 error 0 warning · **ctest 74/74** ·
+  world_validator 0 Errors 0 Warnings
+- **函数长度**: 149 → **116**（净清 33 个；其中菜单渲染批 14、存档批 2、
+  地牢/内容批 4、依赖解析 1、数据批 6 个以上）
+
+**刻意跳过的中风险项**
+- `skill.cpp` `execute` 79/71 行 —— **伤害数值逻辑**，且无任何单测覆盖。按名字看是
+  「纯逻辑」，按证据看不属于本批范围
+- `game_map.cpp` `draw` 315 行 —— 2D 绘制路径（版本策略已停止 2D），无法自动视觉
+  验证；`_draw_room_emblem` 57 行说明渲染拆分有先例，但收益/风险比不划算
 
 **下一批建议（待用户确认，未开工）**
-- **低风险**: `credits_scene.cpp` 160 / `death_scene.cpp` 107 / `floor_select_scene.cpp`
-  101 / `victory_scene.cpp` 75+49 / `slot_select_scene.cpp` 4 个 / `title_scene.cpp`
-  3 个 —— 全是菜单渲染，纯绘制
-- **中风险（有测试可守）**: `save_manager.cpp` 364+164 / `game_map.cpp` 315 /
-  `monster.cpp` 86+70 / `skill.cpp` 79+71 / `dungeon_generator.cpp` 3 个
 - **高风险（需肉眼，未动）**: `game_scene.cpp` 13 个（`_process` **1075 行**、
-  `_render_ui_tail` 391、`enter_floor` 253）、`boss.cpp` 4 个
-  （`_tick_boss_state` 394）、`hd2d_scene_builder.cpp` 4 个
-  （`_build_effects` 419）、`player_controller.cpp` 3 个（272+252+223）、
-  `event_system.cpp` 254、`bgm_engine.cpp` 215 —— 这些是核心 gameplay/3D 表现层，
-  编译过不代表画面对，拆完必须实机看
+  `_render_ui_tail` 391、`enter_floor` 253、`_collect_sim_stats` 212、`_render` 169、
+  `_draw_entities` 128）、`boss.cpp` 4 个（`_tick_boss_state` **394**、
+  `boss_factory_create` 105）、`hd2d_scene_builder.cpp` 4 个（`_build_effects` **419**、
+  `_build_terrain` 166）、`player_controller.cpp` 3 个（272+252+223）、
+  `ai.cpp` 4 个、`sim_ai.cpp` 8 个、`mirror_combat_director.cpp` 5 个、
+  `game_renderer.cpp` 10 个、`event_system.cpp` 254、`bgm_engine.cpp` 215、
+  `main.cpp` 292
+  - 障碍: 仓库无可重放 replay，raylib 5.0 raw input 无法进程外注入，`title_shot.py`
+    只能截标题 → 拆完只能靠用户肉眼；且**无任何测试实例化 `GameScene`**
+  - 建议: 先定肉眼验收清单（每拆一个文件实机跑一段对应流程），再分批动
 
 ---
 
