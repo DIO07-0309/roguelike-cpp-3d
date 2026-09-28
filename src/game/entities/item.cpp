@@ -168,57 +168,85 @@ static const WeaponDef* _random_weapon_def(Rarity r, int roll) {
 }
 
 // ---- G3.3: ItemFactory — 从 registry 随机生成 ----
-std::shared_ptr<Item> generate_random_item() {
-    Rarity r = random_rarity();
-    // 收集 registry 中所有模板, 按 category 分组
+// ---- G3.3: ItemFactory — 从 registry 随机生成 ----
+// registry 模板按 category 分组
+struct ItemTemplates {
     std::vector<const ItemDef*> weapons, armors, potions, charms;
+};
+
+static ItemTemplates _collect_item_templates() {
+    ItemTemplates t;
     for (auto& kv : get_all_item_defs()) {
         auto& d = kv.second;
-        if (d.category == "weapon") weapons.push_back(&d);
-        else if (d.category == "armor") armors.push_back(&d);
-        else if (d.category == "potion") potions.push_back(&d);
-        else if (d.category == "charm") charms.push_back(&d);
+        if (d.category == "weapon") t.weapons.push_back(&d);
+        else if (d.category == "armor") t.armors.push_back(&d);
+        else if (d.category == "potion") t.potions.push_back(&d);
+        else if (d.category == "charm") t.charms.push_back(&d);
     }
-    // Q3.3 平衡: 装备权重 71% (武/甲各35.7%), 药水/护符各14.3% — 装备为主但保留续航 (原四类等权)
-    std::vector<int> cats;
-    if (!weapons.empty()) cats.insert(cats.end(), 5, 0);
-    if (!armors.empty())  cats.insert(cats.end(), 5, 1);
-    if (!potions.empty()) cats.insert(cats.end(), 2, 2);
-    if (!charms.empty())  cats.insert(cats.end(), 2, 3);
-    if (cats.empty()) return nullptr;
-    int cat = cats[rng() % cats.size()];
+    return t;
+}
 
-    if (cat == 0) {
-        // G9: WeaponDef base_damage already encodes tier scaling — no rarity_mult double-dip
-        int wroll = rng() % 100;
-        const WeaponDef* wdef = _random_weapon_def(r, wroll);
-        int tier_idx = (int)r;
-        const char* display_name = pick_weapon_name(wdef, tier_idx);
-        int atk = (int)(wdef->base_damage);
-        if (atk < 1) atk = 1;
-        auto item = std::make_shared<EquipmentItem>(display_name, r, "weapon", atk);
-        item->weapon_def_id = wdef->id;
-        return item;
-    }
-    if (cat == 1) {
-        auto& t = armors[rng() % armors.size()];
-        int pd = t->pdef_min + (int)(rng() % (t->pdef_max - t->pdef_min + 1));
-        int md = t->mdef_min + (int)(rng() % (t->mdef_max - t->mdef_min + 1));
-        return std::make_shared<EquipmentItem>(t->name, r, "armor", 0, pd, md);
-    }
-    if (cat == 2) {
-        auto& t = potions[rng() % potions.size()];
-        if (t->effect_type == "buff" && !t->buff_id.empty())
-            return std::make_shared<ConsumableItem>(t->name, r, "buff", 1, t->buff_id);
-        int heal = t->heal_min + (int)(rng() % (t->heal_max - t->heal_min + 1));
-        return std::make_shared<ConsumableItem>(t->name, r, "heal", heal);
-    }
-    // charm
+// Q3.3 平衡: 装备权重 71% (武/甲各35.7%), 药水/护符各14.3% — 装备为主但保留续航
+// 返回 -1 表示 registry 为空
+static int _pick_item_category(const ItemTemplates& t) {
+    std::vector<int> cats;
+    if (!t.weapons.empty()) cats.insert(cats.end(), 5, 0);
+    if (!t.armors.empty())  cats.insert(cats.end(), 5, 1);
+    if (!t.potions.empty()) cats.insert(cats.end(), 2, 2);
+    if (!t.charms.empty())  cats.insert(cats.end(), 2, 3);
+    if (cats.empty()) return -1;
+    return cats[rng() % cats.size()];
+}
+
+static std::shared_ptr<Item> _make_random_weapon(Rarity r) {
+    // G9: WeaponDef base_damage already encodes tier scaling — no rarity_mult double-dip
+    const int wroll = rng() % 100;
+    const WeaponDef* wdef = _random_weapon_def(r, wroll);
+    int tier_idx = (int)r;
+    const char* display_name = pick_weapon_name(wdef, tier_idx);
+    int atk = (int)(wdef->base_damage);
+    if (atk < 1) atk = 1;
+    auto item = std::make_shared<EquipmentItem>(display_name, r, "weapon", atk);
+    item->weapon_def_id = wdef->id;
+    return item;
+}
+
+static std::shared_ptr<Item> _make_random_armor(Rarity r,
+                                                const std::vector<const ItemDef*>& armors) {
+    auto& t = armors[rng() % armors.size()];
+    int pd = t->pdef_min + (int)(rng() % (t->pdef_max - t->pdef_min + 1));
+    int md = t->mdef_min + (int)(rng() % (t->mdef_max - t->mdef_min + 1));
+    return std::make_shared<EquipmentItem>(t->name, r, "armor", 0, pd, md);
+}
+
+static std::shared_ptr<Item> _make_random_potion(Rarity r,
+                                                 const std::vector<const ItemDef*>& potions) {
+    auto& t = potions[rng() % potions.size()];
+    if (t->effect_type == "buff" && !t->buff_id.empty())
+        return std::make_shared<ConsumableItem>(t->name, r, "buff", 1, t->buff_id);
+    int heal = t->heal_min + (int)(rng() % (t->heal_max - t->heal_min + 1));
+    return std::make_shared<ConsumableItem>(t->name, r, "heal", heal);
+}
+
+static std::shared_ptr<Item> _make_random_charm(Rarity r,
+                                                const std::vector<const ItemDef*>& charms) {
     auto& t = charms[rng() % charms.size()];
     float m = rarity_mult(r);
     return std::make_shared<CharmItem>(t->name, r, t->skill_id,
                                        t->cd_bonus * m, t->power_bonus * m);
 }
+
+std::shared_ptr<Item> generate_random_item() {
+    const Rarity r = random_rarity();
+    const ItemTemplates templates = _collect_item_templates();
+    const int cat = _pick_item_category(templates);
+    if (cat < 0) return nullptr;
+    if (cat == 0) return _make_random_weapon(r);
+    if (cat == 1) return _make_random_armor(r, templates.armors);
+    if (cat == 2) return _make_random_potion(r, templates.potions);
+    return _make_random_charm(r, templates.charms);
+}
+
 
 // G3.3: generate_charm_for_skill — registry 查询 (替代硬编码 4 条 if-else)
 std::shared_ptr<CharmItem> generate_charm_for_skill(const std::string& skill, Rarity r) {

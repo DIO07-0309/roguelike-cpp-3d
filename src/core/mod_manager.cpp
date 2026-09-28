@@ -14,11 +14,20 @@ using json = nlohmann::json;
 // G4.4: ModManager — 目录扫描 + 配置持久化
 // ============================================================
 
-void ModManager::scan(const std::string& mods_dir) {
-    _mods.clear();
-    _enabled_set.clear();
+static ModInfo _build_mod_info(const char* dir_name, const std::string& dir, const json& j) {
+    ModInfo mi;
+    mi.id       = j.value("id", dir_name);
+    mi.name     = j.value("name", mi.id);
+    mi.version  = j.value("version", "?");
+    mi.dir_path = dir;
+    mi.valid    = !mi.id.empty();
+    mi.enabled  = j.value("enabled", true);
+    if (!mi.valid) mi.error = "missing id";
+    return mi;
+}
 
-    // ── 扫描 mods/ 子目录 ──
+// G4.4: 扫描 mods/ 子目录 (Windows FindFirstFile; POSIX 暂为 stub)
+void ModManager::_scan_dir(const std::string& mods_dir) {
 #ifdef _WIN32
     std::string search = mods_dir + "\\*";
     WIN32_FIND_DATAA fd;
@@ -38,22 +47,19 @@ void ModManager::scan(const std::string& mods_dir) {
         try { f >> j; }
         catch (...) { continue; }
 
-        ModInfo mi;
-        mi.id       = j.value("id", fd.cFileName);
-        mi.name     = j.value("name", mi.id);
-        mi.version  = j.value("version", "?");
-        mi.dir_path = dir;
-        mi.valid    = !mi.id.empty();
-        mi.enabled  = j.value("enabled", true);
-        if (!mi.valid) mi.error = "missing id";
-
-        _mods.push_back(mi);
+        _mods.push_back(_build_mod_info(fd.cFileName, dir, j));
     } while (FindNextFileA(h, &fd));
     FindClose(h);
 #else
-    // POSIX fallback: readdir
-    (void)mods_dir; // stub — Windows only for now
+    (void)mods_dir;   // stub — Windows only for now
 #endif
+}
+
+void ModManager::scan(const std::string& mods_dir) {
+    _mods.clear();
+    _enabled_set.clear();
+
+    _scan_dir(mods_dir);
 
     // ── 尝试加载优先配置 ──
     load_config();
@@ -61,6 +67,7 @@ void ModManager::scan(const std::string& mods_dir) {
     LOG_INFO("[ModManager] Scanned %d mods, %d enabled",
              (int)_mods.size(), enabled_count());
 }
+
 
 bool ModManager::load_config(const std::string& config_path) {
     std::ifstream f(config_path);

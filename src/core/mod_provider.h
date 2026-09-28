@@ -3,6 +3,7 @@
 #include <vector>
 #include <string>
 #include <memory>
+#include <nlohmann/json.hpp>
 
 // ============================================================
 // G4.1: ModProvider — 单个 Mod 目录的 Provider
@@ -38,4 +39,11 @@ public:
 private:
     ModProvider() = default;
     Manifest _manifest;
+
+    // G13: create() 分段
+    static void _fill_manifest_base(const nlohmann::json& j, const std::string& mod_dir,
+                                    Manifest& m);
+    static void _fill_manifest_provides(const nlohmann::json& j, Manifest& m);
+    static void _fill_manifest_deps(const nlohmann::json& j, Manifest& m);
+    static void _log_manifest(const Manifest& m);
 };

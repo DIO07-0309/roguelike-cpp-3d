@@ -1,8 +1,5 @@
 #include "world_reaction.h"
 
-// ============================================================
-// D4 Step5.4: WorldReactionSystem - 11个反应数据
-// ============================================================
 WorldReactionSystem g_reactions;
 
 // 初始化向量 (C++ aggregate先生成完整列表再赋值)

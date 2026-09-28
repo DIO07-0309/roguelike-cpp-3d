@@ -41,4 +41,7 @@ public:
 private:
     std::vector<ModInfo> _mods;
     std::unordered_set<std::string> _enabled_set;
+
+    // G13: scan() 分段
+    void _scan_dir(const std::string& mods_dir);
 };

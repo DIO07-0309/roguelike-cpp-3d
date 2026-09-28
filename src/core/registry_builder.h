@@ -44,4 +44,13 @@ private:
         ModuleLoaderFn loader;
     };
     std::vector<ModuleEntry> _modules;
+
+    // ── G13: build_all / validate 分段 ──
+    void _sort_providers();
+    void _build_module(const ModuleEntry& mod);
+    void _validate_skill_buff_refs();
+    void _validate_item_charm_refs();
+    void _validate_enemy_on_hit_refs();
+    void _validate_required_names();
+    void _log_validation_summary();
 };
