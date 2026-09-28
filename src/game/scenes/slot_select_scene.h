@@ -37,6 +37,17 @@ private:
     void _enter_game(int i);
     void _draw_delete_confirm();
 
+    // G13: 拆 _render / _input / _enter_game / _draw_delete_confirm, 满足函数 ≤40 行红线
+    void _render_header(int sw, bool any_exists);        // 标题带 + 操作提示
+    void _render_cards();                                 // 三张卡
+    void _draw_slot_card(int i);                          // 单卡 (底/框/三行字/删除角标)
+    void _draw_slot_summary(const SlotSummary& s, const Rectangle& r);  // 卡内摘要
+    void _input_delete_confirm(const class InputMap& input);   // 二次确认框独占输入
+    void _handle_mouse_select();                          // 鼠标悬停选中 + 左键确认
+    void _new_game_in_slot(int i);                       // NEW_GAME 分派
+    void _continue_game_in_slot(int i);                  // CONTINUE 分派
+    void _confirm_delete_by_slot(int slot_id);           // 按 slot_id 删档 (解耦 _delete_target)
+
     std::vector<SlotSummary> _slots;
     int _cursor = 0;
     int _hover = -1;

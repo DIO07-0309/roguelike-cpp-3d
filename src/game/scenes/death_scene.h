@@ -16,4 +16,11 @@ public:
     std::string death_cause;          // 本局死因 (last_damage_source)
     void _render() override;
     void _input(const InputMap& input) override;
+
+private:
+    // G13: 拆 _render, 满足函数 ≤40 行红线
+    void _render_background(int sw);          // 血色渐晕底
+    void _render_header(int sw);              // 大字 + 结局 + 死因 + 结算
+    void _render_mirror_review(int sw, int sh);  // 镜像复盘 (F15)
+    void _render_foot(int sw, int sh);        // 存档提示 + 死因谱 + 返回提示
 };

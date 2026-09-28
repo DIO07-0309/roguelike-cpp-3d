@@ -28,6 +28,28 @@ private:
     bool _open_slot_select(SlotSelectScene::Mode mode, const char* log_msg);  // G11.1: 三个选档入口共用
     void _draw_stage();   // G10.7-B2: 电影海报舞台层 (渐变/透视地板/拱门/vignette)
     void _draw_characters();   // G10.7-B3: 左右对峙角色层 (近大远小)
+
+    // G13: 拆 _draw_stage (6 层) / _draw_characters / _render, 满足函数 ≤40 行红线
+    void _load_stage_tex();
+    void _draw_stage_gradient(int sw, int sh);
+    void _draw_stage_floor(int sw, int sh);
+    void _draw_stage_walls(int sw, int sh);
+    void _draw_stage_door(int sw, int sh);
+    void _draw_stage_embers(int sw, int sh);
+    void _draw_stage_vignette(int sw, int sh);
+
+    void _load_char_tex();
+    void _draw_character_flanks(float floor_y);
+    void _draw_character_boss_f5();
+    void _draw_character_boss_eyes(float floor_y);
+    void _draw_character_loot_band(int sh);
+
+    void _render_dust(int sw, int sh);
+    void _render_title(int sw);
+    Rectangle _render_menu_frame(int sw, float& y);
+    void _render_menu_items(const Rectangle& pr, float& y);
+    void _render_controls_guide(int sw);
+    void _render_copyright(int sw, int sh);
     struct StageTex { Texture2D wall{}, floor{}, door{}; bool loaded = false; }
         _stage_tex;
     struct CharTex {

@@ -3,6 +3,7 @@
 #include "scene_tree.h"
 #include "core/logger.h"
 #include "meta_progression.h"
+#include "rendering/centered_text.h"
 #include <cstdio>
 #include <cmath>
 
@@ -23,164 +24,166 @@ CreditsScene::CreditsPhase CreditsScene::_phase() const {
     return CreditsPhase::CREDITS;
 }
 
+// G13: 滚动字幕单行 (自增 sy, 行距 size * 1.6)
+static void draw_credit_line(const char* text, float cx, float& sy, int sz, Color c) {
+    const float w = MeasureTextEx(g_font_small, text, (float)sz, 1).x;
+    DrawTextEx(g_font_small, text, {cx - w / 2, sy}, (float)sz, 1, c);
+    sy += sz * 1.6f;
+}
+
+void CreditsScene::_render_npc_epilogue(int sw, int sh) {
+    const int npc_idx = _page / 2;      // 0=name, 1=detail
+    const bool is_name = (_page % 2 == 0);
+    if (npc_idx < npc_count) {
+        if (is_name) {
+            centered_text::draw_big(npc_names[npc_idx].c_str(), sw / 2.0f,
+                                    sh / 2.0f - 40, 32, {255, 220, 100, 255});
+            centered_text::draw_small(npc_results[npc_idx].c_str(), sw / 2.0f,
+                                      sh / 2.0f + 10, 22, {180, 220, 255, 255});
+        } else {
+            // detail: 最多3行
+            centered_text::draw_wrapped(npc_details[npc_idx].c_str(), sw / 2.0f,
+                                        sh / 2.0f - 30, 16, {230, 230, 240, 240}, 1.5f);
+        }
+    }
+    centered_text::draw_small("[ENTER]继续", sw / 2.0f, (float)(sh - 50), 14,
+                              {140, 140, 160, 200});
+}
+
+void CreditsScene::_render_timeline(int sw, int sh) {
+    centered_text::draw_big("战斗时间线", sw / 2.0f, 60, 26, {255, 200, 100, 255});
+    float y = 110;
+    int show = 0;
+    for (int i = 0; i < timeline_count && show < 10; i++) {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "%5.1fs  %s", timeline_times[i],
+                 timeline_labels[i].c_str());
+        DrawTextEx(g_font_small, buf, {sw / 2.0f - 100, y}, 16, 1, {200, 220, 255, 255});
+        y += 24;
+        show++;
+    }
+    if (timeline_count > 10)
+        DrawTextEx(g_font_small, "...", {sw / 2.0f - 10, y}, 16, 1, {120, 120, 150, 200});
+    centered_text::draw_small("[ENTER]继续", sw / 2.0f, (float)(sh - 50), 14,
+                              {140, 140, 160, 200});
+}
+
+void CreditsScene::_render_report(int sw, int sh) {
+    centered_text::draw_big("战斗报告", sw / 2.0f, 60, 26, {255, 200, 100, 255});
+
+    float y = 110;
+    const auto line = [&](const char* fmt, float val) {
+        char buf[32];
+        snprintf(buf, sizeof(buf), fmt, val);
+        centered_text::draw_small(buf, sw / 2.0f, y, 15, {220, 240, 220, 255});
+        y += 26;
+    };
+    line("BossRank  %s", 0);
+    // 评级大字压在 "BossRank" 那一行上
+    centered_text::draw_small(boss_rank.c_str(), sw / 2.0f, y - 26, 22, {255, 220, 60, 255});
+    line("Damage     %d", (float)boss_dmg_done);
+    line("Damage再  %d", (float)boss_dmg_taken);
+    line("战时长    %.1fs", boss_time);
+    line("Arena区域  %d", (float)boss_arena_zones);
+
+    centered_text::draw_small("[ENTER]继续", sw / 2.0f, (float)(sh - 50), 14,
+                              {140, 140, 160, 200});
+}
+
+void CreditsScene::_render_summary(int sw, int sh) {
+    centered_text::draw_big("旅程总结", sw / 2.0f, 60, 26, {255, 200, 100, 255});
+
+    float y = 105;
+    const auto sline = [&](const char* label, int val) {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "%s  %d", label, val);
+        centered_text::draw_small(buf, sw / 2.0f, y, 14, {200, 220, 255, 255});
+        y += 24;
+    };
+    sline("到达楼层", floor_reached);
+    sline("击杀Boss", bosses_killed);
+    sline("击杀总数", total_kills);
+    sline("击杀精英", elite_kills);
+    sline("收集圣物", relics_collected);
+    sline("完成任务", quests_done);
+    sline("最高连击", combo_max);
+
+    char tbuf[48];
+    const int m = (int)play_time / 60, s = (int)play_time % 60;
+    snprintf(tbuf, sizeof(tbuf), "游戏时间  %d:%02d", m, s);
+    centered_text::draw_small(tbuf, sw / 2.0f, y, 14, {200, 220, 255, 255});
+
+    centered_text::draw_small("[ENTER]进入片尾", sw / 2.0f, (float)(sh - 50), 14,
+                              {140, 140, 160, 200});
+}
+
+void CreditsScene::_draw_credits_npc_lines(float cx, float& sy, Color white) {
+    // NPC epilogue lines
+    for (int i = 0; i < npc_count; i++) {
+        char buf[128];
+        snprintf(buf, sizeof(buf), "%s — %s", npc_names[i].c_str(),
+                 npc_results[i].c_str());
+        draw_credit_line(buf, cx, sy, 15, white);
+    }
+    sy += 20;
+}
+
+void CreditsScene::_draw_credits_colophon(float cx, float& sy, Color gold, Color dim) {
+    draw_credit_line("Developed by Zhou Yutong", cx, sy, 17, gold);
+    draw_credit_line("C++ Raylib Roguelike", cx, sy, 14, dim);
+    sy += 15;
+    draw_credit_line("2026", cx, sy, 14, gold);
+    sy += 30;
+    draw_credit_line("Special thanks to", cx, sy, 13, dim);
+    draw_credit_line("all who played and tested.", cx, sy, 13, dim);
+    sy += 40;
+    draw_credit_line("The End.", cx, sy, 20, gold);
+}
+
+void CreditsScene::_render_credits(int sw, int sh) {
+    // 滚动字幕
+    const float cx = sw / 2.0f;
+    _scroll_y -= 30.0f * GetFrameTime();   // 30px/s
+    float sy = _scroll_y;
+
+    const Color gold  = {255, 220, 80, 255};
+    const Color white = {220, 220, 240, 255};
+    const Color dim   = {160, 160, 190, 200};
+
+    draw_credit_line(ending_title.c_str(), cx, sy, 28, gold);
+    sy += 20;
+    draw_credit_line("─ ─ ─ ─ ─ ─ ─ ─ ─ ─", cx, sy, 16, dim);
+    sy += 30;
+
+    _draw_credits_npc_lines(cx, sy, white);
+
+    draw_credit_line("─ ─ ─ ─ ─ ─ ─ ─ ─ ─", cx, sy, 16, dim);
+    sy += 20;
+    draw_credit_line(sky_color.c_str(), cx, sy, 20, gold);
+    draw_credit_line(final_line.c_str(), cx, sy, 14, white);
+    sy += 20;
+    draw_credit_line("─ ─ ─ ─ ─ ─ ─ ─ ─ ─", cx, sy, 16, dim);
+    sy += 30;
+
+    _draw_credits_colophon(cx, sy, gold, dim);
+
+    // 字幕结束后提示
+    if (sy < 60)
+        DrawTextEx(g_font_small, "[ENTER] 返回标题", {cx - 60, (float)(sh - 50)}, 16, 1,
+                   {255, 200, 50, 255});
+}
+
 void CreditsScene::_render() {
     ClearBackground(BLACK);
-    int sw = get_tree()->get_width(), sh = get_tree()->get_height();
+    const int sw = get_tree()->get_width(), sh = get_tree()->get_height();
     if (!g_font_loaded) return;
 
-    CreditsPhase ph = _phase();
-    int npc_total = npc_count * 2;
-
-    switch (ph) {
-    case CreditsPhase::NPC_EPILOGUE: {
-        int npc_idx = _page / 2; // 0=name, 1=detail
-        bool is_name = (_page % 2 == 0);
-        if (npc_idx < npc_count) {
-            if (is_name) {
-                float w = MeasureTextEx(g_font, npc_names[npc_idx].c_str(), 32, 1).x;
-                DrawTextEx(g_font, npc_names[npc_idx].c_str(), {sw/2.0f-w/2, sh/2.0f-40}, 32, 1,
-                           {255,220,100,255});
-                w = MeasureTextEx(g_font_small, npc_results[npc_idx].c_str(), 22, 1).x;
-                DrawTextEx(g_font_small, npc_results[npc_idx].c_str(), {sw/2.0f-w/2, sh/2.0f+10}, 22, 1,
-                           {180,220,255,255});
-            } else {
-                // detail: 最多3行
-                std::string s(npc_details[npc_idx]);
-                float y = sh/2.0f - 30;
-                size_t pos = 0;
-                while (pos < s.size()) {
-                    size_t nl = s.find('\n', pos);
-                    std::string line = (nl == std::string::npos) ? s.substr(pos) : s.substr(pos, nl-pos);
-                    float lw = MeasureTextEx(g_font_small, line.c_str(), 16, 1).x;
-                    DrawTextEx(g_font_small, line.c_str(), {sw/2.0f - lw/2, y}, 16, 1, {230,230,240,240});
-                    y += 24;
-                    if (nl == std::string::npos) break;
-                    pos = nl + 1;
-                }
-            }
-        }
-        DrawTextEx(g_font_small, "[ENTER]继续", {sw/2.0f-40, (float)(sh-50)}, 14, 1, {140,140,160,200});
-        break;
-    }
-    case CreditsPhase::TIMELINE: {
-        DrawTextEx(g_font, "战斗时间线", {sw/2.0f-65, 60}, 26, 1, {255,200,100,255});
-        float y = 110;
-        int show = 0;
-        for (int i = 0; i < timeline_count && show < 10; i++) {
-            char buf[64];
-            snprintf(buf, sizeof(buf), "%5.1fs  %s", timeline_times[i], timeline_labels[i].c_str());
-            DrawTextEx(g_font_small, buf, {sw/2.0f - 100, y}, 16, 1, {200,220,255,255});
-            y += 24; show++;
-        }
-        if (timeline_count > 10) {
-            DrawTextEx(g_font_small, "...", {sw/2.0f-10, y}, 16, 1, {120,120,150,200});
-        }
-        DrawTextEx(g_font_small, "[ENTER]继续", {sw/2.0f-40, (float)(sh-50)}, 14, 1, {140,140,160,200});
-        break;
-    }
-    case CreditsPhase::REPORT: {
-        DrawTextEx(g_font, "战斗报告", {sw/2.0f-52, 60}, 26, 1, {255,200,100,255});
-
-        float y = 110;
-        auto line = [&](const char* fmt, float val) {
-            char buf[32]; snprintf(buf, sizeof(buf), fmt, val);
-            float w = MeasureTextEx(g_font_small, buf, 15, 1).x;
-            DrawTextEx(g_font_small, buf, {sw/2.0f - w/2, y}, 15, 1, {220,240,220,255});
-            y += 26;
-        };
-        line("BossRank  %s", 0);
-        float lw = MeasureTextEx(g_font_small, boss_rank.c_str(), 22, 1).x;
-        DrawTextEx(g_font_small, boss_rank.c_str(), {sw/2.0f - lw/2, y-26}, 22, 1, {255,220,60,255});
-        line("Damage     %d", (float)boss_dmg_done);
-        line("Damage再  %d", (float)boss_dmg_taken);
-        line("战时长    %.1fs", boss_time);
-        line("Arena区域  %d", (float)boss_arena_zones);
-
-        DrawTextEx(g_font_small, "[ENTER]继续", {sw/2.0f-40, (float)(sh-50)}, 14, 1, {140,140,160,200});
-        break;
-    }
-    case CreditsPhase::SUMMARY: {
-        DrawTextEx(g_font, "旅程总结", {sw/2.0f-52, 60}, 26, 1, {255,200,100,255});
-
-        float y = 105;
-        auto sline = [&](const char* label, int val) {
-            char buf[64]; snprintf(buf, sizeof(buf), "%s  %d", label, val);
-            float w = MeasureTextEx(g_font_small, buf, 14, 1).x;
-            DrawTextEx(g_font_small, buf, {sw/2.0f - w/2, y}, 14, 1, {200,220,255,255});
-            y += 24;
-        };
-        sline("到达楼层", floor_reached);
-        sline("击杀Boss", bosses_killed);
-        sline("击杀总数", total_kills);
-        sline("击杀精英", elite_kills);
-        sline("收集圣物", relics_collected);
-        sline("完成任务", quests_done);
-        sline("最高连击", combo_max);
-        {
-            char buf[48];
-            int m = (int)play_time / 60, s = (int)play_time % 60;
-            snprintf(buf, sizeof(buf), "游戏时间  %d:%02d", m, s);
-            float w = MeasureTextEx(g_font_small, buf, 14, 1).x;
-            DrawTextEx(g_font_small, buf, {sw/2.0f - w/2, y}, 14, 1, {200,220,255,255});
-        }
-
-        DrawTextEx(g_font_small, "[ENTER]进入片尾", {sw/2.0f-55, (float)(sh-50)}, 14, 1, {140,140,160,200});
-        break;
-    }
-    case CreditsPhase::CREDITS: {
-        // 滚动字幕
-        float cx = sw/2.0f;
-        _scroll_y -= 30.0f * GetFrameTime(); // 30px/s
-        float sy = _scroll_y;
-
-        Color gold = {255, 220, 80, 255};
-        Color white = {220, 220, 240, 255};
-        Color dim = {160, 160, 190, 200};
-
-        auto draw_c = [&](const char* text, int sz, Color c) {
-            float w = MeasureTextEx(g_font_small, text, (float)sz, 1).x;
-            DrawTextEx(g_font_small, text, {cx - w/2, sy}, (float)sz, 1, c);
-            sy += sz * 1.6f;
-        };
-
-        draw_c(ending_title.c_str(), 28, gold);
-        sy += 20;
-        draw_c("─ ─ ─ ─ ─ ─ ─ ─ ─ ─", 16, dim);
-        sy += 30;
-
-        // NPC epilogue lines
-        for (int i = 0; i < npc_count; i++) {
-            char buf[128];
-            snprintf(buf, sizeof(buf), "%s — %s", npc_names[i].c_str(), npc_results[i].c_str());
-            draw_c(buf, 15, white);
-        }
-        sy += 20;
-
-        draw_c("─ ─ ─ ─ ─ ─ ─ ─ ─ ─", 16, dim);
-        sy += 20;
-
-        draw_c(sky_color.c_str(), 20, gold);
-        draw_c(final_line.c_str(), 14, white);
-        sy += 20;
-        draw_c("─ ─ ─ ─ ─ ─ ─ ─ ─ ─", 16, dim);
-        sy += 30;
-
-        draw_c("Developed by Zhou Yutong", 17, gold);
-        draw_c("C++ Raylib Roguelike", 14, dim);
-        sy += 15;
-        draw_c("2026", 14, gold);
-        sy += 30;
-        draw_c("Special thanks to", 13, dim);
-        draw_c("all who played and tested.", 13, dim);
-        sy += 40;
-        draw_c("The End.", 20, gold);
-
-        // 字幕结束后提示
-        if (sy < 60) {
-            DrawTextEx(g_font_small, "[ENTER] 返回标题", {cx-60, (float)(sh-50)}, 16, 1, {255,200,50,255});
-        }
-        break;
-    }
+    switch (_phase()) {
+    case CreditsPhase::NPC_EPILOGUE: _render_npc_epilogue(sw, sh); break;
+    case CreditsPhase::TIMELINE:     _render_timeline(sw, sh); break;
+    case CreditsPhase::REPORT:       _render_report(sw, sh); break;
+    case CreditsPhase::SUMMARY:      _render_summary(sw, sh); break;
+    case CreditsPhase::CREDITS:      _render_credits(sw, sh); break;
     }
 }
 

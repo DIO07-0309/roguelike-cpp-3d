@@ -1,8 +1,11 @@
 #pragma once
 #include "node.h"
 #include "input_map.h"
+#include <memory>
 #include <string>
 #include <vector>
+
+class CreditsScene;   // G13: 前向声明, _build_credits_scene() 返回它的智能指针
 
 // ============================================================
 // D6 Step2: VictoryScene — 通关画面 (点击后转Credits)
@@ -33,4 +36,13 @@ public:
     void _input(const InputMap& input) override;
     // Q3.16: 通关动画专属欢快 BGM (change_scene 管线自动切换, 替代沿用的 Boss 曲)
     const char* get_bgm_name() const override { return "victory"; }
+
+private:
+    // G13: 拆 _render / _input, 满足函数 ≤40 行红线
+    Color _ending_tint() const;                            // 结局名 → 氛围色
+    void _render_background(int sw, int sh, Color ec);     // 渐变底 + 顶部放射线
+    void _render_ending_panel(int sw, int sh, Color ec);   // 文字面板
+    std::shared_ptr<CreditsScene> _build_credits_scene() const;  // 汇总数据转片尾
+    void _copy_ending_to(std::shared_ptr<CreditsScene> cs) const;
+    void _copy_run_summary_to(std::shared_ptr<CreditsScene> cs) const;
 };

@@ -63,4 +63,13 @@ private:
     enum class CreditsPhase { NPC_EPILOGUE, TIMELINE, REPORT, SUMMARY, CREDITS };
     CreditsPhase _phase() const;
     int  _total_pages() const;  // 字面数量(包括NPC分页)
+
+    // G13: 每个 CreditsPhase 一页, 拆出后 _render() 只做分发
+    void _render_npc_epilogue(int sw, int sh);
+    void _render_timeline(int sw, int sh);
+    void _render_report(int sw, int sh);
+    void _render_summary(int sw, int sh);
+    void _render_credits(int sw, int sh);
+    void _draw_credits_npc_lines(float cx, float& sy, Color white);
+    void _draw_credits_colophon(float cx, float& sy, Color gold, Color dim);
 };
