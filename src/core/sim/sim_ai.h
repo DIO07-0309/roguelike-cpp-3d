@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <vector>
 #include <string>
+#include <optional>
 #include "ai/mcts/simulation_state.h"
 
 class Player;
@@ -101,6 +102,25 @@ private:
     float _evaluate_move(int dir, const Player* p,
                          const std::vector<Monster*>& monsters,
                          const GameMap* map) const;
+
+    // G13: _evaluate_move 分支拆分 — 有值=命中并作为该方向得分, nullopt=落到下一分支
+    std::optional<float> _eval_move_land(int dir, const Player* p,
+        const GameMap* map) const;
+    std::optional<float> _eval_move_combat(int dir, const Player* p,
+        const Monster* t, float dist, float px, float py, const GameMap* map) const;
+    float _eval_move_no_enemy(int dir, const Player* p, const GameMap* map) const;
+    std::optional<float> _eval_move_dodge(int dir, const Player* p, const Monster* t,
+        float dist, float px, float py, const GameMap* map) const;
+    std::optional<float> _eval_move_recovery(int dir, const Player* p,
+        const Monster* t, float dist, const GameMap* map) const;
+    std::optional<float> _eval_move_loot_and_rooms(int dir, const Player* p,
+        float dist, float reach_px, const GameMap* map) const;
+    std::optional<float> _eval_move_in_range(int dir, const Player* p,
+        const Monster* t, float dist, const std::vector<Monster*>& monsters,
+        const GameMap* map) const;
+    float _eval_move_approach(int dir, const Player* p, const Monster* t,
+        const std::vector<Monster*>& monsters, const GameMap* map) const;
+
     float _evaluate_pickup(const Player* p, const GameMap* map,
                            const std::vector<Monster*>& monsters) const;
 

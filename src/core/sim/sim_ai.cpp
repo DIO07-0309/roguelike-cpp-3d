@@ -701,130 +701,113 @@ int DecisionAgent::_greedy_step(const Player* p, const Monster* t,
     return -1;
 }
 
-float DecisionAgent::_evaluate_move(int dir, const Player* p,
-    const std::vector<Monster*>& monsters, const GameMap* map) const {
-    if (!p) return -999;
-    float dx = (dir == 2) ? -1.0f : (dir == 3) ? 1.0f : 0.0f;
-    float dy = (dir == 0) ? -1.0f : (dir == 1) ? 1.0f : 0.0f;
-    // Check walkable (Q3.1: 用 rect 判定对齐真实移动, 避免 tile 级误判撞墙)
-    Rectangle target_rect = p->entity.rect;
-    target_rect.x += dx * 32.0f;
-    target_rect.y += dy * 32.0f;
+// ============================================================
+// G13: _evaluate_move 分支拆分
+// 返回约定: std::nullopt = 本分支未命中, 继续下一分支;
+//           有值 = 命中, 直接作为该方向的得分返回。
+// 分数均为平衡调优定值 (1.4/1.3/1.2/0.9/0.7/0.6/0.4), 不得随意改动;
+// 注释与 sim_move_branch / sim_bfs_fail 计数点原样保留。
+// ============================================================
+
+// G15: 全图无怪 → 先搜 loot/房间, 否则打完怪就站桩, 尸体掉落全废
+//      (永远空手: 50 局 avg_damage 42 vs weapon 全 fist_basic)
+float DecisionAgent::_eval_move_no_enemy(int dir, const Player* p,
+                                         const GameMap* map) const {
+    if (map && !_ground.empty()) {
+        const float loot_d = _near_loot_dist(p);
+        if (loot_d >= 0 && loot_d < 5.0f * 32.0f) {
+            const int ls = _bfs_toward_loot(p, map);
+            if (ls >= 0) return (dir == ls) ? 0.7f : 0.0f;
+        }
+    }
     if (map) {
-        if (!map->is_rect_walkable(target_rect)) {
-            // G14: CLOSED 门放行 — BFS(_tile_rect_walkable) 视为可走(Sim自动开),
-            //       而 rect 级判定 is_walkable=false 令 AI 永不走门 → 开门逻辑
-            //       (best_action CLOSED→pickup) 成死代码 → AI 困死房间.
-            //       返回低分 0.05: 无更好选项时选门方向, best_action 触发 pickup 开门.
-            auto [pcx, pcy] = map->pixel_to_tile(
-                p->entity.rect.x + p->entity.rect.width/2,
-                p->entity.rect.y + p->entity.rect.height/2);
-            int ntx = pcx + (int)(dx * 1.0f), nty = pcy + (int)(dy * 1.0f);
-            if (map->door_state_at(ntx, nty) == DoorState::CLOSED) return 0.05f;
-            return -999; // 真正 blocked (墙/LOCKED/SEALED)
-        }
+        const int rs = _bfs_toward_room(p, map);
+        if (rs >= 0) return (dir == rs) ? 0.6f : 0.0f;
     }
+    sim_move_noenemy++;
+    return 0.1f;   // 全图无存活怪无资源 → 中性
+}
 
-    float px = p->entity.rect.x + p->entity.rect.width/2;
-    float py = p->entity.rect.y + p->entity.rect.height/2;
-    // Q3.2: 落脚点进入毒池/尖刺圈 → 重罚 (Q3.10: -999→-1.0, 全图无安全路径时允许踩毒渡河)
-    if (map && _is_hazard_near(target_rect.x + target_rect.width/2,
-                               target_rect.y + target_rect.height/2, map))
-        return -1.0f;
-
-    auto* t = _find_nearest(p, monsters);
-    if (!t) {
-        // G15: 全图无怪 → 先搜 loot/房间, 否则打完怪就站桩, 尸体掉落全废
-        //      → 永远空手 (50 局 avg_damage 42 vs weapon 全 fist_basic)
-        if (map && !_ground.empty()) {
-            float loot_d = _near_loot_dist(p);
-            if (loot_d >= 0 && loot_d < 5.0f * 32.0f) {
-                int ls = _bfs_toward_loot(p, map);
-                if (ls >= 0) return (dir == ls) ? 0.7f : 0.0f;
-            }
-        }
-        if (map) {
-            int rs = _bfs_toward_room(p, map);
-            if (rs >= 0) return (dir == rs) ? 0.6f : 0.0f;
-        }
-        sim_move_noenemy++; return 0.1f; // 全图无存活怪无资源 → 中性
-    }
-
-    float ex = t->entity.rect.x + t->entity.rect.width/2;
-    float ey = t->entity.rect.y + t->entity.rect.height/2;
-    float d = hypotf(ex - px, ey - py);
-
+// Q3.2: Boss 蓄力闪避 (起手瞬间脱离) + 站在毒池里逃离
+std::optional<float> DecisionAgent::_eval_move_dodge(int dir, const Player* p,
+    const Monster* t, float dist, float px, float py,
+    const GameMap* map) const {
     // Q3.2: Boss 蓄力闪避 — 起手瞬间脱离 (1.4 > 攻击 1.0, 躲招优先于换血)
-    if (t->is_boss && _boss_winding_up(t) && d < 220.0f) {
-        int away = _bfs_away(p, t, map, true);
-        if (away < 0) return 1.4f;  // 无安全路径 → 任意方向裸躲
+    if (t->is_boss && _boss_winding_up(t) && dist < 220.0f) {
+        const int away = _bfs_away(p, t, map, true);
+        if (away < 0) return 1.4f;   // 无安全路径 → 任意方向裸躲
         return (dir == away) ? 1.4f : 0.0f;
     }
-
     // Q3.2: 站在毒池里 → 任何安全方向优先逃离 (1.2 > 攻击上限 1.0)
     if (map && _is_hazard_near(px, py, map)) return 1.2f;
+    return std::nullopt;
+}
 
-    // P1-A3: 危急回血 — 残血(<50%)且无自愈无药水时, 找泉水/祭坛优先于战斗 (1.3 > 攻击 1.0)
-    // P1-A3-fix1: 无未触发房 (room_step<0) 时不得永续撤退 — 原实现 bfs_away 0.9 分
-    // 持续压过攻击 → "只逃不打"死循环 (v3 冒烟: 19/20 局零输出, 怪追到墙角磨死).
-    // P1-C4: 贴脸拉开分 0.9→0.6 — 0.9 曾压过攻击(0.67)使围殴局零输出全程逃命
-    // (P1-C3 数据: 270 局 F1 围殴死 100% 零杀, avg 118s 仅 1.65dps 被追着咬).
-    // 0.6 保留撤离意图但让贴脸攻击(d0≈0.67)反超 → "逃一步打一下" 轮换
-    if (map && _needs_recovery(p) && t && !t->is_boss) {
-        int room_step = _bfs_toward_room(p, map, true);   // P1-A3-fix2: 只找回血房
-        if (room_step >= 0) { if (dir == room_step) sim_move_branch[0]++;
-            return (dir == room_step) ? 1.3f : 0.0f; }
-        // 无房可去 → 仅贴脸时拉开 (条件撤退, 血线安全或距离拉开即恢复战斗)
-        if (d < 2.0f * 32.0f) {
-            int away = _bfs_away(p, t, map, true);
-            if (away >= 0) { if (dir == away) sim_move_branch[0]++;
-                return (dir == away) ? 0.6f : 0.0f; }
-        }
+// P1-A3: 危急回血 — 残血(<50%)且无自愈无药水时, 找泉水/祭坛优先于战斗
+// P1-A3-fix1: 无未触发房 (room_step<0) 时不得永续撤退 — 原实现 bfs_away 0.9 分
+// 持续压过攻击 → "只逃不打"死循环 (v3 冒烟: 19/20 局零输出, 怪追到墙角磨死).
+// P1-C4: 贴脸拉开分 0.9→0.6 — 0.9 曾压过攻击(0.67)使围殴局零输出全程逃命
+// (P1-C3 数据: 270 局 F1 围殴死 100% 零杀, avg 118s 仅 1.65dps 被追着咬).
+// 0.6 保留撤离意图但让贴脸攻击(d0≈0.67)反超 → "逃一步打一下" 轮换
+std::optional<float> DecisionAgent::_eval_move_recovery(int dir, const Player* p,
+    const Monster* t, float dist, const GameMap* map) const {
+    if (!map || !_needs_recovery(p) || !t || t->is_boss) return std::nullopt;
+    const int room_step = _bfs_toward_room(p, map, true);   // P1-A3-fix2: 只找回血房
+    if (room_step >= 0) {
+        if (dir == room_step) sim_move_branch[0]++;
+        return (dir == room_step) ? 1.3f : 0.0f;
     }
-
-    // P1-C5: 空手武器优先追击 — 空手是 F1 死亡放大器 (avg_floor 1.26 vs 持械 5-12),
-    // 武器掉落 8 格内 0.9 分直奔 (压过普通拾取 0.7/搜刮 0.6; 近身怪 >3 格
-    // 才去捡 — 不至于贴脸送死)。捡到武器后本分支自然失效 (不再空手)。
-    // P1-C5: 空手武器追击 — 冒烟负回归 (af 6.25→2.15): F1 怪密度下 0.9 分
-    // 穿怪奔武器 = 挨打送头. 保留 _near_weapon_loot_dist 供 P1-C6 重设计
-    // (需带威胁回避的绕行路径而非直线追击).
-    if (false && map && !_ground.empty() && _is_bare_fisted(p)) {
-        float wloot_d = _near_weapon_loot_dist(p);
-        if (wloot_d >= 0 && wloot_d < 8.0f * 32.0f && d > 3.0f * 32.0f) {
-            int wloot_step = _bfs_toward_loot(p, map);
-            if (wloot_step >= 0) return (dir == wloot_step) ? 0.9f : 0.0f;
-        }
+    // 无房可去 → 仅贴脸时拉开 (条件撤退, 血线安全或距离拉开即恢复战斗)
+    if (dist < 2.0f * 32.0f) {
+        const int away = _bfs_away(p, t, map, true);
+        if (away < 0) return std::nullopt;
+        if (dir == away) sim_move_branch[0]++;
+        return (dir == away) ? 0.6f : 0.0f;
     }
+    return std::nullopt;
+}
 
+// 战斗间隙捡地面物品 + 搜刮最近未触发特殊房 (圣物/装备/泉水)
+std::optional<float> DecisionAgent::_eval_move_loot_and_rooms(
+        int dir, const Player* p, float dist, float reach_px,
+        const GameMap* map) const {
+    if (!map || dist <= reach_px + 32.0f) return std::nullopt;
     // P1-A2: 战斗间隙捡地面物品 — 比特殊房更近的直接资源, 优先级更高 (0.7 > 0.6)
     // G13: 间隙判定对齐真实射程 — 原 160px 硬编码, crossbow 射程 320px 时 AI 在
     //      5~10 格区间去捡破烂而非攻击 (loot 0.7 > 远程 attack 0.35)。
-    float reach_px = std::max(p->weapon.current_range(), 1.5f) * 32.0f;
-    if (d > reach_px + 32.0f && map && !_ground.empty()) {
-        float loot_d = _near_loot_dist(p);
+    if (!_ground.empty()) {
+        const float loot_d = _near_loot_dist(p);
         // 只对 5 格内的近物品直奔; 更远的留给房间搜刮 (避免长途回头捡破烂)
         if (loot_d >= 0 && loot_d < 5.0f * 32.0f) {
-            int loot_step = _bfs_toward_loot(p, map);
-            if (loot_step >= 0) { if (dir == loot_step) sim_move_branch[1]++;
-                return (dir == loot_step) ? 0.7f : 0.0f; }
+            const int loot_step = _bfs_toward_loot(p, map);
+            if (loot_step >= 0) {
+                if (dir == loot_step) sim_move_branch[1]++;
+                return (dir == loot_step) ? 0.7f : 0.0f;
+            }
         }
     }
-
-    // Q3.2: 战斗间隙搜刮 — 最近怪超出射程时走向最近未触发特殊房 (圣物/装备/泉水)
+    // Q3.2: 战斗间隙搜刮 — 最近怪超出射程时走向最近未触发特殊房
     // 交战圈内(≤ideal)先打; rect级BFS保证路径真实可达, 不会卡墙
-    if (d > reach_px + 32.0f && map) {
-        int room_step = _bfs_toward_room(p, map);
-        if (room_step >= 0) { if (dir == room_step) sim_move_branch[2]++;
-            return (dir == room_step) ? 0.6f : 0.0f; }
+    const int room_step = _bfs_toward_room(p, map);
+    if (room_step >= 0) {
+        if (dir == room_step) sim_move_branch[2]++;
+        return (dir == room_step) ? 0.6f : 0.0f;
     }
+    return std::nullopt;
+}
 
+// 已到攻击圈内 → 站桩攻击/放技能; 近战贴脸步进; 太远 → BFS 逼近
+std::optional<float> DecisionAgent::_eval_move_in_range(
+        int dir, const Player* p, const Monster* t, float dist,
+        const std::vector<Monster*>& monsters, const GameMap* map) const {
     // G13: ideal_dist 对齐真实射程 — 原硬编码 2.5/1.5 与 reach 脱节,
     //       crossbow 射程 10 格但 ideal 只 2.5 格, AI 在 2.5~10 格区间
     //       attack=0(旧 reach 48px 出圈) 且 move>0 → 追到 2.5 格停下干等。
     //       与 _evaluate_attack 的 reach_px 同源 (max(current_range,1.5)),
     //       保证 ideal_dist ≥ reach, 消除 attack=0/move=0 死区。
-    float atk_range = std::max(p->weapon.current_range(), 1.5f);
-    float ideal_dist = atk_range + _prefer_range * 2.0f;
+    const float atk_range = std::max(p->weapon.current_range(), 1.5f);
+    const float ideal_dist = atk_range + _prefer_range * 2.0f;
+    if (dist > ideal_dist * 32.0f) return std::nullopt;
 
     // Q3.2: 已到攻击圈内 → 站桩攻击/放技能, 不移动
     // Q3.15: 此处存在已知理论缺陷 — d ∈ (48px, ideal_dist] 区间 attack=0/move=0,
@@ -835,16 +818,20 @@ float DecisionAgent::_evaluate_move(int dir, const Player* p,
     // attack 分归零 → 决策抖动 → 出手率暴跌 (探针: 60 冷却拦截 vs 3 命中).
     // 修复: 圈内不返回 0, 改为"贴脸步进" — 距离 >1 格时向最近怪靠近仍得 0.4 分,
     // 压过 0 分的站桩, 让 AI 站进 d≤32px 的稳定出手区. 只在近战时启用 (远程风筝已验证有害).
-    if (d <= ideal_dist * 32.0f) {
-        bool is_melee = (p->weapon.weapon_type() == WeaponType::FIST);
-        if (is_melee && t && d > 32.0f) {
-            int step = _bfs_toward(p, monsters, map, false);
+    if (dist <= ideal_dist * 32.0f) {
+        const bool is_melee = (p->weapon.weapon_type() == WeaponType::FIST);
+        if (is_melee && t && dist > 32.0f) {
+            const int step = _bfs_toward(p, monsters, map, false);
             if (step >= 0) return (dir == step) ? 0.4f : 0.0f;
         }
         if (dir == 0) sim_move_branch[4]++;
-        return 0;
+        return 0.0f;
     }
+    return std::nullopt;
+}
 
+float DecisionAgent::_eval_move_approach(int dir, const Player* p, const Monster* t,
+    const std::vector<Monster*>& monsters, const GameMap* map) const {
     // Q3.2: 太远 → BFS 寻路接近 (绕墙+绕毒, 无路时轴贪心兜底)
     int step = _bfs_toward(p, monsters, map, true);
     if (step < 0) step = _bfs_toward(p, monsters, map, false);
@@ -856,6 +843,85 @@ float DecisionAgent::_evaluate_move(int dir, const Player* p,
     if (dir == step) sim_move_branch[3]++;
     return (dir == step) ? 0.6f : 0.0f;
 }
+
+// G13: 落脚评估 — 可走性 (含 CLOSED 门低分诱走 pickup 开门) + Q3.2 毒池/尖刺重罚
+std::optional<float> DecisionAgent::_eval_move_land(int dir, const Player* p,
+    const GameMap* map) const {
+    if (!map) return std::nullopt;
+    const float dx = (dir == 2) ? -1.0f : (dir == 3) ? 1.0f : 0.0f;
+    const float dy = (dir == 0) ? -1.0f : (dir == 1) ? 1.0f : 0.0f;
+    Rectangle target_rect = p->entity.rect;
+    target_rect.x += dx * 32.0f;
+    target_rect.y += dy * 32.0f;
+    if (!map->is_rect_walkable(target_rect)) {
+        auto [pcx, pcy] = map->pixel_to_tile(
+            p->entity.rect.x + p->entity.rect.width/2,
+            p->entity.rect.y + p->entity.rect.height/2);
+        const int ntx = pcx + (int)(dx * 1.0f), nty = pcy + (int)(dy * 1.0f);
+        // G14: CLOSED 门放行 (低分诱使 best_action 走 pickup 开门)
+        if (map->door_state_at(ntx, nty) == DoorState::CLOSED) return 0.05f;
+        return -999;   // 真正 blocked (墙/LOCKED/SEALED)
+    }
+    if (_is_hazard_near(target_rect.x + target_rect.width/2,
+                        target_rect.y + target_rect.height/2, map))
+        return -1.0f;
+    return std::nullopt;
+}
+
+// G13: 近身战斗评估 — 闪避追击 / 低血回血; 末尾保留 P1-C5 已禁用分支 (负回归留档)
+std::optional<float> DecisionAgent::_eval_move_combat(int dir, const Player* p,
+    const Monster* t, float dist, float px, float py, const GameMap* map) const {
+    if (std::optional<float> s = _eval_move_dodge(dir, p, t, dist, px, py, map))
+        return *s;
+    if (std::optional<float> s = _eval_move_recovery(dir, p, t, dist, map))
+        return *s;
+
+    // P1-C5: 空手武器优先追击 — 空手是 F1 死亡放大器 (avg_floor 1.26 vs 持械 5-12),
+    // 武器掉落 8 格内 0.9 分直奔 (压过普通拾取 0.7/搜刮 0.6; 近身怪 >3 格
+    // 才去捡 — 不至于贴脸送死)。捡到武器后本分支自然失效 (不再空手)。
+    // P1-C5: 空手武器追击 — 冒烟负回归 (af 6.25→2.15): F1 怪密度下 0.9 分
+    // 穿怪奔武器 = 挨打送头. 保留 _near_weapon_loot_dist 供 P1-C6 重设计
+    // (需带威胁回避的绕行路径而非直线追击).
+    if (false && map && !_ground.empty() && _is_bare_fisted(p)) {
+        float wloot_d = _near_weapon_loot_dist(p);
+        if (wloot_d >= 0 && wloot_d < 8.0f * 32.0f && dist > 3.0f * 32.0f) {
+            int wloot_step = _bfs_toward_loot(p, map);
+            if (wloot_step >= 0) return (dir == wloot_step) ? 0.9f : 0.0f;
+        }
+    }
+    return std::nullopt;
+}
+
+// Q3.1: 用 rect 判定对齐真实移动, 避免 tile 级误判撞墙
+float DecisionAgent::_evaluate_move(int dir, const Player* p,
+    const std::vector<Monster*>& monsters, const GameMap* map) const {
+    if (!p) return -999;
+
+    // Q3.1/Q3.2: 落脚点可走性与毒池判定
+    if (std::optional<float> s = _eval_move_land(dir, p, map))
+        return *s;
+
+    const float px = p->entity.rect.x + p->entity.rect.width/2;
+    const float py = p->entity.rect.y + p->entity.rect.height/2;
+    Monster* t = _find_nearest(p, monsters);
+    if (!t) return _eval_move_no_enemy(dir, p, map);
+
+    const float dist = hypotf((t->entity.rect.x + t->entity.rect.width/2) - px,
+                              (t->entity.rect.y + t->entity.rect.height/2) - py);
+    if (std::optional<float> s = _eval_move_combat(dir, p, t, dist, px, py, map))
+        return *s;
+
+    // G13: 间隙判定对齐真实射程, 与 _evaluate_attack 同源, 保证 reach >= ideal_dist
+    const float reach_px = std::max(p->weapon.current_range(), 1.5f) * 32.0f;
+    if (std::optional<float> s =
+            _eval_move_loot_and_rooms(dir, p, dist, reach_px, map))
+        return *s;
+    if (std::optional<float> s =
+            _eval_move_in_range(dir, p, t, dist, monsters, map))
+        return *s;
+    return _eval_move_approach(dir, p, t, monsters, map);
+}
+
 
 float DecisionAgent::_evaluate_pickup(const Player* p, const GameMap* map,
     const std::vector<Monster*>& monsters) const {
