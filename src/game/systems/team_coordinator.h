@@ -28,6 +28,20 @@ struct TeamDecision {
 };
 
 // ============================================================
+// G13: TeamCtx — evaluate() 拆成角色分支时共享的只读上下文
+// (self 中心 / 玩家中心 / 距玩家距离 / 最近 Tank / 地图)
+// ============================================================
+
+struct TeamCtx {
+    const Monster* self = nullptr;
+    float ax = 0, ay = 0;         // self 中心像素坐标
+    float px = 0, py = 0;         // 玩家中心像素坐标
+    float dp = 0;                 // self ↔ 玩家 距离
+    Monster* tank = nullptr;      // 8 tile 内最近的 FRONTLINE 盟友
+    const GameMap* map = nullptr;
+};
+
+// ============================================================
 // G2.2: TeamCoordinator — 怪物协同分析器
 // 纯 static, 无状态, 无跨 Tick 记忆
 // 只读取 Monster/Player 状态, 不修改任何对象
@@ -52,6 +66,10 @@ private:
         float self_ax, float self_ay
     );
 
+    // G13: 同上, 走 TeamCtx 的简写
+    static Monster* _nearest_ally_role(const TeamCtx& c, const std::vector<Monster*>& allies,
+                                       TeamRole role);
+
     // 辅助: 找最近石柱位置 (arena cover)
     static bool _find_nearest_cover(
         const GameMap* map,
@@ -59,4 +77,14 @@ private:
         float& out_cx, float& out_cy,
         float max_dist
     );
+
+    // G13: evaluate() 的角色分支 (函数 ≤40 行红线)
+    static void _eval_frontline(const TeamCtx& c, const std::vector<Monster*>& allies,
+                                TeamDecision& dec);
+    static void _eval_backline(const TeamCtx& c, const std::vector<Monster*>& allies,
+                               TeamDecision& dec);
+    static void _eval_support(const TeamCtx& c, const std::vector<Monster*>& allies,
+                              TeamDecision& dec);
+    static void _eval_flank(const TeamCtx& c, const std::vector<Monster*>& allies,
+                            TeamDecision& dec);
 };

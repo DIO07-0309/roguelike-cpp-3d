@@ -1,3 +1,51 @@
+# G13 — 函数长度债清理 第 1 批 + 发布流程补齐 (2026-09-28)
+
+> 起因: 规则 1 规定函数 ≤40 行。G12-6 把 `tutorial_scene.cpp` 清零后，全仓仍有
+> 149 个超规函数。本批先挑**纯逻辑/纯渲染、无 gameplay 状态写入、可单元测试**的
+> 文件，把高风险的 gameplay/3D 渲染批留到下一轮（需要肉眼验收，见文末）。
+
+- **发布流程补齐**: 补发 `v1.10-A8`、`v1.10-A8-fix` 两个「只打 tag 没建 Release」的
+  里程碑 Release（标 Pre-release，不抢 Latest；不附发行包，因为 tag 指向 2026-09-21
+  的中间提交，可玩版本统一用 v1.12）。`v1.11-A9` 内容已由 `v1.11` 覆盖，不重复建
+- **`TeamCoordinator::evaluate()` 126 → 22 行**: 5 个 `TeamRole` 分支各拆成独立
+  私有静态函数（`_eval_frontline` / `_eval_backline` / `_eval_support` /
+  `_eval_flank`）。新增 `TeamCtx` 只读上下文结构体（self 中心 / 玩家中心 / 距玩家
+  距离 / 最近 Tank / 地图）替代原来在分支间手抄的 8 个标量参数。三个文件内静态
+  辅助：`move_toward`（归一化朝点移动，`len <= 1` 不动，返回 bool 供调用方决定
+  是否 `return`）、`make_team_ctx`、`collect_nearby_allies`
+  - **行为等价的关键点**: 原 BACKLINE 分支里 `return dec` 嵌在 `if (len > 1)` 内 ——
+    找到掩体但过近时**会继续**尝试 Tank 后退。所以掩体分支必须写成
+    `if (cover && move_toward(...)) return;`，不能拆成两个独立语句
+- **`TutorialGuide::get_instructions()` 84 → 5 行**: 11 个 case 各一个字符串块改成
+  `tutorial_stage_text()` 返回单条 `\n` 分隔字面量 + `split_lines()` 拆分。
+  `!text || !*text` 早退保证未知 stage 仍返回空 vector（原来 `return {}`）
+- **新增测试 `team_coordinator_test`（5 用例，测试数 72 → 73）**:
+  `FrontlineMovesToProtectBackline` / `SupportTargetsWoundedAllyAndRetreats` /
+  `BacklineRetreatsWhenTankIsEngaged` / `LoneMonsterGetsNoAdvice` /
+  `CommandIssuesAuroraAdvice`。这些分支此前**零测试覆盖**，拆分没有回归护栏，
+  这轮补齐
+  - 踩坑: `Entity::sync_rect()` 是 `rect ← position` 方向，且 rect 用
+    `collision_size`、`position` 是视觉框左上角 —— 按中心摆放实体必须用
+    `size`（视觉尺寸）而不是 `rect.width`，否则 Y 轴对不齐 0.007px
+- **门禁**: build 0 err 0 warning · **ctest 73/73** · world_validator 0 Errors 0 Warnings
+- **函数长度**: 149 → **147**（本批清 2 个；`tutorial_scene.cpp` 与
+  `team_coordinator.cpp`、`tutorial_guide.cpp` 现已 0 个超规）
+
+**下一批建议（待用户确认，未开工）**
+- **低风险**: `credits_scene.cpp` 160 / `death_scene.cpp` 107 / `floor_select_scene.cpp`
+  101 / `victory_scene.cpp` 75+49 / `slot_select_scene.cpp` 4 个 / `title_scene.cpp`
+  3 个 —— 全是菜单渲染，纯绘制
+- **中风险（有测试可守）**: `save_manager.cpp` 364+164 / `game_map.cpp` 315 /
+  `monster.cpp` 86+70 / `skill.cpp` 79+71 / `dungeon_generator.cpp` 3 个
+- **高风险（需肉眼，未动）**: `game_scene.cpp` 13 个（`_process` **1075 行**、
+  `_render_ui_tail` 391、`enter_floor` 253）、`boss.cpp` 4 个
+  （`_tick_boss_state` 394）、`hd2d_scene_builder.cpp` 4 个
+  （`_build_effects` 419）、`player_controller.cpp` 3 个（272+252+223）、
+  `event_system.cpp` 254、`bgm_engine.cpp` 215 —— 这些是核心 gameplay/3D 表现层，
+  编译过不代表画面对，拆完必须实机看
+
+---
+
 # G12-6 — AvatarDirector 消重 + 教程 3D 名条 + 披风动画 + 教程函数瘦身 (2026-09-28)
 
 > 起因: G12-5 后三笔技术债 —— ①教程和主游戏各写了一遍骨骼懒建/驱动 ②3D 教程

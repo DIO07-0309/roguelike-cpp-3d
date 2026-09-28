@@ -9,92 +9,54 @@
 #include <cmath>
 #include <algorithm>
 
+// 多行文案用 \n 分隔的单个字面量 —— 避免 switch 每 case 一个块把函数撑到 80+ 行
+static std::vector<std::string> split_lines(const char* text) {
+    std::vector<std::string> out;
+    std::string cur;
+    for (const char* p = text; *p; ++p) {
+        if (*p == '\n') { out.push_back(cur); cur.clear(); }
+        else cur += *p;
+    }
+    out.push_back(cur);
+    return out;
+}
+
+static const char* tutorial_stage_text(TutorialStage stage) {
+    switch (stage) {
+    case TutorialStage::WELCOME:
+        return "欢迎来到 Roguelike 新手教程！\n\nWASD 移动  空格 攻击  E 交互  B 背包\n1-4 技能  X 装备  U 使用  D 丢弃\nT/Esc 退出教程\n\n按 Enter 开始练习！";
+    case TutorialStage::ELEMENT:
+        return "第1步：选择元素\n开局三选一（游戏开始时也会出现）\n按 1 选火（暴击）· 按 2 选冰（冻结）· 按 3 选毒（持续伤害）\n元素影响你整个冒险的战斗方式";
+    case TutorialStage::MOVE:
+        return "第2步：移动\nW 上  S 下  A 左  D 右\n试试走几步吧！";
+    case TutorialStage::PICKUP:
+        return "第3步：拾取物品\n走过去按 E 键拾取药水和训练短剑\n（两件都要捡起来哦）";
+    case TutorialStage::INVENTORY:
+        return "第4步：背包与使用物品\n按 B 打开背包 → 上下选择药水\n→ 按 U 使用它来回复血量！";
+    case TutorialStage::EQUIP:
+        return "第5步：装备武器\n按 B 打开背包 → 选中训练用短剑\n→ 按 X 装备它！\n装备后才能发挥完整连击威力";
+    case TutorialStage::ATTACK_COMBO:
+        return "第6步：攻击与三段连击\n走到绿色木桩旁，连续按 空格 攻击！\n第1段轻→第2段强→第3段最重（屏幕震动+爆炸）\n连续攻击3次触发完整连击！";
+    case TutorialStage::SKILL:
+        return "第7步：使用技能\n你已习得【斩击】技能\n走到木桩旁按 数字 1 释放！";
+    case TutorialStage::COOLDOWN:
+        return "第8步：技能冷却\n技能释放后需要等待冷却\nHUD 技能栏下方的蓝色进度条 = 冷却进度\n再按几次 1 观察蓝条变化！";
+    case TutorialStage::WEAPON_INFO:
+        return "第9步：武器差异（小知识）\n匕首=快速扇形 · 长剑=均衡三段 · 长矛=远距离突刺\n双节棍=范围乱舞 · 弩=远程弹幕 · 每种手感完全不同\n按下 P 进入正式游戏后试试各种武器！\n\n按 Enter 完成教程";
+    case TutorialStage::COMPLETE:
+        return "恭喜完成所有训练！\nWASD移动 | 空格攻击 | 1-4技能\nE交互 | B背包 | X装备 | U使用 | R圣物 | M地图\n\n按 Enter 返回标题，开始冒险！";
+    default:
+        return "";
+    }
+}
+
 void TutorialGuide::notify_skill_used() { _skill_used = true; }
 
 // ---- stage instructions ----
 std::vector<std::string> TutorialGuide::get_instructions() const {
-    switch (stage) {
-    case TutorialStage::WELCOME:
-        return {
-            "欢迎来到 Roguelike 新手教程！",
-            "",
-            "WASD 移动  空格 攻击  E 交互  B 背包",
-            "1-4 技能  X 装备  U 使用  D 丢弃",
-            "T/Esc 退出教程",
-            "",
-            "按 Enter 开始练习！"
-        };
-    case TutorialStage::ELEMENT:
-        return {
-            "第1步：选择元素",
-            "开局三选一（游戏开始时也会出现）",
-            "按 1 选火（暴击）· 按 2 选冰（冻结）· 按 3 选毒（持续伤害）",
-            "元素影响你整个冒险的战斗方式"
-        };
-    case TutorialStage::MOVE:
-        return {
-            "第2步：移动",
-            "W 上  S 下  A 左  D 右",
-            "试试走几步吧！"
-        };
-    case TutorialStage::PICKUP:
-        return {
-            "第3步：拾取物品",
-            "走过去按 E 键拾取药水和训练短剑",
-            "（两件都要捡起来哦）"
-        };
-    case TutorialStage::INVENTORY:
-        return {
-            "第4步：背包与使用物品",
-            "按 B 打开背包 → 上下选择药水",
-            "→ 按 U 使用它来回复血量！"
-        };
-    case TutorialStage::EQUIP:
-        return {
-            "第5步：装备武器",
-            "按 B 打开背包 → 选中训练用短剑",
-            "→ 按 X 装备它！",
-            "装备后才能发挥完整连击威力"
-        };
-    case TutorialStage::ATTACK_COMBO:
-        return {
-            "第6步：攻击与三段连击",
-            "走到绿色木桩旁，连续按 空格 攻击！",
-            "第1段轻→第2段强→第3段最重（屏幕震动+爆炸）",
-            "连续攻击3次触发完整连击！"
-        };
-    case TutorialStage::SKILL:
-        return {
-            "第7步：使用技能",
-            "你已习得【斩击】技能",
-            "走到木桩旁按 数字 1 释放！"
-        };
-    case TutorialStage::COOLDOWN:
-        return {
-            "第8步：技能冷却",
-            "技能释放后需要等待冷却",
-            "HUD 技能栏下方的蓝色进度条 = 冷却进度",
-            "再按几次 1 观察蓝条变化！"
-        };
-    case TutorialStage::WEAPON_INFO:
-        return {
-            "第9步：武器差异（小知识）",
-            "匕首=快速扇形 · 长剑=均衡三段 · 长矛=远距离突刺",
-            "双节棍=范围乱舞 · 弩=远程弹幕 · 每种手感完全不同",
-            "按下 P 进入正式游戏后试试各种武器！",
-            "",
-            "按 Enter 完成教程"
-        };
-    case TutorialStage::COMPLETE:
-        return {
-            "恭喜完成所有训练！",
-            "WASD移动 | 空格攻击 | 1-4技能",
-            "E交互 | B背包 | X装备 | U使用 | R圣物 | M地图",
-            "",
-            "按 Enter 返回标题，开始冒险！"
-        };
-    }
-    return {};
+    const char* text = tutorial_stage_text(stage);
+    if (!text || !*text) return {};
+    return split_lines(text);
 }
 
 // ---- check and advance ----
