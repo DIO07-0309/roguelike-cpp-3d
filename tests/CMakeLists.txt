@@ -218,6 +218,7 @@ add_roguelike_test(rarity_fallback_test   economy/rarity_fallback_test.cpp)  # P
 add_roguelike_test(challenge_portal_test  economy/challenge_portal_test.cpp)
 
 add_roguelike_test(floor_lifecycle_test   world/floor_lifecycle_test.cpp)  # G9.2: 生命周期残留回归 (audit LIFE-001/002/003)
+add_roguelike_test(game_scene_smoke_test  world/game_scene_smoke_test.cpp)  # G14: _process 主循环 headless 冒烟 (此前零覆盖)
 add_roguelike_test(rng_boundary_test      world/rng_boundary_test.cpp)   # G9.3: RNG 边界 (audit RNG-001/RNG-002)
 add_roguelike_test(door_truth_table_test   world/door_truth_table_test.cpp)  # G9.4: DoorState Truth Table 回归锁定 (audit §9)
 add_roguelike_test(boss_floor_guard_test   world/boss_floor_guard_test.cpp)  # B4-T4: is_boss_floor 真值表契约 + 非 boss 层 Boss 击杀不发主线奖励
