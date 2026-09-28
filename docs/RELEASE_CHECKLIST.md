@@ -1,7 +1,8 @@
-# v1.5.0 Demo Release Checklist — 发布门禁
+# 发布门禁 Checklist（滚动 · 当前 v1.12）
 
 > 依据: V1_4_MILESTONE_PLANNING_REVIEW.md P4 章 + M1-M5 批次完成后增量项
 > 用法: 每项标 `[ ]` 未验 / `[x]` 通过 / `[~]` 有条件通过(注明)。全部 P0 项过关才能打 tag。
+> 下方 P0/P1/P2 表沿用 v1.5.0 版；**每个版本的实测记录按时间倒序追加在「验收记录」之前**（最新：v1.12）。
 
 ## P0 · 阻塞项（必须全过）
 
@@ -48,11 +49,43 @@
 - [ ] macOS/Linux 实机验证
 - [ ] 手柄输入
 
+## v1.12 门禁记录（2026-09-28 · G13 清理期复验）
+
+> 本节只记「本轮实测到的」；需要肉眼验收的项保持 `[ ]`，不代为勾选。
+> 上方 P0/P1/P2 清单是 v1.5.0 时期的通用门禁表，仍有效，按版本增量勾选。
+
+### P0 · 本轮实测通过
+
+| 项 | 结果 | 证据 |
+|----|------|------|
+| Release 构建 | [x] 0 error / 0 warning | `cmake --build build` |
+| 单元测试 | [x] 73/73，3.61 s | `ctest --test-dir build -C Release` |
+| JSON 一致性 | [x] 0 Errors / 0 Warnings | `python tools/world_validator.py`（20+ JSON） |
+| 发布包自包含 | [x] | `roguelike_cpp.exe` + `raylib.dll` + `assets/` + `resources/` + `README.md` + `saves/` |
+| GitHub Release | [x] 非草稿非预发布 | v1.12，附件 `roguelike-cpp-v1.12.zip` 47,871,231 B（697 files / 65.2 MB 未压缩） |
+| Tag | [x] | `v1.12` → `948806c` |
+| 桌面打包版同步 | [x] | `C:\Users\HP\Desktop\Roguelike-CPP-3D版\`，exe 在根目录 |
+| 函数长度门禁 | [x] 149 → 135 | G13 低/中风险菜单渲染批：6 个 scene 已清零 |
+
+### P0 · 待用户肉眼验收（本轮未代验）
+
+- [ ] 30 分钟实机路径：标题 → 教程 11 步 → F1 首战 → 死亡/重开
+- [ ] 30 分钟无崩溃（crash.log 不新增）
+- [ ] 选关解锁推进（best_floor / F5 击杀后 F6+ 可选）
+- [ ] 前 30 分钟视觉一致性、音频、窗口缩放 + letterbox
+
+### 已知限制（发布前须知）
+
+- **高风险函数债未清**（需肉眼验收排期，本轮刻意未动）：`game_scene.cpp` 13 个（`_process` 1075 行）、`boss.cpp` 4 个（`_tick_boss_state` 394 行）、`hd2d_scene_builder.cpp` 4 个、`player_controller.cpp` 3 个。
+- **3D 渲染无自动视觉验证手段**：仓库无可重放 replay，raylib 5.0 原生输入无法进程外注入；截图仅覆盖标题画面。
+- **无任何测试实例化 `GameScene`**（`floor_lifecycle_test.cpp:139-144` 刻意不实例化）→ gameplay 联动不可单测。
+
 ## 验收记录
 
 | 日期 | 验收人 | 项目 | 结果 |
 |------|--------|------|------|
-| | | | |
+| 2026-09-28 | AI（自动门禁） | Release 构建 / ctest 73-73 / world_validator / 发布包 / Release 附件 / 函数长度 | 全过，见上方 v1.12 记录 |
+| 待补 | 用户（肉眼） | 30 分钟实机路径 / 崩溃 / 选关解锁 / 视觉+音频+缩放 | 未验 |
 
 ---
 
@@ -76,7 +109,7 @@
 # 1. 干净构建
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release
-cd build; ctest -C Release          # 期望 60/60
+cd build; ctest -C Release          # 期望 73/73 (v1.12)
 
 # 2. 数据校验
 python tools/world_validator.py      # 期望 0 errors
