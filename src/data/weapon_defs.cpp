@@ -45,8 +45,8 @@ static Color _parse_color(const json& j) {
 }
 
 // ── Parse a full WeaponDef from JSON object ──
-static WeaponDef _parse_weapon(const json& j) {
-    WeaponDef w;
+// ── WeaponDef 基础字段 ──
+static void _parse_weapon_base(const json& j, WeaponDef& w) {
     w.id        = j.value("id", "");
     w.name      = j.value("name", "");
     w.type      = weapon_type_from_string(j.value("type", "FIST").c_str());
@@ -56,8 +56,10 @@ static WeaponDef _parse_weapon(const json& j) {
     w.min_range   = j.value("min_range", 0.0f);
     w.max_range   = j.value("max_range", 0.0f);
     w.combo_timeout = j.value("combo_timeout", 0.80f);
+}
 
-    // Stages
+// ── Stages ──
+static void _parse_weapon_stages(const json& j, WeaponDef& w) {
     if (j.contains("stages") && j["stages"].is_array()) {
         w.stage_count = std::min((int)j["stages"].size(), 3);
         for (int i = 0; i < w.stage_count; ++i)
@@ -67,23 +69,23 @@ static WeaponDef _parse_weapon(const json& j) {
         w.stages[0] = AttackStageDef{};
         w.stage_count = 1;
     }
+}
 
-    // G9.2: Rare names
+// ── G9.2: 命名与附魔 (quality_colors / rare / epic / legendary / affix) ──
+static void _parse_weapon_naming(const json& j, WeaponDef& w) {
     if (j.contains("quality_colors") && j["quality_colors"].is_array()) {
-        int n = std::min((int)j["quality_colors"].size(), 4);
+        const int n = std::min((int)j["quality_colors"].size(), 4);
         for (int i = 0; i < n; ++i)
             w.quality_colors[i] = _parse_color(j["quality_colors"][i]);
     }
-
-    // G9.2: Rare names (2 random-roll entries)
     if (j.contains("rare_names") && j["rare_names"].is_array()) {
-        int n = std::min((int)j["rare_names"].size(), 2);
+        const int n = std::min((int)j["rare_names"].size(), 2);
         for (int i = 0; i < n; ++i)
             w.rare_names[i] = j["rare_names"][i].get<std::string>();
     }
     // G9.2: Epic names (2 random-roll entries)
     if (j.contains("epic_names") && j["epic_names"].is_array()) {
-        int n = std::min((int)j["epic_names"].size(), 2);
+        const int n = std::min((int)j["epic_names"].size(), 2);
         for (int i = 0; i < n; ++i)
             w.epic_names[i] = j["epic_names"][i].get<std::string>();
     }
@@ -97,9 +99,17 @@ static WeaponDef _parse_weapon(const json& j) {
     }
     // G9.2: Legendary effect
     w.legendary_effect = j.value("legendary_effect", "");
+}
 
+// ── Parse a full WeaponDef from JSON object (分段解析) ──
+static WeaponDef _parse_weapon(const json& j) {
+    WeaponDef w;
+    _parse_weapon_base(j, w);
+    _parse_weapon_stages(j, w);
+    _parse_weapon_naming(j, w);
     return w;
 }
+
 
 // ── Load from file ──
 bool load_weapon_defs(const std::string& json_path) {
