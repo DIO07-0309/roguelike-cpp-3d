@@ -16,8 +16,8 @@ std::pair<int,int> BSPNode::center() const { return {x + w/2, y + h/2}; }
 std::pair<int,int> BSPNode::room_center() const { return {rx + rw/2, ry + rh/2}; }
 
 std::shared_ptr<GameMap> DungeonGenerator::generate(uint32_t seed, int special_room_count,
-                                                  int arena_density,
-                                                  const std::string& biome_id) {
+                                                   int arena_density,
+                                                   const std::string& biome_id) {
     _seed = seed;
     if (seed != 0) _local_rng.seed(seed);
 
@@ -36,57 +36,62 @@ std::shared_ptr<GameMap> DungeonGenerator::generate(uint32_t seed, int special_r
 
     _assign_special_rooms(special_room_count, biome_id);
 
-    // Batch 3G: Challenge Room placement near exit (non-boss floors)
-    // Side branch: pick closest unassigned room to exit (not blocking main path since
-    // rooms connect via corridors, Challenge Room doesn't physically block movement)
-    if (special_room_count > 0 && _rooms.size() >= 4) {
-        auto [ex, ey, ew, eh] = _rooms.back();
-        int exit_cx = ex + ew / 2;
-        int exit_cy = ey + eh / 2;
-
-        int best = -1;
-        float best_dist = FLT_MAX;
-        for (int i = 1; i < (int)_rooms.size() - 1; i++) {
-            auto [rx, ry, rw, rh] = _rooms[i];
-            bool has_special = false;
-            for (auto& sr : _special_rooms)
-                if (sr.cx == rx + rw / 2 && sr.cy == ry + rh / 2)
-                    { has_special = true; break; }
-            if (has_special) continue;
-
-            int cx = rx + rw / 2, cy = ry + rh / 2;
-            float d = (float)((cx - exit_cx) * (cx - exit_cx) + (cy - exit_cy) * (cy - exit_cy));
-            if (d < best_dist) { best_dist = d; best = i; }
-        }
-
-        if (best >= 0) {
-            auto [rx, ry, rw, rh] = _rooms[best];
-            SpecialRoom sr;
-            sr.cx = rx + rw / 2; sr.cy = ry + rh / 2;
-            sr.rx = rx; sr.ry = ry; sr.rw = rw; sr.rh = rh;
-            sr.type = SpecialRoomType::CHALLENGE;
-            sr.triggered = false;
-            // Find first door on room border, place portal one tile inside the room
-            for (int dy = -1; dy <= sr.rh && sr.portal_tx == 0; dy++) {
-                for (int dx = -1; dx <= sr.rw && sr.portal_tx == 0; dx++) {
-                    int tx = sr.rx + dx, ty = sr.ry + dy;
-                    if (gm->door_state_at(tx, ty) != DoorState::NONE) {
-                        if (dx < 0) { sr.portal_tx = sr.rx; sr.portal_ty = ty; }
-                        else if (dx >= sr.rw) { sr.portal_tx = sr.rx + sr.rw - 1; sr.portal_ty = ty; }
-                        else if (dy < 0) { sr.portal_tx = tx; sr.portal_ty = sr.ry; }
-                        else { sr.portal_tx = tx; sr.portal_ty = sr.ry + sr.rh - 1; }
-                    }
-                }
-            }
-            _special_rooms.push_back(sr);
-        }
-    }
+    // Batch 3G: Challenge Room 近出口放置 (非 Boss 层)
+    if (special_room_count > 0) _place_challenge_room(gm.get());
     gm->special_rooms = _special_rooms;
 
     if (arena_density > 0) _assign_arena_objects(gm.get(), arena_density);
 
     return gm;
 }
+
+// Batch 3G: 选距出口最近且未被特殊房间占用的房间 (侧枝: 房间经走廊相连,
+// Challenge Room 不物理阻挡移动, 故不阻塞主路)
+void DungeonGenerator::_place_challenge_room(GameMap* gm) {
+    if (_rooms.size() < 4) return;
+
+    auto [ex, ey, ew, eh] = _rooms.back();
+    const int exit_cx = ex + ew / 2, exit_cy = ey + eh / 2;
+
+    int best = -1;
+    float best_dist = FLT_MAX;
+    for (int i = 1; i < (int)_rooms.size() - 1; i++) {
+        auto [rx, ry, rw, rh] = _rooms[i];
+        bool has_special = false;
+        for (auto& sr : _special_rooms)
+            if (sr.cx == rx + rw / 2 && sr.cy == ry + rh / 2) { has_special = true; break; }
+        if (has_special) continue;
+
+        const int cx = rx + rw / 2, cy = ry + rh / 2;
+        const float d = (float)((cx - exit_cx) * (cx - exit_cx) + (cy - exit_cy) * (cy - exit_cy));
+        if (d < best_dist) { best_dist = d; best = i; }
+    }
+    if (best < 0) return;
+    _special_rooms.push_back(_make_challenge_room(gm, best));
+}
+
+// 由 best 房间构造 CHALLENGE: 找房间边缘第一扇门, 传送门放室内一格
+SpecialRoom DungeonGenerator::_make_challenge_room(GameMap* gm, int room_idx) {
+    auto [rx, ry, rw, rh] = _rooms[room_idx];
+    SpecialRoom sr;
+    sr.cx = rx + rw / 2; sr.cy = ry + rh / 2;
+    sr.rx = rx; sr.ry = ry; sr.rw = rw; sr.rh = rh;
+    sr.type = SpecialRoomType::CHALLENGE;
+    sr.triggered = false;
+
+    for (int dy = -1; dy <= sr.rh && sr.portal_tx == 0; dy++) {
+        for (int dx = -1; dx <= sr.rw && sr.portal_tx == 0; dx++) {
+            const int tx = sr.rx + dx, ty = sr.ry + dy;
+            if (gm->door_state_at(tx, ty) == DoorState::NONE) continue;
+            if (dx < 0)                { sr.portal_tx = sr.rx;              sr.portal_ty = ty; }
+            else if (dx >= sr.rw)      { sr.portal_tx = sr.rx + sr.rw - 1;  sr.portal_ty = ty; }
+            else if (dy < 0)           { sr.portal_tx = tx;                 sr.portal_ty = sr.ry; }
+            else                       { sr.portal_tx = tx;                 sr.portal_ty = sr.ry + sr.rh - 1; }
+        }
+    }
+    return sr;
+}
+
 
 // D2 Step5: 在每个非特殊房间放置战场元素
 void DungeonGenerator::_assign_arena_objects(GameMap* gm, int density) {
@@ -137,6 +142,24 @@ int DungeonGenerator::_rand_int(int max_exclusive) {
 void DungeonGenerator::_assign_special_rooms(int count, const std::string& biome_id) {
     if (_rooms.size() < 4) return;
 
+    const std::vector<int> candidates = _collect_special_candidates();
+    const std::vector<SpecialRoomType> pool = _build_special_pool();
+
+    std::vector<const LandmarkDef*> landmarks;
+    if (!biome_id.empty())
+        landmarks = get_landmarks_for_biome(biome_id);
+
+    // Reserve 1 candidate for challenge room placement below
+    const int scount = std::min(count, (int)candidates.size() - 1);
+    int placed_lm = 0;
+    for (int i = 0; i < scount; i++)
+        _assign_one_special_room(candidates, pool, landmarks, placed_lm, biome_id, i);
+
+    _maybe_convert_secret(biome_id);
+}
+
+// G13: 候选房间序 — 优先靠近出生房 (room 1/2), 再整体洗牌且保留 room 1 不被打散
+std::vector<int> DungeonGenerator::_collect_special_candidates() {
     std::vector<int> candidates;
     // G10: prioritize rooms near player spawn (room 0) for first few relics
     if ((int)_rooms.size() >= 3) candidates.push_back(1);
@@ -149,12 +172,11 @@ void DungeonGenerator::_assign_special_rooms(int count, const std::string& biome
         if (candidates[i] == 1 || candidates[j] == 1) continue;
         std::swap(candidates[i], candidates[j]);
     }
+    return candidates;
+}
 
-    std::vector<const LandmarkDef*> landmarks;
-    if (!biome_id.empty())
-        landmarks = get_landmarks_for_biome(biome_id);
-
-    // Shuffle pool: all base types except LANDMARK/SECRET/CHALLENGE
+// G13: 类型池 — 全部基础类型 (排除 LANDMARK/SECRET/CHALLENGE) 洗牌后 GAMBLER 置顶
+std::vector<SpecialRoomType> DungeonGenerator::_build_special_pool() {
     std::vector<SpecialRoomType> pool = {
         SpecialRoomType::ALTAR, SpecialRoomType::TREASURE,
         SpecialRoomType::FOUNTAIN, SpecialRoomType::SHOP,
@@ -165,7 +187,6 @@ void DungeonGenerator::_assign_special_rooms(int count, const std::string& biome
         int j = _rand_int(i + 1);
         std::swap(pool[i], pool[j]);
     }
-
     // Batch 3G: Guarantee GAMBLER at Room 1 (spawn-side economic anchor)
     for (int i = 0; i < (int)pool.size(); i++) {
         if (pool[i] == SpecialRoomType::GAMBLER && i != 0) {
@@ -173,42 +194,44 @@ void DungeonGenerator::_assign_special_rooms(int count, const std::string& biome
             break;
         }
     }
-
-    // Reserve 1 candidate for challenge room placement below
-    int scount = std::min(count, (int)candidates.size() - 1);
-    int placed_lm = 0;
-    for (int i = 0; i < scount; i++) {
-        auto [rx, ry, rw, rh] = _rooms[candidates[i]];
-        SpecialRoom sr;
-        sr.cx = rx + rw / 2; sr.cy = ry + rh / 2;
-        sr.rx = rx; sr.ry = ry; sr.rw = rw; sr.rh = rh;
-
-        // G6.2: ~50% chance → biome landmark (never override GAMBLER at Room 1)
-        if (!landmarks.empty() && _rand_int(2) == 0 && placed_lm < 3
-            && !(i == 0 && pool[0] == SpecialRoomType::GAMBLER)) {
-            const LandmarkDef* lm = landmarks[_rand_int((int)landmarks.size())];
-            sr.type = SpecialRoomType::LANDMARK;
-            sr.landmark_id = lm->id;
-            sr.biome_id = biome_id;
-            placed_lm++;
-        } else {
-            sr.type = pool[i % (int)pool.size()];
-        }
-        sr.triggered = false;
-        _special_rooms.push_back(sr);
-    }
-
-    // G6.6: 30% chance to convert one existing room → SECRET
-    if (!biome_id.empty() && !_special_rooms.empty() && _rand_int(100) < 30) {
-        auto* enc = pick_encounter_by_trigger(biome_id, "wall_interact");
-        if (enc) {
-            int idx = _rand_int((int)_special_rooms.size());
-            if (_special_rooms[idx].type != SpecialRoomType::LANDMARK
-                && _special_rooms[idx].type != SpecialRoomType::GAMBLER)
-                _special_rooms[idx].type = SpecialRoomType::SECRET;
-        }
-    }
+    return pool;
 }
+
+// G13: 放置单个特殊房间 — 50% 概率转群系地标, 否则取池内类型
+void DungeonGenerator::_assign_one_special_room(
+        const std::vector<int>& candidates, const std::vector<SpecialRoomType>& pool,
+        const std::vector<const LandmarkDef*>& landmarks, int& placed_lm,
+        const std::string& biome_id, int i) {
+    auto [rx, ry, rw, rh] = _rooms[candidates[i]];
+    SpecialRoom sr;
+    sr.cx = rx + rw / 2; sr.cy = ry + rh / 2;
+    sr.rx = rx; sr.ry = ry; sr.rw = rw; sr.rh = rh;
+
+    // G6.2: ~50% chance -> biome landmark (never override GAMBLER at Room 1)
+    if (!landmarks.empty() && _rand_int(2) == 0 && placed_lm < 3
+        && !(i == 0 && pool[0] == SpecialRoomType::GAMBLER)) {
+        const LandmarkDef* lm = landmarks[_rand_int((int)landmarks.size())];
+        sr.type = SpecialRoomType::LANDMARK;
+        sr.landmark_id = lm->id;
+        sr.biome_id = biome_id;
+        placed_lm++;
+    } else {
+        sr.type = pool[i % (int)pool.size()];
+    }
+    sr.triggered = false;
+    _special_rooms.push_back(sr);
+}
+
+// G6.6: 30% chance to convert one existing room -> SECRET
+void DungeonGenerator::_maybe_convert_secret(const std::string& biome_id) {
+    if (biome_id.empty() || _special_rooms.empty() || _rand_int(100) >= 30) return;
+    if (!pick_encounter_by_trigger(biome_id, "wall_interact")) return;
+    const int idx = _rand_int((int)_special_rooms.size());
+    if (_special_rooms[idx].type != SpecialRoomType::LANDMARK
+        && _special_rooms[idx].type != SpecialRoomType::GAMBLER)
+        _special_rooms[idx].type = SpecialRoomType::SECRET;
+}
+
 
 void DungeonGenerator::_partition(BSPNode* node) {
     bool vertical = (node->w > node->h) ? true
@@ -457,18 +480,11 @@ static int _grid_flood(const std::vector<std::string>& g, int sx, int sy, bool d
     return n;
 }
 
-void DungeonGenerator::_repair_room_apertures(std::vector<std::string>& grid) {
-    if (_rooms.empty()) return;
+// G13: 收集环墙缺口 — walkable('.') 且非门('D'), 去重后按坐标排序 (确定性)
+std::vector<std::pair<int,int>> DungeonGenerator::_collect_aperture_gaps(
+        const std::vector<std::string>& grid) const {
     const int H = (int)grid.size();
-    if (H == 0) return;
     const int W = (int)grid[0].size();
-
-    // 出生房中心作为连通性锚点 (房间内必有 '.' 可用)
-    auto [r0x, r0y, r0w, r0h] = _rooms.front();
-    const int sx = r0x + r0w / 2;
-    const int sy = r0y + r0h / 2;
-
-    // 1. 收集环墙缺口: walkable('.') 且非门('D')
     std::vector<std::pair<int,int> > gaps;
     for (auto& [rx, ry, rw, rh] : _rooms) {
         for (int x = rx; x < rx + rw; x++) {
@@ -482,29 +498,48 @@ void DungeonGenerator::_repair_room_apertures(std::vector<std::string>& grid) {
     }
     std::sort(gaps.begin(), gaps.end());
     gaps.erase(std::unique(gaps.begin(), gaps.end()), gaps.end());
+    return gaps;
+}
 
-    // 2. 逐缺口决策 (固定顺序, 确定性): 试回墙 -> 连通保持? 保持 : 升级 door
-    //    先过滤"死胡同缺口" (开放邻居<=1): 它不连接任何其它开放区, 仅是一格走廊死端。
-    //    若对这类缺口 door 化会产生孤立门 (违反 Door_NoFloating: 门需 >=1 开放邻居)。
-    //    死胡同回墙不会破坏任何 rooms 之间的连通 (其开放侧已与主区连通, 闭合侧全墙)。
-    for (auto& [gx, gy] : gaps) {
-        char cell = grid[gy][gx];
-        if (cell == '#' || cell == 'D') continue;
-        int open_nb = 0;
-        if (gy-1 >= 0 && grid[gy-1][gx] != '#') open_nb++;
-        if (gy+1 < H  && grid[gy+1][gx] != '#') open_nb++;
-        if (gx-1 >= 0 && grid[gy][gx-1] != '#') open_nb++;
-        if (gx+1 < W  && grid[gy][gx+1] != '#') open_nb++;
-        grid[gy][gx] = '#';                          // 尝试回墙
-        if (open_nb > 1) {
-            int total = _grid_walkable_count(grid);
-            int reach = _grid_flood(grid, sx, sy, false);
-            if (reach != total) {
-                grid[gy][gx] = 'D';                  // 活孔径, 升级门 (有 >1 邻居, 非孤立)
-            }
-        }
-        // open_nb<=1 的死胡同保持 '#' (回墙) — 不产生孤立门
+// G13: 单缺口决策 — 默认回墙; 仅当 >1 开放邻居且回墙会切断连通时升级为门。
+// 先过滤"死胡同缺口" (开放邻居<=1): 它不连接任何其它开放区, 仅是一格走廊死端。
+// 若对这类缺口 door 化会产生孤立门 (违反 Door_NoFloating: 门需 >=1 开放邻居)。
+// 死胡同回墙不会破坏任何 rooms 之间的连通 (其开放侧已与主区连通, 闭合侧全墙)。
+void DungeonGenerator::_repair_aperture(std::vector<std::string>& grid, int gx, int gy,
+                                        int H, int W, int sx, int sy) const {
+    const char cell = grid[gy][gx];
+    if (cell == '#' || cell == 'D') return;
+
+    int open_nb = 0;
+    if (gy - 1 >= 0 && grid[gy-1][gx] != '#') open_nb++;
+    if (gy + 1 < H  && grid[gy+1][gx] != '#') open_nb++;
+    if (gx - 1 >= 0 && grid[gy][gx-1] != '#') open_nb++;
+    if (gx + 1 < W  && grid[gy][gx+1] != '#') open_nb++;
+
+    grid[gy][gx] = '#';                          // 尝试回墙
+    if (open_nb > 1) {
+        const int total = _grid_walkable_count(grid);
+        const int reach = _grid_flood(grid, sx, sy, false);
+        if (reach != total)
+            grid[gy][gx] = 'D';                  // 活孔径, 升级门 (有 >1 邻居, 非孤立)
     }
+    // open_nb<=1 的死胡同保持 '#' (回墙) — 不产生孤立门
+}
+
+void DungeonGenerator::_repair_room_apertures(std::vector<std::string>& grid) {
+    if (_rooms.empty() || grid.empty()) return;
+    const int H = (int)grid.size();
+    const int W = (int)grid[0].size();
+
+    // 出生房中心作为连通性锚点 (房间内必有 '.' 可用)
+    auto [r0x, r0y, r0w, r0h] = _rooms.front();
+    const int sx = r0x + r0w / 2;
+    const int sy = r0y + r0h / 2;
+
+    const std::vector<std::pair<int,int> > gaps = _collect_aperture_gaps(grid);
+    for (auto& [gx, gy] : gaps)
+        _repair_aperture(grid, gx, gy, H, W, sx, sy);
 
     // 3. 内建自检与 INVARIANT(seal) 同语义 — 由 door_seal_test 外置永久回归 (T1~T4)
 }
+

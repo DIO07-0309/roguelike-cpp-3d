@@ -410,33 +410,23 @@ static Color _visual_to_color(const std::string& vid) {
 // G1 Step5: spawn_monster — generic factory driven by EnemyDef
 // 新增普通怪物只需修改 enemies.json, 无需改 C++ 代码
 // ============================================================
-Monster* spawn_monster(float px, float py, const std::string& type) {
-    // Elite: 随机选择变体 (唯一的运行时分支逻辑)
-    std::string lookup = type;
-    if (type == "elite") {
-        lookup = (rng() % 2 == 0) ? "elite_slime" : "elite_orc";
-    }
+// Elite: 随机选择变体 (唯一的运行时分支逻辑)
+static std::string _resolve_enemy_lookup(const std::string& type) {
+    if (type != "elite") return type;
+    return (rng() % 2 == 0) ? "elite_slime" : "elite_orc";
+}
 
-    const EnemyDef* def = get_enemy_def(lookup);
-    if (!def) {
-        // fallback — 配置缺失时安全降级
-        auto* m = new Monster(px, py, "史莱姆", 15, 3, 0, 1,
-                              _visual_to_color("slime"));
-        m->monster_type = MonsterType::NORMAL;
-        m->team_role = TeamRole::NONE;
-        return m;
-    }
+// 配置缺失时安全降级
+static Monster* _fallback_monster(float px, float py) {
+    auto* m = new Monster(px, py, "史莱姆", 15, 3, 0, 1,
+                          _visual_to_color("slime"));
+    m->monster_type = MonsterType::NORMAL;
+    m->team_role = TeamRole::NONE;
+    return m;
+}
 
-    // 创建 AI (使用嵌套 ai 配置)
-    auto* ai = new MonsterAI(def->ai.sight, def->ai.speed,
-                             def->ai.patrol, def->ai.attack_range);
-
-    // 创建 Monster (visual_id → Color 映射在 _visual_to_color)
-    auto* m = new Monster(px, py, def->name, def->hp, def->atk,
-                          def->pdef, def->mdef,
-                          _visual_to_color(def->visual_id), ai);
-
-    // 枚举字段 (字符串 → enum 映射)
+// 枚举字段 (字符串 -> enum) + M5-D: visual_id 派生精灵
+static void _apply_monster_identity(Monster* m, const EnemyDef* def) {
     m->monster_type    = _str_to_monster_type(def->type_str);
     m->team_role       = _str_to_team_role(def->role_str);
     m->attack_type     = _str_to_attack_type(def->attack_type_str);
@@ -445,13 +435,14 @@ Monster* spawn_monster(float px, float py, const std::string& type) {
 
     // M5-D: visual_id 派生精灵 (mon_<visual_id>), 未注册时留空走名字规则链
     // — 消灭"名字规则不命中→共用 orc"整类 bug (如 潜伏者死规则)
-    {
-        std::string vkey = "mon_" + def->visual_id;
-        SpriteDef probe;
-        if (ResourceManager::inst().sprite_by_key(vkey.c_str(), probe).id > 0)
-            m->sprite_override = vkey;
-    }
+    std::string vkey = "mon_" + def->visual_id;
+    SpriteDef probe;
+    if (ResourceManager::inst().sprite_by_key(vkey.c_str(), probe).id > 0)
+        m->sprite_override = vkey;
+}
 
+// G5.3: AI Archetype + G5.5: 普攻模式 + D2: 弹道 + on_hit 触发器
+static void _apply_monster_combat(Monster* m, MonsterAI* ai, const EnemyDef* def) {
     // G5.3: AI Archetype (行为原型, 与 MonsterType 外观解耦)
     if (ai) ai->archetype = _str_to_archetype(def->ai_archetype);
 
@@ -468,7 +459,7 @@ Monster* spawn_monster(float px, float py, const std::string& type) {
     }
 
     // D2: Ranged monsters use projectile attacks (data-driven from enemies.json)
-    bool is_ranged = (m->monster_type == MonsterType::ARCHER
+    const bool is_ranged = (m->monster_type == MonsterType::ARCHER
         || m->monster_type == MonsterType::SHAMAN);
     m->uses_projectile = def->projectile.enabled || is_ranged;
     m->projectile_speed = def->projectile.speed;
@@ -477,8 +468,10 @@ Monster* spawn_monster(float px, float py, const std::string& type) {
 
     // on_hit 触发器 (直接拷贝)
     m->on_hit_triggers = def->on_hit;
+}
 
-    // 技能 (数据驱动, 每条 record → MonsterSkillState)
+// 技能 (数据驱动, 每条 record -> MonsterSkillState) + 精英随机 Buff
+static void _apply_monster_skills(Monster* m, MonsterAI* ai, const EnemyDef* def) {
     for (auto& sk : def->skills) {
         MonsterSkillType st = _str_to_skill_type(sk.id);
         if (st == MonsterSkillType::NONE) continue;
@@ -487,12 +480,29 @@ Monster* spawn_monster(float px, float py, const std::string& type) {
     }
 
     // 精英: 随机 Buff (从 buff_pool 中抽一条, 空 buff_id = 跳过)
-    if (def->is_elite && !def->elite_buff_pool.empty()) {
-        int roll = (int)(rng() % (uint32_t)def->elite_buff_pool.size());
-        auto& eb = def->elite_buff_pool[roll];
-        if (!eb.buff_id.empty())
-            apply_buff(m, eb.buff_id, eb.stacks);
-    }
+    if (!def->is_elite || def->elite_buff_pool.empty()) return;
+    const int roll = (int)(rng() % (uint32_t)def->elite_buff_pool.size());
+    const auto& eb = def->elite_buff_pool[roll];
+    if (!eb.buff_id.empty()) apply_buff(m, eb.buff_id, eb.stacks);
+}
+
+Monster* spawn_monster(float px, float py, const std::string& type) {
+    const EnemyDef* def = get_enemy_def(_resolve_enemy_lookup(type));
+    if (!def) return _fallback_monster(px, py);
+
+    // 创建 AI (使用嵌套 ai 配置)
+    auto* ai = new MonsterAI(def->ai.sight, def->ai.speed,
+                             def->ai.patrol, def->ai.attack_range);
+
+    // 创建 Monster (visual_id -> Color 映射在 _visual_to_color)
+    auto* m = new Monster(px, py, def->name, def->hp, def->atk,
+                          def->pdef, def->mdef,
+                          _visual_to_color(def->visual_id), ai);
+
+    _apply_monster_identity(m, def);
+    _apply_monster_combat(m, ai, def);
+    _apply_monster_skills(m, ai, def);
 
     return m;
 }
+

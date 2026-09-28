@@ -72,6 +72,16 @@ private:
 
     int _rand_int(int max_exclusive);
     void _assign_special_rooms(int count, const std::string& biome_id = "");
+    // G13: 特殊房间放置分段
+    std::vector<int> _collect_special_candidates();
+    std::vector<SpecialRoomType> _build_special_pool();
+    void _assign_one_special_room(const std::vector<int>& candidates,
+                                  const std::vector<SpecialRoomType>& pool,
+                                  const std::vector<const LandmarkDef*>& landmarks,
+                                  int& placed_lm, const std::string& biome_id, int i);
+    void _maybe_convert_secret(const std::string& biome_id);
+    void _place_challenge_room(GameMap* gm);
+    SpecialRoom _make_challenge_room(GameMap* gm, int room_idx);
     void _assign_arena_objects(GameMap* gm, int density);
 
     void _partition(BSPNode* node);
@@ -93,4 +103,8 @@ private:
     // Batch 1 (A1): 孔径完整性修复 — 环墙缺口 回墙/door 化, 保证 DOOR 是房间唯一对外孔径
     // (审计: ROOM_ENCOUNTER_DOOR_FOV_INTEGRATION_AUDIT §4; 算法已由 build/ 量化工具原型验证)
     void _repair_room_apertures(std::vector<std::string>& grid);
+    std::vector<std::pair<int,int>> _collect_aperture_gaps(
+        const std::vector<std::string>& grid) const;
+    void _repair_aperture(std::vector<std::string>& grid, int gx, int gy,
+                          int H, int W, int sx, int sy) const;
 };
