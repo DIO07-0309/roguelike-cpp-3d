@@ -71,6 +71,7 @@ function(add_roguelike_test name)
         ${CMAKE_SOURCE_DIR}/src/game/entities
         ${CMAKE_SOURCE_DIR}/src/game/systems
         ${CMAKE_SOURCE_DIR}/src/game/scenes
+        ${CMAKE_SOURCE_DIR}/src/game/rendering3d
         ${CMAKE_SOURCE_DIR}/src/data
         ${JSON_DIR}
         ${RAYLIB_DIR}/include
@@ -83,6 +84,8 @@ endfunction()
 
 add_roguelike_test(registry_test    registry/registry_test.cpp)
 add_roguelike_test(damage_test      combat/damage_test.cpp)
+add_roguelike_test(skill_execute_test combat/skill_execute_test.cpp)  # G14: Skill::execute 伤害数值基线 (此前零覆盖)
+add_roguelike_test(hd2d_scene_builder_test rendering/hd2d_scene_builder_test.cpp)  # G14: 3D 构建纯翻译层契约
 add_roguelike_test(damage_type_test combat/damage_type_test.cpp)
 add_roguelike_test(projectile_test  combat/projectile_test.cpp)
 add_roguelike_test(object_pool_test systems/object_pool_test.cpp)   # G11: 对象池槽位复用/回收/扩容安全

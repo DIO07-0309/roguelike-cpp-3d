@@ -482,6 +482,7 @@ static void _build_entities(const hd2d::SceneView& view, std::vector<HD2DDrawIte
     if (view.player && view.player->combat.is_alive
         && (!part_color_ready || !buildPlayerAvatar(view, out)))
         buildStaticPlayer(view, anim_frame, out);
+    if (!view.monsters) return;   // G12-4: 无怪物集合的场景跳过 (约定: nullptr = 子系统缺失)
     for (auto& m : *view.monsters) {
         if (!m || !m->combat.is_alive) continue;
         // A6-S1: 骨骼皮肤命中 → 逐件 pro 片 (无 blob shadow, 依赖 depth shadow), 否则旧 billboard 原样
@@ -1212,6 +1213,7 @@ static void _build_range_indicator(const hd2d::SceneView& view, std::vector<HD2D
 // ── M6-v2b: Boss 技能预警 — 弹幕弹道/扇形面/瞬移落点/旋风圈 (只读 BossAI) ──
 // 条件对齐 2D 分支 (game_scene._render 2754-2762: is_boss && ai)
 static void _build_boss_skill_warnings(const hd2d::SceneView& view, std::vector<HD2DDrawItem>& out) {
+    if (!view.monsters) return;   // G12-4: 无怪物集合的场景跳过
     for (auto& m : *view.monsters) {
         if (!m || !m->is_boss || !m->ai || !m->combat.is_alive) continue;
         auto* bai = dynamic_cast<BossAI*>(m->ai);
@@ -1315,6 +1317,7 @@ static void _build_danger_zones(const hd2d::SceneView& view, std::vector<HD2DDra
 
 // ── M6-v2b: 弱点光环 (F10.2 pulse ring) + Tank 守护连线 (2D 2743-2781 同源) ──
 static void _build_monster_overlays(const hd2d::SceneView& view, std::vector<HD2DDrawItem>& out) {
+    if (!view.monsters) return;   // G12-4: 无怪物集合的场景跳过
     for (auto& m : *view.monsters) {
         if (!m || !m->combat.is_alive) continue;
         const auto& r = m->entity.rect;

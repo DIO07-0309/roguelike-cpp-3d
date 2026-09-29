@@ -27,8 +27,9 @@ namespace hd2d {
 // 现在任何场景只要填出这个结构就能喂给渲染器, 渲染器从此不依赖 GameScene。
 //
 // 红线: 只读快照, 不含可变引用, 调用方不得借此写 gameplay 状态。
-// 约定: nullptr / 空 vector / 空 callable = 该场景没有这个子系统,
-//       使用方必须先判空再取用。
+// 约定: nullptr / 空 vector / 空 callable = 该场景没有这个子系统。
+//       build_scene 自行判空跳过 (G14: 三处 *view.monsters 曾无守卫,
+//       空视图调用直接 segfault — 见 tests/rendering/hd2d_scene_builder_test.cpp)。
 struct SceneView {
     // ── 核心 (缺失则不出画面) ──
     const GameMap*  game_map = nullptr;

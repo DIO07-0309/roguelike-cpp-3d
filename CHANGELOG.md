@@ -1,3 +1,38 @@
+# G14 — 自动化验证补齐 + 两处真实缺陷（2026-09-29）
+
+> 起因: 「3D 开发这么久，怎么没人端到端跑过」—— 用户其实一直在实机玩（桌面包
+> `saves/` 有 18 个存档），缺的是**自动化护栏**：74 个测试无一调用
+> `GameScene::_process`（1075 行主循环）；9 个 `Skill::execute` 零覆盖（只测过
+> `load_skill_defs` 的 JSON 装载）；`hd2d::build_scene` 零覆盖（只被 `#include`，
+> 从未调用）。既有 `damage_test.cpp` 是复制公式的 golden oracle，根本不调用生产函数。
+> G14 补 3 套（74 → 77），其中 2 套直接撞出真实缺陷。
+
+- **`game_scene_smoke_test`（2 用例）**: 首次驱动 `_process` 主循环。`enter_floor` →
+  60/120 tick，断言 `game_time` 精确推进（证明主循环真跑了，不是静默空转或提前返回）
+  + 楼层不变量；Boss 层 F5 走 `is_boss_floor` 专属分支。headless 沿用既有约定
+  （raylib 调用已有 `IsWindowReady` 守卫；`xp_to_next = 1000000` 禁升级分支 ——
+  其内部解引用 `get_tree()`，测试中为 null；`stairs_active = true` 禁 `_activate_stairs`）
+- **`skill_execute_test`（8 用例）**: 直连真实 `calculate_damage` / `SlashSkill::execute`，
+  取代 golden oracle。锁定方差带 [0.8x, 1.2x)、防御线性减免（物理 def_factor 0.5）、
+  TRUE 无视防御、下限恒 1、锥内命中 / 无目标挥空 / 身后不中、重击均值 1.3 倍
+  （用 200 次采样比对 —— 单样本受方差影响会与普攻区间重叠，不可判定）
+- **`hd2d_scene_builder_test`（4 用例）+ 修 bug**: 首测即 segfault ——
+  `_build_entities` / `_build_boss_skill_warnings` / `_build_monster_overlays`
+  **三处 `*view.monsters` 无判空**，与 `SceneView` 文档约定的「nullptr = 子系统缺失」
+  矛盾（其余 12 个子构建器都有守卫）。补守卫 + 契约测试；另测
+  `GameScene::hd2d_view()` 只读视图装配（核心指针 / 可选子系统 / 挑战房标志透传）——
+  G12-4 解耦后这是 3D 渲染器唯一的数据入口
+- **限制（诚实边界）**: `build_scene` 的地形分支会调 `procedural_tile()` 生成纹理，
+  需要 GL 上下文，**无法 headless 断言 billboard / 地形产出**；3D 视觉仍需实机验收。
+  该边界已写进测试文件头，不假装覆盖了没覆盖的东西
+- **G13 续 — `sim_ai`**: `DecisionAgent::_evaluate_move` **154 → 27**（落脚评估
+  `_eval_move_land` 含 CLOSED 门低分诱走 pickup 开门 + Q3.2 毒池/尖刺重罚；近身评估
+  `_eval_move_combat` 含闪避追击 / 低血回血 / P1-C5 已禁用分支留档）。
+  分支分数 1.4/1.3/1.2/0.9/0.7/0.6/0.4 与 `sim_move_branch` / `sim_bfs_fail` 计数点
+  逐位保留。**超规 116 → 115**
+
+**门禁**: build 0 error 0 warning · ctest **77/77** · 桌面包已同步（exe MD5 `9F20866D…`）
+
 # G13 — 函数长度债清理（5 批，2026-09-28）
 
 > 起因: 规则 1 规定函数 ≤40 行。G12-6 把 `tutorial_scene.cpp` 清零后，全仓仍有
