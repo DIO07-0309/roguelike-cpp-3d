@@ -24,10 +24,6 @@ public:
     Node* get_parent() const { return _parent; }
     std::vector<std::shared_ptr<Node>>& get_children() { return _children; }
 
-    void add_child(std::shared_ptr<Node> child);
-    void remove_child(Node* child);
-    void queue_free();
-
     // 路径查找: get_node("HUD/SkillBar")
     template<typename T = Node>
     T* get_node(const std::string& path) const;

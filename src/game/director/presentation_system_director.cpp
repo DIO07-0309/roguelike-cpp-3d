@@ -151,59 +151,6 @@ void PresentationSystemDirector::set_build_theme(BuildType bt) {
     _theme = BuildTheme::from_build_type(bt);
 }
 
-// get_build_color() is defined inline in the header
-
-// ═══════════════════════════════════════════════════════════════
-// G5.8: Unified VFX dispatch — Gameplay never touches VFXServer directly
-// ═══════════════════════════════════════════════════════════════
-
-void PresentationSystemDirector::emit_skill_vfx(VFXServer& vfx, const char* skill_id,
-    float cx, float cy, int level, Direction dir, float tx, float ty, int extra) {
-    std::string sid(skill_id);
-
-    if (sid == "slash" || sid == "frost_edge" || sid == "blood_slash")
-        vfx.slash_skill(cx, cy, dir, level);
-    else if (sid == "fireball" || sid == "meteor")
-        vfx.fireball(cx, cy, tx, ty, level);
-    else if (sid == "self_heal" || sid == "blood_pact" || sid == "blizzard_ward")
-        vfx.heal(cx, cy, level);
-    else if (sid == "the_world" || sid == "shadow_walk" || sid == "lightning_dash")
-        vfx.time_stop(cx, cy);
-    else if (sid == "ice_nova")
-        vfx.ice_nova(cx, cy, 120.0f + level * 20.0f, level);
-    else if (sid == "chain_lightning")
-        vfx.chain_lightning(cx, cy, tx, ty, extra); // extra = bounces
-    else if (sid == "shadow_strike")
-        vfx.shadow_strike(cx, cy, tx, ty, level);
-    else if (sid == "blood_frenzy")
-        vfx.blood_frenzy(cx, cy, 120.0f + level * 20.0f, extra); // extra = hit_count
-    else if (sid == "summon_spirit")
-        vfx.summon_spirit(tx, ty, extra); // tx,ty = spawn pos, extra = count
-    else
-        vfx.slash_skill(cx, cy, dir, level); // fallback
-}
-
-void PresentationSystemDirector::emit_archetype_vfx(VFXServer& vfx, const char* archetype,
-    float cx, float cy, float tx, float ty) {
-    std::string a(archetype);
-    if (a == "sniper")
-        vfx.sniper_line(cx, cy, tx, ty);
-    else if (a == "controller")
-        vfx.controller_zone(tx, ty, 60.0f);
-    else if (a == "ambush")
-        vfx.ambush_smoke(cx, cy);
-    else if (a == "guardian")
-        vfx.guardian_aura_enemy(cx, cy, 80.0f);
-}
-
-void PresentationSystemDirector::emit_boss_phase2_vfx(VFXServer& vfx, const char* boss_id,
-    float bx, float by, Color tint, float px, float py) {
-    std::string bid(boss_id);
-    vfx.boss_phase2_flash(bx, by, tint);
-    if (bid == "demon_lord")
-        vfx.boss_gravity_pull(bx, by, px, py);
-}
-
 void PresentationSystemDirector::tick(float dt) {
     // Shake decay
     if (shake_timer > 0) shake_timer -= dt;

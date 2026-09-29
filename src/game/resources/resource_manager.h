@@ -37,7 +37,6 @@ public:
 
     // ── JSON (返回文件内容字符串, 由各系统自行解析) ──
     std::string load_json_text(const char* path);
-    void       invalidate_json_cache(); // 开发环境热重载
 
     // ── Sound (文件路径 → Sound) ──
     Sound load_sound(const char* path); // MP3/WAV, 自动缓存

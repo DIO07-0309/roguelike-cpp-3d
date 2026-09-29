@@ -141,14 +141,6 @@ void PlayerBehaviorRecorder::print_debug(char* buf, size_t buf_size) const {
         avg_interval, _data.floors_recorded);
 }
 
-// ══════════════════════════════════════════════════════
-// JSON save
-// ══════════════════════════════════════════════════════
-
-void PlayerBehaviorRecorder::on_player_damaged(int amount, int floor) {
-    _data.record_damage_taken(amount, floor);
-}
-
 void PlayerBehaviorRecorder::save_to_file(const char* path) const {
     FILE* f = fopen(path, "w");
     if (!f) return;
@@ -177,9 +169,4 @@ void PlayerBehaviorRecorder::save_to_file(const char* path) const {
     }
     fprintf(f, "]\n");
     fclose(f);
-}
-
-void PlayerBehaviorRecorder::load_from_file(const char* path) {
-    // deferred — not needed for F15.2 data pipeline
-    (void)path;
 }

@@ -507,20 +507,6 @@ bool SkillManager::learn(std::unique_ptr<Skill> skill) {
     return false;
 }
 
-std::string SkillManager::use_active(int idx, Player* caster,
-                                      std::vector<Monster*>& targets,
-                                      GameMap* map, double gt) {
-    if (idx < 0 || idx >= (int)active_skills.size()) return "";
-    auto& sk = active_skills[idx];
-    if (!sk->can_use(gt)) {
-        float r = sk->remaining_cooldown(gt);
-        return sk->name + " 冷却中 (" + std::to_string(r).substr(0,3) + "s)";
-    }
-    std::string result = sk->execute(caster, targets, map);
-    sk->mark_used(gt);
-    return result;
-}
-
 void SkillManager::apply_all_passives(Player* player) {
     for (auto& p : passives) p->apply(player);
 }

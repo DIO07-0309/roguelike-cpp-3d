@@ -55,9 +55,6 @@ public:
     Color get_ground_tint() const;
     float get_ground_alpha() const { return _ground_alpha; }
     
-    // 设置地面效果强度
-    void set_ground_intensity(float intensity);
-    
 private:
     WeatherSystem() = default;
     ~WeatherSystem() = default;

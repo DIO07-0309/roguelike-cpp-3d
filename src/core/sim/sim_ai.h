@@ -130,8 +130,6 @@ private:
     int _count_in_range(const Player* player,
                         const std::vector<Monster*>& monsters, float range_px) const;
     float _hp_ratio(const Player* p) const;
-    void _pick_direction(const Player* player,
-                         const std::vector<Monster*>& monsters);
     void _resolve_profile(const Player* player);
     // P1-C5: 决策攻击半径 (px) — FIST=48px legacy; 武器=当前段 range×32.
     // _evaluate_attack/_evaluate_move 消费同一份, 与 WeaponExecutor 判定对齐
@@ -250,4 +248,3 @@ extern int sim_rot_blocked;          // G14: 旋转脱困撞墙次数
 extern int sim_stuck_bfs_hit;        // G14: 卡死 BFS 朝怪命中数
 extern int sim_stuck_bfs_fail;       // G14: 卡死 BFS 朝怪失败数
 extern int sim_tp_attempts;          // G14: 传送尝试次数
-

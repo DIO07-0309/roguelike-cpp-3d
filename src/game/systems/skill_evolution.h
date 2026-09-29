@@ -20,7 +20,6 @@ public:
 
     // 查询
     static std::string evo_name(const Player* player, int skill_index);
-    static int  evo_level(const Player* player, int skill_index);
 
     // SKILL_EVOLVED payload unpacking
     static int  event_new_level(int packed)  { return packed & 0xFFFF; }
@@ -28,7 +27,6 @@ public:
 
 private:
     // 技能使用后的事件回调
-    static void _on_skill_used(const GameEvent& ev);
     // 单技能检查
     static bool _try_evolve_skill(Player* player, int idx);
 };

@@ -1,3 +1,44 @@
+# G16 — 全仓死方法清理（三级连删，2026-09-29）
+
+> 起因: G15 圣物系统那个模式（声明在头文件、定义在 cpp、**生产代码零调用**）
+> 在别处还有多少？写了 `dead_method_scan.py` 扫全仓 748 个方法，29 个命中。
+> 抽查 6 个全中 —— 包括 `CombatCoordinator::apply_attack_damage` 在 P0 双重
+> 伤害修复时被删掉调用、却**没删函数体**。三级连删共 **37 文件 / -430 行**，
+> `git diff --shortstat` = `430 deletions, 0 insertions`，全部纯删除。
+
+- **第一批 29 个**（覆盖 20 个类）: 典型是整段生命周期 hook ——
+  `GameplaySystemDirector::tick` / `on_enter_floor` / `on_new_game`
+  （`game_scene.h:283` 有实例、`ServiceLocator::provide(&_gameplay)` 有注册，
+  **类活着但方法没接**）；`Node::add_child` / `queue_free`（`bt::Node` 是行为树
+  里另一个同名类，别混淆）；`SkillManager::use_active` 是
+  `CombatCoordinator::use_skill` 的平行重复实现
+- **第二批 9 个**: 删完第一批调用图缩小，候选 772→743，又暴露 9 个 ——
+  `VFXServer` 6 个（`slash_skill` / `sniper_line` / `controller_zone` /
+  `ambush_smoke` / `guardian_aura_enemy` / `boss_gravity_pull`：技能实际直接
+  push `vfx.effects`，这些命名入口从未用过）、`Node::remove_child`、
+  `Player::give_xp`、`MetaSystem::clear_reward_log`
+- **第三批 0 个**: 734 候选、**零残留**，连删收敛
+- **两处值得留意的副作用（未修，属独立缺陷）**:
+  - `Player::give_xp` 死了 —— XP 实际走 `player->xp +=` 直写
+    （`game_scene_combat.cpp:68`、`combat_coordinator.cpp:128`）。这条本可以选
+    「接线」而非「删」：把两处直写改成 `give_xp()` 是行为等价的收敛。现按本批
+    统一口径删除，待议
+  - `MetaSystem` 的 reward log **整个特性是死的**：`reward_log()` 无调用、
+    `_reward_log` 只写不读（`end_run` / `reward_from_ending` 各 push 一次）、
+    `clear_reward_log` 注释写着「新 Run 开始时调用」但**从未调用** → 跨 Run
+    奖励记录会持续累积。涉及 `MetaRewardRecord` / `MetaRewardSource` 类型 +
+    2 处写语句，属独立特性移除，另开一批
+- **`PresentationSystemDirector::emit_skill_vfx` / `emit_archetype_vfx` /
+  `emit_boss_phase2_vfx`**: 头文件注释标着 G5.8「Unified Presentation
+  Framework」，**从未被调用** —— 注释写的设计意图与实际接线不符
+- **扫描盲区（诚实边界）**: 脚本按**方法名全词计数**，对 `tick` / `draw` /
+  `reset` 这类重名方法失效（同名字面量满天飞，计数必然 >2）。本轮的
+  `GameplaySystemDirector::tick` 是靠手工查 `_gameplay.` 调用面找到的，不是
+  脚本找到的。全仓仍可能存在同名死方法
+
+**门禁**: build 0 error 0 warning · ctest **77/77**（`tests/` 未改动）·
+超规函数 **103**（无回归）
+
 # G15 — 圣物系统死代码清理 + 两处真实缺陷（2026-09-29）
 
 > 起因: G14 重写 `relic_effect_test` 时，2 个用例调 `on_relic_acquired` /

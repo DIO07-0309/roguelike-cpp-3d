@@ -30,11 +30,6 @@ public:
     RunSummary          run_stats;
     NarrativeState      narr_state;
     BuildType           last_notified_build = BuildType::NONE;
-
-    // ── 生命周期 Hooks ──
-    void tick(float dt, bool is_playing, bool is_boss_floor);
-    void on_enter_floor(int floor, bool is_boss, bool is_rest);
-    void on_new_game();
     void on_player_dead(int floor, int level, const Player* player);
     void on_game_clear(int floor, int level, const Player* player,
                        const class BossBattleReport& boss_report,

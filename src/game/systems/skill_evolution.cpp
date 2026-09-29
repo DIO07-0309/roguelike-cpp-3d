@@ -65,8 +65,3 @@ std::string SkillEvolutionManager::evo_name(const Player* player, int idx) {
     auto& sk = player->skills.active_skills[idx];
     return sk->get_evolution_text();
 }
-
-int SkillEvolutionManager::evo_level(const Player* player, int idx) {
-    if (!player || idx < 0 || idx >= (int)player->skills.active_skills.size()) return 0;
-    return player->skills.active_skills[idx]->evolution_level;
-}

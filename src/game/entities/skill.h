@@ -244,9 +244,6 @@ public:
 
     bool can_learn() const;
     bool learn(std::unique_ptr<Skill> skill);
-    std::string use_active(int index, Player* caster,
-                           std::vector<Monster*>& targets,
-                           GameMap* map, double game_time);
     void apply_all_passives(Player* player);
 };
 

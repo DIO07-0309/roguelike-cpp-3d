@@ -103,16 +103,6 @@ public:
     Color get_build_color() const { return _theme.primary; }  // backward compat
     BuildTheme _theme;
 
-    // ── G5.8: Unified Presentation Framework ──
-    // 通过 VFXServer 生成特效, 调用方将 vfx.effects 复制到 active_effects
-    // 不修改 Skill::execute() / MonsterAI / BossAI
-    void emit_skill_vfx(VFXServer& vfx, const char* skill_id, float cx, float cy,
-                        int level, Direction dir, float tx = 0, float ty = 0, int extra = 0);
-    void emit_archetype_vfx(VFXServer& vfx, const char* archetype, float cx, float cy,
-                            float tx, float ty);
-    void emit_boss_phase2_vfx(VFXServer& vfx, const char* boss_id, float bx, float by,
-                               Color tint, float px = 0, float py = 0);
-
     // ── Boss Intro Text ──
     std::string boss_intro_text;
     std::string boss_modifier_text;

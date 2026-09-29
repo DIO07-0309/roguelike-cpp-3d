@@ -86,15 +86,6 @@ Vector2 Player::handle_input(const InputMap& input) {
     return move;
 }
 
-void Player::give_xp(int amount) { xp += amount; }
-
-void Player::auto_level_to(int target) {
-    while (level < target) {
-        xp = xp_to_next;
-        // give_xp 在 game_scene 中会触发升级
-    }
-}
-
 // M4f.2: 纹理缺失时的几何回退
 static void _draw_legacy_player_body(float hx, float hy, float hw, float hh,
                                      Color body_c, Direction dir) {

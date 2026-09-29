@@ -5,34 +5,6 @@
 #include "item.h"  // rng
 #include "boss_replay.h"
 
-// ============================================================
-// D6 Step4: GameplaySystemDirector — 综合tick + 生命周期
-// ============================================================
-
-void GameplaySystemDirector::tick(float dt, bool is_playing, bool is_boss_floor) {
-    flow.tick(dt);
-    quest_mgr.set_relationship_system(&rels);
-    quest_mgr.update(world_state, story);
-    story.update(dt);
-
-    // Build Fusion 检测
-    (void)is_playing; (void)is_boss_floor;
-}
-
-void GameplaySystemDirector::on_enter_floor(int floor, bool is_boss, bool is_rest) {
-    story.enter_floor(floor);
-    quest_mgr.set_relationship_system(&rels);
-    quest_mgr.update(world_state, story);
-    (void)is_boss; (void)is_rest;
-}
-
-void GameplaySystemDirector::on_new_game() {
-    g_meta.load();
-    run_stats = RunSummary{};
-    g_meta.clear_reward_log();  // G3.5
-    quest_mgr.set_relationship_system(&rels);
-}
-
 void GameplaySystemDirector::on_player_dead(int floor, int level, const Player* player) {
     run_stats.floor_reached = floor;
     if (player) {

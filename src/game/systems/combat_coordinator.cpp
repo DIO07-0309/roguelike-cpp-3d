@@ -12,19 +12,6 @@
 #include "ai/player_behavior/player_behavior_recorder.h" // F15.1
 #include <cmath>
 
-// M2-E: CombatCoordinator::player_attack 已删除 — P1 审计确认全工程 0 调用者
-// (真实玩家攻击走 PlayerController::player_attack, 用确定性 game_time),
-// 且该死路径用 GetTime() 计冷却 — 一旦被复活将污染 sim 确定性。landmine 排除。
-
-void CombatCoordinator::apply_attack_damage(Monster* target, int dmg,
-                                            std::vector<Effect>& effects, AudioServer* audio) {
-    target->combat.take_damage(dmg);
-    if (audio) audio->play_sfx("hit");
-    VFXServer v;
-    v.hit_flash(target->entity.position.x, target->entity.position.y, target->entity.size.x);
-    for (auto& e : v.effects) effects.push_back(e);
-}
-
 void CombatCoordinator::skill_heavy_vfx(Player* player, const std::string&,
                                          std::vector<Effect>& effects) {
     VFXServer vfx;

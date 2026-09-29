@@ -25,10 +25,6 @@ struct Effect;
 class CombatCoordinator {
 public:
 
-    // 施加普攻伤害并播放 VFX (不处理击杀结算)
-    static void apply_attack_damage(Monster* target, int dmg,
-                                     std::vector<Effect>& effects, AudioServer* audio);
-
     // 技能释放 (含时停special-case + 伤害队列 + SFX + VFX + D2 heavy强化)
     // P1-C4-fix(UAF): pending_damage 存 instance_id (原裸指针见 game_scene.h)
     static std::string use_skill(int index, Player* player,

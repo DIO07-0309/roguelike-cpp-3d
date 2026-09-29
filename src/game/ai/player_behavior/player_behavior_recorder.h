@@ -35,9 +35,6 @@ void on_weapon_attack(const char* wt_name, float time, int floor,
     void on_heal(float time, int floor, int amount);
     void on_floor_enter(float time, int floor);
 
-    // Hook 4: player took damage (legacy signature)
-    void on_player_damaged(int amount, int floor);
-
     // ── Summary data (aggregated from action stream) ──
     PlayerBehaviorData& data() { return _data; }
     const PlayerBehaviorData& data() const { return _data; }
@@ -47,7 +44,6 @@ void on_weapon_attack(const char* wt_name, float time, int floor,
 
     // ── Save/Load action stream ──
     void save_to_file(const char* path) const;
-    void load_from_file(const char* path);
 
 private:
     PlayerBehaviorRecorder() = default;

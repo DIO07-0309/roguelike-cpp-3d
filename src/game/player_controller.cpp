@@ -837,40 +837,6 @@ void PlayerController::_weapon_attack(GameScene& gs, Player& p) {
     }
 }
 
-// ── Helper: apply hit feedback (shake, freeze, knockback, kill flash) ──
-void PlayerController::_apply_attack_feedback(GameScene& gs, Player& p,
-    Monster* target, bool is_crit, bool is_heavy)
-{
-    if (is_heavy && target->combat.is_alive) {
-        float dx = target->entity.rect.x - p.entity.rect.x;
-        float dy = target->entity.rect.y - p.entity.rect.y;
-        float len = sqrtf(dx*dx + dy*dy);
-        if (len > 0) {
-            float knock = is_crit ? 36.0f : 24.0f;
-            clamp_displacement(target->entity, dx / len * knock, dy / len * knock, gs.game_map.get());
-        }
-        gs._presentation.trigger_shake(is_crit ? 16.0f : CombatFeelSystem::SHAKE_HEAVY);
-        gs._presentation.trigger_freeze(is_crit ? CombatFeelSystem::CRITICAL_HIT
-                                                : CombatFeelSystem::HEAVY_HIT);
-    } else if (is_crit && gs._presentation.combat_juice_on) {
-        gs._presentation.trigger_shake(CombatFeelSystem::SHAKE_MEDIUM);
-        gs._presentation.trigger_freeze(CombatFeelSystem::LIGHT_HIT);
-    }
-    // Kill flash
-    if (!target->combat.is_alive && gs._presentation.combat_juice_on) {
-        Effect flash;
-        flash.kind = "flash";
-        flash.world_x = target->entity.rect.x;
-        flash.world_y = target->entity.rect.y;
-        flash.radius = target->entity.rect.width * 1.5f;
-        flash.duration = CombatFeelSystem::KILL_SLOWMO;
-        flash.elapsed = 0;
-        flash.color = {255, 255, 255, 180};
-        gs.active_effects.push_back(flash);
-        gs._presentation.trigger_freeze(CombatFeelSystem::KILL_SLOWMO);
-    }
-}
-
 // ── Helper: kill a target and remove from monster list ──
 void PlayerController::_kill_target(GameScene& gs, Monster* target) {
     gs._on_monster_killed(target);

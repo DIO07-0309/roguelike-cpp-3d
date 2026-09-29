@@ -57,9 +57,6 @@ public:
     void on_player_dead();          // → ENDING → DeathScene
     void on_game_clear();           // → ENDING → VictoryScene → Credits
 
-    // ── 调试名称 ──
-    static const char* state_name(GameFlowState s);
-
 private:
     GameScene* _scene = nullptr;
     // v1.6-B1: F15 死亡镜像复盘填充 (非 F15 留空)

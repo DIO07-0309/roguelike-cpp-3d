@@ -192,8 +192,6 @@ std::string ResourceManager::load_json_text(const char* path) {
     return buf;
 }
 
-void ResourceManager::invalidate_json_cache() { _json_cache.clear(); }
-
 Sound ResourceManager::load_sound(const char* path) {
     auto it = _sound_cache.find(path);
     if (it != _sound_cache.end()) return it->second;

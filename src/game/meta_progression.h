@@ -75,9 +75,6 @@ public:
     const MetaCurrency& currency() const { return _save.currency; }
     int   total_runs() const { return _save.total_runs; }
 
-    // 升级
-    bool upgrade_node(const char* id, MetaCurrency& cost);
-
     // Run收尾
     MetaCurrency end_run(const RunSummary& summary);
     void add_currency(const MetaCurrency& c);
@@ -85,7 +82,6 @@ public:
     // G3.5: 统一奖励入口 + 审计日志
     void reward_from_ending(const char* ending_name,
                             int soul, int knowledge, int ancient_memory = 2);
-    void clear_reward_log();               // 新 Run 开始时调用
     const std::vector<MetaRewardRecord>& reward_log() const { return _reward_log; }
 
     // G3.1: 从 registry 重建 MetaNode (在 JSON 加载后调用)

@@ -64,17 +64,6 @@ bool RelationshipSystem::check_relation(int npc_id, RelationType type, int thres
     return false;
 }
 
-const char* RelationshipSystem::relation_name(RelationType t) {
-    switch (t) {
-        case RelationType::TRUST:      return "信任";
-        case RelationType::RESPECT:    return "尊敬";
-        case RelationType::FEAR:       return "恐惧";
-        case RelationType::GRATITUDE:  return "感恩";
-        case RelationType::CORRUPTION: return "腐化";
-    }
-    return "?";
-}
-
 // ============================================================
 // 预设 RelationReward 常量
 // ============================================================

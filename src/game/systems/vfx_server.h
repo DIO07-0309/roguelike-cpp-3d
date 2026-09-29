@@ -75,8 +75,6 @@ public:
     void player_attack(float cx, float cy, float range,
                        const AttackEvolutionState& evo = AttackEvolutionState{});
 
-    // Legacy: internally delegates to slash_arc + spark_burst
-    void slash_skill(float cx, float cy, Direction dir, int level);
     // Legacy: internally delegates to beam + ring
     void fireball(float cx, float cy, float tx, float ty, int level);
     // Legacy: internally delegates to ring + spark_burst
@@ -96,15 +94,8 @@ public:
     void blood_frenzy(float cx, float cy, float radius, int hit_count);
     void summon_spirit(float cx, float cy, int count);
 
-    // ── G5.8: Enemy archetype VFX (thin wrappers) ──
-    void sniper_line(float sx, float sy, float tx, float ty);
-    void controller_zone(float x, float y, float radius);
-    void ambush_smoke(float x, float y);
-    void guardian_aura_enemy(float cx, float cy, float radius);
-
     // ── G5.8: Boss Phase2 transition VFX ──
     void boss_phase2_flash(float cx, float cy, Color tint);
-    void boss_gravity_pull(float cx, float cy, float px, float py);
 
     // ── A9: 武器特效增强 (15 种新特效) ──
     void slash_arc_1(float cx, float cy, Direction dir, float radius, Color c, float dur);
@@ -124,5 +115,4 @@ public:
     void smash_impact_3(float cx, float cy, float radius, Color c, float dur);
 
     void portal_entry(float cx, float cy);
-    void portal_return(float cx, float cy);
 };

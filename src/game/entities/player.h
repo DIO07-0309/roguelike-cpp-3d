@@ -75,8 +75,6 @@ public:
 
     // 等级
     static int calc_xp_for_level(int lvl);
-    void give_xp(int amount);
-    void auto_level_to(int target);
 
     // Batch 3A: 经济 API
     void add_gold(int amount);

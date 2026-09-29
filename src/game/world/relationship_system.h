@@ -49,9 +49,6 @@ public:
     // 所有NPC (UI用)
     const std::vector<NPCRelation>& all() const { return _relations; }
 
-    // 关系名称中文
-    static const char* relation_name(RelationType t);
-
 private:
     std::vector<NPCRelation> _relations;
 };

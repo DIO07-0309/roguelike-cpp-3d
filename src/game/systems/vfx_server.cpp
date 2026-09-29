@@ -210,12 +210,6 @@ void VFXServer::player_attack(float cx, float cy, float range, const AttackEvolu
     if (evo.level >= 3) flash(cx, cy, range * 0.8f, {255,220,60,100}, 0.20f);
 }
 
-void VFXServer::slash_skill(float cx, float cy, Direction dir, int level) {
-    float r = level == 1 ? 56.0f : level == 2 ? 72.0f : 88.0f;
-    slash_arc(cx, cy, dir, r, {255,80,80,200});
-    if (level >= 3) spark_burst(cx, cy, 8, {255,120,80,255}, 0.35f);
-}
-
 void VFXServer::fireball(float cx, float cy, float tx, float ty, int level) {
     beam(cx, cy, tx, ty, {255,100,50,200}, 0.4f);
     for (int i = 0; i < level; i++)
@@ -276,26 +270,6 @@ void VFXServer::summon_spirit(float cx, float cy, int count) {
     spark_burst(cx, cy, count * 6, {180,200,255,200}, 0.50f);
 }
 
-// ── G5.8 Enemy Archetype VFX ──
-
-void VFXServer::sniper_line(float sx, float sy, float tx, float ty) {
-    beam(sx, sy, tx, ty, {255,60,30,200}, 0.8f);
-    ring(tx, ty, 16.0f, {255,40,20,180}, 1, 0.8f);
-}
-
-void VFXServer::controller_zone(float x, float y, float radius) {
-    ring(x, y, radius, {180,50,200,160}, 3, 0.70f);
-    flash(x, y, radius * 0.3f, {200,60,200,120}, 0.50f);
-}
-
-void VFXServer::ambush_smoke(float x, float y) {
-    smoke_puff(x, y, 16.0f, {40,20,60,140}, 5, 0.60f);
-}
-
-void VFXServer::guardian_aura_enemy(float cx, float cy, float radius) {
-    aura_ring(cx, cy, radius, {60,140,255,200}, 0.80f);
-}
-
 // ── G5.8 Boss Phase2 VFX ──
 
 void VFXServer::boss_phase2_flash(float cx, float cy, Color tint) {
@@ -304,20 +278,9 @@ void VFXServer::boss_phase2_flash(float cx, float cy, Color tint) {
     explosion(cx, cy, 80.0f, {tint.r,tint.g,tint.b,240}, 20, 0.50f);
 }
 
-void VFXServer::boss_gravity_pull(float cx, float cy, float px, float py) {
-    ring(cx, cy, 60.0f, {80,20,120,200}, 1, 0.70f);
-    beam(px, py, cx, cy, {120,40,180,160}, 0.40f);
-    spark_burst(cx, cy, 12, {140,60,200,200}, 0.45f);
-}
-
 void VFXServer::portal_entry(float cx, float cy) {
     aura_ring(cx, cy, 18.0f, {80, 180, 255, 200}, 1.2f);
     spark_burst(cx, cy, 6, {120, 200, 255, 180}, 0.4f);
-}
-
-void VFXServer::portal_return(float cx, float cy) {
-    aura_ring(cx, cy, 18.0f, {100, 255, 150, 200}, 1.2f);
-    spark_burst(cx, cy, 6, {150, 255, 180, 180}, 0.4f);
 }
 
 // ═══════════════════════════════════════════════════════════

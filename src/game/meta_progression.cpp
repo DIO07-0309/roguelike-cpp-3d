@@ -73,22 +73,6 @@ float MetaSystem::permanent_bonus(const char* id) const {
     return 0;
 }
 
-bool MetaSystem::upgrade_node(const char* id, MetaCurrency& cost) {
-    for (int i = 0; i < _node_count; i++) {
-        if (strcmp(_nodes[i].id, id) != 0) continue;
-        int lv = _save.node_levels[i];
-        if (lv >= _nodes[i].max_level) return false;
-        int need = _nodes[i].cost_base + lv * _nodes[i].cost_scale;
-        if (_save.currency.soul_fragments < need) return false;
-        _save.currency.soul_fragments -= need;
-        cost.soul_fragments += need;
-        _save.node_levels[i]++;
-        save();
-        return true;
-    }
-    return false;
-}
-
 MetaCurrency MetaSystem::end_run(const RunSummary& rs) {
     MetaCurrency earned = calc_run_reward(rs);
     _save.currency.soul_fragments += earned.soul_fragments;
@@ -119,8 +103,6 @@ void MetaSystem::reward_from_ending(const char* name, int soul, int knowledge,
         std::string("Ending: ") + name, mc});
     save();
 }
-
-void MetaSystem::clear_reward_log() { _reward_log.clear(); }
 
 // ---- JSON save ----
 bool MetaSystem::g_readonly = false;  // Q3.1: --sim 只读

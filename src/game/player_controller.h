@@ -43,8 +43,6 @@ private:
 
     // G9: weapon-driven attack helpers
     void _weapon_attack(GameScene& gs, Player& p);
-    void _apply_attack_feedback(GameScene& gs, Player& p,
-                                Monster* target, bool is_crit, bool is_heavy);
     void _kill_target(GameScene& gs, Monster* target);
     void _process_weapon_result(GameScene& gs, Player& p,
                                 const WeaponAttackResult& r);

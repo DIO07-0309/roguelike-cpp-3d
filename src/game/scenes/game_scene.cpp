@@ -128,7 +128,6 @@ static void _draw_projectile_preview(float sx, float sy, const Projectile& p,
 // D4 Step2: Event Presentation impl
 // ============================================================
 
-
 void GameScene::_start_event_presentation(EventType et) { _interaction.start_event_presentation(et); }
 void GameScene::_tick_event_ui(float dt)              { _interaction.tick_event_ui(dt); }
 
@@ -1707,7 +1706,6 @@ void GameScene::show_hint(const char* msg, float duration) {
     if (msg) _presentation.show_message(msg, duration);
 }
 
-
 // ── G4.5: Replay recording control ──
 void GameScene::start_recording(uint32_t seed) {
     std::vector<ModSnapshot> mods;
@@ -2209,9 +2207,6 @@ void GameScene::_cleanup_dead_monsters() {
     _combat.cleanup_dead_monsters();
     if (monsters.size() < alive_before) _kill_streak_timer = 3.0f;
 }
-void GameScene::_check_floor_clear() {
-    if (FloorManager::is_floor_cleared(monsters) && !stairs_active) _activate_stairs();
-}
 
 void GameScene::_activate_stairs() {
     if (stairs_active) return;
@@ -2498,7 +2493,6 @@ void GameScene::_render() {
     // M6-v2a: UI tail extracted to shared method (2D/3D common)
     _render_ui_tail(sw, sh);
 }
-
 
 // M6-v2a: _render UI tail (2D/3D common) - hitflash/fade/panels/HUD/minimap/dialogue/event/freeze/cinematic
 void GameScene::_render_ui_tail(int sw, int sh) {
@@ -3375,35 +3369,6 @@ void GameScene::_draw_ground_items() {
                 _draw_interact_hint("E 拾取", cx, cy - TILE_SIZE/2 - 8);
         }
     }
-}
-
-void GameScene::_draw_arena_map() {
-    if (!_arena_map) return;
-    for (int y = 0; y < _arena_map->height; y++)
-        for (int x = 0; x < _arena_map->width; x++) {
-            float sx = x * TILE_SIZE - _cam_x;
-            float sy = y * TILE_SIZE - _cam_y;
-            if (sx + TILE_SIZE < 0 || sx > get_tree()->width() ||
-                sy + TILE_SIZE < 0 || sy > get_tree()->height()) continue;
-            TileType t = _arena_map->tile_at(x, y);
-            if (t == TileType::WALL) DrawRectangle((int)sx, (int)sy, TILE_SIZE, TILE_SIZE, {40, 40, 60, 255});
-            else if (t == TileType::FLOOR) DrawRectangle((int)sx, (int)sy, TILE_SIZE, TILE_SIZE, {80, 75, 65, 255});
-        }
-}
-
-void GameScene::_draw_arena_entities() {
-    if (!player || !_arena_map) return;
-    player->draw_no_cam(_cam_x, _cam_y, game_map.get());
-    for (auto& m : _arena_monsters) {
-        if (m && m->combat.is_alive) m->draw(_cam_x, _cam_y);
-    }
-}
-
-void GameScene::_cleanup_dead_arena_monsters() {
-    _arena_monsters.erase(
-        std::remove_if(_arena_monsters.begin(), _arena_monsters.end(),
-            [](const std::unique_ptr<Monster>& m) { return !m || !m->combat.is_alive; }),
-        _arena_monsters.end());
 }
 
 // _draw_hud 已迁移到 GameRenderer

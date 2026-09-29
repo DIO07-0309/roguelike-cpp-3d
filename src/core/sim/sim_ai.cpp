@@ -922,7 +922,6 @@ float DecisionAgent::_evaluate_move(int dir, const Player* p,
     return _eval_move_approach(dir, p, t, monsters, map);
 }
 
-
 float DecisionAgent::_evaluate_pickup(const Player* p, const GameMap* map,
     const std::vector<Monster*>& monsters) const {
     if (!map) return 0;
@@ -1441,21 +1440,4 @@ int DecisionAgent::_count_in_range(const Player* player,
 float DecisionAgent::_hp_ratio(const Player* p) const {
     if (!p || p->combat.max_hp <= 0) return 0;
     return (float)p->combat.current_hp / (float)p->combat.max_hp;
-}
-
-void DecisionAgent::_pick_direction(const Player* player,
-    const std::vector<Monster*>& monsters) {
-    Monster* t = _find_nearest(player, monsters);
-    if (t) {
-        float dx = t->entity.rect.x + t->entity.rect.width/2 -
-                   (player->entity.rect.x + player->entity.rect.width/2);
-        float dy = t->entity.rect.y + t->entity.rect.height/2 -
-                   (player->entity.rect.y + player->entity.rect.height/2);
-        if (fabsf(dx) > fabsf(dy))
-            _current_dir = (dx > 0) ? 3 : 2;
-        else
-            _current_dir = (dy > 0) ? 1 : 0;
-    } else {
-        _current_dir = rng() % 4;
-    }
 }

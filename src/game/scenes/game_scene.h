@@ -270,7 +270,6 @@ private:
     void _update_monsters(float dt);
     void _unstuck_wedged_monsters(double gt);   // Q3.2: 怪物脱卡 (贴墙钉子户软锁修复)
     void _on_monster_killed(Monster* m);
-    void _check_floor_clear();
     void _cleanup_dead_monsters();
     void _apply_pending_damage();
     // 收官: EXPLOSIVE_BARREL 可交互闭环 (攻击触发→倒计时→AOE 爆炸)
@@ -389,9 +388,6 @@ private:
     void _draw_entities();
     void _npc_avatars_tick();   // A6-S2 批次6: NPC 骨骼懒建+idle 驱动 (白名单取自 _avatars)
     void _draw_ground_items();
-    void _draw_arena_map();
-    void _draw_arena_entities();
-    void _cleanup_dead_arena_monsters();
 
     // F15.5.1/M6-v2a: Echo 面板数据构建 (2D/3D 分支共用, 防 60 行复制)
     void _build_echo_panel_data(CharacterPanelData& out) const;

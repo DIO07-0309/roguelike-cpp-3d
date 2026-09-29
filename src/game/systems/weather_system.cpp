@@ -220,8 +220,4 @@ Color WeatherSystem::get_ground_tint() const {
     }
 }
 
-void WeatherSystem::set_ground_intensity(float intensity) {
-    _ground_intensity = intensity;
-}
-
 } // namespace Game

@@ -43,7 +43,6 @@ public:
 private:
     std::vector<RelicArchiveEntry> _entries;
     std::vector<CollectionBonus>   _bonuses;
-    void _update_bonuses();
 };
 
 // 全局单实例

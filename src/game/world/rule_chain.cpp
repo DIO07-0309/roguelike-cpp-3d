@@ -68,23 +68,6 @@ void RuleChainManager::activate_for_boss(int boss_floor, WorldState& ws) {
     }
 }
 
-bool RuleChainManager::has_rule(const WorldState& ws, const std::string& rule_id) {
-    return ws.counter("rule_" + rule_id) > 0;
-}
-
-std::vector<std::string> RuleChainManager::active_rules(const WorldState& ws) {
-    static const char* ALL_RULES[] = {
-        "shadow_charge", "summon_priority", "arena_movement",
-        "shield_patience", "rule_override", nullptr
-    };
-    std::vector<std::string> out;
-    for (int i = 0; ALL_RULES[i]; i++) {
-        if (ws.counter(std::string("rule_") + ALL_RULES[i]) > 0)
-            out.push_back(ALL_RULES[i]);
-    }
-    return out;
-}
-
 // ── EventBus Callback ──
 void RuleChainManager::_on_boss_dead(const GameEvent& ev) {
     int boss_floor = ev.int_val;   // BOSS_DEAD 事件中 int_val = current_floor

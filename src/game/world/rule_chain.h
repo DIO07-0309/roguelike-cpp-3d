@@ -31,10 +31,6 @@ public:
     // Boss 死亡时激活对应规则 (由 BOSS_DEAD 事件触发)
     static void activate_for_boss(int boss_floor, WorldState& ws);
 
-    // 查询当前激活的规则
-    static bool has_rule(const WorldState& ws, const std::string& rule_id);
-    static std::vector<std::string> active_rules(const WorldState& ws);
-
     // 按 Boss 楼层映射规则
     static std::vector<std::string> rules_for_boss(int boss_floor);
 

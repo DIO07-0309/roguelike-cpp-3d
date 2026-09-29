@@ -6,25 +6,6 @@
 #include "scene_tree.h"
 #include "core/logger.h"
 
-const char* GameFlowDirector::state_name(GameFlowState s) {
-    switch (s) {
-        case GameFlowState::TITLE:        return "TITLE";
-        case GameFlowState::NEW_GAME:     return "NEW_GAME";
-        case GameFlowState::ENTER_FLOOR:  return "ENTER_FLOOR";
-        case GameFlowState::PLAYING:      return "PLAYING";
-        case GameFlowState::BOSS_INTRO:   return "BOSS_INTRO";
-        case GameFlowState::BOSS_FIGHT:   return "BOSS_FIGHT";
-        case GameFlowState::FLOOR_CLEAR:  return "FLOOR_CLEAR";
-        case GameFlowState::BOSS_DEAD:    return "BOSS_DEAD";
-        case GameFlowState::PLAYER_DEAD:  return "PLAYER_DEAD";
-        case GameFlowState::GAME_CLEAR:   return "GAME_CLEAR";
-        case GameFlowState::ENDING:       return "ENDING";
-        case GameFlowState::CREDITS:      return "CREDITS";
-        case GameFlowState::RETURN_TITLE: return "RETURN_TITLE";
-    }
-    return "?";
-}
-
 void GameFlowDirector::new_game() {
     if (!_scene) return;
     current_state = GameFlowState::NEW_GAME;
