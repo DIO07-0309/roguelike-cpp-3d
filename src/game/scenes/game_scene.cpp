@@ -2210,6 +2210,11 @@ void GameScene::_cleanup_dead_monsters() {
 
 void GameScene::_activate_stairs() {
     if (stairs_active) return;
+    // G19-fix: 只有地牢本体能清空换层。进挑战竞技场时 monsters 被 clear(),
+    // FloorManager::is_floor_cleared(空) 返回 true → 会在 15x15 竞技场里
+    // 往 stairs_pos(地牢坐标, 越界)写 STAIRS_DOWN, 并把 stairs_active 置 true。
+    // exit_challenge_arena 不恢复该标志 → 本层再也不会真正清空、再也不会自动存档。
+    if (_world_mode != WorldMode::DUNGEON) return;
     auto boss = _get_boss();
     if (boss && boss->combat.is_alive) return;
     game_map->set_tile(stairs_pos.first, stairs_pos.second, TileType::STAIRS_DOWN);

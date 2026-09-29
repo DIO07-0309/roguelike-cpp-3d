@@ -211,6 +211,8 @@ public:
     // Batch 3I: 挑战竞技场往返 (场景级转换; G9.2 移至 public 以支持回归测试驱动)
     void enter_challenge_arena();
     void exit_challenge_arena();
+    // G19: 换层激活移至 public — 回归测试需直接驱动「竞技场内禁止激活楼梯」
+    void _activate_stairs();
     void new_game();
     // B13: Relic 不再跨层 (load_saved_game 不再接收 relics 参数)
     // G10.9-B2: unlocked_endings 参数移除 (账号级, 从 meta 恢复); 新增 play_time
@@ -291,7 +293,6 @@ private:
     float _kill_streak_timer = 0.0f;   // 击杀势头衰减计时
 
     // 楼层 (委托给 FloorManager)
-    void _activate_stairs();
     void _check_floor_transition();
     // M4b: Boss 房机制地形 (熔岩环带安全区)
     void _setup_boss_arena_terrain(const class DungeonGenerator& gen, int floor);

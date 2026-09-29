@@ -181,3 +181,56 @@ TEST(FloorLifecycle, ChallengePitySurvivesGameSceneRebuild) {
     EXPECT_EQ(s_last->challenge_pity_streak(), 0);
 }
 
+// ── LIFE-005: 挑战竞技场内禁止触发换层激活/自动存档 ──────────
+// 实机缺陷 (09-29): enter_challenge_arena 里 monsters.clear(), 而
+// FloorManager::is_floor_cleared(空列表) 返回 true —— for 循环一次都不执行
+// 直接落空。竞技场内每次 cleanup_dead_monsters 都判成「本层已清空」, 从而在
+// 15x15 竞技场里触发 _activate_stairs:
+//   1) 往 stairs_pos (地牢坐标, 对竞技场越界) 写 STAIRS_DOWN
+//   2) 置 stairs_active = true
+//   3) 触发一次自动存档 (本层其实根本没清)
+// 而 exit_challenge_arena 只恢复地图/怪物/掉落, 不恢复 stairs_active
+// → 出了竞技场该标志一直是 true, 本层再也不会真正清空、再也不会自动存档。
+// 表现: 玩家打到很多层, 存档却永远停在进竞技场之前的那一层。
+TEST(FloorLifecycle, ActivateStairsBlockedInsideChallengeArena) {
+    auto s = make_scene();
+    s->enter_floor(3, 777u);
+    ASSERT_FALSE(s->stairs_active);
+
+    // 前置条件: 地牢模式下清完怪确实能激活楼梯
+    s->monsters.clear();
+    s->_activate_stairs();
+    ASSERT_TRUE(s->stairs_active)
+        << "precondition: a cleared dungeon floor must activate stairs";
+
+    // 回滚标志再进竞技场 —— 复现「空怪列表被当成已清空」的陷阱
+    s->stairs_active = false;
+    s->enter_challenge_arena();
+    ASSERT_EQ(s->world_mode(), WorldMode::CHALLENGE_ARENA);
+    ASSERT_TRUE(s->monsters.empty())
+        << "arena starts with no monsters — exactly what trips is_floor_cleared";
+
+    s->_activate_stairs();
+
+    EXPECT_FALSE(s->stairs_active)
+        << "stairs must not activate from inside the challenge arena";
+
+    // 也不得把 STAIRS_DOWN 写进 15x15 竞技场 (stairs_pos 是地牢坐标)
+    int stairs_tiles = 0;
+    for (int y = 0; y < s->game_map->height; y++)
+        for (int x = 0; x < s->game_map->width; x++)
+            if (s->game_map->tile_at(x, y) == TileType::STAIRS_DOWN)
+                stairs_tiles++;
+    EXPECT_EQ(stairs_tiles, 0)
+        << "arena map must not receive a STAIRS_DOWN tile";
+}
+
+// ── LIFE-006: is_floor_cleared(空) 返回 true —— 记录该陷阱为何需要守卫 ──
+// 不改 FloorManager 语义 (「没有怪 = 已清空」本身合理, 且被既有用例依赖),
+// 而是让 _activate_stairs 按世界模式过滤。此用例把隐式假设写成显式断言,
+// 防止有人日后删掉 _activate_stairs 的模式守卫。
+TEST(FloorLifecycle, EmptyMonsterListCountsAsCleared) {
+    std::vector<std::unique_ptr<Monster>> none;
+    EXPECT_TRUE(FloorManager::is_floor_cleared(none));
+}
+

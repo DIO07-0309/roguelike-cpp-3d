@@ -170,6 +170,50 @@ TEST(SlotApi, SlotsAreIsolated) {
     SaveManager::set_active_slot(1);        // 复位
 }
 
+// ── G19: 读档即绑定活跃槽 — 修「读档 A 后保存写进槽 B 把 B 的深档覆盖」 ──
+// 实机缺陷 (09-29): CONTINUE / --autocontinue 两条读档路径没调 set_active_slot,
+// 活跃槽停在上一次 NEW_GAME 的槽。用户第7层深档(槽1) 死亡后进菜单读槽2
+// (昨天的第2层旧档), 一按保存就把槽1 覆盖成第2层 —— 深档没了。
+// 收口在 SaveManager::load_game: 成功读档即让该槽成为活跃槽, 三条读档
+// 路径一次修齐, 后续新增路径不会再漏。
+TEST(SlotApi, LoadGameBindsActiveSlot) {
+    SlotGuard guard;
+    ASSERT_TRUE(load_skill_defs("resources/skills.json"));
+    Player p1(64.0f, 64.0f, 220.0f, 100, 11, 5, 3);
+    make_player_with_state(p1, 100, 7);
+    Player p2(64.0f, 64.0f, 220.0f, 100, 11, 5, 3);
+    make_player_with_state(p2, 100, 1);
+    ASSERT_TRUE(SaveManager::save_game(1, &p1, 7, 7, 111u));
+    ASSERT_TRUE(SaveManager::save_game(2, &p2, 2, 2, 222u));
+
+    // 活跃槽故意停在 1 (模拟: 之前在槽1 开过新档)
+    SaveManager::set_active_slot(1);
+    EXPECT_EQ(SaveManager::active_slot(), 1);
+
+    SaveData* d = SaveManager::load_game(2);
+    ASSERT_NE(d, nullptr);
+    EXPECT_EQ(SaveManager::active_slot(), 2)
+        << "reading slot 2 must bind slot 2 as the active slot";
+    EXPECT_EQ(d->current_floor, 2);
+    delete d;
+
+    // 回归点: 读档后的 save_game(active_slot()) 必须落回槽2,
+    // 不得写回槽1 覆盖深档
+    Player fresh(64.0f, 64.0f, 220.0f, 100, 11, 5, 3);
+    make_player_with_state(fresh, 50, 3);
+    ASSERT_TRUE(SaveManager::save_game(SaveManager::active_slot(), &fresh, 2, 3, 333u));
+
+    auto s1 = SaveManager::get_slot_summary(1);
+    auto s2 = SaveManager::get_slot_summary(2);
+    EXPECT_EQ(s1.floor, 7)
+        << "slot 1 deep save must survive a save made after loading slot 2";
+    EXPECT_EQ(s1.level, 7);
+    EXPECT_EQ(s2.floor, 2);
+    EXPECT_EQ(s2.level, 3);
+
+    SaveManager::set_active_slot(1);        // 复位
+}
+
 // ── B4.6: Meta 持久 — unlock_ending 落盘, 删档不丢 ──
 TEST(SlotApi, MetaSurvivesSlotDelete) {
     SlotGuard guard;

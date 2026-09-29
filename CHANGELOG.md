@@ -1,3 +1,76 @@
+# G20 — 修复「读档后保存写进别的槽」+ 挑战竞技场误触发换层存档（2026-09-29）
+
+> 实机报障：玩家打到第 7 层死亡，回菜单读了另一个槽的旧档，存档里的深档
+> 直接变成第 2 层。`game.log` 完整还原了这 9 分钟的事故链。
+
+## 事故时间线（2026-09-29 14:33–14:42）
+
+- 14:33–14:38 依次清空第 2/3/4/5 层 → 4 次自动存档
+- 14:39–14:42 进挑战竞技场（Wave 2 → Wave 3）
+- 14:42:10 **第 7 层死亡** → 死亡存档 → 标题 `max_floor=7` ✅
+- 14:42:15 回 SlotSelectScene
+- 14:42:20 读 slot 2（昨天的第 2 层旧档）
+- 14:42:22 按保存 → **写进了 slot_1.json**，深档被覆盖
+- 14:42:22 标题 `max_floor=2` ❌
+
+## 根因 1：读档不绑定活跃槽（深档被覆盖的直接原因）
+
+`SaveManager::set_active_slot` 全仓只有 **1 个**调用点 ——
+`SlotSelectScene::_new_game_in_slot`。4 条读档路径里 2 条漏了：
+
+| 读档路径 | 读哪个槽 | 绑定活跃槽 |
+| :--- | --- | :---: |
+| `main.cpp:373` `--autocontinue` | 首个有档槽 | ❌ |
+| `slot_select_scene.cpp:162` CONTINUE | 用户点的槽 | ❌ |
+| `floor_select_scene.cpp:179` SELECT_FLOOR | `load_save()` = 活跃槽 | ✅ |
+
+于是「读档 A 之后按保存」写进的是**上一次开新档**的那个槽 B。
+
+修在 `SaveManager::load_game` **一处收口**：成功读档即
+`set_active_slot(slot_id)`。三条路径一次修齐，后续新增路径不会再漏，
+也不必在每个调用点分别补。
+
+## 根因 2：挑战竞技场里误触发换层 + 自动存档
+
+`floor_manager.cpp:82` 的 `is_floor_cleared` 遍历怪列表，**空列表直接落空
+返回 true**。而 `enter_challenge_arena` 会 `monsters.clear()` —— 竞技场内
+每次 `cleanup_dead_monsters()` 都判成「本层已清空」，从而在 15×15 竞技场里
+触发 `_activate_stairs()`：
+
+1. 往 `stairs_pos`（**地牢坐标**，对竞技场越界）写 `STAIRS_DOWN`
+2. 置 `stairs_active = true`
+3. **触发一次自动存档**（本层其实根本没清）
+
+而 `exit_challenge_arena` 只恢复地图/怪物/掉落，**不恢复 `stairs_active`** →
+出了竞技场该标志一直是 true，本层再也不会真正清空、再也不会自动存档。
+这正是「打到很多层，存档却停在早期」的另一半成因。
+
+修法：`_activate_stairs` 开头加 `if (_world_mode != WorldMode::DUNGEON) return;`。
+**不**改 `is_floor_cleared` 的空列表语义（「没有怪 = 已清空」本身合理），
+也**不**在 `exit_challenge_arena` 里补 `stairs_active` 恢复 —— 加了守卫之后
+它在竞技场内已无法改变，那段代码会是死代码。
+
+## 测试（+3 用例）
+
+- `SlotApi.LoadGameBindsActiveSlot` — 槽1 存 7 层深档、槽2 存 2 层旧档，活跃槽
+  停在 1，读槽2 之后保存，断言 **槽1 深档完好**、槽2 收到新内容。直接锁住报障
+- `FloorLifecycle.ActivateStairsBlockedInsideChallengeArena` — 先验前置条件
+  （地牢清怪能激活楼梯），再进竞技场调 `_activate_stairs`，断言 `stairs_active`
+  仍为 false **且**竞技场地图上没有任何 `STAIRS_DOWN`
+- `FloorLifecycle.EmptyMonsterListCountsAsCleared` — 把「空列表算已清空」这条
+  隐式假设写成显式断言，防止日后有人删掉模式守卫
+
+`_activate_stairs` 从 private 移至 public，沿用本文件既有约定（L211
+`enter_challenge_arena` 当年也是「移至 public 以支持回归测试驱动」）。
+
+**门禁**: build 0 error 0 warning · ctest **77/77**（77 个 exe，新 +3 用例）
+· `4 files changed`
+
+## 未回滚
+
+用户第 7 层深档已丢失 —— slot_1 与 slot_2 现在都是 `floor:2 / lv:1`
+（仅 seed 不同），`meta_save.json` 的 `best_floor:15` 仍在。无法恢复。
+
 # G19 — `draw_hud` 拆函数 + 超规计数勘误（G13 续，2026-09-29）
 
 > `GameRenderer::draw_hud` 198 行，13 个参数，是纯 2D 绘制 —— 每块视觉元素

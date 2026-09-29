@@ -543,6 +543,11 @@ static void _fill_save_meta(const SaveTokens& tk, SaveData* d, int floor, int ma
 // G13: 各字段解析拆到文件内 static 辅助, load_game 只做编排 (顺序即语义)
 SaveData* SaveManager::load_game(int slot_id) {
     if (!slot_exists(slot_id)) return nullptr;
+    // G19-fix: 读档即绑定活跃槽。旧实现只在 NEW_GAME 分支调 set_active_slot,
+    // CONTINUE / --autocontinue 两条读档路径漏了 → 读档 A 之后任何
+    // save_game(active_slot()) 都写进另一个槽, 把它覆盖掉 (用户深档被清)。
+    // 收口在 load_game 一处, 三条读档路径同时修齐, 后续新增路径不会漏。
+    set_active_slot(slot_id);
 
     const SaveTokens tk = _read_save_lines(_slot_path(slot_id));
 
