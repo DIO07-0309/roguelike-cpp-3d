@@ -703,114 +703,103 @@ std::string GameRenderer::_rarity_label_cn(const std::string& rarity) {
     return "普通";
 }
 
+// G22: 技能栏单格 —— 边框 + 半透明背景
+static void _draw_skill_slot_frame(Rectangle frame) {
+    DrawRectangleRounded(frame, 2.0f, 3, Color{30, 30, 40, 180});
+    DrawRectangleRoundedLines(frame, 2.0f, 3, 1.0f, Color{80, 70, 90, 200});
+}
+
+// G22: 技能图标 —— 贴图优先, 无贴图时按元素 tag 画彩色方块
+static void _draw_skill_icon(const Skill* skill, Rectangle frame, bool ready) {
+    int icon_idx = skill_icon_index(skill);
+    if (g_skill_icons[icon_idx].id > 0) {
+        Rectangle src = {0, 0, (float)g_skill_icons[icon_idx].width,
+                         (float)g_skill_icons[icon_idx].height};
+        Rectangle dst = {frame.x + 4, frame.y + 4,
+                         frame.width - 8, frame.height - 8};
+        Color tmod = ready ? WHITE : Color{100, 100, 100, 150};
+        DrawTexturePro(g_skill_icons[icon_idx], src, dst, {0, 0}, 0, tmod);
+        return;
+    }
+    Color c = Color{200, 200, 200, 255};
+    if (skill->has_tag(BuildTag::FIRE))        c = Color{200, 50, 50, 255};
+    else if (skill->has_tag(BuildTag::ICE))    c = Color{50, 150, 255, 255};
+    else if (skill->has_tag(BuildTag::POISON)) c = Color{100, 200, 50, 255};
+    DrawRectangleRec({frame.x + 8, frame.y + 8,
+                      frame.width - 16, frame.height - 16}, c);
+}
+
+// G22: 技能名称 + 等级文本, 颜色随可用/进化状态变化
+static void _draw_skill_label(const Skill* skill, float x, float y, bool ready) {
+    std::string label = skill->name + " " + skill->get_level_text();
+    Color c = ready ? Color{180, 220, 255, 255} : Color{100, 100, 100, 255};
+    if (skill->evolution_level > 0)
+        c = ready ? Color{255, 200, 50, 255} : Color{140, 120, 50, 255};
+    DrawTextEx(g_font_small, label.c_str(), {x, y}, 14, 1, c);
+}
+
+// G22: 冷却进度条 (技能名称下方)
+static void _draw_skill_cd_bar(const Skill* skill, float x, float y,
+                               bool ready, float game_time) {
+    float ratio = 1.0f;
+    if (skill->cooldown > 0.0f)
+        ratio = 1.0f - skill->remaining_cooldown(game_time) / skill->cooldown;
+    GameRenderer::draw_progress_bar({x, y, 90, 8}, ratio,
+                                    ready ? Color{60, 180, 255, 255}
+                                          : Color{70, 70, 70, 255});
+}
+
+// G22: 冷却数字倒计时 (冷却中且剩余 <10s 时叠在图标上)
+static void _draw_skill_cd_text(const Skill* skill, bool ready, float frame_x,
+                                float frame_y, float size, float game_time) {
+    if (ready || skill->cooldown <= 0.0f) return;
+    float remaining = skill->remaining_cooldown(game_time);
+    if (remaining >= 10.0f) return;
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%.1f", remaining);
+    float text_w = MeasureTextEx(g_font_small, buf, 14, 1).x;
+    DrawTextEx(g_font_small, buf,
+               {frame_x + (size - text_w) / 2, frame_y + size / 2 - 7}, 14, 1,
+               Color{255, 255, 255, 255});
+}
+
+// G22: 进化等级角标 (图标右下)
+static void _draw_skill_evo_badge(const Skill* skill, float frame_x,
+                                  float frame_y, float size) {
+    if (skill->evolution_level <= 0) return;
+    char buf[8];
+    snprintf(buf, sizeof(buf), "E%d", skill->evolution_level);
+    DrawTextEx(g_font_small, buf, {frame_x + size - 20, frame_y + size - 14}, 10, 1,
+               Color{255, 215, 0, 230});
+}
+
+// G22: 技能栏单格 —— 编号 + 边框 + 图标 + 名称 + 冷却 + 进化角标
+static void _draw_skill_slot(const Skill* skill, int index, float x, float y,
+                             float size, float game_time) {
+    bool ready = skill->can_use(game_time);
+    Rectangle frame = {x, y, size, size};
+    _draw_skill_slot_frame(frame);
+    _draw_skill_icon(skill, frame, ready);
+    char num_buf[4];
+    snprintf(num_buf, sizeof(num_buf), "%d", index + 1);
+    DrawTextEx(g_font_small, num_buf, {x + 14, y + 14}, 14, 1, WHITE);
+    _draw_skill_label(skill, x + size + 8, y + 10, ready);
+    _draw_skill_cd_bar(skill, x + size + 8, y + 28, ready, game_time);
+    _draw_skill_cd_text(skill, ready, x, y, size, game_time);
+    _draw_skill_evo_badge(skill, x, y, size);
+}
+
 void GameRenderer::draw_skill_bar(const Player* player, float game_time) {
     auto& active = player->skills.active_skills;
     if (active.empty() || !g_font_loaded) return;
-    
+
     load_skill_icons();
-    
-    float x = 10.0f;
-    float y = 56.0f;
-    float skill_size = 40.0f;
-    float spacing = 4.0f;
-    
+
+    constexpr float kBarX = 10.0f, kBarY = 56.0f, kSlot = 40.0f, kGap = 4.0f;
     for (int i = 0; i < (int)active.size(); i++) {
         const Skill* skill = active[i].get();
         if (!skill) continue;
-        
-        float ry = y + i * (skill_size + spacing);
-        bool ready = skill->can_use(game_time);
-        
-        // 背景（半透明）
-        DrawRectangleRounded(
-            {x, ry, skill_size, skill_size},
-            2.0f,
-            3,
-            Color{30, 30, 40, 180}
-        );
-        
-        // 边框
-        DrawRectangleRoundedLines(
-            {x, ry, skill_size, skill_size},
-            2.0f,
-            3,
-            1.0f,
-            Color{80, 70, 90, 200}
-        );
-        
-        // 技能图标贴图
-        int icon_idx = skill_icon_index(skill);
-        if (g_skill_icons[icon_idx].id > 0) {
-            Rectangle src = {0, 0, (float)g_skill_icons[icon_idx].width, (float)g_skill_icons[icon_idx].height};
-            Rectangle dst = {x + 4, ry + 4, skill_size - 8, skill_size - 8};
-            Color tmod = ready ? WHITE : Color{100, 100, 100, 150};
-            DrawTexturePro(g_skill_icons[icon_idx], src, dst, {0, 0}, 0, tmod);
-        } else {
-            // Fallback: 彩色方块
-            Color skill_color;
-            if (skill->has_tag(BuildTag::FIRE)) {
-                skill_color = Color{200, 50, 50, 255};
-            } else if (skill->has_tag(BuildTag::ICE)) {
-                skill_color = Color{50, 150, 255, 255};
-            } else if (skill->has_tag(BuildTag::POISON)) {
-                skill_color = Color{100, 200, 50, 255};
-            } else {
-                skill_color = Color{200, 200, 200, 255};
-            }
-            DrawRectangleRec(
-                {x + 8, ry + 8, skill_size - 16, skill_size - 16},
-                skill_color
-            );
-        }
-        
-        // 技能编号
-        char num_buf[4];
-        snprintf(num_buf, sizeof(num_buf), "%d", i + 1);
-        DrawTextEx(g_font_small, num_buf, {x + 14, ry + 14}, 14, 1, WHITE);
-        
-        // 技能名称（图标右侧）
-        std::string label = skill->name + " " + skill->get_level_text();
-        Color label_c = ready ? Color{180, 220, 255, 255} : Color{100, 100, 100, 255};
-        if (skill->evolution_level > 0) label_c = ready ? Color{255, 200, 50, 255} : Color{140, 120, 50, 255};
-        DrawTextEx(g_font_small, label.c_str(), {x + skill_size + 8, ry + 10}, 14, 1, label_c);
-        
-        // 冷却进度条（技能名称下方）
-        float cd_r = 1.0f;
-        if (skill->cooldown > 0.0f) {
-            cd_r = 1.0f - skill->remaining_cooldown(game_time) / skill->cooldown;
-        }
-        draw_progress_bar({x + skill_size + 8, ry + 28, 90, 8}, cd_r,
-                          ready ? Color{60, 180, 255, 255} : Color{70, 70, 70, 255});
-        
-        // 冷却数字倒计时（冷却时显示在图标上）
-        if (skill->cooldown > 0.0f && !ready) {
-            float cd_remaining = skill->remaining_cooldown(game_time);
-            if (cd_remaining < 10.0f) {
-                char cd_buf[16];
-                snprintf(cd_buf, sizeof(cd_buf), "%.1f", cd_remaining);
-                float text_w = MeasureTextEx(g_font_small, cd_buf, 14, 1).x;
-                DrawTextEx(
-                    g_font_small,
-                    cd_buf,
-                    {x + (skill_size - text_w) / 2, ry + skill_size / 2 - 7},
-                    14, 1,
-                    Color{255, 255, 255, 255}
-                );
-            }
-        }
-        
-        // 升级标识（技能等级角标）
-        if (skill->evolution_level > 0) {
-            char level_buf[8];
-            snprintf(level_buf, sizeof(level_buf), "E%d", skill->evolution_level);
-            DrawTextEx(
-                g_font_small,
-                level_buf,
-                {x + skill_size - 20, ry + skill_size - 14},
-                10, 1,
-                Color{255, 215, 0, 230}
-            );
-        }
+        _draw_skill_slot(skill, i, kBarX, kBarY + i * (kSlot + kGap), kSlot, game_time);
     }
 }
 

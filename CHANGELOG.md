@@ -1,3 +1,63 @@
+# G22 — 拆 `draw_skill_bar` 110→13 行（G13 续，2026-09-29）
+
+> UI 绘制批的第一个。套路沿用 G19 拆 `draw_hud` 的既定模式：函数内循环体抽成
+> 一撮 free `static` 小函数，命名统一 `_draw_*`，只改组织方式、不改绘制结果。
+
+## 拆法
+
+`draw_skill_bar` 原本是一个 for 循环，循环体里塞了 8 段互不依赖的绘制。
+按绘制职责切成 8 个 helper：
+
+| helper | 行数 | 职责 |
+| :--- | --- | :--- |
+| `_draw_skill_slot_frame` | 4 | 圆角背景 + 边框 |
+| `_draw_skill_icon` | 18 | 贴图优先，无贴图时按元素 tag 画色块 |
+| `_draw_skill_label` | 7 | 名称 + 等级文本，颜色随 ready / 进化状态 |
+| `_draw_skill_cd_bar` | 9 | 冷却进度条 |
+| `_draw_skill_cd_text` | 12 | 冷却数字倒计时（叠在图标上） |
+| `_draw_skill_evo_badge` | 8 | 进化等级角标 `E%d` |
+| `_draw_skill_slot` | 14 | 单格编排（编号 + 上述全部） |
+| `draw_skill_bar` | 13 | 遍历 + 布局 |
+
+全部 ≤ 40 行，最长的 18 行。布局魔法数提成
+`constexpr kBarX/kBarY/kSlot/kGap`，`_draw_skill_slot` 只吃一个格子参数。
+
+## 两个等价性细节
+
+- **`draw_progress_bar` 要写全名**：它是 `GameRenderer` 的 static 成员，
+  成员函数里能裸调，抽到 free 函数里必须写 `GameRenderer::draw_progress_bar`
+  （G19 踩过同一个坑）
+- **fallback 色块颜色**：原来是 `if FIRE … else if ICE …` 链，改成
+  「默认灰 + 条件覆盖」。FIRE > ICE > POISON > 灰 的优先级不变，
+  双 tag 时同样取 FIRE
+- **冷却数字守卫原样保留** `!ready && cooldown > 0`。若简化成只看 cooldown，
+  会把 ready 时的 `0.0` 也画出来 —— 这类"看起来更干净"的化简正是绘制拆分的
+  主要风险点
+
+## 逐坐标核对
+
+图标 inset 4 / 色块 inset 8、编号 `(x+14, y+14)`、名称 `(x+size+8, y+10)`、
+进度条 `(x+size+8, y+28, 90, 8)`、倒计时居中 `y+size/2-7`、
+进化角标 `(x+size-20, y+size-14)`、各字号与颜色 —— 全部与原实现逐字对齐。
+
+## 验证
+
+- 无新增测试：纯绘制路径要 `InitWindow`，tests 里从不触碰 renderer，
+  与 G19 保持一致。等价性靠「逐坐标核对 + 全量构建 + 全量回归」兜住
+- fnlen 实测：`draw_skill_bar` 110 行 → 已从超规列表消失；
+  `game_renderer.cpp` 超规 **9 → 8**，文件内函数总数 62 → 69
+- 全仓超规 **114 → 113**（2426 个函数）
+
+**门禁**: build 0 error 0 warning · ctest **77/77** ·
+`game_renderer.cpp 1 file changed, 90 insertions(+), 101 deletions(-)`
+
+**未做**：其余 4 个（`draw_boss_intro` 80 / `draw_inventory_panel` 76 /
+`draw_character_panel` 61 / `draw_relic_panel` 55）留到下一批。
+`_draw_effect_body` 75 与 `DrawRoundedRectBg` 48 也在此文件，但属于特效/基础原语，
+不是 HUD 批的范围。
+
+---
+
 # G21 — 清掉 CombatCoordinator 里互相引用的死代码簇（2026-09-29）
 
 > G16 那次「全仓死方法三级连删」漏了一对，因为它们**互相引用**。
