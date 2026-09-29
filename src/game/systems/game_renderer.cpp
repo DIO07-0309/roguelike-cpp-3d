@@ -554,85 +554,76 @@ void GameRenderer::draw_boss_cinematic_overlay(int sw, int sh) {
     draw_glow_text("BOSS 来了！", sw / 2.0f, sh / 2.0f, 48, {230, 50, 50, 255}, true);
 }
 
+// G22b: Boss 立绘 —— visual_id 优先, 未注册时按层回退 f5/f10/f15
+static void _draw_boss_portrait(const Rectangle& pr, const std::string& visual_id,
+                                int boss_floor, Color color) {
+    auto& rm = ResourceManager::inst();
+    SpriteDef probe;
+    std::string vkey = "boss_" + visual_id;
+    const char* key = nullptr;
+    if (!visual_id.empty() && rm.sprite_by_key(vkey.c_str(), probe).id > 0) {
+        key = vkey.c_str();
+    } else {
+        key = (boss_floor >= 15) ? "boss_self"
+             : (boss_floor >= 10) ? "boss_f10" : "boss_f5";
+    }
+    SpriteDef sd;
+    sd.frame_w = 16; sd.frame_h = 16;
+    Texture2D tex = rm.sprite_by_key(key, sd);
+    if (tex.id <= 0) return;
+    Rectangle src = {0, 0, (float)tex.width, (float)tex.height};
+    Rectangle dst = {pr.x + pr.width - 70, pr.y + 8, 48, 48};
+    DrawTexturePro(tex, src, dst, {0, 0}, 0, WHITE);
+    DrawRectangleLinesEx({dst.x - 2, dst.y - 2, dst.width + 4, dst.height + 4},
+                         1, {color.r, color.g, color.b, 160});
+}
+
+// G22b: Boss 介绍段落 —— shrink-to-fit 折行, 尽量在标点处断行
+// 注意: DrawTextEx 画的是未裁剪的 line, pos 按裁剪后的 take 前进。
+// 原实现就这样 (标点断行时上一行尾部会在下一行重画一次), 原样保留不改行为。
+static void _draw_boss_paragraph(const std::string& text, float x, float y_start,
+                                 float y_limit, float max_w, Font font, int size,
+                                 float line_step, Color color, const char* breaks) {
+    size_t pos = 0;
+    float ly = y_start;
+    while (pos < text.size() && ly < y_limit) {
+        size_t take = text.size() - pos;
+        while (take > 4 && MeasureTextEx(font, text.substr(pos, take).c_str(),
+                                         size, 1).x > max_w)
+            take--;
+        std::string line = text.substr(pos, take);
+        if (pos + take < text.size()) {
+            size_t cut = line.find_last_of(breaks);
+            if (cut != std::string::npos && cut > 4) take = cut + 1;
+        }
+        DrawTextEx(font, line.c_str(), {x, ly}, size, 1, color);
+        ly += line_step;
+        pos += take;
+    }
+}
+
 void GameRenderer::draw_boss_intro(int sw, int sh, const std::string& title,
                                     const std::string& lore,
                                     const std::string& skills_text, Color color,
                                     int boss_floor, const std::string& visual_id) {
     ClearBackground(BLACK);
-    float pw = 500, ph = 380;
-    Rectangle pr = {sw / 2.0f - pw / 2, sh / 2.0f - ph / 2, pw, ph};
+    constexpr float kPanelW = 500, kPanelH = 380;
+    Rectangle pr = {sw / 2.0f - kPanelW / 2, sh / 2.0f - kPanelH / 2, kPanelW, kPanelH};
     draw_panel(pr, "! Boss 遭遇 !");
 
     // M5-C: Boss 立绘数据驱动 (visual_id 优先, 未注册时回退按层链)
-    {
-        auto& rm = ResourceManager::inst();
-        const char* key = nullptr;
-        SpriteDef probe;
-        std::string vkey = "boss_" + visual_id;
-        if (!visual_id.empty()
-            && rm.sprite_by_key(vkey.c_str(), probe).id > 0) {
-            key = vkey.c_str();
-        } else {
-            key = (boss_floor >= 15) ? "boss_self"
-                 : (boss_floor >= 10) ? "boss_f10" : "boss_f5";
-        }
-        SpriteDef sd; sd.frame_w = 16; sd.frame_h = 16;
-        Texture2D tex = rm.sprite_by_key(key, sd);
-        if (tex.id > 0) {
-            Rectangle src = {0, 0, (float)tex.width, (float)tex.height};
-            Rectangle dst = {pr.x + pr.width - 70, pr.y + 8, 48, 48};
-            DrawTexturePro(tex, src, dst, {0, 0}, 0, WHITE);
-            DrawRectangleLinesEx({dst.x - 2, dst.y - 2, dst.width + 4, dst.height + 4},
-                                 1, {color.r, color.g, color.b, 160});
-        }
-    }
-
+    _draw_boss_portrait(pr, visual_id, boss_floor, color);
     draw_glow_text(title.c_str(), sw / 2.0f, pr.y + 45, 30, color, true);
 
     if (g_font_loaded) {
         // M3: 技能行自动换行 (原固定单行溢出面板)
-        {
-            std::string s(skills_text);
-            float max_w = pw - 80;
-            size_t pos = 0; float ly = pr.y + 160;
-            while (pos < s.size() && ly < pr.y + ph - 130) {
-                size_t take = s.size() - pos;
-                while (take > 4 && MeasureTextEx(g_font_small,
-                        s.substr(pos, take).c_str(), 16, 1).x > max_w)
-                    take--;
-                std::string line = s.substr(pos, take);
-                // 尽量在逗号/句号处断行
-                if (pos + take < s.size()) {
-                    size_t cut = line.find_last_of("，。;；");
-                    if (cut != std::string::npos && cut > 4) take = cut + 1;
-                }
-                DrawTextEx(g_font_small, line.c_str(), {pr.x + 40, ly}, 16, 1,
-                           {180, 180, 180, 255});
-                ly += 24;
-                pos += take;
-            }
-        }
+        _draw_boss_paragraph(skills_text, pr.x + 40, pr.y + 160,
+                             pr.y + kPanelH - 130, kPanelW - 80, g_font_small, 16,
+                             24, {180, 180, 180, 255}, "，。;；");
         // M3: 剧情文本换行 (原单行溢出)
-        {
-            std::string s(lore);
-            float max_w = pw - 80;
-            size_t pos = 0; float ly = pr.y + 210;
-            while (pos < s.size() && ly < pr.y + ph - 60) {
-                size_t take = s.size() - pos;
-                while (take > 4 && MeasureTextEx(g_font,
-                        s.substr(pos, take).c_str(), 18, 1).x > max_w)
-                    take--;
-                std::string line = s.substr(pos, take);
-                if (pos + take < s.size()) {
-                    size_t cut = line.find_last_of("，。；!？");
-                    if (cut != std::string::npos && cut > 4) take = cut + 1;
-                }
-                DrawTextEx(g_font, line.c_str(), {pr.x + 40, ly}, 18, 1,
-                           {160, 160, 180, 255});
-                ly += 26;
-                pos += take;
-            }
-        }
+        _draw_boss_paragraph(lore, pr.x + 40, pr.y + 210,
+                             pr.y + kPanelH - 60, kPanelW - 80, g_font, 18,
+                             26, {160, 160, 180, 255}, "，。；!？");
     }
     draw_glow_text("按 Enter 进入战斗...", sw / 2.0f, (float)(sh - 60), 20,
                    {140, 20, 20, 255}, true);
@@ -901,29 +892,57 @@ void GameRenderer::draw_player_relics(const Player* player) {
     }
 }
 
+// G22b: 圣物面板底框 + 描边
+static void _draw_relic_frame(const Rectangle& panel) {
+    DrawRectangleRounded(panel, 0.08f, 8, Color{15, 15, 35, 220});
+    DrawRectangleRoundedLines(panel, 0.08f, 8, 1.5f, Color{100, 100, 160, 200});
+}
+
+// G22b: 圣物面板标题行 (含全图鉴收集进度)
+static void _draw_relic_title(const Rectangle& panel) {
+    char title_buf[80];
+    snprintf(title_buf, sizeof(title_buf), "圣物图鉴  %d/%d (%.0f%%)",
+             g_relic_archive.collected_count(), g_relic_archive.total_relic_count(),
+             g_relic_archive.collection_pct() * 100.0f);
+    DrawTextEx(g_font_small, title_buf, {panel.x + 14, panel.y + 10}, 16, 1,
+               Color{255, 255, 200, 255});
+}
+
+// G22b: 单条圣物 —— 稀有度描边框 + 左侧色条 + 熟练度星 + 名称描述
+// 声明在类内 (私有 static): 要用 _relic_rarity_color / _rarity_label_cn。
+void GameRenderer::_draw_relic_row(const RelicDef* def, float panel_x, float ly,
+                                   float panel_w, float line_h) {
+    Color rc = _relic_rarity_color(def->rarity);
+    // D9: 稀有度描边色 (边框+左侧小条)
+    Color border_c = rc;
+    border_c.a = 120;
+    DrawRectangleRoundedLines({panel_x + 8, ly - 2, panel_w - 24, line_h},
+                              0.10f, 3, 1, border_c);
+    DrawRectangle(panel_x + 14, ly + 2, 4, line_h - 8, rc);
+
+    std::string label = "[" + _rarity_label_cn(def->rarity) + "]";
+    std::string mstars;
+    for (int s = 0; s < g_relic_archive.mastery_level(def->id); s++) mstars += "★";
+    char line[256];
+    snprintf(line, sizeof(line), "%s %s %s - %s",
+             mstars.c_str(), label.c_str(), def->name.c_str(), def->desc.c_str());
+    DrawTextEx(g_font_small, line, {panel_x + 24, ly}, 14, 1, rc);
+}
+
 void GameRenderer::draw_relic_panel(const Player* player, int sw) {
     if (!player || !g_font_loaded) return;
 
     int count = (int)player->relics.size();
-    float line_h = 24.0f;
-    float panel_w = 370.0f;
-    float panel_x = (float)sw - panel_w - 20.0f;
+    constexpr float kLineH = 24.0f, kPanelW = 370.0f;
+    float panel_x = (float)sw - kPanelW - 20.0f;
     float panel_y = 70.0f;
     // D4.6 Step4: 面板高度 + 收集率行
-    float panel_h = 60.0f + (count > 0 ? count * line_h : line_h) + 22.0f;
+    float panel_h = 60.0f + (count > 0 ? count * kLineH : kLineH) + 22.0f;
+    const Rectangle panel = {panel_x, panel_y, kPanelW, panel_h};
 
-    DrawRectangleRounded({panel_x, panel_y, panel_w, panel_h}, 0.08f, 8, Color{15, 15, 35, 220});
-    DrawRectangleRoundedLines({panel_x, panel_y, panel_w, panel_h}, 0.08f, 8, 1.5f,
-                              Color{100, 100, 160, 200});
-
+    _draw_relic_frame(panel);
     // D4.6 Step4: 标题行 + 收集进度
-    int coll = g_relic_archive.collected_count();
-    int total = g_relic_archive.total_relic_count();
-    char title_buf[80];
-    snprintf(title_buf, sizeof(title_buf), "圣物图鉴  %d/%d (%.0f%%)",
-             coll, total, g_relic_archive.collection_pct() * 100.0f);
-    DrawTextEx(g_font_small, title_buf, {panel_x + 14, panel_y + 10}, 16, 1,
-               Color{255, 255, 200, 255});
+    _draw_relic_title(panel);
 
     if (count == 0) {
         DrawTextEx(g_font_small, "本层尚未获得圣物。",
@@ -935,25 +954,8 @@ void GameRenderer::draw_relic_panel(const Player* player, int sw) {
     for (auto& r : player->relics) {
         const RelicDef* def = get_relic_def(r.id);
         if (!def) continue;
-
-        Color rc = _relic_rarity_color(def->rarity);
-        // D9: 稀有度描边色 (边框+左侧小条)
-        Color border_c = rc;
-        border_c.a = 120;
-        DrawRectangleRoundedLines({panel_x + 8, ly - 2, panel_w - 24, line_h},
-                                  0.10f, 3, 1, border_c);
-        // rarity indicator bar
-        DrawRectangle(panel_x + 14, ly + 2, 4, line_h - 8, rc);
-
-        std::string label = "[" + _rarity_label_cn(def->rarity) + "]";
-        int mlv = g_relic_archive.mastery_level(r.id);
-        std::string mstars;
-        for (int s = 0; s < mlv; s++) mstars += "★";
-        char line[256];
-        snprintf(line, sizeof(line), "%s %s %s - %s",
-                 mstars.c_str(), label.c_str(), def->name.c_str(), def->desc.c_str());
-        DrawTextEx(g_font_small, line, {panel_x + 24, ly}, 14, 1, rc);
-        ly += line_h;
+        _draw_relic_row(def, panel_x, ly, kPanelW, kLineH);
+        ly += kLineH;
     }
 }
 
@@ -983,41 +985,34 @@ void GameRenderer::draw_monster_buffs(const Monster& m, float draw_x, float draw
     DrawTextEx(g_font_small, label.c_str(), {px, py}, 14, 1, c);
 }
 
-void GameRenderer::draw_inventory_panel(const Player* player, int cursor, int sw, int sh) {
-    DrawRectangle(0, 0, sw, sh, {0, 0, 0, 180});
-    float pw = 500, ph = 480;
-    Rectangle pr = {sw / 2.0f - pw / 2, sh / 2.0f - ph / 2, pw, ph};
-    draw_panel(pr, "背包 B/ESC关闭");
-
-    auto& inv = player->inventory;
+// G22b: 背包装备栏 (武器/防具折行描述), 返回下一行 y
+static float _draw_inv_equipment(const Rectangle& pr, const Inventory& inv, float y) {
     float x0 = pr.x + 30;
-    float max_w = pw - 60.0f;
-    float y = pr.y + 40;
+    float max_w = pr.width - 60.0f;
+    std::string wdesc = "武器: " + (inv.equipped.at("weapon")
+        ? inv.equipped.at("weapon")->get_description() : std::string("空"));
+    y += _draw_wrapped_text(wdesc, x0, y, max_w, 18, 20.0f,
+                            {255, 200, 50, 255}) * 20.0f;
+    std::string adesc = "防具: " + (inv.equipped.at("armor")
+        ? inv.equipped.at("armor")->get_description() : std::string("空"));
+    y += _draw_wrapped_text(adesc, x0, y, max_w, 18, 20.0f,
+                            {255, 200, 50, 255}) * 20.0f;
+    return y;
+}
 
-    if (g_font_loaded) {
-        std::string wdesc = "武器: " + (inv.equipped.at("weapon")
-            ? inv.equipped.at("weapon")->get_description() : std::string("空"));
-        y += _draw_wrapped_text(wdesc, x0, y, max_w, 18, 20.0f, {255, 200, 50, 255}) * 20.0f;
-        std::string adesc = "防具: " + (inv.equipped.at("armor")
-            ? inv.equipped.at("armor")->get_description() : std::string("空"));
-        y += _draw_wrapped_text(adesc, x0, y, max_w, 18, 20.0f, {255, 200, 50, 255}) * 20.0f;
-    } else {
-        y += 40.0f;
-    }
-    y += 12.0f;
-    DrawLine(x0, y, pr.x + pw - 30, y, {60, 60, 90, 255});
-
+// G22b: 背包物品列表 —— 翻页窗口 + 图标 + 折行描述, 超出下限时截断
+// 注意: 字体未加载的分支原来不检查 bottom_limit, 这里保持不对称不改行为。
+static void _draw_inv_items(const Rectangle& pr, const Inventory& inv, int cursor,
+                            float y, float bottom_limit) {
     const int kPage = Inventory::kPageSize;
     int item_count = (int)inv.items.size();
-    int max_page = std::max(0, (item_count + kPage - 1) / kPage - 1);
-    int page = cursor / kPage;
-    int start = page * kPage;
+    int start = (cursor / kPage) * kPage;
     int end = std::min(start + kPage, item_count);
-    float bottom_limit = pr.y + ph - 58.0f;
     float iy = y + 14.0f;
     for (int i = start; i < end; i++) {
         std::string mk = (i == cursor) ? ">" : " ";
-        char idx[4]; snprintf(idx, sizeof(idx), "%2d", i + 1);
+        char idx[4];
+        snprintf(idx, sizeof(idx), "%2d", i + 1);
         std::string txt = mk + " [" + idx + "] " + inv.items[i]->get_description();
         // M4f.13: 物品图标 (16px 贴图)
         const char* ikey = item_icon_key(inv.items[i].get());
@@ -1028,36 +1023,69 @@ void GameRenderer::draw_inventory_panel(const Player* player, int cursor, int sw
                 SpriteRenderer::draw_sprite(itex, xd, 0, {pr.x + 8, iy + 1, 20, 20});
         }
         if (g_font_loaded) {
-            int n = _draw_wrapped_text(txt, pr.x + 34, iy, pw - 64.0f, 18, 22.0f, inv.items[i]->color);
-            iy += n * 22.0f;
+            iy += _draw_wrapped_text(txt, pr.x + 34, iy, pr.width - 64.0f, 18, 22.0f,
+                                     inv.items[i]->color) * 22.0f;
             if (iy > bottom_limit) break;
         } else {
             iy += 30.0f;
         }
     }
-    if (g_font_loaded) {
-        if (max_page > 0) {
-            char page_buf[32];
-            snprintf(page_buf, sizeof(page_buf), "第 %d/%d 页 (←→翻页)", page + 1, max_page + 1);
-            DrawTextEx(g_font_small, page_buf,
-                       {pr.x + 30, pr.y + ph - 52}, 14, 1, {160, 160, 200, 255});
-        }
-        // Batch 3A: Gold + Batch 3H: Key count (same line)
-        char gold_buf[32];
-        snprintf(gold_buf, sizeof(gold_buf), "金币:%d  钥匙:%d", player->gold, player->key_count);
-        DrawTextEx(g_font_small, gold_buf,
-                   {pr.x + pw - 160, pr.y + ph - 52}, 14, 1, Color{220, 200, 100, 220});
-        // Show sell value of selected item
-        if (cursor >= 0 && cursor < item_count) {
-            int sv = get_sell_value(inv.items[cursor].get());
-            char sv_buf[32];
-            snprintf(sv_buf, sizeof(sv_buf), "售价: %d", sv);
-            DrawTextEx(g_font_small, sv_buf,
-                       {pr.x + pw - 120, pr.y + ph - 38}, 14, 1, Color{180, 160, 80, 200});
-        }
-        DrawTextEx(g_font_small, "^v选择 X装备 T出售 U使用 D丢弃 B关闭",
-                   {pr.x + (pw - 260) / 2, pr.y + ph - 18}, 16, 1, {140, 140, 140, 255});
+}
+
+// G22b: 背包底栏 —— 翻页 / 金币钥匙 / 售价 / 按键提示
+static void _draw_inv_footer(const Rectangle& pr, const Player* player,
+                             const Inventory& inv, int cursor, int item_count,
+                             int max_page, int page) {
+    if (!g_font_loaded) return;
+    if (max_page > 0) {
+        char page_buf[32];
+        snprintf(page_buf, sizeof(page_buf), "第 %d/%d 页 (←→翻页)", page + 1, max_page + 1);
+        DrawTextEx(g_font_small, page_buf, {pr.x + 30, pr.y + pr.height - 52}, 14, 1,
+                   {160, 160, 200, 255});
     }
+    // Batch 3A: Gold + Batch 3H: Key count (same line)
+    char gold_buf[32];
+    snprintf(gold_buf, sizeof(gold_buf), "金币:%d  钥匙:%d",
+             player->gold, player->key_count);
+    DrawTextEx(g_font_small, gold_buf, {pr.x + pr.width - 160, pr.y + pr.height - 52},
+               14, 1, Color{220, 200, 100, 220});
+    // Show sell value of selected item
+    if (cursor >= 0 && cursor < item_count) {
+        char sv_buf[32];
+        snprintf(sv_buf, sizeof(sv_buf), "售价: %d",
+                 get_sell_value(inv.items[cursor].get()));
+        DrawTextEx(g_font_small, sv_buf,
+                   {pr.x + pr.width - 120, pr.y + pr.height - 38}, 14, 1,
+                   Color{180, 160, 80, 200});
+    }
+    DrawTextEx(g_font_small, "^v选择 X装备 T出售 U使用 D丢弃 B关闭",
+               {pr.x + (pr.width - 260) / 2, pr.y + pr.height - 18}, 16, 1,
+               {140, 140, 140, 255});
+}
+
+void GameRenderer::draw_inventory_panel(const Player* player, int cursor, int sw, int sh) {
+    DrawRectangle(0, 0, sw, sh, {0, 0, 0, 180});
+    constexpr float kPanelW = 500, kPanelH = 480;
+    Rectangle pr = {sw / 2.0f - kPanelW / 2, sh / 2.0f - kPanelH / 2, kPanelW, kPanelH};
+    draw_panel(pr, "背包 B/ESC关闭");
+
+    auto& inv = player->inventory;
+    float x0 = pr.x + 30;
+    float y = pr.y + 40;
+
+    if (g_font_loaded)
+        y = _draw_inv_equipment(pr, inv, y);
+    else
+        y += 40.0f;
+    y += 12.0f;
+    DrawLine(x0, y, pr.x + kPanelW - 30, y, {60, 60, 90, 255});
+
+    const int kPage = Inventory::kPageSize;
+    int item_count = (int)inv.items.size();
+    int max_page = std::max(0, (item_count + kPage - 1) / kPage - 1);
+    int page = cursor / kPage;
+    _draw_inv_items(pr, inv, cursor, y, pr.y + kPanelH - 58.0f);
+    _draw_inv_footer(pr, player, inv, cursor, item_count, max_page, page);
 }
 
 // ============================================================
@@ -1207,23 +1235,60 @@ void GameRenderer::_draw_panel_buffs(const std::vector<BuffDisplay>& buffs,
     }
 }
 
+// G22b: 面板透明度 —— 镜像 1 期压暗, 3 期呼吸闪烁
+static float _cp_opacity(const CharacterPanelData& d) {
+    if (!d.mirror_mode) return 1.0f;
+    if (d.mirror_phase == 1) return 0.55f;
+    if (d.mirror_phase == 3) return 0.82f + 0.18f * sinf((float)GetTime() * 4.0f);
+    return 1.0f;
+}
+
+// G22b: 面板高度 —— 行数按技能/BUFF/玩家等级自适应
+static float _cp_height(const CharacterPanelData& d) {
+    int rows = 2 + (int)d.skills.size() + (int)d.buffs.size();
+    if (!d.mirror_mode && d.level > 0) rows++;
+    return rows * 24.0f + 20.0f;
+}
+
+// G22b: HP 条 + 属性行 (+ 玩家专属 XP 条), 返回下一行 y
+static float _draw_cp_stats(const CharacterPanelData& d, float px, float ly,
+                            float panel_w) {
+    float hr = d.max_hp > 0 ? (float)d.hp / d.max_hp : 0.0f;
+    if (hr > 1.0f) hr = 1.0f;
+    Color hf = d.mirror_mode ? Color{160, 30, 30, 255} : Color{50, 200, 50, 255};
+    Color hbg = d.mirror_mode ? Color{50, 10, 10, 255} : Color{40, 20, 20, 255};
+    GameRenderer::draw_progress_bar({px + 10, ly, panel_w - 20, 14}, hr, hf, hbg);
+    ly += 18;
+    char buf[96];
+    snprintf(buf, sizeof(buf), "HP:%d/%d  ATK:%d", d.hp, d.max_hp, d.atk);
+    Color stc = d.mirror_mode ? Color{180, 130, 130, 255} : Color{200, 200, 200, 255};
+    DrawTextEx(g_font_small, buf, {px + 10, ly}, 12, 1, stc);
+    ly += 16;
+    // XP (player only)
+    if (!d.mirror_mode && d.level > 0) {
+        float xr = d.xp_to_next > 0 ? (float)d.xp / d.xp_to_next : 0.0f;
+        GameRenderer::draw_progress_bar({px + 10, ly, panel_w - 20, 8}, xr,
+                                        {80, 120, 255, 255});
+        snprintf(buf, sizeof(buf), "Lv%d", d.level);
+        DrawTextEx(g_font_small, buf, {px + 12, ly - 2}, 10, 1, {180, 200, 255, 255});
+        ly += 12;
+    }
+    return ly;
+}
+
 void GameRenderer::draw_character_panel(const CharacterPanelData& d, float px, float py) {
     if (!g_font_loaded) return;
-    float pw = 240.0f;
-    // Phase opacity
-    float op = 1.0f;
-    if (d.mirror_mode && d.mirror_phase == 1) op = 0.55f;
-    else if (d.mirror_mode && d.mirror_phase == 3)
-        op = 0.82f + 0.18f * sinf((float)GetTime() * 4.0f);
+    constexpr float kPanelW = 240.0f;
+    const float op = _cp_opacity(d);
+    const float ph = _cp_height(d);
+
     // Panel frame
     Color pbg = d.mirror_mode ? Color{25, 8, 8, 230} : Color{15, 15, 35, 220};
     Color bc  = d.mirror_mode ? Color{120, 30, 30, 200} : Color{60, 60, 120, 180};
     pbg.a = (unsigned char)(pbg.a * op); bc.a = (unsigned char)(bc.a * op);
-    int rows = 2 + (int)d.skills.size() + (int)d.buffs.size();
-    if (!d.mirror_mode && d.level > 0) rows++;
-    float ph = rows * 24.0f + 20.0f;
-    DrawRectangleRounded({px, py, pw, ph}, 0.15f, 4, pbg);
-    DrawRectangleRoundedLines({px, py, pw, ph}, 0.15f, 4, 1.5f, bc);
+    DrawRectangleRounded({px, py, kPanelW, ph}, 0.15f, 4, pbg);
+    DrawRectangleRoundedLines({px, py, kPanelW, ph}, 0.15f, 4, 1.5f, bc);
+
     // Name
     Color nc = d.mirror_mode ? Color{200, 60, 50, 255} : Color{220, 220, 255, 255};
     DrawTextEx(g_font_small, d.name, {px + 10, py + 4}, 16, 1, nc);
@@ -1234,28 +1299,9 @@ void GameRenderer::draw_character_panel(const CharacterPanelData& d, float px, f
         DrawTextEx(g_font_small, d.sub_label, {px + 10, ly}, 11, 1, sc);
         ly += 14;
     }
-    // HP bar
-    float hr = d.max_hp > 0 ? (float)d.hp / d.max_hp : 0.0f;
-    if (hr > 1.0f) hr = 1.0f;
-    Color hf = d.mirror_mode ? Color{160, 30, 30, 255} : Color{50, 200, 50, 255};
-    Color hbg = d.mirror_mode ? Color{50, 10, 10, 255} : Color{40, 20, 20, 255};
-    draw_progress_bar({px + 10, ly, pw - 20, 14}, hr, hf, hbg);
-    ly += 18;
-    // Stats
-    char buf[96];
-    snprintf(buf, sizeof(buf), "HP:%d/%d  ATK:%d", d.hp, d.max_hp, d.atk);
-    Color stc = d.mirror_mode ? Color{180, 130, 130, 255} : Color{200, 200, 200, 255};
-    DrawTextEx(g_font_small, buf, {px + 10, ly}, 12, 1, stc);
-    ly += 16;
-    // XP (player only)
-    if (!d.mirror_mode && d.level > 0) {
-        float xr = d.xp_to_next > 0 ? (float)d.xp / d.xp_to_next : 0.0f;
-        draw_progress_bar({px + 10, ly, pw - 20, 8}, xr, {80, 120, 255, 255});
-        snprintf(buf, sizeof(buf), "Lv%d", d.level);
-        DrawTextEx(g_font_small, buf, {px + 12, ly - 2}, 10, 1, {180, 200, 255, 255});
-        ly += 12;
-    }
+    ly = _draw_cp_stats(d, px, ly, kPanelW);
     ly += 2;
+
     // Skills + Buffs
     if (!d.skills.empty())
         _draw_panel_skills(d.skills, px + 10, ly, d.mirror_mode);
@@ -1263,7 +1309,7 @@ void GameRenderer::draw_character_panel(const CharacterPanelData& d, float px, f
     if (!d.buffs.empty())
         _draw_panel_buffs(d.buffs, px + 10, ly, d.mirror_mode);
 
-    // M4e + v1.6-B1: 镜像学习区 — "它眼中的你" 常驻 (观察期起);
+    // M4e + v1.6-B1: 镜像学习区 —— "它眼中的你" 常驻 (观察期起);
     // 4 臂胜率条仅决策后叠加
     if (d.mirror_mode)
         _draw_mirror_learning(d, px, py, ph);

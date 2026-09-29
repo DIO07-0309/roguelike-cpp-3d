@@ -10,6 +10,7 @@ class Player;
 class Monster;
 class GameMap;
 struct DroppedItem;
+struct RelicDef;
 struct Effect;
 class InputMap;
 
@@ -116,4 +117,7 @@ private:
     // M4e: 镜像在线学习 HUD
     static void _draw_mirror_learning(const CharacterPanelData& d,
                                       float px, float py, float panel_h);
+    // G22b: 圣物单行 (私有: 要用 _relic_rarity_color / _rarity_label_cn)
+    static void _draw_relic_row(const RelicDef* def, float panel_x, float ly,
+                                float panel_w, float line_h);
 };

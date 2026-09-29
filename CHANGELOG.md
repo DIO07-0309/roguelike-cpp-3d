@@ -1,3 +1,77 @@
+# G22b — 拆完 HUD 批余下 4 个（G13 续，2026-09-29）
+
+| 函数 | 原 | 现 |
+| :--- | --- | --- |
+| `draw_boss_intro` | 80 | 23 |
+| `draw_inventory_panel` | 76 | 24 |
+| `draw_character_panel` | 61 | 38 |
+| `draw_relic_panel` | 55 | 29 |
+
+新增 11 个 helper，全部 ≤40 行（最长 `_draw_inv_items` 28、
+`_draw_inv_footer` 27、`_draw_boss_portrait` 21、`_draw_cp_stats` 23）。
+`game_renderer.cpp` 超规 **8 → 4**，全仓 **113 → 109**（2437 个函数）。
+
+## 三个「顺手修一下」的诱惑，全都没修
+
+这轮真正的收获不是行数，是找出三处**看起来像 bug、但改了就会改变画面**的地方。
+纯结构拆分的纪律要求原样保留，所以都只是加注释记下来：
+
+**1. `_draw_boss_paragraph` 的标点断行怪癖**
+
+原来技能行和剧情文本是两个几乎逐字重复的循环，抽成一个 helper 时暴露出：
+`DrawTextEx` 画的是**未裁剪**的 `line`，而 `pos` 按**裁剪后**的 `take` 前进。
+也就是标点断行时，上一行尾部会在下一行再画一次 —— 会重叠。
+
+两段文本（`g_font_small`/16px、`g_font`/18px）结构完全相同，只差常量，
+所以合并是对的；但那个怪癖原样保留，另开一笔再说。
+
+**2. `_draw_inv_items` 的不对称 break**
+
+```cpp
+if (g_font_loaded) { iy += n * 22.0f; if (iy > bottom_limit) break; }
+else               { iy += 30.0f; }        // ← 这个分支从不 break
+```
+
+字体没加载时越界也不截断。helper 保留了这两个分支的原样不对称，
+没有「统一成都检查」的简化。
+
+**3. `_draw_relic_row` 没法做成 free 函数**
+
+前两个 helper 是 free `static`，这个做不到：`_relic_rarity_color` /
+`_rarity_label_cn` 是 `GameRenderer` 的**私有** static 成员，
+free 函数就算写 `GameRenderer::` 全名也访问不到（编译直接报
+`is private within this context`）。
+
+解决：把它声明进类内私有区，与 `_draw_panel_skills` / `_draw_panel_buffs` /
+`_draw_mirror_learning` 的既有做法一致。header 相应加了
+`struct RelicDef;` 前向声明（`combat_system.h` 里的定义，指针参数不需要完整类型）。
+
+顺带同一个坑：`_draw_cp_stats` 里调 `draw_progress_bar` 也得写
+`GameRenderer::draw_progress_bar` —— 和 G22 拆 `draw_skill_bar` 撞上的是同一个
+static 成员问题。这类「抽成 free 函数才发现调不到私有成员」在本文件是常态。
+
+## 记录不动的一处设计分歧
+
+`_draw_wrapped_text`（UTF-8 码点累积折行，全文件 3 处调用）和
+`draw_boss_intro` 里的 shrink-to-fit 折行（`take--` 逐字符退让 + 标点断行）
+是**两套不同算法在做同一件事**，且前者写死用 `g_font_small`。
+
+合并会让 boss 介绍的文字换行位置改变 —— 那已经是行为变化，不属于结构拆分。
+本轮只抽出共用形态，两套算法的去留另议。
+
+## 验证
+
+- 无新增测试：纯绘制路径需 `InitWindow`，tests 从不触碰 renderer（与 G19/G22 一致）
+- 坐标、字号、颜色、行距、断点常量逐字对齐原实现
+- build 0 error 0 warning · ctest **77/77**
+- fnlen：4 个目标函数全部离开超规列表；新增 11 个 helper 全部 ≤40
+
+**剩余**：`_draw_effect_body` 75（特效，非 HUD）、`_draw_mirror_learning` 53
+（镜像学习区）、`draw_gamble_panel` 49、`DrawRoundedRectBg` 48（基础原语）。
+HUD 批到此清完。
+
+---
+
 # G22 — 拆 `draw_skill_bar` 110→13 行（G13 续，2026-09-29）
 
 > UI 绘制批的第一个。套路沿用 G19 拆 `draw_hud` 的既定模式：函数内循环体抽成
