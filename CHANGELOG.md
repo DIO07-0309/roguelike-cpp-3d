@@ -5,7 +5,8 @@
 > `GameScene::_process`（1075 行主循环）；9 个 `Skill::execute` 零覆盖（只测过
 > `load_skill_defs` 的 JSON 装载）；`hd2d::build_scene` 零覆盖（只被 `#include`，
 > 从未调用）。既有 `damage_test.cpp` 是复制公式的 golden oracle，根本不调用生产函数。
-> G14 补 3 套（74 → 77），其中 2 套直接撞出真实缺陷。
+> G14 补 3 套（74 → 77），其中 2 套直接撞出真实缺陷；并把 `tests/combat/` 里
+> 4 个「复刻生产逻辑、零 include 生产头」的假测试全部换成真调用测试。
 
 - **`game_scene_smoke_test`（2 用例）**: 首次驱动 `_process` 主循环。`enter_floor` →
   60/120 tick，断言 `game_time` 精确推进（证明主循环真跑了，不是静默空转或提前返回）
@@ -22,6 +23,31 @@
   矛盾（其余 12 个子构建器都有守卫）。补守卫 + 契约测试；另测
   `GameScene::hd2d_view()` 只读视图装配（核心指针 / 可选子系统 / 挑战房标志透传）——
   G12-4 解耦后这是 3D 渲染器唯一的数据入口
+- **假测试清零 — `tests/combat/` 4 个**（审计脚本找出：78 个测试文件里这 4 个
+  **零 include 生产头**，共 386 行死覆盖，生产代码怎么改都全绿）：
+  - `damage_test`（51 行）: 复制 `calculate_damage` 公式做 golden oracle → 已被
+    `skill_execute_test` 真调用取代
+  - `buff_test`（73 → 149 行 / 8 用例）: 直连 `load_buff_defs` / `apply_buff` /
+    `tick_buffs` / `get_effective_attack`。覆盖 JSON 装载、APPLIED 事件、重复施加
+    刷新+`max_stacks` 封顶、EXPIRED 移除、DOT=3×2 层 7 跳共 42、`regen` 负 tick
+    治疗 12、`attack_up` +20%/层（10→14→16）、未知 id 忽略
+  - `action_test`（59 → 196 行 / 10 用例）: 直连 `execute_event`。旧测试枚举的
+    `hp_loss` / `debuff` / `confuse` / `skill_level` / `set_meta_flag` **在生产
+    代码里一个都不存在**。新覆盖 null player、`triggered` 幂等、NONE、18 类事件
+    前缀契约、`seed_rng(4242)` 同种子复现
+  - `relic_effect_test`（203 → 187 行 / 9 用例）: 旧文件在本地**重新定义了
+    RelicTrigger / RelicEffectType / RelicTarget / DamageType 四个枚举 + 三个结构体**，
+    测的全是自己的副本。现直连 `RelicEffectProcessor` + `load_relic_defs`，
+    覆盖被动 apply/remove 对称、未 acquire 就 remove 不扣负、remove 只回滚一次、
+    禁用后全静默、emerald_heart 进层给 regen、thunder_orb 300 次击杀 AOE
+    **绝不误伤被击杀者**、tiny_shield 减伤永不放大伤害
+- **顺带定位一个测试基础设施坑**: 所有 JSON loader 用**相对路径**，从
+  `build\tests\` 直接跑 exe 会静默加载 0 条定义（`[BUFF] +0`），表现为"效果没生效"
+  的假失败。`action_test` 现加了 loader 前置断言，资源缺失直接暴露而非伪装成
+  业务失败。ctest 的 `WORKING_DIRECTORY` 不受影响
+- **发现一处真实契约不一致（未改代码）**: `CURSED_ROOM` 有货时返回
+  `RELIC:` 前缀、缺货时返回 `MSG:` 兜底 —— 语义正确，但前缀不统一。测试按
+  「两者皆可」写，不锁死实现
 - **限制（诚实边界）**: `build_scene` 的地形分支会调 `procedural_tile()` 生成纹理，
   需要 GL 上下文，**无法 headless 断言 billboard / 地形产出**；3D 视觉仍需实机验收。
   该边界已写进测试文件头，不假装覆盖了没覆盖的东西
