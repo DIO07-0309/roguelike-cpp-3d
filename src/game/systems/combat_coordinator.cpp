@@ -115,78 +115,15 @@ std::string CombatCoordinator::use_skill(int index, Player* player,
     return result;
 }
 
-void CombatCoordinator::on_monster_killed(Monster* m, Player* player,
-                                           std::vector<std::unique_ptr<Monster>>&,
-                                           std::vector<DroppedItem>& ground_items,
-                                           AudioServer* audio) {
-    if (!m || !player) return;
-
-    // XP (B14: Elite +50%)
-    int xp = m->is_boss ? XP_PER_KILL_BOSS
-                        : XP_PER_KILL_BASE + (int)(m->combat.max_hp * 0.5f);
-    if (m->is_elite) xp = xp * 3 / 2;  // Elite +50% XP
-    player->xp += xp;
-    while (player->xp >= player->xp_to_next) {
-        player->level++;
-        player->xp -= player->xp_to_next;
-        player->xp_to_next = Player::calc_xp_for_level(player->level + 1);
-        player->combat.attack += 2;
-        player->combat.physical_defense += 1;
-        player->combat.magical_defense += 1;
-        player->combat.max_hp += 10;
-        player->combat.current_hp = get_effective_max_hp(player);
-        if (audio) audio->play_sfx("levelup");
-
-        LOG_INFO("玩家升级! Lv%d HP:%d ATK:%d PD:%d MD:%d XP:%d/%d",
-            player->level, player->combat.max_hp,
-            player->combat.get_effective_attack(),
-            player->combat.get_effective_defense(AttackType::PHYSICAL),
-            player->combat.get_effective_defense(AttackType::MAGICAL),
-            player->xp, player->xp_to_next);
-
-        if (player->skills.can_learn()) {
-            auto names = get_learned_names(player->skills);
-            auto sk = random_active_skill(names, true);
-            std::string skill_name = sk->name;
-            player->skills.learn(std::move(sk));
-            player->skills.apply_all_passives(player);
-            LOG_INFO("觉醒新技能: %s", skill_name.c_str());
-        }
-        // Signal: on_player_leveled fires (handled by GameScene)
-    }
-
-    // B11: leech_blade — 击杀时 20% 回 5 HP
-    if (player_has_relic(player, "leech_blade")) {
-        const RelicDef* def = get_relic_def("leech_blade");
-        float chance = def ? def->param : 0.20f;
-        int heal = def ? def->param2 : 5;
-        if ((rng() % 1000) < (int)(chance * 1000.0f)) {
-            heal_player(player, heal);
-            LOG_INFO("[RELIC] 吸血之刃触发：回复 %d HP", heal);
-        }
-    }
-    // B12: battle_totem — 击杀 15% attack_up
-    if (player_has_relic(player, "battle_totem")) {
-        const RelicDef* def = get_relic_def("battle_totem");
-        float chance = def ? def->param : 0.15f;
-        if ((rng() % 1000) < (int)(chance * 1000.0f)) {
-            apply_buff(player, "attack_up", 1);
-            LOG_INFO("[RELIC] 战斗图腾触发：获得 attack_up");
-        }
-    }
-}
-
-void CombatCoordinator::cleanup_dead_monsters(
-    std::vector<std::unique_ptr<Monster>>& monsters,
-    Player* player, std::vector<DroppedItem>& ground_items, AudioServer* audio) {
-    auto it = monsters.begin();
-    while (it != monsters.end()) {
-        if (!(*it)->combat.is_alive) {
-            on_monster_killed(it->get(), player, monsters, ground_items, audio);
-            it = monsters.erase(it);
-        } else ++it;
-    }
-}
+// G21: on_monster_killed / cleanup_dead_monsters 已删除 — 互相引用的死代码簇。
+// cleanup_dead_monsters 全仓 0 个外部调用者, on_monster_killed 唯一调用点就在
+// cleanup_dead_monsters 内部, 扫描器因此把两者都当成「有引用」放过 (与 tick/draw
+// 这类重名盲区同类)。docs/RELIC_SYSTEM_AUDIT.md 早把它标为 G11 死代码却一直没清。
+// 真实结算走 GameSceneCombat::on_monster_killed — XP 含 exp_scale(floor) 缩放,
+// 发 on_player_leveled 与 EventBus PLAYER_LEVEL_UP。这份副本已跑偏 (无楼层 XP
+// 缩放、不发任何升级信号), 留着只会让人哪天去「同步」两份升级实现。
+// get_learned_names / random_active_skill 仍被 game_scene_combat.cpp 与
+// game_scene.cpp 使用, 不在删除范围。
 
 // P1-C4-fix: apply_pending_damage 已删除 — 零调用者的死路径, 且其裸指针
 // 语义正是 UAF 根因 (真实结算走 GameSceneCombat::apply_pending_damage,

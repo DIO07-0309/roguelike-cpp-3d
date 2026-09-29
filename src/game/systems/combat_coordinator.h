@@ -39,15 +39,7 @@ public:
     static void skill_heavy_vfx(Player* player, const std::string& skill_name,
                                  std::vector<Effect>& effects);
 
-    // 怪物击杀结算 (XP/升级/技能习得/Boss奖励/圣物效果)
-    static void on_monster_killed(Monster* m, Player* player,
-                                   std::vector<std::unique_ptr<Monster>>& monsters,
-                                   std::vector<DroppedItem>& ground_items,
-                                   AudioServer* audio);
-
-    // 清理死亡怪物
-    static void cleanup_dead_monsters(std::vector<std::unique_ptr<Monster>>& monsters,
-                                       Player* player,
-                                       std::vector<DroppedItem>& ground_items,
-                                       AudioServer* audio);
+    // G21: on_monster_killed / cleanup_dead_monsters 已删除 — 互相引用的死代码簇
+    // (唯一调用点在 cleanup_dead_monsters 内部, 后者 0 个外部调用者)。
+    // 真实击杀结算走 GameSceneCombat::on_monster_killed。
 };

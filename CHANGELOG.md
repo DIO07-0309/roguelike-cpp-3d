@@ -1,3 +1,57 @@
+# G21 — 清掉 CombatCoordinator 里互相引用的死代码簇（2026-09-29）
+
+> G16 那次「全仓死方法三级连删」漏了一对，因为它们**互相引用**。
+
+## 删了什么
+
+`CombatCoordinator::on_monster_killed` + `CombatCoordinator::cleanup_dead_monsters`
+（`combat_coordinator.cpp` 118–189，76 行）
+
+## 为什么之前漏了
+
+- `cleanup_dead_monsters` 全仓 **0 个外部调用者**
+- `on_monster_killed` 唯一调用点在第 185 行，**就在 `cleanup_dead_monsters` 里面**
+- 于是扫描器把两者都看成「有引用」→ 双双放过。与 `tick` / `draw` 这类
+  **重名盲区**同类：只按名字找引用，识别不了「引用者自己也是死的」
+
+文档早就点过名：`docs/RELIC_SYSTEM_AUDIT.md:260` 列为 **G11 死代码**，
+`:415` 结论「不可达死代码，迁移时可安全清理」，一直没执行。
+
+## 附带价值：消掉一个维护陷阱
+
+那份死代码里有**一份已经跑偏的升级实现**，与真实路径
+`GameSceneCombat::on_monster_killed` 对比：
+
+| | `GameSceneCombat`（活） | `CombatCoordinator`（死，已删） |
+| :--- | --- | --- |
+| 楼层 XP 缩放 | `g_growth.exp_scale(floor)` | **无** |
+| `on_player_leveled` 信号 | 发 | **不发** |
+| `EventBus PLAYER_LEVEL_UP` | 发 | **不发** |
+| shake / freeze / message | 有 | 无 |
+
+看着像线上平衡 bug，实际不可达。真正危险的是它诱导人哪天去「把两份
+升级逻辑同步一下」—— 同步完就是真 bug。
+
+删除后 XP 只剩一个实现，G16 那次收口才真正完成。
+
+## 不删的部分
+
+- `use_skill` / `skill_heavy_vfx` 是活的（`player_controller.cpp:859`）
+- `get_learned_names` / `random_active_skill` 仍被 `game_scene_combat.cpp:91`
+  与 `game_scene.cpp:248/1772` 使用，不在范围内
+- `apply_pending_damage` 已删（G16），删除说明留在文件尾
+
+## 验证
+
+- grep `CombatCoordinator::on_monster_killed` / `CombatCoordinator::cleanup_dead_monsters`
+  全仓 **0 命中**（含 tests）
+- `combat_coordinator.cpp` 193 → 119 行，类只剩 2 个方法，均活跃
+- 净 **-71 行**，纯删除，未改任何活路径
+
+**门禁**: build 0 error 0 warning · ctest **77/77** · `2 files changed, 12 insertions(+), 83 deletions(-)`
+
+---
+
 # G20c — 修「选关读档丢掉地牢种子」布局漂移（2026-09-29）
 
 > 与 G20 同一类「存档被悄悄改坏」缺陷：不是数据被覆盖，而是**布局悄悄换了**。
