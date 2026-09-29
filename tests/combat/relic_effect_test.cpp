@@ -3,6 +3,12 @@
 // 四个枚举 + RelicEffectDef / RelicEffectRuntime / DamageContext 三个结构体,
 // 203 行全部测自己的副本, 生产代码改了照样全绿。
 // 本文件直连 RelicEffectProcessor + load_relic_defs, 数值取自 resources/relics.json。
+//
+// G15: 只测活路径。G14 版有 2 个用例调 on_relic_acquired / on_relic_removed ——
+// 那对方法**生产代码从未调用**(apply-once 表 _passive_applied 从未接线),
+// 测的是死代码。现改为测 Player::add_relic / remove_relic, 它们才是生产入口。
+// 顺带修掉两个真实缺陷: add_relic 无防重(重复获得二次叠加被动),
+// remove_relic 无幂等(重复移除过度扣减)。
 #include <gtest/gtest.h>
 
 #include "systems/relic_effect_processor.h"
@@ -76,48 +82,50 @@ TEST(RelicEffect, StaticPassiveApplyAndRemoveAreSymmetric) {
     EXPECT_EQ(p->combat.physical_defense, base);
 }
 
-// ── 契约 3: 未 acquire 就 remove 必须无效 (防防御变负) ────────
-TEST(RelicEffect, RemoveWithoutAcquireIsNoOp) {
+// ── 契约 3: 移除未持有的圣物必须无效 (防防御变负) ─────────────
+// remove_passive_for_relic 是纯逆运算, 无幂等保护 —— 守卫在 Player::remove_relic。
+TEST(RelicEffect, RemoveRelicWithoutAcquireIsNoOp) {
     load_defs();
-    RelicEffectProcessor proc;
     auto p = make_player(100, 10, 2);
 
-    proc.on_relic_removed(p.get(), "iron_ring");
+    p->remove_relic("iron_ring");
 
     EXPECT_EQ(p->combat.physical_defense, 2)
-        << "从未施加过的被动不得被扣减";
+        << "从未持有过的圣物不得被扣减被动";
+    EXPECT_TRUE(p->relics.empty());
 }
 
-// ── 契约 4: acquire 后 remove 只回滚一次 (重复 remove 不得再扣) ─
-TEST(RelicEffect, RemoveAfterAcquireRollsBackExactlyOnce) {
+// ── 契约 4: 重复 remove_relic 只回滚一次 ──────────────────────
+TEST(RelicEffect, RemoveRollsBackExactlyOnce) {
     load_defs();
-    RelicEffectProcessor proc;
     auto p = make_player(100, 10, 2);
 
-    proc.on_relic_acquired(p.get(), "iron_ring");
+    p->add_relic("iron_ring", PersistenceScope::RUN);
     EXPECT_EQ(p->combat.physical_defense, 7);
 
-    proc.on_relic_removed(p.get(), "iron_ring");
+    p->remove_relic("iron_ring");
     EXPECT_EQ(p->combat.physical_defense, 2);
 
-    proc.on_relic_removed(p.get(), "iron_ring");   // 第二次 remove 应无操作
+    p->remove_relic("iron_ring");   // 第二次应无操作
     EXPECT_EQ(p->combat.physical_defense, 2)
         << "重复 remove 不得把物防扣成负数";
 }
 
-// ── 契约 5: 禁用处理器后全部效果失效 ─────────────────────────
-TEST(RelicEffect, DisabledProcessorIsNoOp) {
+// ── 契约 5: 重复获得同名圣物, 被动 stat 只叠加一次 ────────────
+// apply-once 不变量在 Player::add_relic (原 RelicEffectProcessor::_passive_applied
+// 从未接线, 重复获得会二次叠加 —— G15 删表并下沉不变量到此)。
+TEST(RelicEffect, AddRelicAppliesPassiveOnlyOnce) {
     load_defs();
-    RelicEffectProcessor proc;
-    proc.set_enabled(false);
     auto p = make_player(100, 10, 2);
 
-    proc.on_relic_acquired(p.get(), "iron_ring");
-    proc.on_floor_enter(p.get());
+    p->add_relic("iron_ring", PersistenceScope::RUN);
+    EXPECT_EQ(p->combat.physical_defense, 7);
+    EXPECT_EQ(p->relics.size(), 1u);
 
-    EXPECT_EQ(p->combat.physical_defense, 2);
-    EXPECT_TRUE(p->active_buffs.empty());
-    EXPECT_FALSE(proc.is_enabled());
+    p->add_relic("iron_ring", PersistenceScope::RUN);
+    EXPECT_EQ(p->combat.physical_defense, 7)
+        << "重复获得不得二次叠加被动 stat";
+    EXPECT_EQ(p->relics.size(), 1u);
 }
 
 // ── 契约 6: 未知圣物 id 静默忽略 ──────────────────────────────

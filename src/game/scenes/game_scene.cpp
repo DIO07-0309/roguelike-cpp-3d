@@ -895,9 +895,6 @@ void GameScene::_process(double delta) {
     if (time_stop_remaining <= 0)
         for (auto& m : monsters) tick_buffs(m.get(), dt, &buf_events, player.get()); // B11: venom_fang
 
-    // M1A.1: 新遗物系统 PASSIVE 效果逐帧结算
-    _combat.relic_fx().tick(player.get(), dt);
-
     // Buff 事件日志 + C1: poison tick 伤害数字
     for (auto& ev : buf_events) {
         if (ev.type == BuffEventType::APPLIED)

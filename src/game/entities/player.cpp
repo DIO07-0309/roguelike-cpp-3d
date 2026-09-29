@@ -386,13 +386,22 @@ bool Player::spend_key(int amount) {
 
 int Player::get_key_count() const { return key_count; }
 
-// Batch 3H: 统一圣物入口
+// 统一圣物入口
+// G15: 防重 —— 原 apply-once 靠 RelicEffectProcessor::_passive_applied 跟踪,
+// 但该表从未接线(见 relic_effect_processor.h 头部说明), 重复获得会二次叠加
+// 被动 stat, 且 remove_relic 按 id 全量 erase 只会减一次造成 stat 泄漏。
 void Player::add_relic(const std::string& id, PersistenceScope scope) {
+    for (const auto& r : relics)
+        if (r.id == id) return;
     relics.push_back({id, scope});
     RelicEffectProcessor::apply_passive_for_relic(this, id);
 }
 
 void Player::remove_relic(const std::string& id) {
+    auto it = std::find_if(
+        relics.begin(), relics.end(),
+        [&](const RelicInstance& r) { return r.id == id; });
+    if (it == relics.end()) return;   // 幂等: 不得扣减未持有的圣物被动
     RelicEffectProcessor::remove_passive_for_relic(this, id);
     relics.erase(
         std::remove_if(relics.begin(), relics.end(),

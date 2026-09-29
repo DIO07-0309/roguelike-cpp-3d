@@ -1,3 +1,39 @@
+# G15 — 圣物系统死代码清理 + 两处真实缺陷（2026-09-29）
+
+> 起因: G14 重写 `relic_effect_test` 时，2 个用例调 `on_relic_acquired` /
+> `on_relic_removed` 才发现这对方法**生产代码从未调用**。顺藤摸瓜查完整调用
+> 图，死代码面比预想大得多。net **-165 行 / 6 文件**。
+
+- **删无调用方 API**: 实例 `on_hit` / `on_pre_damage` / `on_hurt`（
+  `docs/M1A_1_IMPL_PLAN.md:223-225` 写着当初计划接，**实际从未接上**，生产走
+  `static_on_hit` / `static_on_pre_damage`）、`static_on_kill`（生产用实例
+  `on_kill`）、`tick` 空体 + `game_scene.cpp` 调用点（Batch 3H 注释称 PASSIVE
+  已迁至 `on_floor_enter`）、`set_enabled` / `is_enabled` / `reset_runtime`
+- **删无状态字段**: `_runtime`（整个 `relic_effect_runtime.h` —
+  `RelicEffectRuntime` + `RelicEffectState`，`get()` / `reset()` 从无调用）、
+  `_passive_applied`、`_enabled` 及其 3 个 guard（`set_enabled` 从无调用故恒
+  true，guard 全是 no-op）。删除后类不再持有状态
+- **去重两处逐字重复**: `_apply_passive_stat` ≡ `apply_passive_for_relic`、
+  `_remove_passive_stat` ≡ `remove_passive_for_relic`，前者只被死代码调到 → 删
+- **修 bug 1 — `Player::add_relic` 无防重**: 重复获得同名圣物会二次叠加被动
+  stat；且 `remove_relic` 按 id 全量 `erase` 只减一次 → stat 永久泄漏。
+  所有现有调用点（`event_system` / `special_room` / `reward_manager` /
+  `quest_manager` 等）都在外层用 `player_has_relic` 挡着，所以**当前不可触发**，
+  属潜伏缺陷。不变量已下沉到 `add_relic` 自身
+- **修 bug 2 — `Player::remove_relic` 无幂等**: `remove_passive_for_relic` 是纯
+  逆运算，重复调用会重复扣减（实测 pdef 2 → 7 → 2 → **-3**）。唯一调用点
+  `game_scene.cpp:378`（换层清 FLOOR 圣物）每次恰好清一次、当前不可触发，但
+  守卫该在公共入口。现 `remove_relic` 先 `find_if` 命中才扣被动
+- **`remove_passive_for_relic` 保留无守卫是有意的** —— 它必须能与
+  `apply_passive_for_relic` 严格对称（`RewardManager` 直接调），守卫只属于
+  公共入口 `Player::add_relic` / `remove_relic`
+- **测试改测活路径**: `relic_effect_test` 9 用例不变，但 `RemoveAfterAcquire…`
+  / `DisabledProcessorIsNoOp` 两个测死代码的用例改为 `RemoveRelicWithoutAcquireIsNoOp`
+  / `RemoveRollsBackExactlyOnce`（走 `Player::remove_relic`），新增
+  `AddRelicAppliesPassiveOnlyOnce`。这 3 个用例是上面两个 bug 的回归网
+
+**门禁**: build 0 error 0 warning · ctest **77/77** · 超规函数 **103**（无回归）
+
 # G14 — 自动化验证补齐 + 两处真实缺陷（2026-09-29）
 
 > 起因: 「3D 开发这么久，怎么没人端到端跑过」—— 用户其实一直在实机玩（桌面包
