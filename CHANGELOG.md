@@ -1,3 +1,23 @@
+# G17 — 移除 MetaSystem 死掉的 reward-log 审计特性（2026-09-29）
+
+> 起因: G16 删 `clear_reward_log` 时看到注释写着「新 Run 开始时调用」，但全仓
+> 零调用 —— 顺着查了整个特性，发现它是**写而不读**的死特性。
+
+- **`reward_log()` 访问器零调用** → 审计日志从未被任何 UI / 测试 / 工具消费
+- **`_reward_log` 只写不读**: `end_run` / `reward_from_ending` 各 `push_back`
+  一次，且**从不序列化**（不进 `save()` / `load()`，纯内存）
+- **`clear_reward_log` 从未调用** → 即使有人读，记录也会跨 Run 持续累积
+- 删掉整条链: `MetaRewardSource` 枚举（5 个取值只用过 2 个）、
+  `MetaRewardRecord` 结构体、`reward_log()` 访问器、`_reward_log` 字段、
+  2 处 `push_back`
+- **确认无存档兼容风险**: `_reward_log` 从未进 JSON，`save.json` 里不存在
+  该键，老存档无需迁移
+- `reward_from_ending` 保留（`add_currency` + `save()` 仍活），仅去掉写日志
+
+**门禁**: build 0 error 0 warning · ctest **77/77** · 超规函数 **103**
+（无回归）· `git grep MetaReward` 全仓（含 `tests/` `tools/` `docs/`）**零命中**
+· `2 files changed, 20 deletions`
+
 # G16 — 全仓死方法清理（三级连删，2026-09-29）
 
 > 起因: G15 圣物系统那个模式（声明在头文件、定义在 cpp、**生产代码零调用**）

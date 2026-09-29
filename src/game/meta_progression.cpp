@@ -79,11 +79,6 @@ MetaCurrency MetaSystem::end_run(const RunSummary& rs) {
     _save.currency.knowledge += earned.knowledge;
     _save.currency.ancient_memory += earned.ancient_memory;
     _save.total_runs++;
-    // G3.5: 记录 RUN_SUMMARY 奖励
-    _reward_log.push_back({MetaRewardSource::RUN_SUMMARY,
-        "Run结算: F" + std::to_string(rs.floor_reached) + " "
-        + std::to_string(rs.bosses_killed) + "Boss "
-        + std::to_string(rs.quests_done) + "Quest", earned});
     save();
     return earned;
 }
@@ -99,8 +94,6 @@ void MetaSystem::reward_from_ending(const char* name, int soul, int knowledge,
                                      int ancient_memory) {
     MetaCurrency mc{soul, knowledge, ancient_memory};
     add_currency(mc);
-    _reward_log.push_back({MetaRewardSource::ENDING,
-        std::string("Ending: ") + name, mc});
     save();
 }
 

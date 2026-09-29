@@ -18,19 +18,10 @@ struct MetaNode {
     int  cost_scale = 2;    // 每级递增
 };
 
-// ═══ G3.5: Meta Reward Audit — 奖励来源 + 审计记录 ═══
-enum class MetaRewardSource { RUN_SUMMARY, ENDING, QUEST, BOSS, DEBUG };
-
 struct MetaCurrency {
     int soul_fragments = 0;
     int knowledge = 0;
     int ancient_memory = 0;
-};
-
-struct MetaRewardRecord {
-    MetaRewardSource source;
-    std::string detail;          // "F10 Boss" | "Quest: 救出囚犯" | "Run结算"
-    MetaCurrency amount;
 };
 
 struct RunSummary {
@@ -79,10 +70,9 @@ public:
     MetaCurrency end_run(const RunSummary& summary);
     void add_currency(const MetaCurrency& c);
 
-    // G3.5: 统一奖励入口 + 审计日志
+    // G3.5: 统一奖励入口
     void reward_from_ending(const char* ending_name,
                             int soul, int knowledge, int ancient_memory = 2);
-    const std::vector<MetaRewardRecord>& reward_log() const { return _reward_log; }
 
     // G3.1: 从 registry 重建 MetaNode (在 JSON 加载后调用)
     void load_from_defs();
@@ -124,8 +114,6 @@ private:
     int     _node_count = 0;
     // G3.1: string storage for MetaNode const char* fields (from registry)
     std::vector<std::string> _node_texts;
-    // G3.5: 本次 run 的奖励审计日志
-    std::vector<MetaRewardRecord> _reward_log;
 };
 
 extern MetaSystem g_meta;
