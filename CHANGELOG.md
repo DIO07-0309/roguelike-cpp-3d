@@ -1,3 +1,31 @@
+# G18 — `execute_event` 拆函数（G13 续，2026-09-29）
+
+> `event_system::execute_event` 254 行是 G13 剩余中风险批里最安全的一个 ——
+> 纯事件分发，18 个 case 各自独立。`tests/combat/action_test.cpp` 已有 10 个
+> 用例作回归网，其中 `SameSeedReproducesSameOutcome` 把 **`rng()` 调用顺序**
+> 锁成了契约。
+
+- **254 → 28 行**: 每个 `EventType` case 拆成文件内 `static do_<name>(Player*)`
+  handler，`execute_event` 只留守卫（`ev.triggered` / 空指针）+ 18 行 switch
+  委托。19 个新函数全部 ≤40 行
+- **顺带去重 6 处**: MERCHANT / CURSED_ROOM / STATUE / TREASURE_GUARD /
+  NPC_EVENT / RELIC_DROP / TREASURE_CACHE 里重复的「收集玩家未持有圣物 →
+  随机抽一个 → 加 FLOOR 圣物 → 拼 `RELIC:` 文案」收口成
+  `grant_random_relic(player, suffix)`，无可给返回空串
+- **行为等价性（自动比对，非目测）**:
+  - `MSG:`/`RELIC:` 返回文案 **45/45 完全一致**（新增 0、丢失 0）
+  - `rng() % <常量>` 模数集合 `[17,2,3,3,3,4,4,5,5,6,8,8]` **完全一致**
+    → 11 个分支的概率分布未变
+  - `rng()` 调用数 20 → 14，净减 6 **恰好等于**收口的 6 处圣物抽奖（7 → 1）
+  - `apply_buff` 21/21、`heal_player` 5/5、`take_damage` 3/3、
+    `inventory.add` 7/7 全部相等
+- **`do_nothing` / `do_lore` 不带 `Player*` 参数** —— 避免 `-Wunused-parameter`
+- **`floor` 参数保留**: 全程只透传不消费（`MYSTERY` 递归带回），但改签名会
+  动到 `game_scene_interaction.cpp:61` 生产调用点 + 12 处测试调用，不值
+
+**门禁**: build 0 error 0 warning · ctest **77/77**（含同种子复现 +
+全 18 类型 ×20 次前缀契约）· 超规函数 **103 → 102** · `1 file changed`
+
 # G17 — 移除 MetaSystem 死掉的 reward-log 审计特性（2026-09-29）
 
 > 起因: G16 删 `clear_reward_log` 时看到注释写着「新 Run 开始时调用」，但全仓

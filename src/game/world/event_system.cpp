@@ -253,256 +253,242 @@ DungeonEvent generate_event(int floor, const ChapterConfig& ch, std::mt19937& rn
 // ============================================================
 // Event Execution — 返回结果消息
 // ============================================================
+// ═══ execute_event 分支处理 (G13 拆函数) ═══
+// 原 254 行 switch 拆成每类型一个 handler。
+// 契约: rng() 调用顺序被 tests/combat/action_test.cpp 的"同种子可复现"锁定,
+// 拆分与 grant_random_relic 收口都不得改变 rng 消耗次序。
+
+// 发一个玩家未持有的随机 FLOOR 圣物; 无可给返回空串。
+// 收口原 6 处重复的 ids/avail 收集循环 (rng 消耗: 无可给 0 次, 可给 1 次)。
+static std::string grant_random_relic(Player* player, const char* suffix) {
+    std::vector<std::string> avail;
+    for (const auto& id : get_all_relic_ids())
+        if (!player_has_relic(player, id)) avail.push_back(id);
+    if (avail.empty()) return "";
+    std::string ch = avail[rng() % avail.size()];
+    player->add_relic(ch, PersistenceScope::FLOOR);
+    std::string s = std::string("RELIC:") + get_relic_def(ch)->name;
+    if (suffix) s += suffix;
+    return s;
+}
+
+static std::string do_merchant(Player* p) {
+    int r = rng() % 3;
+    if (r == 0) {
+        p->inventory.add(std::make_shared<ConsumableItem>(
+            "商人之药", Rarity::RARE, "heal", 40), p);
+        return "RELIC:商人给了你一瓶上等药水。";
+    }
+    if (r == 1) {
+        apply_buff(p, "attack_up", 1);
+        return "MSG:商人给予了你攻击祝福。";
+    }
+    std::string relic = grant_random_relic(p, nullptr);
+    return relic.empty() ? "MSG:商人已无货可卖。" : relic;
+}
+
+// 经验+50% 通过 attack_up buff 模拟
+static std::string do_ambush(Player* p) {
+    apply_buff(p, "attack_up", 1);
+    return "MSG:你从伏击中杀出重围！经验加成+50%。";
+}
+
+static std::string do_cursed_room(Player* p) {
+    apply_buff(p, "poison", 2);
+    std::string relic = grant_random_relic(p, " (受诅咒:中毒)");
+    return relic.empty() ? "MSG:你拒绝了诅咒的诱惑。" : relic;
+}
+
+static std::string do_altar_choice(Player* p) {
+    int r = rng() % 3;
+    if (r == 0) {
+        heal_player(p, (int)(p->combat.max_hp * 0.30f));
+        return "MSG:祭坛恢复了你30%的生命。";
+    }
+    if (r == 1) {
+        apply_buff(p, "attack_up", 2);
+        return "MSG:祭坛赐予了你强大的攻击力。";
+    }
+    for (auto& sk : p->skills.active_skills) {
+        if (sk->can_evolve()) {
+            std::string evo = sk->evolve();
+            if (!evo.empty())
+                return "MSG:祭坛进化了你的技能: " + evo;
+        }
+    }
+    return "MSG:祭坛的光芒消散了。";
+}
+
+static std::string do_statue(Player* p) {
+    int r = rng() % 5;
+    if (r == 0) { apply_buff(p, "attack_up", 1); return "MSG:雕像赐予你攻击提升。"; }
+    if (r == 1) { apply_buff(p, "slow", 1); return "MSG:雕像施放了减速诅咒。"; }
+    if (r == 2) { heal_player(p, 15); return "MSG:雕像治愈了你。"; }
+    if (r == 3) {
+        std::string relic = grant_random_relic(p, nullptr);
+        if (!relic.empty()) return relic;
+    }
+    return "MSG:雕像似乎什么都没有发生。";
+}
+
+static std::string do_prisoner(Player* p) {
+    if (rng() % 2 == 0) {
+        heal_player(p, (int)(p->combat.max_hp * 0.20f));
+        return "MSG:囚犯感激地拍了拍你，分享了他最后的食物。";
+    }
+    p->inventory.add(std::make_shared<ConsumableItem>(
+        "囚犯的谢礼", Rarity::RARE, "heal", 30), p);
+    return "MSG:囚犯给了你一件物品作为答谢。";
+}
+
+static std::string do_lost_camp(Player* p) {
+    heal_player(p, (int)(p->combat.max_hp * 0.25f));
+    return "MSG:你在篝火旁休息，恢复了体力。";
+}
+
+static std::string do_treasure_guard(Player* p) {
+    p->inventory.add(std::make_shared<EquipmentItem>(
+        "宝库之剑", Rarity::LEGENDARY, "weapon", 15, 2, 1), p);
+    std::string relic = grant_random_relic(p, nullptr);
+    return relic.empty() ? "RELIC:宝库之剑" : relic;
+}
+
+static std::string do_blood_ritual(Player* p) {
+    int loss = (int)(p->combat.current_hp * 0.20f);
+    if (loss < 1) loss = 1;
+    p->combat.take_damage(loss);
+    apply_buff(p, "attack_up", 3);
+    return "MSG:鲜血浸染祭坛，你获得了强大的力量。";
+}
+
+static std::string do_nothing() {
+    return "MSG:这里什么也没有发生。";
+}
+
+static std::string do_trap(Player* p) {
+    int r = rng() % 6;
+    if (r == 0) {
+        int dmg = std::max(5, p->combat.current_hp / 6);
+        p->combat.take_damage(dmg);
+        return "MSG:暗箭击中了你的肩膀！受到" + std::to_string(dmg) + "伤害。";
+    }
+    if (r == 1) { apply_buff(p, "burn", 2); return "MSG:火焰陷阱喷出烈焰——你被灼伤了！"; }
+    if (r == 2) { apply_buff(p, "poison", 3); return "MSG:毒雾从地板裂缝中涌出——你中毒了。"; }
+    if (r == 3) { apply_buff(p, "fear", 1); return "MSG:黑暗中的低语让你毛骨悚然——你中了恐惧。"; }
+    if (r == 4) { apply_buff(p, "freeze", 1); return "MSG:冰霜陷阱瞬间将你的双脚冻住！"; }
+    auto item = generate_random_item();
+    if (item) { p->inventory.add(item, p); return "MSG:陷阱被触发——但里面竟藏着一件东西！"; }
+    return "MSG:陷阱只发出了一声闷响——你很幸运。";
+}
+
+static std::string do_mystery(DungeonEvent& ev, Player* p, int floor) {
+    int r = rng() % 17 + 1;               // skip NONE
+    EventType fake = (EventType)r;
+    if (fake == EventType::MYSTERY) fake = EventType::STATUE;  // 防无限递归
+    ev.type = fake;
+    ev.triggered = false;                 // 允许重触发
+    return execute_event(ev, p, floor);
+}
+
+static std::string do_blessing(Player* p) {
+    int r = rng() % 5;
+    if (r == 0) { apply_buff(p, "blessing", 2); return "MSG:祝福的光芒环绕着你。"; }
+    if (r == 1) { apply_buff(p, "growth", 2); return "MSG:你感到体能在永久增强——成长2层。"; }
+    if (r == 2) { apply_buff(p, "attack_up", 2); return "MSG:圣光注入了你的武器——攻击力大幅提升。"; }
+    if (r == 3) { apply_buff(p, "regen", 3); return "MSG:生命之水渗入你的血液——再生3层。"; }
+    heal_player(p, (int)(get_effective_max_hp(p) * 0.25f));
+    return "MSG:神圣的力量治愈了你25%的生命。";
+}
+
+static std::string do_curse(Player* p) {
+    int r = rng() % 4;
+    if (r == 0) { apply_buff(p, "curse", 2); return "MSG:你被诅咒了——诅咒2层。"; }
+    if (r == 1) { apply_buff(p, "slow", 2); return "MSG:诅咒压制着你的步伐——减速2层。"; }
+    if (r == 2) { apply_buff(p, "blind", 2); return "MSG:诅咒遮障了你的视觉——致盲2层。"; }
+    int loss = std::max(5, p->combat.current_hp / 4);
+    p->combat.take_damage(loss);
+    return "MSG:黑暗之触吸取了" + std::to_string(loss) + "点生命。";
+}
+
+static std::string do_lore() {
+    static const char* lore_msgs[] = {
+        "这些废墟曾经是地牢中最繁荣的区域——三千年前。",
+        "你读到: '吾王永恒，吾等永守。' 签名已经模糊。",
+        "一幅壁画描绘着一场巨大的战争——光与暗在空中碰撞。",
+        "日记最后一页写着: '今天是我第47天。我发现了新的东西。'",
+        "石碑记载着一位名为阿斯特拉的古代英雄——与你的旅程惊人地相似。",
+        "你找到了一封信，日期是1327年前——地址是你现在站的地方。",
+        "\"深渊不是地牢——它是监狱，\" 墙上潦草地写着。",
+        "一本古籍打开了，上面画着一棵树——深埋在地下但仍在生长。",
+    };
+    return "MSG:" + std::string(lore_msgs[rng() % 8]);
+}
+
+static std::string do_npc_event(Player* p) {
+    int r = rng() % 3;
+    if (r == 0) {
+        p->inventory.add(std::make_shared<ConsumableItem>(
+            "冒险家的礼物", Rarity::RARE, "heal", 35), p);
+        return "MSG:陌生人微笑着递给你一份礼物。";
+    }
+    if (r == 1) {
+        apply_buff(p, "blessing", 1);
+        return "MSG:学者为你念了一段远古的祝福咒语。";
+    }
+    std::string relic = grant_random_relic(p, " (来自NPC)");
+    return relic.empty() ? "MSG:陌生人与你分享了故事——但没什么实质的东西。" : relic;
+}
+
+static std::string do_relic_drop(Player* p) {
+    std::string relic = grant_random_relic(p, nullptr);
+    return relic.empty() ? "MSG:圣物祭坛已经空了——你已经集齐了所有圣物。" : relic;
+}
+
+static std::string do_treasure_cache(Player* p) {
+    int r = rng() % 4;
+    if (r == 0) {
+        p->inventory.add(std::make_shared<EquipmentItem>(
+            "遗迹之宝", Rarity::RARE, "weapon", 10, 3, 2), p);
+        return "MSG:你找到了一件精心保护的武器。";
+    }
+    if (r == 1) {
+        p->inventory.add(std::make_shared<ConsumableItem>(
+            "珍藏秘药", Rarity::EPIC, "heal", 60), p);
+        return "MSG:宝箱里藏着一瓶闪耀的药水。";
+    }
+    if (r == 2) {
+        apply_buff(p, "attack_up", 2);
+        apply_buff(p, "defense_up", 2);
+        return "MSG:宝箱中喷出魔法——你获得了攻击和防御双重增强。";
+    }
+    std::string relic = grant_random_relic(p, " (宝箱中)");
+    return relic.empty() ? "MSG:宝箱虽空，但金币仍能让你会心一笑。" : relic;
+}
+
 std::string execute_event(DungeonEvent& ev, Player* player, int floor) {
     if (ev.triggered || !player) return "";
     ev.triggered = true;
 
     switch (ev.type) {
-    case EventType::MERCHANT: {
-        // 随机给药水或 Relic 或 Buff
-        int r = rng() % 3;
-        if (r == 0) {
-            auto pot = std::make_shared<ConsumableItem>("商人之药", Rarity::RARE, "heal", 40);
-            player->inventory.add(pot, player);
-            return "RELIC:商人给了你一瓶上等药水。";
-        } else if (r == 1) {
-            apply_buff(player, "attack_up", 1);
-            return "MSG:商人给予了你攻击祝福。";
-        } else {
-            // 尝试给 relic
-            auto ids = get_all_relic_ids();
-            std::vector<std::string> avail;
-            for (auto& id : ids)
-                if (!player_has_relic(player, id)) avail.push_back(id);
-            if (!avail.empty()) {
-                std::string chosen = avail[rng() % avail.size()];
-                player->add_relic(chosen, PersistenceScope::FLOOR);
-                return "RELIC:" + std::string(get_relic_def(chosen)->name);
-            }
-            return "MSG:商人已无货可卖。";
-        }
-    }
-    case EventType::AMBUSH: {
-        // 经验 +50% buff (通过 apply buff 模拟)
-        apply_buff(player, "attack_up", 1);
-        return "MSG:你从伏击中杀出重围！经验加成+50%。";
-    }
-    case EventType::CURSED_ROOM: {
-        // 诅咒: poison stack + 奖励 relic
-        apply_buff(player, "poison", 2);
-        auto ids = get_all_relic_ids();
-        std::vector<std::string> avail;
-        for (auto& id : ids)
-            if (!player_has_relic(player, id)) avail.push_back(id);
-        if (!avail.empty()) {
-            std::string chosen = avail[rng() % avail.size()];
-            player->add_relic(chosen, PersistenceScope::FLOOR);
-            return "RELIC:" + std::string(get_relic_def(chosen)->name) + " (受诅咒:中毒)";
-        }
-        return "MSG:你拒绝了诅咒的诱惑。";
-    }
-    case EventType::ALTAR_CHOICE: {
-        // 随机: heal / attack_up / 技能进化(若有可进化技能)
-        int r = rng() % 3;
-        if (r == 0) {
-            heal_player(player, (int)(player->combat.max_hp * 0.30f));
-            return "MSG:祭坛恢复了你30%的生命。";
-        } else if (r == 1) {
-            apply_buff(player, "attack_up", 2);
-            return "MSG:祭坛赐予了你强大的攻击力。";
-        } else {
-            // 尝试进化一个技能
-            for (auto& sk : player->skills.active_skills) {
-                if (sk->can_evolve()) {
-                    std::string evo_name = sk->evolve();
-                    if (!evo_name.empty())
-                        return "MSG:祭坛进化了你的技能: " + evo_name;
-                }
-            }
-        }
-        return "MSG:祭坛的光芒消散了。";
-    }
-    case EventType::STATUE: {
-        int r = rng() % 5;
-        if (r == 0) { apply_buff(player, "attack_up", 1); return "MSG:雕像赐予你攻击提升。"; }
-        if (r == 1) { apply_buff(player, "slow", 1); return "MSG:雕像施放了减速诅咒。"; }
-        if (r == 2) { heal_player(player, 15); return "MSG:雕像治愈了你。"; }
-        // r==3 relic
-        auto ids = get_all_relic_ids();
-        std::vector<std::string> avail;
-        for (auto& id : ids)
-            if (!player_has_relic(player, id)) avail.push_back(id);
-        if (!avail.empty() && r == 3) {
-            std::string ch = avail[rng() % avail.size()];
-            player->add_relic(ch, PersistenceScope::FLOOR);
-            return "RELIC:" + std::string(get_relic_def(ch)->name);
-        }
-        return "MSG:雕像似乎什么都没有发生。";
-    }
-    case EventType::PRISONER: {
-        // 50% 回血 / 50% 给药水
-        if (rng() % 2 == 0) {
-            heal_player(player, (int)(player->combat.max_hp * 0.20f));
-            return "MSG:囚犯感激地拍了拍你，分享了他最后的食物。";
-        } else {
-            auto p = std::make_shared<ConsumableItem>("囚犯的谢礼", Rarity::RARE, "heal", 30);
-            player->inventory.add(p, player);
-            return "MSG:囚犯给了你一件物品作为答谢。";
-        }
-    }
-    case EventType::LOST_CAMP: {
-        heal_player(player, (int)(player->combat.max_hp * 0.25f));
-        return "MSG:你在篝火旁休息，恢复了体力。";
-    }
-    case EventType::TREASURE_GUARD: {
-        // 给 legend weapon + relic
-        auto wp = std::make_shared<EquipmentItem>("宝库之剑", Rarity::LEGENDARY, "weapon", 15, 2, 1);
-        player->inventory.add(wp, player);
-        auto ids = get_all_relic_ids();
-        std::vector<std::string> avail;
-        for (auto& id : ids)
-            if (!player_has_relic(player, id)) avail.push_back(id);
-        if (!avail.empty()) {
-            std::string ch = avail[rng() % avail.size()];
-            player->add_relic(ch, PersistenceScope::FLOOR);
-            return "RELIC:" + std::string(get_relic_def(ch)->name);
-        }
-        return "RELIC:宝库之剑";
-    }
-    case EventType::BLOOD_RITUAL: {
-        int loss = (int)(player->combat.current_hp * 0.20f);
-        if (loss < 1) loss = 1;
-        player->combat.take_damage(loss);
-        apply_buff(player, "attack_up", 3);
-        return "MSG:鲜血浸染祭坛，你获得了强大的力量。";
-    }
-    case EventType::NOTHING:
-        return "MSG:这里什么也没有发生。";
+    case EventType::MERCHANT:        return do_merchant(player);
+    case EventType::AMBUSH:          return do_ambush(player);
+    case EventType::CURSED_ROOM:     return do_cursed_room(player);
+    case EventType::ALTAR_CHOICE:    return do_altar_choice(player);
+    case EventType::STATUE:          return do_statue(player);
+    case EventType::PRISONER:        return do_prisoner(player);
+    case EventType::LOST_CAMP:       return do_lost_camp(player);
+    case EventType::TREASURE_GUARD:  return do_treasure_guard(player);
+    case EventType::BLOOD_RITUAL:    return do_blood_ritual(player);
+    case EventType::NOTHING:         return do_nothing();
     // D8 Step6: New event type executions
-    case EventType::TRAP: {
-        int r = rng() % 6;
-        if (r == 0) {
-            int dmg = std::max(5, player->combat.current_hp / 6);
-            player->combat.take_damage(dmg);
-            return "MSG:暗箭击中了你的肩膀！受到" + std::to_string(dmg) + "伤害。";
-        } else if (r == 1) {
-            apply_buff(player, "burn", 2);
-            return "MSG:火焰陷阱喷出烈焰——你被灼伤了！";
-        } else if (r == 2) {
-            apply_buff(player, "poison", 3);
-            return "MSG:毒雾从地板裂缝中涌出——你中毒了。";
-        } else if (r == 3) {
-            apply_buff(player, "fear", 1);
-            return "MSG:黑暗中的低语让你毛骨悚然——你中了恐惧。";
-        } else if (r == 4) {
-            apply_buff(player, "freeze", 1);
-            return "MSG:冰霜陷阱瞬间将你的双脚冻住！";
-        } else {
-            // 小概率反给奖励
-            auto item = generate_random_item();
-            if (item) { player->inventory.add(item, player); return "MSG:陷阱被触发——但里面竟藏着一件东西！"; }
-            return "MSG:陷阱只发出了一声闷响——你很幸运。";
-        }
-    }
-    case EventType::MYSTERY: {
-        // 从所有事件类型中随机抽取一个执行
-        int r = rng() % 17 + 1; // skip NONE
-        EventType fake_type = (EventType)r;
-        // 避免无限递归: exclude MYSTERY itself
-        if (fake_type == EventType::MYSTERY) fake_type = EventType::STATUE;
-        ev.type = fake_type;
-        ev.triggered = false; // allow re-trigger
-        return execute_event(ev, player, floor); // recursive dispatch
-    }
-    case EventType::BLESSING: {
-        int r = rng() % 5;
-        if (r == 0) { apply_buff(player, "blessing", 2); return "MSG:祝福的光芒环绕着你。"; }
-        if (r == 1) { apply_buff(player, "growth", 2); return "MSG:你感到体能在永久增强——成长2层。"; }
-        if (r == 2) { apply_buff(player, "attack_up", 2); return "MSG:圣光注入了你的武器——攻击力大幅提升。"; }
-        if (r == 3) { apply_buff(player, "regen", 3); return "MSG:生命之水渗入你的血液——再生3层。"; }
-        heal_player(player, (int)(get_effective_max_hp(player) * 0.25f));
-        return "MSG:神圣的力量治愈了你25%的生命。";
-    }
-    case EventType::CURSE: {
-        int r = rng() % 4;
-        if (r == 0) { apply_buff(player, "curse", 2); return "MSG:你被诅咒了——诅咒2层。"; }
-        if (r == 1) { apply_buff(player, "slow", 2); return "MSG:诅咒压制着你的步伐——减速2层。"; }
-        if (r == 2) { apply_buff(player, "blind", 2); return "MSG:诅咒遮障了你的视觉——致盲2层。"; }
-        int loss = std::max(5, player->combat.current_hp / 4);
-        player->combat.take_damage(loss);
-        return "MSG:黑暗之触吸取了" + std::to_string(loss) + "点生命。";
-    }
-    case EventType::LORE: {
-        static const char* lore_msgs[] = {
-            "这些废墟曾经是地牢中最繁荣的区域——三千年前。",
-            "你读到: '吾王永恒，吾等永守。' 签名已经模糊。",
-            "一幅壁画描绘着一场巨大的战争——光与暗在空中碰撞。",
-            "日记最后一页写着: '今天是我第47天。我发现了新的东西。'",
-            "石碑记载着一位名为阿斯特拉的古代英雄——与你的旅程惊人地相似。",
-            "你找到了一封信，日期是1327年前——地址是你现在站的地方。",
-            "\"深渊不是地牢——它是监狱，\" 墙上潦草地写着。",
-            "一本古籍打开了，上面画着一棵树——深埋在地下但仍在生长。",
-        };
-        return "MSG:" + std::string(lore_msgs[rng() % 8]);
-    }
-    case EventType::NPC_EVENT: {
-        int r = rng() % 3;
-        if (r == 0) {
-            auto p = std::make_shared<ConsumableItem>("冒险家的礼物", Rarity::RARE, "heal", 35);
-            player->inventory.add(p, player);
-            return "MSG:陌生人微笑着递给你一份礼物。";
-        } else if (r == 1) {
-            apply_buff(player, "blessing", 1);
-            return "MSG:学者为你念了一段远古的祝福咒语。";
-        } else {
-            auto ids = get_all_relic_ids();
-            std::vector<std::string> avail;
-            for (auto& id : ids) if (!player_has_relic(player, id)) avail.push_back(id);
-            if (!avail.empty()) {
-                std::string ch = avail[rng() % avail.size()];
-                player->add_relic(ch, PersistenceScope::FLOOR);
-                return "RELIC:" + std::string(get_relic_def(ch)->name) + " (来自NPC)";
-            }
-            return "MSG:陌生人与你分享了故事——但没什么实质的东西。";
-        }
-    }
-    case EventType::RELIC_DROP: {
-        auto ids = get_all_relic_ids();
-        std::vector<std::string> avail;
-        for (auto& id : ids) if (!player_has_relic(player, id)) avail.push_back(id);
-        if (!avail.empty()) {
-            std::string ch = avail[rng() % avail.size()];
-            player->add_relic(ch, PersistenceScope::FLOOR);
-            return "RELIC:" + std::string(get_relic_def(ch)->name);
-        }
-        return "MSG:圣物祭坛已经空了——你已经集齐了所有圣物。";
-    }
-    case EventType::TREASURE_CACHE: {
-        int r = rng() % 4;
-        if (r == 0) {
-            auto eq = std::make_shared<EquipmentItem>("遗迹之宝", Rarity::RARE, "weapon", 10, 3, 2);
-            player->inventory.add(eq, player);
-            return "MSG:你找到了一件精心保护的武器。";
-        } else if (r == 1) {
-            auto pot = std::make_shared<ConsumableItem>("珍藏秘药", Rarity::EPIC, "heal", 60);
-            player->inventory.add(pot, player);
-            return "MSG:宝箱里藏着一瓶闪耀的药水。";
-        } else if (r == 2) {
-            apply_buff(player, "attack_up", 2);
-            apply_buff(player, "defense_up", 2);
-            return "MSG:宝箱中喷出魔法——你获得了攻击和防御双重增强。";
-        } else {
-            auto ids = get_all_relic_ids();
-            std::vector<std::string> avail;
-            for (auto& id : ids) if (!player_has_relic(player, id)) avail.push_back(id);
-            if (!avail.empty()) {
-                std::string ch = avail[rng() % avail.size()];
-                player->add_relic(ch, PersistenceScope::FLOOR);
-                return "RELIC:" + std::string(get_relic_def(ch)->name) + " (宝箱中)";
-            }
-            return "MSG:宝箱虽空，但金币仍能让你会心一笑。";
-        }
-    }
+    case EventType::TRAP:            return do_trap(player);
+    case EventType::MYSTERY:         return do_mystery(ev, player, floor);
+    case EventType::BLESSING:        return do_blessing(player);
+    case EventType::CURSE:           return do_curse(player);
+    case EventType::LORE:            return do_lore();
+    case EventType::NPC_EVENT:       return do_npc_event(player);
+    case EventType::RELIC_DROP:      return do_relic_drop(player);
+    case EventType::TREASURE_CACHE:  return do_treasure_cache(player);
     default: break;
     }
     return "";
