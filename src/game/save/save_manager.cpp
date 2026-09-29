@@ -470,6 +470,28 @@ static void _write_element_and_mirror(FILE* f, Player* p,
     fprintf(f, "\n");
 }
 
+// G20b: .tmp 写完之后收尾 —— 旧档备份成 .bak, 再把 .tmp 提升为正式槽。
+// 任一步失败都回滚, 保证正式槽永远不是半截内容。
+// 用 fopen 探测而非 slot_exists (本函数是文件内 free static, 不能碰成员函数)。
+static bool _install_slot_write(int slot_id, const std::string& cur) {
+    const std::string bak = cur + ".bak";
+    const std::string tmp = cur + ".tmp";
+    remove(bak.c_str());
+    FILE* probe = fopen(cur.c_str(), "rb");
+    const bool had_old = (probe != nullptr);
+    if (probe) fclose(probe);
+    if (had_old && rename(cur.c_str(), bak.c_str()) != 0) {
+        remove(tmp.c_str());
+        LOG_ERROR("存档备份失败 (slot %d), 放弃写入", slot_id);
+        return false;
+    }
+    if (rename(tmp.c_str(), cur.c_str()) == 0) return true;
+    remove(cur.c_str());
+    if (had_old) (void)rename(bak.c_str(), cur.c_str());
+    LOG_ERROR("存档写入失败 (slot %d), 已保留旧档", slot_id);
+    return false;
+}
+
 // ---- 序列化 ----
 // G13: 各段序列化拆到文件内 static 辅助, save_game 只做编排 (调用顺序即存档行序)
 bool SaveManager::save_game(int slot_id, Player* player, int floor, int max_f,
@@ -484,7 +506,10 @@ bool SaveManager::save_game(int slot_id, Player* player, int floor, int max_f,
     if (g_sim_readonly) return false;  // Q3.1: sim 模式不写玩家存档
     if (slot_id < 1 || slot_id > SAVE_SLOT_COUNT) return false;
     mkdir_impl(_save_dir().c_str());
-    FILE* f = fopen(_slot_path(slot_id).c_str(), "wb");
+    // G20b: 先写 .tmp 暂存, 成功后由 _install_slot_write 做「旧档->.bak + .tmp->正式槽」。
+    // 中途任一步失败都保留写前内容, 不再出现覆盖后无法回退的半截存档。
+    const std::string tmp_path = _slot_path(slot_id) + ".tmp";
+    FILE* f = fopen(tmp_path.c_str(), "wb");
     if (!f) { LOG_ERROR("存档无法写入 (slot %d)", slot_id); return false; }
     auto& inv = player->inventory;
 
@@ -498,7 +523,15 @@ bool SaveManager::save_game(int slot_id, Player* player, int floor, int max_f,
     _write_rules_and_quests(f, player, rule_counters, quest_states);
     _write_element_and_mirror(f, player, mirror_prior_alpha, mirror_prior_beta);
 
-    fclose(f);
+    bool write_ok = true;
+    if (ferror(f)) write_ok = false;
+    if (fclose(f) != 0) write_ok = false;
+    if (!write_ok) {
+        remove(tmp_path.c_str());
+        LOG_ERROR("存档写入中断 (slot %d), 已保留旧档", slot_id);
+        return false;
+    }
+    if (!_install_slot_write(slot_id, _slot_path(slot_id))) return false;
     LOG_INFO("存档: 第%d层 Lv%d HP:%d/%d %zu技能 %zu物品 %zuBuff seed:%u",
         floor, player->level, player->combat.current_hp, player->combat.max_hp,
         player->skills.active_skills.size(), inv.items.size(),
@@ -590,6 +623,7 @@ SaveData* SaveManager::load_save() { return load_game(active_slot()); }
 
 void SaveManager::delete_save(int slot_id) {
     remove(_slot_path(slot_id).c_str());
+    remove((_slot_path(slot_id) + ".bak").c_str());   // G20b: 连带清备份
     LOG_INFO("存档已删�?(slot %d)", slot_id);
 }
 

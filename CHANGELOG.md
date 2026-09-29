@@ -1,3 +1,48 @@
+# G20b — 写档前自动备份 + 伪原子写入（2026-09-29）
+
+> 用户当天丢过一次深档后主动要的保险：`save_game` 以前用 `"wb"` 直接打开
+> 正式槽，`fopen` 成功的那一刻旧档就已经没了。之后任何一步写中断（磁盘满 /
+> 断电 / 进程被杀）都留下半截正式槽，且**无任何可回退内容**。
+
+## 改动
+
+写入从「直接覆盖」改为「暂存 + 提升」两段：
+
+1. `save_game` 写 `_slot_path(slot_id) + ".tmp"`，不再碰正式槽
+2. `fclose` 与 `ferror` **都**检查（旧代码只调 `fclose` 不看返回值）；失败则
+   `remove(tmp)` 并返回 false，正式槽仍是写前内容
+3. 新增文件内 `static _install_slot_write(slot_id, path)`（16 行）收尾：
+   `remove(.bak)` → 有旧档则 `rename(旧档 → .bak)` → `rename(.tmp → 正式槽)`
+   - 备份这一步失败：删掉 `.tmp`，放弃写入，正式槽原样不动
+   - 提升这一步失败：`remove(正式槽)` 后把 `.bak` 改名回去回滚
+4. `delete_save` 连带删 `.bak`；测试侧 `SlotGuard::cleanup` 同步清理，
+   否则仓库 `saves/` 会攒垃圾
+
+约定沿用 `mirror_memory_store.cpp` 既有的 `.tmp` + `rename` 伪原子写法。
+`.bak` **单代滚动**（不无限堆积），且写前先无条件 `remove` —— 上次崩溃残留
+的垃圾备份不会被当成可回退档采纳。
+
+## 测试（+3 用例）
+
+- `SlotApi.OverwriteKeepsPreviousGenerationAsBackup` — 首次写槽不产生 `.bak`
+  且 `.tmp` 已清理；第二次写后断言 `.bak` 里是**第一代**内容
+  （直接读文件文本查 `floor:7` / `lv:7` / `seed:111`，并断言不含 `floor:2`）
+- `SlotApi.BackupRollsAndDropsStaleGarbage` — 第三次写后 `.bak` 滚动为第二代；
+  再手工塞一段 `"not a save at all"` 假装崩溃残留，断言下次写档把它丢弃
+- `SlotApi.DeleteClearsBackup` — 删档后 `.bak` 一并消失
+
+## 边界
+
+- `.bak` 命名与用户手工备份 `slot_3.json.bak.pre_restore` 不冲突；
+  `slot_exists` 按固定 `1..SAVE_SLOT_COUNT` 探 `_slot_path`，不会把 `.bak` 当槽
+- 回滚是 best-effort：断电发生在两次 `rename` 之间时，`.bak` 里仍有旧档
+- 只解决**写入中断**，不解决 G20 的槽串号（那是另一条独立缺陷）
+
+**门禁**: build 0 error 0 warning · ctest **77/77** · 3 个新用例单独跑
+`--gtest_filter` 全绿 · `_install_slot_write` 16 行 / `save_game` 34 行（均 ≤40）
+
+---
+
 # G20 — 修复「读档后保存写进别的槽」+ 挑战竞技场误触发换层存档（2026-09-29）
 
 > 实机报障：玩家打到第 7 层死亡，回菜单读了另一个槽的旧档，存档里的深档

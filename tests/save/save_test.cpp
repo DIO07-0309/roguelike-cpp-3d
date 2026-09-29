@@ -23,6 +23,12 @@ static bool file_exists(const std::string& path) {
     if (!f) return false; fclose(f); return true;
 }
 
+static std::string read_text(const std::string& path) {
+    std::ifstream ifs(path);
+    return std::string((std::istreambuf_iterator<char>(ifs)),
+                       std::istreambuf_iterator<char>());
+}
+
 static bool write_raw(const std::string& path, const std::string& content) {
     FILE* f = fopen(path.c_str(), "w");
     if (!f) return false;
@@ -37,8 +43,10 @@ public:
     SlotGuard() { cleanup(); }
     ~SlotGuard() { cleanup(); }
     static void cleanup() {
-        for (int i = 1; i <= SAVE_SLOT_COUNT; i++)
+        for (int i = 1; i <= SAVE_SLOT_COUNT; i++) {
             std::remove(slot_path(i).c_str());
+            std::remove((slot_path(i) + ".bak").c_str());   // G20b: 写档前备份
+        }
     }
     static std::string slot_path(int i) {
         return "saves/slot_" + std::to_string(i) + ".json";
@@ -212,6 +220,87 @@ TEST(SlotApi, LoadGameBindsActiveSlot) {
     EXPECT_EQ(s2.level, 3);
 
     SaveManager::set_active_slot(1);        // 复位
+}
+
+// ── G20b: 覆盖式保存前把旧档留作 .bak ──
+// 实机缺陷 (09-29): save_game 用 "wb" 直接打开正式槽, 之后任何一步写中断
+// (磁盘满/断电/进程被杀) 都留下半截正式槽且无旧档可退 —— 用户深档就是这么丢的。
+// 现在先写 .tmp 再提升, 被替换的旧档留作 .bak。
+TEST(SlotApi, OverwriteKeepsPreviousGenerationAsBackup) {
+    SlotGuard guard;
+    ASSERT_TRUE(load_skill_defs("resources/skills.json"));
+    const std::string bak = SlotGuard::slot_path(1) + ".bak";
+    const std::string tmp = SlotGuard::slot_path(1) + ".tmp";
+    EXPECT_FALSE(file_exists(bak));
+
+    Player gen1(64.0f, 64.0f, 220.0f, 100, 11, 5, 3);
+    make_player_with_state(gen1, 100, 7);
+    ASSERT_TRUE(SaveManager::save_game(1, &gen1, 7, 9, 111u));
+    EXPECT_FALSE(file_exists(bak)) << "首次写槽没有旧档, 不该产生 .bak";
+    EXPECT_FALSE(file_exists(tmp)) << "写完后 .tmp 必须已被提升, 不能残留";
+
+    Player gen2(64.0f, 64.0f, 220.0f, 100, 11, 5, 3);
+    make_player_with_state(gen2, 60, 3);
+    ASSERT_TRUE(SaveManager::save_game(1, &gen2, 2, 9, 222u));
+
+    auto s = SaveManager::get_slot_summary(1);
+    EXPECT_EQ(s.floor, 2);
+    EXPECT_EQ(s.level, 3);
+    ASSERT_TRUE(file_exists(bak)) << "被替换的第一代档应留作 .bak";
+    std::string b = read_text(bak);
+    EXPECT_NE(b.find("floor:7"), std::string::npos) << ".bak 应保存第一代内容";
+    EXPECT_NE(b.find("lv:7"), std::string::npos);
+    EXPECT_NE(b.find("seed:111"), std::string::npos);
+    EXPECT_EQ(b.find("floor:2"), std::string::npos) << ".bak 不能是新写的第二代";
+}
+
+// ── G20b: .bak 单代滚动, 且不采纳崩溃残留的垃圾备份 ──
+TEST(SlotApi, BackupRollsAndDropsStaleGarbage) {
+    SlotGuard guard;
+    ASSERT_TRUE(load_skill_defs("resources/skills.json"));
+    const std::string bak = SlotGuard::slot_path(1) + ".bak";
+    Player p1(64.0f, 64.0f, 220.0f, 100, 11, 5, 3);
+    make_player_with_state(p1, 100, 7);
+    Player p2(64.0f, 64.0f, 220.0f, 100, 11, 5, 3);
+    make_player_with_state(p2, 60, 3);
+    Player p3(64.0f, 64.0f, 220.0f, 100, 11, 5, 3);
+    make_player_with_state(p3, 40, 5);
+    ASSERT_TRUE(SaveManager::save_game(1, &p1, 7, 9, 111u));
+    ASSERT_TRUE(SaveManager::save_game(1, &p2, 2, 9, 222u));
+    ASSERT_TRUE(SaveManager::save_game(1, &p3, 5, 9, 333u));
+    EXPECT_EQ(SaveManager::get_slot_summary(1).floor, 5);
+
+    std::string b = read_text(bak);
+    EXPECT_NE(b.find("floor:2"), std::string::npos) << ".bak 应滚动为上一代";
+    EXPECT_EQ(b.find("floor:7"), std::string::npos);
+
+    ASSERT_TRUE(write_raw(bak, "not a save at all"));
+    ASSERT_TRUE(SaveManager::save_game(1, &p3, 6, 9, 444u));
+    EXPECT_EQ(SaveManager::get_slot_summary(1).floor, 6);
+    std::string b2 = read_text(bak);
+    EXPECT_EQ(b2.find("not a save at all"), std::string::npos)
+        << "崩溃残留的垃圾 .bak 必须被丢弃, 不能冒充可回退档";
+    EXPECT_NE(b2.find("floor:5"), std::string::npos);
+}
+
+// ── G20b: 删档必须连备份一起清 ──
+TEST(SlotApi, DeleteClearsBackup) {
+    SlotGuard guard;
+    ASSERT_TRUE(load_skill_defs("resources/skills.json"));
+    Player gen1(64.0f, 64.0f, 220.0f, 100, 11, 5, 3);
+    make_player_with_state(gen1, 100, 7);
+    Player gen2(64.0f, 64.0f, 220.0f, 100, 11, 5, 3);
+    make_player_with_state(gen2, 50, 3);
+    ASSERT_TRUE(SaveManager::save_game(1, &gen1, 7, 7, 111u));
+    ASSERT_TRUE(SaveManager::save_game(1, &gen2, 2, 7, 222u));
+    const std::string bak = SlotGuard::slot_path(1) + ".bak";
+    ASSERT_TRUE(file_exists(bak));
+
+    SaveManager::delete_save(1);
+    EXPECT_FALSE(SaveManager::slot_exists(1));
+    EXPECT_FALSE(file_exists(bak))
+        << "残留 .bak 会在下次写档时冒充可回退档, 必须随删档清理";
+    EXPECT_FALSE(SaveManager::get_slot_summary(1).exists);
 }
 
 // ── B4.6: Meta 持久 — unlock_ending 落盘, 删档不丢 ──
