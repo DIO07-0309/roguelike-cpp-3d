@@ -40,6 +40,57 @@
 
 ---
 
+# G20d — 槽位菜单可看见并还原上一代备份（2026-09-29）
+
+> G20b 给了 `.bak`，但那时只有代码能用：你看不到它、也回不去。
+> 这一版把备份接进槽位菜单 —— 有备份的卡多显示一行，按 `R` 还原。
+
+## 数据层（`save_manager`）
+
+- `SlotSummary` 新增 `has_backup` / `backup_floor` / `backup_level`，
+  菜单不用碰存档格式就能显示
+- 行级解析抽成 `_scan_summary(FILE*, SlotSummary*)`，正式槽与 `.bak`
+  **共用同一份字段口径**（此前若各自实现，两边解析必然漂移）
+- `backup_exists(slot_id)` — 越界槽位一律拒绝
+- `restore_backup(slot_id)` — 核心语义：**两代交换，不销毁任何一代**
+  - 当前档不存在（模拟崩溃丢档）→ 直接把备份提升为正式档
+  - 当前档存在 → `.bak → .aside → 当前档入 .bak → .aside 提升`
+    三步中转，可反复按 R 来回切换；任一步失败都回滚
+  - 选交换而非「当前档被丢弃」：误按一次 R 不丢数据，再按一次就回来了
+- `get_slot_summary` 顺带少开一次文件（原来 `slot_exists` + `fopen` 重复打开）
+
+## 界面层（`slot_select_scene`）
+
+- 有备份的卡片加第四行 `备份 F7·Lv23  [R 还原]`
+  （卡高 118，`r.y+94` 起 13px 字号仍在卡内）
+- 新增 `restore_backup` 输入动作 = `R`（全仓未占用；`InputMap` 只按名查找、
+  不枚举动作表，新增一项不影响别的场景）
+- 还原走**二次确认弹窗**，复用已有的 `_del_rect` / `_draw_del_button` 几何
+  与按钮绘制，只换配色（黄色警示 vs 删除的红色）；弹窗里直接对比
+  「备份 第 X 层 Lv Y / 当前 第 X 层 Lv Y」，让你看清楚换的是哪一代
+- 键盘（Enter/Esc）与鼠标点击收口到 `_apply_restore(i)` 一处
+- `R` 不要求卡片可点 —— 当前档损坏但文件还在、或空槽只剩备份时都能还原
+
+## 测试（+2 用例）
+
+- `SlotApi.SlotSummaryExposesBackup` — 越界槽位拒绝；首次写无备份；
+  第二次写后 `has_backup` 为真且 `backup_floor/level` 是上一代，
+  正式槽仍是最新一代
+- `SlotApi.RestoreBackupSwapsGenerations` — 无备份拒绝且**不凭空造槽**；
+  还原两次 = 两代来回切换；当前档被删但 `.bak` 在时直接提升且不再报有备份
+
+## 边界
+
+- 备份仍是**单代**（G20b 定的），所以「还原」只能回退一步
+- `restore_backup` 尊重 `g_sim_readonly`，`--sim` 模式不动玩家存档
+- `.aside` 是操作中转：正常路径结束时必被清理，异常残留也会在下一次
+  还原开头的 `remove(aside)` 自愈；无人读取，不会误当存档
+
+**门禁**: build 0 error 0 warning · ctest **77/77** · 5 个备份相关用例
+`--gtest_filter=SlotApi.*Backup*` 全绿 · 新增函数最大 34 行（`restore_backup`）
+
+---
+
 # G20b — 写档前自动备份 + 伪原子写入（2026-09-29）
 
 > 用户当天丢过一次深档后主动要的保险：`save_game` 以前用 `"wb"` 直接打开

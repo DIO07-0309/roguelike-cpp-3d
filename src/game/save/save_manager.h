@@ -16,6 +16,9 @@ struct SlotSummary {
     int level = 1;              // 玩家等级
     int element_type = 0;       // 0=NONE 1=FIRE 2=ICE 3=POISON (展示图标用)
     float play_time = 0.0f;     // 本档累计时长 (v:5+)
+    bool has_backup = false;    // G20b: 有上一代备份, 可还原
+    int backup_floor = 1;       // G20b: 备份的层数 (展示用)
+    int backup_level = 1;       // G20b: 备份的玩家等级 (展示用)
 };
 
 struct SaveData {
@@ -63,6 +66,8 @@ public:
     static SaveData* load_game(int slot_id);        // 堆分配, 调用方 delete
     static void delete_save(int slot_id = 1);
     static bool slot_exists(int slot_id);
+    static bool backup_exists(int slot_id);                    // G20b: 有上一代备份
+    static bool restore_backup(int slot_id);                   // G20b: 还原上一代备份
     static SlotSummary get_slot_summary(int slot_id);          // 轻量只读 (不建 Player)
     static std::vector<SlotSummary> get_all_slots();
     static int  active_slot();                       // 当前游戏会话绑定的档

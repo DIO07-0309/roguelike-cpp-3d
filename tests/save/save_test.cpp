@@ -46,6 +46,7 @@ public:
         for (int i = 1; i <= SAVE_SLOT_COUNT; i++) {
             std::remove(slot_path(i).c_str());
             std::remove((slot_path(i) + ".bak").c_str());   // G20b: 写档前备份
+            std::remove((slot_path(i) + ".aside").c_str()); // G20b: 还原中转
         }
     }
     static std::string slot_path(int i) {
@@ -301,6 +302,81 @@ TEST(SlotApi, DeleteClearsBackup) {
     EXPECT_FALSE(file_exists(bak))
         << "残留 .bak 会在下次写档时冒充可回退档, 必须随删档清理";
     EXPECT_FALSE(SaveManager::get_slot_summary(1).exists);
+}
+
+// ── G20b: 摘要层暴露上一代备份, 供菜单显示还原入口 ──
+TEST(SlotApi, SlotSummaryExposesBackup) {
+    SlotGuard guard;
+    ASSERT_TRUE(load_skill_defs("resources/skills.json"));
+
+    // 槽位越界一律拒绝, 不碰文件
+    EXPECT_FALSE(SaveManager::backup_exists(0));
+    EXPECT_FALSE(SaveManager::backup_exists(99));
+    EXPECT_FALSE(SaveManager::restore_backup(0));
+    EXPECT_FALSE(SaveManager::restore_backup(99));
+
+    Player gen1(64.0f, 64.0f, 220.0f, 100, 11, 5, 3);
+    make_player_with_state(gen1, 100, 7);
+    ASSERT_TRUE(SaveManager::save_game(1, &gen1, 7, 9, 111u));
+    SlotSummary s1 = SaveManager::get_slot_summary(1);
+    EXPECT_TRUE(s1.exists);
+    EXPECT_FALSE(s1.has_backup);              // 首次写槽没有旧档
+    EXPECT_FALSE(SaveManager::backup_exists(1));
+
+    Player gen2(64.0f, 64.0f, 220.0f, 100, 11, 5, 3);
+    make_player_with_state(gen2, 60, 3);
+    ASSERT_TRUE(SaveManager::save_game(1, &gen2, 2, 9, 222u));
+    EXPECT_TRUE(SaveManager::backup_exists(1));
+    SlotSummary s2 = SaveManager::get_slot_summary(1);
+    EXPECT_EQ(s2.floor, 2);                   // 正式槽仍是最新一代
+    EXPECT_EQ(s2.level, 3);
+    EXPECT_TRUE(s2.has_backup);
+    EXPECT_EQ(s2.backup_floor, 7);            // 备份是上一代
+    EXPECT_EQ(s2.backup_level, 7);
+}
+
+// ── G20b: 还原上一代备份 — 两代交换、可反复切换、空槽直接提升 ──
+TEST(SlotApi, RestoreBackupSwapsGenerations) {
+    SlotGuard guard;
+    ASSERT_TRUE(load_skill_defs("resources/skills.json"));
+    Player gen1(64.0f, 64.0f, 220.0f, 100, 11, 5, 3);
+    make_player_with_state(gen1, 100, 7);
+    Player gen2(64.0f, 64.0f, 220.0f, 100, 11, 5, 3);
+    make_player_with_state(gen2, 60, 3);
+    ASSERT_TRUE(SaveManager::save_game(1, &gen1, 7, 9, 111u));
+    ASSERT_TRUE(SaveManager::save_game(1, &gen2, 2, 9, 222u));
+    EXPECT_EQ(SaveManager::get_slot_summary(1).floor, 2);
+
+    // 没写过备份的槽: 还原必须拒绝, 且不凭空造出槽
+    EXPECT_FALSE(SaveManager::restore_backup(2));
+    EXPECT_FALSE(SaveManager::slot_exists(2));
+    EXPECT_FALSE(SaveManager::backup_exists(2));
+
+    // 第一次还原: 当前回到 7, 备份滚动成 2
+    ASSERT_TRUE(SaveManager::restore_backup(1));
+    SlotSummary s = SaveManager::get_slot_summary(1);
+    EXPECT_EQ(s.floor, 7);
+    EXPECT_EQ(s.level, 7);
+    EXPECT_TRUE(s.has_backup);
+    EXPECT_EQ(s.backup_floor, 2);
+    EXPECT_EQ(s.backup_level, 3);
+
+    // 第二次还原: 再换回来 — 反复可用, 任何一代都没丢
+    ASSERT_TRUE(SaveManager::restore_backup(1));
+    s = SaveManager::get_slot_summary(1);
+    EXPECT_EQ(s.floor, 2);
+    EXPECT_EQ(s.level, 3);
+    EXPECT_TRUE(s.has_backup);
+    EXPECT_EQ(s.backup_floor, 7);
+
+    // 当前档丢失但备份还在 (模拟崩溃): 备份直接提升为正式档
+    std::remove(SlotGuard::slot_path(1).c_str());
+    ASSERT_FALSE(SaveManager::slot_exists(1));
+    ASSERT_TRUE(SaveManager::restore_backup(1));
+    s = SaveManager::get_slot_summary(1);
+    EXPECT_TRUE(s.exists);
+    EXPECT_EQ(s.floor, 7);
+    EXPECT_FALSE(s.has_backup);               // 备份已提升, 不再有备份
 }
 
 // ── B4.6: Meta 持久 — unlock_ending 落盘, 删档不丢 ──

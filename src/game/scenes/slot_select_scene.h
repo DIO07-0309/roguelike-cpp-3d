@@ -36,6 +36,7 @@ private:
     void _confirm_delete(int i);
     void _enter_game(int i);
     void _draw_delete_confirm();
+    void _draw_restore_confirm();                            // G20b: 还原确认弹窗
 
     // G13: 拆 _render / _input / _enter_game / _draw_delete_confirm, 满足函数 ≤40 行红线
     void _render_header(int sw, bool any_exists);        // 标题带 + 操作提示
@@ -43,6 +44,10 @@ private:
     void _draw_slot_card(int i);                          // 单卡 (底/框/三行字/删除角标)
     void _draw_slot_summary(const SlotSummary& s, const Rectangle& r);  // 卡内摘要
     void _input_delete_confirm(const class InputMap& input);   // 二次确认框独占输入
+    void _input_restore_confirm(const class InputMap& input);  // G20b: 还原确认框独占输入
+    void _try_restore_backup();                                // G20b: R 键起手
+    void _cancel_restore_confirm();                            // G20b: 关闭还原确认框
+    void _apply_restore(int i);                                // G20b: 执行还原 (键盘/鼠标共用)
     void _handle_mouse_select();                          // 鼠标悬停选中 + 左键确认
     void _new_game_in_slot(int i);                       // NEW_GAME 分派
     void _continue_game_in_slot(int i);                  // CONTINUE 分派
@@ -56,4 +61,8 @@ private:
     // 满档删除流 (NEW_GAME 且三档全满)
     bool _delete_confirm_open = false;
     int _delete_target = -1;
+
+    // G20b: 还原上一代备份 (还原会丢掉当前档那一代, 必须二次确认)
+    bool _restore_confirm_open = false;
+    int _restore_target = -1;
 };

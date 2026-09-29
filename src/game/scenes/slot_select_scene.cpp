@@ -84,6 +84,37 @@ void SlotSelectScene::_input_delete_confirm(const InputMap& input) {
     }
 }
 
+// G20b: R 键起手 — 当前卡有上一代备份才弹框 (空槽/无备份静默忽略)
+void SlotSelectScene::_try_restore_backup() {
+    if (_cursor < 0 || _cursor >= (int)_slots.size()) return;
+    if (!_slots[_cursor].has_backup) return;
+    get_tree()->get_audio()->play_sfx("ui_confirm", 0.5f);
+    _restore_confirm_open = true;
+    _restore_target = _cursor;
+}
+
+void SlotSelectScene::_cancel_restore_confirm() {
+    _restore_confirm_open = false;
+    _restore_target = -1;
+}
+
+// G20b: 还原落地 — 键盘确认与鼠标点击共用这一处
+void SlotSelectScene::_apply_restore(int i) {
+    _restore_confirm_open = false;
+    _restore_target = -1;
+    if (i < 0 || i >= (int)_slots.size()) return;
+    const int slot_id = _slots[i].slot_id;
+    if (!SaveManager::restore_backup(slot_id)) return;
+    _refresh_slots();
+    LOG_INFO("[SLOT] 还原备份 slot %d", slot_id);
+}
+
+// G20b: 还原确认框独占输入 (Enter=确认还原 / Esc=取消)
+void SlotSelectScene::_input_restore_confirm(const InputMap& input) {
+    if (input.is_action_just_pressed("cancel")) { _cancel_restore_confirm(); return; }
+    if (input.is_action_just_pressed("confirm")) _apply_restore(_restore_target);
+}
+
 void SlotSelectScene::_handle_mouse_select() {
     Vector2 mouse = get_tree()->get_mouse_logical();
     for (int i = 0; i < (int)_slots.size(); i++) {
@@ -102,6 +133,8 @@ void SlotSelectScene::_input(const InputMap& input) {
 
     // 删除二次确认框: 模态独占 (Enter=确认删除 / Esc=取消)
     if (_delete_confirm_open) { _input_delete_confirm(input); return; }
+    // G20b: 还原二次确认框: 模态独占 (Enter=确认还原 / Esc=取消)
+    if (_restore_confirm_open) { _input_restore_confirm(input); return; }
 
     if (input.is_action_just_pressed("cancel")) {
         tree->change_scene(std::make_shared<TitleScene>());
@@ -117,6 +150,10 @@ void SlotSelectScene::_input(const InputMap& input) {
     }
     if (input.is_action_just_pressed("confirm")) {
         _activate_slot(_cursor);
+        return;
+    }
+    if (input.is_action_just_pressed("restore_backup")) {
+        _try_restore_backup();
         return;
     }
     // 鼠标: 悬停选中 + 左键确认 (空槽 NEW_GAME 也可点)
@@ -267,6 +304,14 @@ void SlotSelectScene::_draw_slot_summary(const SlotSummary& s, const Rectangle& 
                  total / 3600, (total % 3600) / 60, total % 60);
         DrawTextEx(g_font_small, line3, {r.x + 22, r.y + 74}, 15, 1,
                    Color{140, 140, 160, 255});
+        // G20b: 有上一代备份时多一行提示 (卡高 118, y+94 起 13px 字号仍在卡内)
+        if (s.has_backup) {
+            char line4[48];
+            snprintf(line4, sizeof(line4), "备份 F%d·Lv%d  [R 还原]",
+                     s.backup_floor, s.backup_level);
+            DrawTextEx(g_font_small, line4, {r.x + 22, r.y + 94}, 13, 1,
+                       Color{150, 170, 130, 255});
+        }
         return;
     }
     if (mode == Mode::NEW_GAME) {
@@ -289,6 +334,7 @@ void SlotSelectScene::_render() {
     _render_cards();
 
     if (_delete_confirm_open) _draw_delete_confirm();
+    else if (_restore_confirm_open) _draw_restore_confirm();
 }
 
 // G13: 删除框内两处复用的几何常量
@@ -354,4 +400,39 @@ void SlotSelectScene::_confirm_delete_by_slot(int slot_id) {
     if (slot_id < 0) return;
     SaveManager::delete_save(slot_id);
     LOG_INFO("[SLOT] 删除 slot %d (Meta 保留)", slot_id);
+}
+
+// G20b: 还原二次确认 (模态, 黄色警示) — 还原会丢掉当前档那一代
+void SlotSelectScene::_draw_restore_confirm() {
+    if (_restore_target < 0 || _restore_target >= (int)_slots.size()) return;
+    const int sw = get_tree()->get_width(), sh = get_tree()->get_height();
+    const SlotSummary& s = _slots[_restore_target];
+
+    DrawRectangle(0, 0, sw, sh, Color{0, 0, 0, 160});
+    const float bw = 420, bh = 190;
+    const Rectangle box = {(sw - bw) / 2.0f, (sh - bh) / 2.0f, bw, bh};
+    DrawRectangleRounded(box, 0.08f, 10, {30, 26, 16, 255});
+    DrawRectangleRoundedLines(box, 0.08f, 10, 2, {230, 180, 70, 255});
+    if (!g_font_loaded) return;
+
+    centered_text::draw_big("还原上一代备份？", box.x + bw / 2, box.y + 26, 26,
+                            {255, 210, 120, 255});
+    char line[80];
+    snprintf(line, sizeof(line), "备份 第%d层 Lv%d   当前 第%d层 Lv%d",
+             s.backup_floor, s.backup_level, s.floor, s.level);
+    centered_text::draw_small(line, box.x + bw / 2, box.y + 72, 17,
+                              {210, 200, 170, 255});
+    centered_text::draw_small("(当前档这一代会被备份取代)", box.x + bw / 2, box.y + 98,
+                              14, {200, 160, 120, 255});
+
+    const Vector2 mouse = get_tree()->get_mouse_logical();
+    const bool hov_c = CheckCollisionPointRec(mouse, _del_rect(box, DEL_BTN_X_L));
+    const bool hov_r = CheckCollisionPointRec(mouse, _del_rect(box, DEL_BTN_X_R));
+    _draw_del_button(box, DEL_BTN_X_L, "取消", hov_c,
+                     {70, 70, 90, 255}, {50, 50, 65, 255}, {130, 130, 150, 255});
+    _draw_del_button(box, DEL_BTN_X_R, "还原", hov_r,
+                     {140, 100, 30, 255}, {90, 65, 20, 255}, {230, 180, 70, 255});
+    if (!IsMouseButtonPressed(MOUSE_BUTTON_LEFT) || (!hov_c && !hov_r)) return;
+    if (hov_c) { _cancel_restore_confirm(); return; }
+    _apply_restore(_restore_target);
 }

@@ -628,22 +628,83 @@ void SaveManager::delete_save(int slot_id) {
 }
 
 // G10.9-B2: 轻量槽位摘要 �?�?fopen 扫几�? 不构�?Player/不依�?Registry
+// G20b: 上一代备份存在性 — 菜单据此决定是否给还原入口
+bool SaveManager::backup_exists(int slot_id) {
+    if (slot_id < 1 || slot_id > SAVE_SLOT_COUNT) return false;
+    FILE* f = fopen((_slot_path(slot_id) + ".bak").c_str(), "rb");
+    if (!f) return false;
+    fclose(f);
+    return true;
+}
+
+// G20b: 还原上一代备份。当前档不存在则直接提升备份; 存在则两代交换
+// (用 .aside 中转, 不销毁任何一代, 可反复来回切换)。任一 rename 失败都回滚。
+bool SaveManager::restore_backup(int slot_id) {
+    if (slot_id < 1 || slot_id > SAVE_SLOT_COUNT) return false;
+    if (g_sim_readonly) return false;
+    const std::string cur = _slot_path(slot_id);
+    const std::string bak = cur + ".bak";
+    if (!backup_exists(slot_id)) {
+        LOG_ERROR("还原失败: 无备份 (slot %d)", slot_id);
+        return false;
+    }
+    if (!slot_exists(slot_id)) {
+        if (rename(bak.c_str(), cur.c_str()) != 0) {
+            LOG_ERROR("还原失败 (slot %d)", slot_id);
+            return false;
+        }
+        LOG_INFO("还原备份: slot %d 无当前档, 备份直接提升", slot_id);
+        return true;
+    }
+    const std::string aside = cur + ".aside";
+    remove(aside.c_str());
+    if (rename(bak.c_str(), aside.c_str()) != 0) {
+        LOG_ERROR("还原失败: 备份无法挪走 (slot %d)", slot_id);
+        return false;
+    }
+    if (rename(cur.c_str(), bak.c_str()) != 0) {
+        remove(bak.c_str());
+        (void)rename(aside.c_str(), bak.c_str());
+        LOG_ERROR("还原失败: 当前档无法改名 (slot %d), 已回滚", slot_id);
+        return false;
+    }
+    if (rename(aside.c_str(), cur.c_str()) != 0) {
+        LOG_ERROR("还原失败: 备份无法提升 (slot %d), 手工检查 .aside", slot_id);
+        return false;
+    }
+    LOG_INFO("还原备份: slot %d 已回到上一代", slot_id);
+    return true;
+}
+
+// G20b: 行级摘要解析 — 正式槽与 .bak 共用, 保证两边字段口径一致
+static bool _scan_summary(FILE* f, SlotSummary* s) {
+    if (!f) return false;
+    char buf[256];
+    while (fgets(buf, sizeof(buf), f)) {
+        if (strncmp(buf, "floor:", 6) == 0)      s->floor = atoi(buf + 6);
+        else if (strncmp(buf, "maxf:", 5) == 0)  s->max_floor = atoi(buf + 5);
+        else if (strncmp(buf, "lv:", 3) == 0)   s->level = atoi(buf + 3);
+        else if (strncmp(buf, "time:", 5) == 0) s->play_time = (float)atof(buf + 5);
+        else if (strncmp(buf, "elem:", 5) == 0) s->element_type = atoi(buf + 5);
+    }
+    s->exists = true;
+    return true;
+}
+
 SlotSummary SaveManager::get_slot_summary(int slot_id) {
     SlotSummary s;
     s.slot_id = slot_id;
-    if (!slot_exists(slot_id)) return s;
     FILE* f = fopen(_slot_path(slot_id).c_str(), "rb");
-    if (!f) return s;
-    s.exists = true;
-    char buf[256];
-    while (fgets(buf, sizeof(buf), f)) {
-        if (strncmp(buf, "floor:", 6) == 0)      s.floor = atoi(buf + 6);
-        else if (strncmp(buf, "maxf:", 5) == 0)  s.max_floor = atoi(buf + 5);
-        else if (strncmp(buf, "lv:", 3) == 0)   s.level = atoi(buf + 3);
-        else if (strncmp(buf, "time:", 5) == 0) s.play_time = (float)atof(buf + 5);
-        else if (strncmp(buf, "elem:", 5) == 0) s.element_type = atoi(buf + 5);
-    }
+    if (!_scan_summary(f, &s)) return s;
     fclose(f);
+    SlotSummary b;
+    FILE* bf = fopen((_slot_path(slot_id) + ".bak").c_str(), "rb");
+    if (_scan_summary(bf, &b)) {
+        fclose(bf);
+        s.has_backup = true;
+        s.backup_floor = b.floor;
+        s.backup_level = b.level;
+    }
     return s;
 }
 
