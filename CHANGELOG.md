@@ -1,3 +1,45 @@
+# G20c — 修「选关读档丢掉地牢种子」布局漂移（2026-09-29）
+
+> 与 G20 同一类「存档被悄悄改坏」缺陷：不是数据被覆盖，而是**布局悄悄换了**。
+
+## 根因
+
+`GameScene::load_saved_game` 有 4 个调用点，都传同一串 6 个参数。其中 3 个
+（`main.cpp:382` `--autocontinue`、`slot_select_scene.cpp:167/174` CONTINUE）
+都透传了 `data->dungeon_seed / special_triggered / special_discovered`，
+**唯独 `floor_select_scene.cpp:181` 传的是默认值 `0, {}, {}`**：
+
+- `enter_floor` 把 `seed==0` 判定为「新楼层」（`game_scene.cpp:406-410`）→
+  走 `rng()` 重滚，玩家进的是**与存档不符的陌生地图**
+- 特殊房间 `triggered` / `discovered` 全归零 → 已触发的事件房可再次触发
+- 之后任意一次自动存档（`game_scene.cpp:2253`）用**新 seed** 写回旧档 →
+  存档记录的地牢从此与玩家实际玩过的地图不一致，且不可追回
+
+## 修法
+
+调用点改成透传三字段，一行改动，与其余三个入口对齐。
+
+顺带说明 seed 的语义：`_dungeon_seed` 是**每层一个**（`_check_floor_transition`
+调 `enter_floor(next)` 不带 seed），所以存档里的 seed 恰好对应存档那层的布局。
+选一个**不同于存档层**的楼层时复用该 seed，是 `main.cpp --goto-floor`
+已确立的既有约定，保持一致而不引入第三种行为。
+
+## 测试（+1 用例）
+
+`FloorLifecycle.LoadSavedGameMustForwardDungeonSeed`（`floor_lifecycle_test.cpp`）
+直接锁住契约，两条断言都是**逐 tile 全图快照比对**（新增 `map_layout` helper）：
+
+- 透传存档 seed → 第二次生成的地图与第一次**逐 tile 相同**
+- 传 0 → `_dungeon_seed` 不等于存档 seed **且**布局不同
+
+用例本身也验证了 `_seed != 0` 时 `DungeonGenerator::_rand_int` 走本地 rng
+（`dungeon_generator.cpp:135-138`），不依赖全局流 → 快照比对是确定性的。
+
+**门禁**: build 0 error 0 warning · ctest **77/77** · 新用例单独跑绿
+· `2 files changed`
+
+---
+
 # G20b — 写档前自动备份 + 伪原子写入（2026-09-29）
 
 > 用户当天丢过一次深档后主动要的保险：`save_game` 以前用 `"wb"` 直接打开

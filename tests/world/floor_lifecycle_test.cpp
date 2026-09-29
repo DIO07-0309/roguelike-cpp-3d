@@ -28,11 +28,24 @@ static void load_registry_defs() {
     load_enemy_defs("resources/enemies.json");
 }
 
+static std::unique_ptr<Player> make_unique_player() {
+    return std::make_unique<Player>(0, 0, 200, 200, 10, 5, 3);
+}
+
 static std::unique_ptr<GameScene> make_scene() {
     load_registry_defs();
     auto s = std::make_unique<GameScene>();
-    s->player = std::make_unique<Player>(0, 0, 200, 200, 10, 5, 3);
+    s->player = make_unique_player();
     return s;
+}
+
+// LIFE-007: 逐 tile 快照 —— 断言两次生成的地图是否同一张
+static std::string map_layout(const std::shared_ptr<GameMap>& m) {
+    std::string out;
+    for (int y = 0; y < m->height; y++)
+        for (int x = 0; x < m->width; x++)
+            out.push_back(static_cast<char>(m->tile_at(x, y)));
+    return out;
 }
 
 // ── LIFE-001: Challenge 相位禁止跨层残留 ─────────────────────
@@ -232,5 +245,38 @@ TEST(FloorLifecycle, ActivateStairsBlockedInsideChallengeArena) {
 TEST(FloorLifecycle, EmptyMonsterListCountsAsCleared) {
     std::vector<std::unique_ptr<Monster>> none;
     EXPECT_TRUE(FloorManager::is_floor_cleared(none));
+}
+
+// ── LIFE-007: 读档入口必须透传 dungeon_seed ──────────────────
+// floor_select_scene 曾把 seed 写成默认值 0 → enter_floor 判定「seed=0 = 新楼层」
+// 走 rng() 重滚地牢, 玩家进的是与存档不符的陌生地图; 随后任意一次自动存档又用
+// 新 seed 覆盖旧档, 存档布局从此漂移 (与 G20 深档被覆盖是同一类静默损坏)。
+// 这里锁住契约: 透传存档 seed 必复现同一张地图; 传 0 必得到不同地图。
+TEST(FloorLifecycle, LoadSavedGameMustForwardDungeonSeed) {
+    const int floor = 4;
+    const uint32_t seed = 20260929u;
+
+    auto a = make_scene();
+    a->enter_floor(floor, seed);
+    ASSERT_NE(a->game_map, nullptr);
+    EXPECT_EQ(a->_dungeon_seed, seed);
+    const std::string layout = map_layout(a->game_map);
+    EXPECT_FALSE(layout.empty());
+
+    // 正确路径: 透传存档 seed → 逐 tile 同一张地图
+    auto b = make_scene();
+    b->load_saved_game(floor, floor, make_unique_player(), seed, {}, {});
+    ASSERT_NE(b->game_map, nullptr);
+    EXPECT_EQ(b->_dungeon_seed, seed);
+    EXPECT_EQ(map_layout(b->game_map), layout)
+        << "透传存档 seed 必须复现存档当时的布局";
+
+    // 旧写法 (传 0) → 布局漂移, 且新 seed 会在下次自动存档覆盖旧档
+    auto c = make_scene();
+    c->load_saved_game(floor, floor, make_unique_player(), 0, {}, {});
+    ASSERT_NE(c->game_map, nullptr);
+    EXPECT_NE(c->_dungeon_seed, seed);
+    EXPECT_NE(map_layout(c->game_map), layout)
+        << "seed=0 会重滚地牢 —— 读档入口不得漏传存档 seed";
 }
 
