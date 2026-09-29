@@ -85,16 +85,21 @@ rarity_mult 用于护甲/药水/护符，**武器不使用**（武器 base_damag
 ## 5. 伤害公式
 
 ```
-base_damage  = max(1, attacker_attack − defender_defense × 0.5)
+base_damage  = max(1, attacker_attack − defender_defense × def_factor)
 variance     = 0.8 + random(0..400) / 1000  →  [0.8, 1.2]
 final_damage = max(1, base_damage × variance × stage_multiplier)
 ```
 
-| 攻击类型 | 防御取值 |
-|----------|----------|
-| PHYSICAL | physical_defense |
-| MAGICAL | magical_defense |
-| TRUE | 0（无视防御） |
+| 攻击类型 | 防御取值 | def_factor |
+|----------|----------|------------|
+| PHYSICAL | physical_defense | ×0.5 |
+| MAGICAL | magical_defense | ×0.6（折损更重；但魔抗数值普遍低于物防，净效果仍偏利于魔法） |
+| TRUE | 0（无视防御） | ×0.0 |
+
+> 数据来源: enemies.json 30 怪中 11 个 `pdef > mdef`、6/6 boss 全部 `pdef > mdef`
+> （如 demon_lord pdef 15 / mdef 11）。因此魔法虽按 0.6 折损，打在更低数值上，
+> 实际减伤仍通常小于物理。G10.2 引入 type-aware resistance 时本节文档未同步，
+> 且代码内注释曾误写为 "magic pierces slightly more"（0.6 是折损**更重**，方向反了）。
 
 ### 暴击
 

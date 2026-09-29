@@ -30,7 +30,7 @@ void seed_visual_rng(uint32_t seed) { visual_rng.seed(seed); }
 int calculate_damage(int atk, int def, AttackType type) {
     // G10.2: type-aware resistance
     float def_factor = 0.5f;
-    if (type == AttackType::MAGICAL) def_factor = 0.6f;  // magic pierces slightly more
+    if (type == AttackType::MAGICAL) def_factor = 0.6f;  // 魔抗折损更重; 但魔抗数值普遍低于物防 (30 怪 11 个 pdef>mdef, 6/6 boss 如此), 净效果仍偏利于魔法
     if (type == AttackType::TRUE)   def_factor = 0.0f;  // true damage ignores defense
     float base = std::max(1.0f, atk - def * def_factor);
     float variance = 0.8f + (float)(rng() % 401) / 1000.0f;
