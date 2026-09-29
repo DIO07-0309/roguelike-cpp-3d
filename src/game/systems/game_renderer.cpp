@@ -1337,14 +1337,7 @@ void GameRenderer::_draw_mirror_learning(const CharacterPanelData& d,
     }
 }
 
-void GameRenderer::draw_hud(const Player* player, int current_floor, float game_time,
-                             Monster* boss, bool show_relic_panel,
-                             int inventory_open, int inventory_cursor,
-                             const std::string& room_msg, float room_msg_timer,
-                             int screen_w, int screen_h,
-                             const CharacterPanelData* echo_panel,
-                             int challenge_wave, int challenge_total) {
-    if (!player) return;
+static void _draw_hp_bar(const Player* player) {
     auto& c = player->combat;
 
     // HP bar (G10.3-B3: 像素风双层边框 + 高光顶线) - 元气骑士风格圆角
@@ -1352,7 +1345,7 @@ void GameRenderer::draw_hud(const Player* player, int current_floor, float game_
     float hp_r = eff_max_hp > 0 ? (float)c.current_hp / eff_max_hp : 0.0f;
     if (hp_r > 1.0f) hp_r = 1.0f;
     if (hp_r < 0.0f) hp_r = 0.0f;
-    
+
     // 动态颜色：>50% 绿 / >25% 黄 / <25% 红
     Color hp_c;
     if (hp_r > 0.5f) {
@@ -1379,7 +1372,9 @@ void GameRenderer::draw_hud(const Player* player, int current_floor, float game_
             c.get_effective_defense(AttackType::MAGICAL));
         DrawTextEx(g_font_small, buf, {215, 10}, 16, 1, {220, 220, 220, 255});
     }
+}
 
+static void _draw_xp_bar(const Player* player) {
     // XP bar - 元气骑士风格圆角
     float xp_r = (float)player->xp / player->xp_to_next;
     Rectangle xp_rect = {10, 30, 200, 10};
@@ -1395,49 +1390,152 @@ void GameRenderer::draw_hud(const Player* player, int current_floor, float game_
         snprintf(buf, sizeof(buf), "Lv%d XP:%d/%d", player->level, player->xp, player->xp_to_next);
         DrawTextEx(g_font_small, buf, {12, 42}, 13, 1, {180, 200, 255, 255});
     }
+}
 
+static void _draw_floor_slot(int current_floor) {
     // Floor + G10.9-C5: 当前槽位轻量提示 (避免"我在玩哪个档?")
-    if (g_font_loaded) {
-        char buf[32];
-        snprintf(buf, sizeof(buf), "第%d/%d层", current_floor, MAX_FLOORS);
-        DrawTextEx(g_font_small, buf, {220, 42}, 16, 1, {200, 200, 50, 255});
-        char slot_buf[16];
-        snprintf(slot_buf, sizeof(slot_buf), "存档%d", SaveManager::active_slot());
-        DrawTextEx(g_font_small, slot_buf, {315, 44}, 13, 1, {150, 160, 180, 200});
-    }
+    if (!g_font_loaded) return;
+    char buf[32];
+    snprintf(buf, sizeof(buf), "第%d/%d层", current_floor, MAX_FLOORS);
+    DrawTextEx(g_font_small, buf, {220, 42}, 16, 1, {200, 200, 50, 255});
+    char slot_buf[16];
+    snprintf(slot_buf, sizeof(slot_buf), "存档%d", SaveManager::active_slot());
+    DrawTextEx(g_font_small, slot_buf, {315, 44}, 13, 1, {150, 160, 180, 200});
+}
 
+static void _draw_boss_bar(const Monster* boss, bool echo_panel, int screen_w) {
     // Boss HP bar — F15.5.1: hide for echo boss (HP shown in mirror panel)
-    if (boss && !echo_panel) {
-        float bw = 500, bh = 24;
-        float bx = screen_w / 2 - bw / 2, by = 4;
-        Color bar_bg = {30, 5, 5, 255};
-        Color bar_fg = {220, 100, 30, 255};
-        auto* bai = dynamic_cast<const BossAI*>(boss->ai);
-        if (bai && bai->phase2) {
-            bar_fg = {255, 40, 20, 255};
-            bar_bg = {50, 5, 5, 255};
-        }
-        float glow = 1.0f + sinf((float)GetTime() * 3) * 0.03f;
-        DrawRectangleLinesEx({bx - 2, by - 2, bw + 4, bh + 4}, 1.5f,
-                             Color{220, 100, 30, (unsigned char)(60 * glow)});
-        draw_progress_bar({bx, by, bw, bh},
-            (float)boss->combat.current_hp / boss->combat.max_hp,
-            bar_fg, bar_bg);
-        if (g_font_loaded) {
-            char buf[80];
-            const char* phase_tag = (bai && bai->phase2) ? "[狂暴] " : "";
-            const char* defend_tag = (bai && bai->boss_state == BossState::DEFEND)
-                ? "[护盾] " : "";
-            const char* summon_tag = (bai && bai->boss_state == BossState::SUMMON)
-                ? "[召唤] " : "";
-            snprintf(buf, sizeof(buf), "%s%s%s%s HP:%d/%d",
-                phase_tag, defend_tag, summon_tag,
-                boss->name.c_str(), boss->combat.current_hp, boss->combat.max_hp);
-            float tw = MeasureTextEx(g_font_small, buf, 18, 1).x;
-            DrawTextEx(g_font_small, buf, {bx + (bw - tw) / 2, by + bh + 3}, 18, 1,
-                       {255, 220, 100, 255});
+    if (!boss || echo_panel) return;
+    float bw = 500, bh = 24;
+    float bx = screen_w / 2 - bw / 2, by = 4;
+    Color bar_bg = {30, 5, 5, 255};
+    Color bar_fg = {220, 100, 30, 255};
+    auto* bai = dynamic_cast<const BossAI*>(boss->ai);
+    if (bai && bai->phase2) {
+        bar_fg = {255, 40, 20, 255};
+        bar_bg = {50, 5, 5, 255};
+    }
+    float glow = 1.0f + sinf((float)GetTime() * 3) * 0.03f;
+    DrawRectangleLinesEx({bx - 2, by - 2, bw + 4, bh + 4}, 1.5f,
+                         Color{220, 100, 30, (unsigned char)(60 * glow)});
+    GameRenderer::draw_progress_bar({bx, by, bw, bh},
+        (float)boss->combat.current_hp / boss->combat.max_hp,
+        bar_fg, bar_bg);
+    if (g_font_loaded) {
+        char buf[80];
+        const char* phase_tag = (bai && bai->phase2) ? "[狂暴] " : "";
+        const char* defend_tag = (bai && bai->boss_state == BossState::DEFEND)
+            ? "[护盾] " : "";
+        const char* summon_tag = (bai && bai->boss_state == BossState::SUMMON)
+            ? "[召唤] " : "";
+        snprintf(buf, sizeof(buf), "%s%s%s%s HP:%d/%d",
+            phase_tag, defend_tag, summon_tag,
+            boss->name.c_str(), boss->combat.current_hp, boss->combat.max_hp);
+        float tw = MeasureTextEx(g_font_small, buf, 18, 1).x;
+        DrawTextEx(g_font_small, buf, {bx + (bw - tw) / 2, by + bh + 3}, 18, 1,
+                   {255, 220, 100, 255});
+    }
+}
+
+static void _draw_build_info(const Player* player) {
+    // D3 Step4: Build 流派显示 (relic 下方)
+    BuildScore bs = calculate_build(player);
+    BuildType bt = bs.identify();
+    float y = 56.0f + player->skills.active_skills.size() * 28.0f + 4.0f;
+    if (!player->active_buffs.empty())
+        y += player->active_buffs.size() * 18.0f + 4.0f;
+    if (!player->relics.empty())
+        y += 22.0f;
+    if (bt != BuildType::NONE && g_font_loaded) {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "流派: %s", bs.build_name());
+        DrawTextEx(g_font_small, buf, {12, y}, 12, 1, {255, 220, 100, 230});
+        y += 16;
+    }
+    int atk_lv = AttackEvolutionManager::current_level(player);
+    if (atk_lv >= 2 && g_font_loaded) {
+        char buf[32];
+        snprintf(buf, sizeof(buf), "普攻: %s", AttackEvolutionManager::current_name(player));
+        DrawTextEx(g_font_small, buf, {12, y}, 12, 1, {255, 200, 60, 230});
+        y += 16;
+    }
+    for (int si = 0; si < (int)player->skills.active_skills.size(); si++) {
+        std::string ev = SkillEvolutionManager::evo_name(player, si);
+        if (!ev.empty() && g_font_loaded) {
+            char buf[64];
+            snprintf(buf, sizeof(buf), "%s: %s",
+                     player->skills.active_skills[si]->name.c_str(), ev.c_str());
+            DrawTextEx(g_font_small, buf, {12, y}, 11, 1, {180, 220, 255, 220});
+            y += 14;
         }
     }
+}
+
+static void _draw_challenge_wave(int challenge_wave, int challenge_total, int screen_h) {
+    // Batch 3F: Challenge wave HUD (above gold/key)
+    if (challenge_wave < 0 || challenge_total <= 0) return;
+    char cw[32];
+    snprintf(cw, sizeof(cw), "Wave: %d/%d", challenge_wave, challenge_total);
+    DrawTextEx(g_font_small, cw, {14.0f, (float)screen_h - 48.0f},
+               12, 1, Color{255, 100, 100, 230});
+}
+
+static void _draw_currency_bar(const Player* player, bool show_relic_panel, int screen_h) {
+    // Batch 3A: Gold / Key HUD (bottom-left) — G10.3-B3: 像素图标替代纯文本
+    float icon_s = 14.0f;
+    float base_x = 14.0f;
+    float base_y = (float)screen_h - 27.0f;
+
+    // 金币图标（黄色）
+    _draw_gold_icon(base_x, base_y, icon_s);
+    char gbuf[16];
+    snprintf(gbuf, sizeof(gbuf), "%d", player->gold);
+    DrawTextEx(g_font_small, gbuf, {base_x + icon_s + 4.0f, base_y + 1.0f},
+               12, 1, Color{255, 214, 90, 230});
+
+    // 计算金币文本宽度
+    float gw = MeasureTextEx(g_font_small, gbuf, 12, 1).x;
+
+    // 钥匙图标（金色）
+    _draw_key_icon(base_x + icon_s + 12.0f + gw, base_y, icon_s);
+    char kbuf[16];
+    snprintf(kbuf, sizeof(kbuf), "%d", player->key_count);
+    DrawTextEx(g_font_small, kbuf, {base_x + icon_s * 2 + 16.0f + gw + 4.0f, base_y + 1.0f},
+               12, 1, Color{190, 160, 90, 230});
+
+    // 圣物数量（圣物面板打开时）
+    if (show_relic_panel && player->relics.size() > 0) {
+        float relic_x = base_x + icon_s * 2 + 16.0f + gw + 4.0f +
+                       MeasureTextEx(g_font_small, kbuf, 12, 1).x + 12.0f;
+        // 圣物图标（紫色）
+        DrawRectangleRec({relic_x, base_y + 1.0f, icon_s, icon_s},
+                         Color{180, 100, 255, 230});
+        char rbuf[16];
+        snprintf(rbuf, sizeof(rbuf), "%d", (int)player->relics.size());
+        DrawTextEx(g_font_small, rbuf, {relic_x + icon_s + 4.0f, base_y + 1.0f},
+                   12, 1, Color{200, 150, 255, 230});
+    }
+}
+
+static void _draw_key_hints(int screen_w, int screen_h) {
+    const char* hint = "[R]圣物  [B]背包  [F1]日志  [M]地图  [ESC]保存";
+    float hw = MeasureTextEx(g_font_small, hint, 12, 1).x;
+    DrawTextEx(g_font_small, hint, {screen_w - hw - 14.0f, (float)screen_h - 26.0f},
+               12, 1, Color{140, 140, 160, 220});
+}
+
+void GameRenderer::draw_hud(const Player* player, int current_floor, float game_time,
+                             Monster* boss, bool show_relic_panel,
+                             int inventory_open, int inventory_cursor,
+                             const std::string& room_msg, float room_msg_timer,
+                             int screen_w, int screen_h,
+                             const CharacterPanelData* echo_panel,
+                             int challenge_wave, int challenge_total) {
+    if (!player) return;
+    _draw_hp_bar(player);
+    _draw_xp_bar(player);
+    _draw_floor_slot(current_floor);
+    _draw_boss_bar(boss, echo_panel, screen_w);
 
     // F15.5.1: Echo mirror panel (right side)
     if (echo_panel)
@@ -1446,97 +1544,13 @@ void GameRenderer::draw_hud(const Player* player, int current_floor, float game_
     draw_skill_bar(player, game_time);
     draw_player_buffs(player);
     draw_player_relics(player);
-    // D3 Step4: Build 流派显示 (rellic下方)
-    {
-        BuildScore bs = calculate_build(player);
-        BuildType bt = bs.identify();
-        float y = 56.0f + player->skills.active_skills.size() * 28.0f + 4.0f;
-        if (!player->active_buffs.empty())
-            y += player->active_buffs.size() * 18.0f + 4.0f;
-        if (!player->relics.empty())
-            y += 22.0f;
-        if (bt != BuildType::NONE && g_font_loaded) {
-            char buf[64];
-            snprintf(buf, sizeof(buf), "流派: %s", bs.build_name());
-            DrawTextEx(g_font_small, buf, {12, y}, 12, 1, {255, 220, 100, 230});
-            y += 16;
-        }
-        int atk_lv = AttackEvolutionManager::current_level(player);
-        if (atk_lv >= 2 && g_font_loaded) {
-            char buf[32];
-            snprintf(buf, sizeof(buf), "普攻: %s", AttackEvolutionManager::current_name(player));
-            DrawTextEx(g_font_small, buf, {12, y}, 12, 1, {255, 200, 60, 230});
-            y += 16;
-        }
-        for (int si = 0; si < (int)player->skills.active_skills.size(); si++) {
-            std::string ev = SkillEvolutionManager::evo_name(player, si);
-            if (!ev.empty() && g_font_loaded) {
-                char buf[64];
-                snprintf(buf, sizeof(buf), "%s: %s",
-                         player->skills.active_skills[si]->name.c_str(), ev.c_str());
-                DrawTextEx(g_font_small, buf, {12, y}, 11, 1, {180, 220, 255, 220});
-                y += 14;
-            }
-        }
-    }
+    _draw_build_info(player);
     if (show_relic_panel) draw_relic_panel(player, screen_w);
 
-    // Key hints
     if (g_font_loaded) {
-        // Batch 3F: Challenge wave HUD (above gold/key)
-        if (challenge_wave >= 0 && challenge_total > 0) {
-            char cw[32];
-            snprintf(cw, sizeof(cw), "Wave: %d/%d", challenge_wave, challenge_total);
-            DrawTextEx(g_font_small, cw,
-                       {14.0f, (float)screen_h - 48.0f},
-                       12, 1, Color{255, 100, 100, 230});
-        }
-        // Batch 3A: Gold / Key HUD (bottom-left) — G10.3-B3: 像素图标替代纯文本
-        if (player) {
-            float icon_s = 14.0f;
-            float base_x = 14.0f;
-            float base_y = (float)screen_h - 27.0f;
-            
-            // 金币图标（黄色）
-            _draw_gold_icon(base_x, base_y, icon_s);
-            char gbuf[16];
-            snprintf(gbuf, sizeof(gbuf), "%d", player->gold);
-            DrawTextEx(g_font_small, gbuf,
-                       {base_x + icon_s + 4.0f, base_y + 1.0f},
-                       12, 1, Color{255, 214, 90, 230});
-            
-            // 计算金币文本宽度
-            float gw = MeasureTextEx(g_font_small, gbuf, 12, 1).x;
-            
-            // 钥匙图标（金色）
-            _draw_key_icon(base_x + icon_s + 12.0f + gw, base_y, icon_s);
-            char kbuf[16];
-            snprintf(kbuf, sizeof(kbuf), "%d", player->key_count);
-            DrawTextEx(g_font_small, kbuf,
-                       {base_x + icon_s * 2 + 16.0f + gw + 4.0f, base_y + 1.0f},
-                       12, 1, Color{190, 160, 90, 230});
-            
-            // 圣物数量（圣物面板打开时）
-            if (show_relic_panel && player->relics.size() > 0) {
-                float relic_x = base_x + icon_s * 2 + 16.0f + gw + 4.0f + 
-                               MeasureTextEx(g_font_small, kbuf, 12, 1).x + 12.0f;
-                // 圣物图标（紫色）
-                DrawRectangleRec(
-                    {relic_x, base_y + 1.0f, icon_s, icon_s},
-                    Color{180, 100, 255, 230}
-                );
-                char rbuf[16];
-                snprintf(rbuf, sizeof(rbuf), "%d", (int)player->relics.size());
-                DrawTextEx(g_font_small, rbuf,
-                           {relic_x + icon_s + 4.0f, base_y + 1.0f},
-                           12, 1, Color{200, 150, 255, 230});
-            }
-        }
-        const char* hint = "[R]圣物  [B]背包  [F1]日志  [M]地图  [ESC]保存";
-        float hw = MeasureTextEx(g_font_small, hint, 12, 1).x;
-        DrawTextEx(g_font_small, hint,
-                   {screen_w - hw - 14.0f, (float)screen_h - 26.0f},
-                   12, 1, Color{140, 140, 160, 220});
+        _draw_challenge_wave(challenge_wave, challenge_total, screen_h);
+        _draw_currency_bar(player, show_relic_panel, screen_h);
+        _draw_key_hints(screen_w, screen_h);
     }
 
     draw_room_message(screen_w, screen_h, room_msg, room_msg_timer);

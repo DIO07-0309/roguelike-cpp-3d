@@ -1,3 +1,43 @@
+# G19 — `draw_hud` 拆函数 + 超规计数勘误（G13 续，2026-09-29）
+
+> `GameRenderer::draw_hud` 198 行，13 个参数，是纯 2D 绘制 —— 每块视觉元素
+> 互相独立，是继 `execute_event` 之后最安全的拆分对象。
+
+- **198 → 28 行**: 拆成 8 个文件内 `static _draw_*` helper，全部 ≤40 行
+  （最大 `_draw_hp_bar` / `_draw_currency_bar` 各 36 行），命名沿用本文件
+  既有的 `_draw_gold_icon` / `_draw_key_icon` 约定
+- **`draw_progress_bar` 需限定名**: 它是 `GameRenderer` 的 **static 成员**
+  （`.h:63`），文件内自由函数不能裸名调用 → 改成
+  `GameRenderer::draw_progress_bar(...)`
+- **顺带删 2 个死参数**：`inventory_open` / `inventory_cursor` 在 198 行
+  函数体内 **0 次引用**（签名里挂着没人用）。这次保留签名不动 —— 改签名会
+  动到所有调用点，留到专门那批
+- **`_draw_currency_bar` 去掉了外层 `if (player)`**：`draw_hud` 入口已
+  `if (!player) return`，helper 内该守卫恒真
+- **顺序未变**: HUD 元素自上而下（血条→XP→层数→Boss→镜像→技能→BUFF→
+  圣物→流派→货币→快捷键→房间消息）与原实现的绘制次序逐一对应
+
+## 超规函数计数勘误
+
+G13 之后一直报的「116 → 103 → 102」是**错的**：统计命令用的是
+`Select-String "L\d+-\d+$"`，而 `fnlen_scan.py` 每个文件**只打印前 6 个**
+超规函数，其余压成 `... 另 N 个`。多超规的大文件被截断，导致总数被低估。
+
+正确做法是读脚本头部的 `超过 40 行: M 个`。真实数字：
+
+| 时点 | 函数总数 | 超规 |
+| :--- | ---: | ---: |
+| HEAD~1（G18 前） | — | **115** |
+| HEAD（G18 后） | 2404 | **114** |
+| 当前（G19 后） | 2412 | **113** |
+
+G18 / G19 各解锁 1 个（`execute_event`、`draw_hud`），增量正确；
+之前报的绝对值偏低约 11，但**增量趋势一致**。
+
+**门禁**: build 0 error 0 warning · ctest **77/77** ·
+超规 **114 → 113**（8 个新 helper 全部 ≤40，无新增超规）·
+`1 file changed`
+
 # G18 — `execute_event` 拆函数（G13 续，2026-09-29）
 
 > `event_system::execute_event` 254 行是 G13 剩余中风险批里最安全的一个 ——
@@ -24,7 +64,8 @@
   动到 `game_scene_interaction.cpp:61` 生产调用点 + 12 处测试调用，不值
 
 **门禁**: build 0 error 0 warning · ctest **77/77**（含同种子复现 +
-全 18 类型 ×20 次前缀契约）· 超规函数 **103 → 102** · `1 file changed`
+全 18 类型 ×20 次前缀契约）· 超规函数 **115 → 114**（真实计数，勘误见 G19）
+· `1 file changed`
 
 # G17 — 移除 MetaSystem 死掉的 reward-log 审计特性（2026-09-29）
 
@@ -3001,4 +3042,5 @@ SaveManager core format · Player/Monster lifecycle
 - Balance pass
 - Automated tests
 - Package & deploy
+
 
