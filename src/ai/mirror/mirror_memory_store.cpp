@@ -51,6 +51,38 @@ bool read_all(const std::string& file, std::string& out_text) {
     out_text = ss.str();
     return true;
 }
+
+// G22d: 快照表 → 落盘 json (全零行剔除, 桶组合截断到 kMaxEntries)
+nlohmann::json build_snapshot(const BehaviorCloneTable& table) {
+    nlohmann::json entries = nlohmann::json::object();
+    size_t kept = 0;
+    for (const auto& kv : table.table()) {
+        if (kept >= MirrorMemoryStore::kMaxEntries) break;   // 熔丝: 桶组合最多 80
+        if (total_of(kv.second) <= 0) continue;  // 零计数行不落盘
+        entries[kv.first] = counts_to_json(kv.second);
+        kept++;
+    }
+    nlohmann::json root;
+    root["version"] = 1;
+    root["entries"] = entries;
+    return root;
+}
+
+// G22d: 先写 .tmp 再 rename 提升为正式档; 写失败或替换失败都清理 .tmp,
+// 避免伪原子写留下永不读取的残留文件 (残留不会损坏正式档, 但会误导排查)
+bool write_atomic(const std::string& text, const std::string& tmp,
+                  const std::string& final) {
+    std::ofstream out(tmp, std::ios::binary);
+    if (!out) return false;
+    out << text << "\n";
+    out.close();
+    if (!out) { std::remove(tmp.c_str()); return false; }   // 不得提升半成品
+    if (std::rename(tmp.c_str(), final.c_str()) != 0) {
+        std::remove(tmp.c_str());                            // 替换失败不留残留
+        return false;
+    }
+    return true;
+}
 }  // namespace
 
 std::string MirrorMemoryStore::_path = "saves/mirror_memory.json";
@@ -79,24 +111,8 @@ bool MirrorMemoryStore::load_into(BehaviorCloneTable& table) {
 }
 
 bool MirrorMemoryStore::save_from(const BehaviorCloneTable& table) {
-    nlohmann::json entries = nlohmann::json::object();
-    size_t kept = 0;
-    for (const auto& kv : table.table()) {
-        if (kept >= kMaxEntries) break;          // 熔丝: 桶组合最多 80
-        if (total_of(kv.second) <= 0) continue;  // 零计数行不落盘
-        entries[kv.first] = counts_to_json(kv.second);
-        kept++;
-    }
-    nlohmann::json root;
-    root["version"] = 1;
-    root["entries"] = entries;
-
-    const std::string tmp = _path + ".tmp";
-    std::ofstream out(tmp, std::ios::binary);
-    if (!out) return false;
-    out << root.dump() << "\n";
-    out.close();
-    return std::rename(tmp.c_str(), _path.c_str()) == 0;  // 伪原子替换
+    nlohmann::json root = build_snapshot(table);
+    return write_atomic(root.dump(), _path + ".tmp", _path);   // 伪原子替换
 }
 
 }  // namespace mirror

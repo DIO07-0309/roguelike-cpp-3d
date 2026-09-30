@@ -288,7 +288,8 @@ void BossSystemDirector::export_mirror_memory(
     // 仅当本局克隆表非空才落盘, 空快照=未遭遇, 不清空历史记忆)
     if (!MetaSystem::g_readonly && _mirror_agent &&
         _mirror_agent->clone_table() && _mirror_agent->clone_table()->entries()) {
-        mirror::MirrorMemoryStore::save_from(*_mirror_agent->clone_table());
+        if (!mirror::MirrorMemoryStore::save_from(*_mirror_agent->clone_table()))
+            LOG_WARN("B3-M: 跨局记忆落盘失败, 本局学习丢失 (旧记忆保留)");
     }
 }
 

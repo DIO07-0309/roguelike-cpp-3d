@@ -1,17 +1,19 @@
 // B3-M: MirrorMemoryStore — CloneTable 跨局持久化闭环测试
 #include <gtest/gtest.h>
 #include <cstdio>
+#include <filesystem>
 #include "ai/mirror/behavior_clone_table.h"
 #include "ai/mirror/mirror_memory_store.h"
 
 namespace {
 const char* kTestPath = "saves/test_mirror_memory.json";
+const char* kTmpPath = "saves/test_mirror_memory.json.tmp";
 
 struct TestPathGuard {
     TestPathGuard() { mirror::MirrorMemoryStore::set_path_for_test(kTestPath); }
     ~TestPathGuard() {
         std::remove(kTestPath);
-        std::remove("saves/test_mirror_memory.json.tmp");
+        std::remove(kTmpPath);
         mirror::MirrorMemoryStore::set_path_for_test(
             "saves/mirror_memory.json");   // 还原生产默认
     }
@@ -95,4 +97,31 @@ TEST(MirrorMemoryStore, MissingAndCorruptFilesAreSafe) {
     fclose(f);
     EXPECT_FALSE(mirror::MirrorMemoryStore::load_into(dst));
     EXPECT_EQ(dst.entries(), 0u);
+}
+
+// G22d: 成功路径不得留下永不读取的 .tmp 暂存残留
+TEST(MirrorMemoryStore, SaveSucceedsAndLeavesNoTmpResidue) {
+    TestPathGuard guard;
+    BehaviorCloneTable src;
+    bump(src, PlayerIntention::HEAL, 10);
+    ASSERT_TRUE(mirror::MirrorMemoryStore::save_from(src));
+    EXPECT_TRUE(std::filesystem::exists(kTestPath));
+    EXPECT_FALSE(std::filesystem::exists(kTmpPath));
+}
+
+// G22d: 伪原子替换失败时返回 false 并清理 .tmp
+// 注入方式: 把目标路径做成目录, 文件不得替换目录, std::rename 必失败
+TEST(MirrorMemoryStore, RenameFailureReturnsFalseAndCleansTmp) {
+    TestPathGuard guard;
+    std::remove(kTestPath);
+    ASSERT_TRUE(std::filesystem::create_directory(kTestPath));
+
+    BehaviorCloneTable src;
+    bump(src, PlayerIntention::HEAL, 10);
+    EXPECT_FALSE(mirror::MirrorMemoryStore::save_from(src));
+    EXPECT_FALSE(std::filesystem::exists(kTmpPath));   // 残留已清理
+
+    // 正式档未被半成品覆盖: 目录还在, 说明 rename 没有发生
+    EXPECT_TRUE(std::filesystem::is_directory(kTestPath));
+    std::filesystem::remove(kTestPath);
 }

@@ -1,3 +1,79 @@
+# G22d — 修 MirrorMemoryStore 伪原子写的三处漏洞（2026-09-30）
+
+起因：`saves/mirror_memory.json.tmp` 这个 134 字节的残留文件。
+它比正式档新 1.5 小时，长度相同内容不同 —— 查证后是正式档
+经 `decay_counts` ×0.99 衰减的派生（`4→3.96→3`、`6→5.94→5`、
+`2→1.98→1`、`3→2.97→2`，四个数逐个精确命中），**不是新数据**。
+所以删它无所谓。但它是 `save_from` 一个真 bug 的现场。
+
+## 三处漏洞
+
+原代码：
+
+```cpp
+std::ofstream out(tmp, std::ios::binary);
+if (!out) return false;
+out << root.dump() << "\n";
+out.close();
+return std::rename(tmp.c_str(), _path.c_str()) == 0;   // ← 三处都漏了
+```
+
+**1. 写失败也会 rename（最严重）**
+
+`out <<` 和 `out.close()` 的返回值都没检查。数据是缓冲的，真正落盘
+发生在 close —— 磁盘满或配额超限时 close 失败，原代码照样 rename，
+把**半成品覆盖到正式档上**。这是数据损坏，不是残留。
+
+**2. rename 失败后 `.tmp` 永久残留**
+
+失败分支没有任何清理。桌面包那个 `.tmp` 就是这么来的：
+`std::rename` 那次返回非零，`.tmp` 从此留在磁盘上。
+调用方拿到 false 也无从知晓原因。
+
+**3. 调用方裸调用，失败完全静默**
+
+`boss_system_director.cpp:291` 直接 `save_from(...)` 丢返回值。
+镜像 AI 的学习结果写失败一次，玩家永远看不到任何提示。
+
+## 修复
+
+拆成两个单一职责的 free helper，`save_from` 从 20 行降到 4 行：
+
+- `build_snapshot(table)` —— 表 → json（全零行剔除、桶组合截断）
+- `write_atomic(text, tmp, final)` —— 写 tmp → **检查流状态** → rename
+  → **任一步失败都 `std::remove(tmp)`**
+
+调用方改为：
+
+```cpp
+if (!mirror::MirrorMemoryStore::save_from(*_mirror_agent->clone_table()))
+    LOG_WARN("B3-M: 跨局记忆落盘失败, 本局学习丢失 (旧记忆保留)");
+```
+
+括号里那句是准确的：rename 没发生，正式档就是上一次的快照，
+旧记忆确实保留了 —— 丢的只是本局新增的观测。
+
+## 测试
+
+`mirror_memory_store_test.cpp` +2，7/7 通过：
+
+- `SaveSucceedsAndLeavesNoTmpResidue` —— 成功路径不得留暂存残留
+- `RenameFailureReturnsFalseAndCleansTmp` —— **失败注入**：把目标路径
+  做成目录（文件不得替换目录），`std::rename` 必失败；断言返回 false、
+  `.tmp` 已清理、且目标仍是目录（证明 rename 没发生、正式档未被覆盖）
+
+第二种测法不需要在生产代码里留注入点，靠文件系统语义自然逼出失败。
+
+## 门禁
+
+build 0 error 0 warning · ctest 77/77
+
+## 未做
+
+桌面包那个残留 `.tmp` 没删 —— 现在游戏下次存盘会自己覆盖并提升它，
+属于自愈。要清就手动删。
+
+
 # G22c — HUD 批收尾 4 个（G13 续，2026-09-30）
 
 | 函数 | 原 | 现 |
