@@ -120,6 +120,28 @@ F15 镜像 Boss 读你的行为画像（攻防倾向/走位偏好/技能习惯�
 
 ## CHANGELOG
 
+- G22c/G22d（开发版，未发布）：HUD 批收尾 4 函数 + 伪原子写漏洞修复。
+  - `DrawRoundedRectBg` 48→18、`_draw_effect_body` 76→12、`draw_gamble_panel` 50→30、`_draw_mirror_learning` 54→10，9 个新 helper 全部 ≤40 行。**`game_renderer.cpp` 超规 4→0（首个清零文件）**，全仓 109→105。四段圆弧用 `ox/oy ∈ ±1` 参数化合并：`cx + ox*r*cosf(a)` 与原 `rect.x + r - r*cosf(a)` 是同一棵表达式树（`-1*r` 精确等于 `-r`），浮点无损。
+  - 拆分中自己引入并修掉一处渲染回归：`_draw_gamble_odds` 返回值未接回调用方，odds 表末尾的 `y += 28` 跨函数边界丢失，「每次抽奖」与「5% 圣物」两行重叠。**77 个测试全绿也未察觉** —— 现有测试对渲染坐标零覆盖，靠逐行 diff 原代码才发现。这是纯结构拆分的真实风险：同函数内顺序写着的 `y += 28` 天然可见，拆出去就变成必须手工接住的线。
+  - `MirrorMemoryStore::save_from` 伪原子写三个漏洞：①`out <<` / `out.close()` 均未检查，而数据是缓冲的、真正落盘在 close —— 磁盘满时**半成品被 rename 覆盖正式档**，这是数据损坏而非残留；②rename 失败分支无清理，`.tmp` 永久残留；③调用方 `boss_system_director.cpp:291` 裸调用，失败完全静默。拆为 `build_snapshot` + `write_atomic`（任一步失败都 `std::remove(tmp)`），`save_from` 20→4 行。
+  - 失败注入不靠在生产代码留开关：把目标路径做成**目录**（文件不得替换目录），`std::rename` 必失败；断言返回 false、`.tmp` 已清理、**且目标仍是目录**（证明 rename 未发生、正式档未被覆盖）。`mirror_memory_store_test` 5→7。
+  - 触发线索：桌面包 `saves/mirror_memory.json.tmp` 残留 134 字节。查证后是正式档经 `decay_counts` ×0.99 衰减的派生（`4→3.96→3`、`6→5.94→5`、`2→1.98→1`、`3→2.97→2`），非新数据 —— 删它无所谓，但它坐实了 rename 那次确实失败过。
+  - 门禁：Release 0 error 0 warning · ctest 77/77 · `game_renderer.cpp` 超规清零。
+- G21（开发版，未发布）：删除 `CombatCoordinator::on_monster_killed` 与 `cleanup_dead_monsters` 互相引用的死代码簇（118-189 行，76 行），`combat_coordinator.cpp` 193→119。该簇**互相引用**所以单点删除会编译失败，必须成对删。
+- G20–G20d（开发版，未发布）：存档槽位绑定 + 备份闭环。
+  - **读档不绑定活跃槽**：`load_game` 内补 `set_active_slot`，否则下一次自动存档写错槽；`_activate_stairs` 加 `_world_mode != DUNGEON` 守卫，防挑战竞技场误触发换层存档。
+  - **写档前自动备份**：`.tmp` 暂存 → 旧档 `.bak` → `.tmp` 提升正式槽，伪原子三步；`delete_save` 与 `SlotGuard::cleanup` 连带删 `.bak`。
+  - **槽位菜单可还原**：`SlotSummary` 加 `has_backup`/`backup_floor`/`backup_level`，有备份的卡片第四行 `备份 F7·Lv23 [R 还原]`；`restore_backup` 两代交换走 `.aside` 中转，不销毁任何一代；当前档不存在时直接把备份提升为正式档（崩溃丢档场景）。
+  - **选关读档丢掉地牢种子**：`floor_select_scene` 传默认 0 → `enter_floor` 判为新楼层走 `rng()` 重滚，玩家进陌生地图，随后自动存档用新 seed 覆盖旧档、布局从此漂移。其余三个读档入口都是透传的，唯独这一处漏。
+  - 测试 74→77。用户实机验收通过（2026-09-30）。
+- G18/G19（开发版，未发布）：`execute_event` 254→28 行、`draw_hud` 198→28 行（G13 续，超规 103→102→113，后续批次持续回落）。
+- G15–G17（开发版，未发布）：死代码三连清。G15 圣物系统死代码 + 修两处 buff 叠加/泄漏缺陷（net −165 行）；G16 全仓死方法三级连锁，37 文件 −430 行纯删除；G17 移除 MetaSystem 已死掉的 reward-log 审计特性。
+- G14（开发版，未发布）：测试护栏补强 74→77。新增 `game_scene_smoke_test` 做 `_process` 主循环 headless 冒烟；替换 `tests/combat` 三个假测试为真调用测试（buff 8 / action 10 / relic 9 用例）；修三处 `view.monsters` 空指针 segfault。
+- G13（开发版，未发布）：函数长度债收敛，超规 **149→105**。
+  - 覆盖 save_manager 序列化全拆（`load_game` 364→34、`save_game` 164→27）、`dungeon_generator` 特殊房间/Challenge/孔径、`enemy_defs`+`weapon_defs` 解析器、`DependencyResolver` 拓扑排序分段（+6 用例）、`WorldReaction`/`Mod`/`Encounter`/`Item`/`SpecialRoom`、6 个 scene 的 `_render`/`_input`、`TeamCoordinator.evaluate`、`sim_ai::_evaluate_move` 154→27。
+  - 遗留 TOP 6：`_process` 1072 / `_build_effects` 419 / `_tick_boss_state` 394 / `_render_ui_tail` 391 / `game_map::draw` 315 / `main` 292 —— 全部无测试护栏，需先建护栏再谈拆分。
+  - **扫描盲区**：脚本按方法名全词计数，对 `tick`/`draw`/`reset` 这类重名方法失效；G21 那簇是人工排查引用链发现的，非扫描产出。
+
 - B4（开发版，未发布）：挑战房 25% 隐藏压轴 Boss「远古魔像 GOLEM」全链路——`BossType::GOLEM(4)` 的 C++ 行为早已建成（DEFEND 盾、Phase2 三连震、`get_boss_def_for_type(4)→"golem"` 映射、视觉色），本批只补数据 def 与刷出路径，`boss_defs.h`/`boss.cpp`/`boss_system_director.*` 零改动。
   - **数据 def**：`bosses.json` 增第 6 条 `golem`（`is_defender=true`、`shield_pct=0.50`、`skill_cycle_bias=5`、`skills=[charge,shockwave,barrage]`、两段 combo 含 `defend`、`arena.danger_type="none"` 纯坦克不放房间陷阱）；其余 5 个 boss 逐字段零改动，`get_boss_def_for_floor(10)` 仍返回 `fire_demon` 未被 shadow，GOLEM 不进入任何主线楼层。
   - **压轴判定**：`has_boss_wave(dungeon_seed, room_index)` = `_deterministic_seed(dungeon_seed, room_index, kBossWaveSlot=99) % 100 < 25`。**不消耗全局 `rng`**（批次9 红线）：真实波占槽位 0..2，压轴独占保留槽位 99，经 avalanche `hash_combine` 后与真实波属不同哈希域，故判定不改变任何小怪波构成、存档/回放可比性不被破坏。`_spawn_wave` 入口加 `assert(wave_index != kBossWaveSlot)`——否则 `pick_challenge_monster(99)` 返回空指针、`_pick_monster_type` 静默回落 `"slime"`，「隐藏 Boss 波」会刷出 4 只史莱姆且无任何报错。
@@ -198,3 +220,7 @@ F15 镜像 Boss 读你的行为画像（攻防倾向/走位偏好/技能习惯�
 | **v1.8.0** | **镜头语言 (A6)** — Boss 战镜头聚焦 2 秒后自动回归 · 击杀顿帧期间 focus_timer 继续倒计时，stun 结束后回归 BOSS_WAR · 3D 相机基线改为实体中心 · 64 项 CTest 通过 · 已打 tag v1.8-A6 |
 | **v1.9.0** | **音效/音乐系统 (A7)** — 三群系 BGM 风格优化 (监牢/火山/深渊各有专属风格) · Boss 专属音乐 (F5/F10/F15 各有主题) · AudioServer 音效集成 · 怪物死亡音效触发点 · 65 项 CTest 通过 · 已打 tag v1.9-A7 |
 | **v1.10.0** | **战斗 HUD 优化 (A8)** — HP/XP bar 像素风双层边框 + 高光 + 动态颜色 · 技能栏冷却提示 (图标旋转 + 数字倒计时 + 升级标识) · 小地图标记清晰度 (颜色区分 + 大小分级) · 金币/资源图标 (像素图标 + 数字对齐 + 圣物数量) · 66 项 CTest 通过 · 已打 tag v1.10-A8 |
+| **v1.11.0** | **攻击特效优化 (A9)** — 已打 tag v1.11（`v1.11-A9` 内容已被 `v1.11` 覆盖，未重复建 tag） |
+| **v1.12.0** | **动画与教程收口 (G12-6)** — AvatarDirector 消重 · 教程 3D 名条 · 披风动画 · 教程函数瘦身 |
+| **v1.13.0** | **死代码三连清 + 存档槽位闭环** — G15-G17 死代码（37 文件 −430 行 / buff 叠加泄漏修复 / MetaSystem reward-log 移除）· G18 `execute_event` 254→28 · G19 `draw_hud` 198→28 · G20-G20d 读档绑槽 + 写档前自动备份 + 槽位菜单可还原上一代 + 选关读档种子漂移修复 · G14 测试护栏 74→77 |
+| **v1.14.0** | **渲染层超规清零 + 伪原子写修复** — G21 CombatCoordinator 死代码簇 −76 行 · G22-G22c `game_renderer.cpp` 超规 **4→0**（首个清零文件，全仓 109→105）· G22d `MirrorMemoryStore::save_from` 修三处漏洞（**磁盘满时半成品覆盖正式档** / rename 失败残留 / 调用方静默失败）· 渲染回归测试盲区已记录 · ctest 77/77 |
