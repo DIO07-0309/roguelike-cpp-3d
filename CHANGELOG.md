@@ -1,4 +1,88 @@
-# G22b — 拆完 HUD 批余下 4 个（G13 续，2026-09-29）
+# G22c — HUD 批收尾 4 个（G13 续，2026-09-30）
+
+| 函数 | 原 | 现 |
+| :--- | --- | --- |
+| `_draw_effect_body` | 76 | 12 |
+| `_draw_mirror_learning` | 54 | 10 |
+| `draw_gamble_panel` | 50 | 30 |
+| `DrawRoundedRectBg` | 48 | 18 |
+
+新增 9 个 helper，全部 ≤40 行（最长 `_draw_basic_effects` 32、
+`_draw_mirror_style` 28、`_draw_swing_trikes` 27、`_draw_mirror_arms` 26、
+`_draw_blitz_trikes` 20、`DrawRoundedRectBg` 18、`_rounded_rect_edges` 14、
+`_draw_gamble_odds` 13、`_draw_effect_body` 12）。
+
+`game_renderer.cpp` 超规 **4 → 0** —— 第一个清零的文件。
+全仓 **109 → 105**（2446 个函数）。ctest 77/77，build 0 error 0 warning。
+
+## 本轮抓到一处真 bug（自己引入的）
+
+`_draw_gamble_odds` 的返回值最初被调用方忽略了：
+
+```cpp
+_draw_gamble_odds(x0, y);        // ← 返回值丢了 28px
+DrawTextEx(..., "每次抽奖: 20 金币", {x0, y}, ...);   // 与「5% 圣物」重叠
+```
+
+原代码 odds 表末尾有一句 `y += 28;`，Cost 行画在它之后。helper 化时
+这 28px 跨越了函数边界，返回值不落回 caller 的 `y` 就凭空消失。
+已改为 `y = _draw_gamble_odds(x0, y);`。
+
+这类坑测试抓不到 —— 77 个用例没有一个看渲染坐标。纯结构拆分的真正
+风险不是编译，是**跨边界的局部状态传递**：同一个函数里顺序写着的
+`y += 28` 天然可见，拆出去之后就变成一根必须手工接住的线。
+
+## 另外几处
+
+**1. 四段圆弧参数化后是位相同的，不是近似**
+
+原代码 4 段几乎逐字重复的 `for` 循环，只有 `±radius` 的符号不同。
+抽成 `_rounded_rect_corner(cx, cy, r, ox, oy)` 后，`cx + ox * r * cosf(a)`
+与原来的 `rect.x + r - r * cosf(a)` 是同一棵表达式树 —— `ox = -1` 时
+`-1 * r` 精确等于 `-r`，只多一次符号翻转，浮点上无损。
+四角的圆弧形状一分不差，行数从 40 行降到 9 行调用。
+
+**2. 15 个三连击 handler 才是真正的重复，这轮没动**
+
+`_draw_slash_arc_1/2/3`、`_draw_pierce_beam_1/2/3`、`_draw_whip_arc_1/2/3`、
+`_draw_bolt_spread_1/2/3`、`_draw_smash_impact_1/2/3` —— 15 个函数签名
+完全一致 `(const Effect&, float, float, float, Color)`，`e.kind` 字符串
+只有后缀 `_1/_2/_3` 不同。
+
+现在拆成 `_draw_swing_trikes` / `_draw_blitz_trikes` 两个 if 链，
+只是把这份重复照抄了一遍。真正的收敛是查表：5 组 `DrawFn trikes[3]`。
+属于「更好的设计方案先讨论」，留给后续。
+
+**3. if-else 链改成「命中即返回」是等价的**
+
+`e.kind` 是单一字符串，一条链里最多一个分支能命中，所以
+`return true` 不会造成二次绘制。三个 helper 串起来仍是原来的优先级：
+三连击 > 基础特效，最后兜底 `_draw_fx_ring`。
+
+**4. `_draw_mirror_learning` 的间距耦合被显式化了**
+
+下段起点是 `ly2 + top_h + 4.0f`，而 `top_h = 46 + habit_rows * 15`
+是自适应的（54~116px）。原代码两段顺序写在同一个函数里，`top_h`
+天然可见；拆开后它成了 `_draw_mirror_style` 的返回值。这个耦合
+本来就在，只是以前看不见。
+
+**5. 一句死代码被删**
+
+结果消息块里的 `y += 36;`：`y` 之后从未再被读 —— Controls 行用的是
+绝对坐标 `pr.y + kPanelH - 20`。这是本轮唯一一处非纯结构改动，
+删掉的是可证明无效果的自增。
+
+**6. `ARM_NAMES` 从函数内 static 搬到新函数内 static**
+
+生命周期和存储位置都不变。但它现在只被 `_draw_mirror_arms` 一个
+函数引用；若第二个函数也要用臂名，就会变成两份副本，到时候该提成
+文件级常量。
+
+## 遗留
+
+`draw_character_panel` 仍是 38 行（G22b 遗留，距上限 2 行），
+是这批里最紧的一个，本轮未动。
+
 
 | 函数 | 原 | 现 |
 | :--- | --- | --- |

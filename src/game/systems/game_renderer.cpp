@@ -31,53 +31,51 @@ extern Font g_font_small;
 extern bool g_font_loaded;
 
 // 辅助函数：绘制圆角矩形背景（元气骑士风格）
-static void DrawRoundedRectBg(Rectangle rect, float radius, Color bg_color, Color border_color, int border_thickness = 2) {
+// G22c: 边线与四个角的圆弧各自拆出; 四角共用一段参数化代码 (±1 定方位)
+static void _rounded_rect_edges(const Rectangle& r, float radius, int thickness,
+                                Color c) {
+    // 顶边
+    DrawLineEx({r.x + radius, r.y}, {r.x + r.width - radius, r.y}, thickness, c);
+    // 底边
+    DrawLineEx({r.x + radius, r.y + r.height},
+               {r.x + r.width - radius, r.y + r.height}, thickness, c);
+    // 左边
+    DrawLineEx({r.x, r.y + radius}, {r.x, r.y + r.height - radius}, thickness, c);
+    // 右边
+    DrawLineEx({r.x + r.width, r.y + radius},
+               {r.x + r.width, r.y + r.height - radius}, thickness, c);
+}
+
+// G22c: 单个圆角 —— ox/oy 取 ±1 决定角所在方位, 四个角共用圆弧近似
+static void _rounded_rect_corner(float cx, float cy, float radius, int ox, int oy,
+                                 int thickness, Color c) {
+    for (float a = 0; a <= M_PI / 2; a += M_PI / 12) {
+        float x1 = cx + ox * radius * cosf(a);
+        float y1 = cy + oy * radius * sinf(a);
+        float x2 = cx + ox * radius * cosf(a + M_PI / 12);
+        float y2 = cy + oy * radius * sinf(a + M_PI / 12);
+        DrawLineEx({x1, y1}, {x2, y2}, thickness, c);
+    }
+}
+
+static void DrawRoundedRectBg(Rectangle rect, float radius, Color bg_color,
+                              Color border_color, int border_thickness = 2) {
     // 半透明背景
     Color bg = bg_color;
     bg.a = (unsigned char)(bg.a * 0.7f);
     DrawRectangleRec(rect, bg);
-    
+
+    if (border_thickness <= 0 || radius <= 0) return;
     // 圆角边框（用多段线段近似）
-    if (border_thickness > 0 && radius > 0) {
-        // 顶边
-        DrawLineEx({rect.x + radius, rect.y}, {rect.x + rect.width - radius, rect.y}, border_thickness, border_color);
-        // 底边
-        DrawLineEx({rect.x + radius, rect.y + rect.height}, {rect.x + rect.width - radius, rect.y + rect.height}, border_thickness, border_color);
-        // 左边
-        DrawLineEx({rect.x, rect.y + radius}, {rect.x, rect.y + rect.height - radius}, border_thickness, border_color);
-        // 右边
-        DrawLineEx({rect.x + rect.width, rect.y + radius}, {rect.x + rect.width, rect.y + rect.height - radius}, border_thickness, border_color);
-        
-        // 四个角的圆弧（用小线段近似）
-        for (float a = 0; a <= M_PI / 2; a += M_PI / 12) {
-            float x1 = rect.x + radius - radius * cosf(a);
-            float y1 = rect.y + radius - radius * sinf(a);
-            float x2 = rect.x + radius - radius * cosf(a + M_PI / 12);
-            float y2 = rect.y + radius - radius * sinf(a + M_PI / 12);
-            DrawLineEx({x1, y1}, {x2, y2}, border_thickness, border_color);
-        }
-        for (float a = 0; a <= M_PI / 2; a += M_PI / 12) {
-            float x1 = rect.x + rect.width - radius + radius * cosf(a);
-            float y1 = rect.y + radius - radius * sinf(a);
-            float x2 = rect.x + rect.width - radius + radius * cosf(a + M_PI / 12);
-            float y2 = rect.y + radius - radius * sinf(a + M_PI / 12);
-            DrawLineEx({x1, y1}, {x2, y2}, border_thickness, border_color);
-        }
-        for (float a = 0; a <= M_PI / 2; a += M_PI / 12) {
-            float x1 = rect.x + radius - radius * cosf(a);
-            float y1 = rect.y + rect.height - radius + radius * sinf(a);
-            float x2 = rect.x + radius - radius * cosf(a + M_PI / 12);
-            float y2 = rect.y + rect.height - radius + radius * sinf(a + M_PI / 12);
-            DrawLineEx({x1, y1}, {x2, y2}, border_thickness, border_color);
-        }
-        for (float a = 0; a <= M_PI / 2; a += M_PI / 12) {
-            float x1 = rect.x + rect.width - radius + radius * cosf(a);
-            float y1 = rect.y + rect.height - radius + radius * sinf(a);
-            float x2 = rect.x + rect.width - radius + radius * cosf(a + M_PI / 12);
-            float y2 = rect.y + rect.height - radius + radius * sinf(a + M_PI / 12);
-            DrawLineEx({x1, y1}, {x2, y2}, border_thickness, border_color);
-        }
-    }
+    _rounded_rect_edges(rect, radius, border_thickness, border_color);
+    _rounded_rect_corner(rect.x + radius, rect.y + radius, radius, -1, -1,
+                         border_thickness, border_color);
+    _rounded_rect_corner(rect.x + rect.width - radius, rect.y + radius, radius, 1, -1,
+                         border_thickness, border_color);
+    _rounded_rect_corner(rect.x + radius, rect.y + rect.height - radius, radius, -1, 1,
+                         border_thickness, border_color);
+    _rounded_rect_corner(rect.x + rect.width - radius, rect.y + rect.height - radius,
+                         radius, 1, 1, border_thickness, border_color);
 }
 
 // ============================================================
@@ -441,56 +439,61 @@ static void _draw_smash_impact_3(const Effect& e, float sx, float sy, float prog
     ParticleSystem::emit(config, 10);
 }
 
-// G5.8.8-fix: 单特效渲染 — 合并原 VFXServer::draw 全部 kind 分支
-static void _draw_effect_body(const Effect& e, float sx, float sy,
-                              float cam_x, float cam_y, float t) {
-    float alpha = 1.0f - t / e.duration;
-    if (alpha <= 0) return;
-    Color c = e.color; c.a = (unsigned char)(c.a * alpha);
-    float prog = t / e.duration;
-
+// G22c: 剑/矛/双截棍三连击 —— 命中返回 true (保持原 if-else 链「只画一次」)
+static bool _draw_swing_trikes(const Effect& e, float sx, float sy, float prog, Color c) {
     // 剑（扇形斩）三连击
     if (e.kind == "slash_arc_1") {
-        _draw_slash_arc_1(e, sx, sy, prog, c);
+        _draw_slash_arc_1(e, sx, sy, prog, c); return true;
     } else if (e.kind == "slash_arc_2") {
-        _draw_slash_arc_2(e, sx, sy, prog, c);
+        _draw_slash_arc_2(e, sx, sy, prog, c); return true;
     } else if (e.kind == "slash_arc_3") {
-        _draw_slash_arc_3(e, sx, sy, prog, c);
+        _draw_slash_arc_3(e, sx, sy, prog, c); return true;
     }
     // 矛（穿透）三连击
-    else if (e.kind == "pierce_beam_1") {
-        _draw_pierce_beam_1(e, sx, sy, prog, c);
+    if (e.kind == "pierce_beam_1") {
+        _draw_pierce_beam_1(e, sx, sy, prog, c); return true;
     } else if (e.kind == "pierce_beam_2") {
-        _draw_pierce_beam_2(e, sx, sy, prog, c);
+        _draw_pierce_beam_2(e, sx, sy, prog, c); return true;
     } else if (e.kind == "pierce_beam_3") {
-        _draw_pierce_beam_3(e, sx, sy, prog, c);
+        _draw_pierce_beam_3(e, sx, sy, prog, c); return true;
     }
     // 双截棍（追踪）三连击
-    else if (e.kind == "whip_arc_1") {
-        _draw_whip_arc_1(e, sx, sy, prog, c);
+    if (e.kind == "whip_arc_1") {
+        _draw_whip_arc_1(e, sx, sy, prog, c); return true;
     } else if (e.kind == "whip_arc_2") {
-        _draw_whip_arc_2(e, sx, sy, prog, c);
+        _draw_whip_arc_2(e, sx, sy, prog, c); return true;
     } else if (e.kind == "whip_arc_3") {
-        _draw_whip_arc_3(e, sx, sy, prog, c);
+        _draw_whip_arc_3(e, sx, sy, prog, c); return true;
     }
+    return false;
+}
+
+// G22c: 连弩/重锤三连击
+static bool _draw_blitz_trikes(const Effect& e, float sx, float sy, float prog, Color c) {
     // 连弩（弹幕）三连击
-    else if (e.kind == "bolt_spread_1") {
-        _draw_bolt_spread_1(e, sx, sy, prog, c);
+    if (e.kind == "bolt_spread_1") {
+        _draw_bolt_spread_1(e, sx, sy, prog, c); return true;
     } else if (e.kind == "bolt_spread_2") {
-        _draw_bolt_spread_2(e, sx, sy, prog, c);
+        _draw_bolt_spread_2(e, sx, sy, prog, c); return true;
     } else if (e.kind == "bolt_spread_3") {
-        _draw_bolt_spread_3(e, sx, sy, prog, c);
+        _draw_bolt_spread_3(e, sx, sy, prog, c); return true;
     }
     // 重锤（重击）三连击
-    else if (e.kind == "smash_impact_1") {
-        _draw_smash_impact_1(e, sx, sy, prog, c);
+    if (e.kind == "smash_impact_1") {
+        _draw_smash_impact_1(e, sx, sy, prog, c); return true;
     } else if (e.kind == "smash_impact_2") {
-        _draw_smash_impact_2(e, sx, sy, prog, c);
+        _draw_smash_impact_2(e, sx, sy, prog, c); return true;
     } else if (e.kind == "smash_impact_3") {
-        _draw_smash_impact_3(e, sx, sy, prog, c);
+        _draw_smash_impact_3(e, sx, sy, prog, c); return true;
     }
+    return false;
+}
+
+// G22c: 基础特效类型 (脉冲/火花/闪电/闪光/烟尘/护盾环/旧版扇形斩/锥形)
+static void _draw_basic_effects(const Effect& e, float sx, float sy,
+                                float cam_x, float cam_y, float t, float prog, Color c) {
     // 现有特效类型（保留）
-    else if (e.kind == "pulse" || e.kind == "ring") {
+    if (e.kind == "pulse" || e.kind == "ring") {
         _draw_fx_ring(sx, sy, e.radius, prog, c, 24);
     } else if (e.kind == "spark") {
         _draw_fx_blast(sx, sy, e.radius * (0.5f + 0.5f * prog), c,
@@ -517,6 +520,20 @@ static void _draw_effect_body(const Effect& e, float sx, float sy,
     } else {
         _draw_fx_ring(sx, sy, e.radius, prog, c, 12);
     }
+}
+
+// G5.8.8-fix: 单特效渲染 — 合并原 VFXServer::draw 全部 kind 分支
+static void _draw_effect_body(const Effect& e, float sx, float sy,
+                              float cam_x, float cam_y, float t) {
+    float alpha = 1.0f - t / e.duration;
+    if (alpha <= 0) return;
+    Color c = e.color; c.a = (unsigned char)(c.a * alpha);
+    float prog = t / e.duration;
+
+    // 武器三连击优先; 命中即返回, 保持原 if-else 链「只画一次」语义
+    if (_draw_swing_trikes(e, sx, sy, prog, c)) return;
+    if (_draw_blitz_trikes(e, sx, sy, prog, c)) return;
+    _draw_basic_effects(e, sx, sy, cam_x, cam_y, t, prog, c);
 }
 
 void GameRenderer::draw_effects(const std::vector<Effect>& effects, float cam_x, float cam_y) {
@@ -1091,18 +1108,43 @@ void GameRenderer::draw_inventory_panel(const Player* player, int cursor, int sw
 // ============================================================
 // Batch 3H: Gamble Room UI panel
 // ============================================================
+// G22c: 赌徒轮盘奖池概率表, 返回表末尾的下一行 y
+static float _draw_gamble_odds(float x, float y) {
+    DrawTextEx(g_font_small, "— 奖池概率 —", {x, y}, 16, 1, {160, 160, 200, 255});
+    y += 24;
+    DrawTextEx(g_font_small, "65%  随机装备", {x, y}, 14, 1, {200, 200, 200, 255});
+    y += 18;
+    DrawTextEx(g_font_small, "20%  钥匙 x1", {x, y}, 14, 1, {200, 200, 200, 255});
+    y += 18;
+    DrawTextEx(g_font_small, "10%  金币 x10", {x, y}, 14, 1, {200, 200, 200, 255});
+    y += 18;
+    DrawTextEx(g_font_small, " 5%  圣物", {x, y}, 14, 1, {255, 220, 100, 255});
+    return y + 28;
+}
+
+// G22c: 抽奖结果消息 (RELIC: 前缀转中文; 圣物金色 / 其余绿色)
+static void _draw_gamble_result(float x, float y, float max_w,
+                                const std::string& msg, float timer) {
+    if (timer <= 0 || msg.empty()) return;
+    Color rc = (msg.find("RELIC:") == 0)
+        ? Color{255, 220, 80, 255} : Color{180, 255, 180, 255};
+    std::string display = msg;
+    if (display.find("RELIC:") == 0)
+        display = "圣物: " + display.substr(6);
+    _draw_wrapped_text(display, x, y, max_w, 18, 18.0f, rc);
+}
+
 void GameRenderer::draw_gamble_panel(const Player* player, const std::string& result_msg,
-                                     float result_timer, int sw, int sh) {
+                                      float result_timer, int sw, int sh) {
     DrawRectangle(0, 0, sw, sh, {0, 0, 0, 180});
-    float pw = 420, ph = 340;
-    Rectangle pr = {sw / 2.0f - pw / 2, sh / 2.0f - ph / 2, pw, ph};
+    constexpr float kPanelW = 420, kPanelH = 340;
+    Rectangle pr = {sw / 2.0f - kPanelW / 2, sh / 2.0f - kPanelH / 2, kPanelW, kPanelH};
     draw_panel(pr, "赌徒的轮盘");
 
     if (!g_font_loaded) return;
 
     float x0 = pr.x + 30;
     float y = pr.y + 50;
-    float max_w = pw - 60;
 
     // Player gold
     char gold_buf[32];
@@ -1110,36 +1152,17 @@ void GameRenderer::draw_gamble_panel(const Player* player, const std::string& re
     DrawTextEx(g_font_small, gold_buf, {x0, y}, 18, 1, Color{220, 200, 100, 255});
     y += 30;
 
-    // Odds table
-    DrawTextEx(g_font_small, "— 奖池概率 —", {x0, y}, 16, 1, {160, 160, 200, 255});
-    y += 24;
-    DrawTextEx(g_font_small, "65%  随机装备", {x0, y}, 14, 1, {200, 200, 200, 255});
-    y += 18;
-    DrawTextEx(g_font_small, "20%  钥匙 x1", {x0, y}, 14, 1, {200, 200, 200, 255});
-    y += 18;
-    DrawTextEx(g_font_small, "10%  金币 x10", {x0, y}, 14, 1, {200, 200, 200, 255});
-    y += 18;
-    DrawTextEx(g_font_small, " 5%  圣物", {x0, y}, 14, 1, {255, 220, 100, 255});
-    y += 28;
-
+    y = _draw_gamble_odds(x0, y);    // Odds table (返回下一行 y)
     // Cost
     DrawTextEx(g_font_small, "每次抽奖: 20 金币", {x0, y}, 16, 1, {255, 255, 100, 255});
     y += 28;
 
-    // Result message
-    if (result_timer > 0 && !result_msg.empty()) {
-        Color rc = (result_msg.find("RELIC:") == 0)
-            ? Color{255, 220, 80, 255} : Color{180, 255, 180, 255};
-        std::string display = result_msg;
-        if (display.find("RELIC:") == 0)
-            display = "圣物: " + display.substr(6);
-        _draw_wrapped_text(display, x0, y, max_w, 18, 18.0f, rc);
-        y += 36;
-    }
+    _draw_gamble_result(x0, y, kPanelW - 60.0f, result_msg, result_timer);
 
     // Controls
     DrawTextEx(g_font_small, "[E] 抽奖   [B/ESC] 关闭",
-               {pr.x + (pw - 180) / 2, pr.y + ph - 20}, 14, 1, {140, 140, 140, 255});
+               {pr.x + (kPanelW - 180) / 2, pr.y + kPanelH - 20}, 14, 1,
+               {140, 140, 140, 255});
 }
 
 void GameRenderer::draw_challenge_portal(float cam_x, float cam_y,
@@ -1315,23 +1338,20 @@ void GameRenderer::draw_character_panel(const CharacterPanelData& d, float px, f
         _draw_mirror_learning(d, px, py, ph);
 }
 
-// v1.6-B1: "它眼中的你" — 风格/Top3习惯/准确率 (Boss 层常驻, 观察期起)
-// 布局: 紧贴 Echo 面板下方; 高度按习惯条数自适应 (54~116px)
-void GameRenderer::_draw_mirror_learning(const CharacterPanelData& d,
-                                         float px, float py, float panel_h) {
-    float ly2 = py + panel_h + 8.0f;
-    // ── 上段: 它眼中的你 (常驻) ──
+// G22c: 镜像学习区上段 —— "它眼中的你": 风格 / Top3 习惯 / 准确率
+// 返回上段高度 (下段要紧贴其下方)
+static float _draw_mirror_style(const CharacterPanelData& d, float px, float ly) {
     int habit_rows = 0;
     for (int i = 0; i < 3; i++)
         if (d.mirror_habits[i][0]) habit_rows++;
     float top_h = 46.0f + habit_rows * 15.0f;
-    DrawRectangleRounded({px, ly2, 240.0f, top_h}, 0.12f, 4, {24, 10, 10, 225});
-    DrawRectangleRoundedLines({px, ly2, 240.0f, top_h}, 0.12f, 4, 1.0f,
+    DrawRectangleRounded({px, ly, 240.0f, top_h}, 0.12f, 4, {24, 10, 10, 225});
+    DrawRectangleRoundedLines({px, ly, 240.0f, top_h}, 0.12f, 4, 1.0f,
         {130, 40, 40, 190});
     char lbuf[64];
     snprintf(lbuf, sizeof(lbuf), "它眼中的你 · %s", d.mirror_style);
-    DrawTextEx(g_font_small, lbuf, {px + 8, ly2 + 3}, 12, 1, {230, 120, 110, 255});
-    float ry = ly2 + 20.0f;
+    DrawTextEx(g_font_small, lbuf, {px + 8, ly + 3}, 12, 1, {230, 120, 110, 255});
+    float ry = ly + 20.0f;
     for (int i = 0; i < 3; i++) {
         if (!d.mirror_habits[i][0]) continue;
         DrawTextEx(g_font_small, d.mirror_habits[i], {px + 8, ry}, 11, 1,
@@ -1345,18 +1365,20 @@ void GameRenderer::_draw_mirror_learning(const CharacterPanelData& d,
     else
         snprintf(lbuf, sizeof(lbuf), "观察中… 已收录 %d 招", d.mirror_observed);
     DrawTextEx(g_font_small, lbuf, {px + 8, ry}, 11, 1, {220, 170, 120, 255});
-    // ── 下段: 4 臂胜率 (决策后) ──
-    if (d.mirror_last_action < 0) return;
+    return top_h;
+}
+
+// G22c: 镜像学习区下段 —— 应对策略 4 臂胜率 (仅决策后)
+static void _draw_mirror_arms(const CharacterPanelData& d, float px, float ay) {
     static const char* ARM_NAMES[4] = {"近战压制", "后撤拉扯", "技能反制", "连招输出"};
-    float ay = ly2 + top_h + 4.0f;
-    float ah = 74.0f;
+    const float ah = 74.0f;
     DrawRectangleRounded({px, ay, 240.0f, ah}, 0.12f, 4, {20, 8, 8, 220});
     DrawRectangleRoundedLines({px, ay, 240.0f, ah}, 0.12f, 4, 1.0f,
         {90, 30, 30, 180});
+    char lbuf[64];
     snprintf(lbuf, sizeof(lbuf), "应对策略 · 决策: %s",
         ARM_NAMES[d.mirror_last_action]);
-    DrawTextEx(g_font_small, lbuf, {px + 8, ay + 3}, 12, 1,
-        {220, 150, 140, 255});
+    DrawTextEx(g_font_small, lbuf, {px + 8, ay + 3}, 12, 1, {220, 150, 140, 255});
     float ary = ay + 22.0f;
     for (int i = 0; i < 4; i++) {
         bool cur = (i == d.mirror_last_action);
@@ -1365,11 +1387,24 @@ void GameRenderer::_draw_mirror_learning(const CharacterPanelData& d,
         snprintf(lbuf, sizeof(lbuf), "%d%%",
             (int)(d.mirror_arm_rates[i] * 100.0f));
         DrawTextEx(g_font_small, lbuf, {px + 66, ary}, 11, 1, ac);
-        draw_progress_bar({px + 104, ary + 3, 112, 8}, d.mirror_arm_rates[i],
+        GameRenderer::draw_progress_bar({px + 104, ary + 3, 112, 8},
+            d.mirror_arm_rates[i],
             cur ? Color{220, 90, 80, 255} : Color{120, 60, 60, 255},
             {50, 20, 20, 255});
         ary += 13.0f;
     }
+}
+
+// v1.6-B1: "它眼中的你" — 风格/Top3习惯/准确率 (Boss 层常驻, 观察期起)
+// 布局: 紧贴 Echo 面板下方; 高度按习惯条数自适应 (54~116px)
+void GameRenderer::_draw_mirror_learning(const CharacterPanelData& d,
+                                          float px, float py, float panel_h) {
+    float ly2 = py + panel_h + 8.0f;
+    // ── 上段: 它眼中的你 (常驻) ──
+    float top_h = _draw_mirror_style(d, px, ly2);
+    // ── 下段: 4 臂胜率 (决策后) ──
+    if (d.mirror_last_action < 0) return;
+    _draw_mirror_arms(d, px, ly2 + top_h + 4.0f);
 }
 
 static void _draw_hp_bar(const Player* player) {
