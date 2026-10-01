@@ -100,7 +100,7 @@ buff 和圣物从未到账。这个 bug 在 v1.14 已发布的包里同样存在
 第 4 项现在有 `tools/dead_method_scan.py --debug` 当尺子，可以动手了。
 
 
-
+# G22d — 修 MirrorMemoryStore 伪原子写的三处漏洞（2026-09-30）
 
 起因：`saves/mirror_memory.json.tmp` 这个 134 字节的残留文件。
 它比正式档新 1.5 小时，长度相同内容不同 —— 查证后是正式档
