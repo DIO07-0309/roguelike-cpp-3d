@@ -220,56 +220,159 @@ for p, t in text.items():
         cls, name = m.group(1), m.group(2)
         if any(b in m.group(0) for b in ("=", "cast<")):
             continue                               # 赋值/强转, 不是定义
-        ob = t.find("{", m.end() - 1)
-        if ob < 0:
+        # 配平参数括号找到签名真正结束的位置。
+        # 早先直接 t.find("{") 找下一个大括号、再用 rfind(";",0,ob) 与
+        # rfind("(",0,ob) 比较来判声明/定义 —— 这两个 rfind 会跨语句越过
+        # 后续不相关的 if (...) {, 于是调用语句 Class::f(a, b) 被当成定义
+        # (game_scene.cpp:479 / weapon_executor.cpp:106 都是这么漏进来的),
+        # defs 虚增、q 被扣到 0, 把真被调用的方法误报成确证死。
+        _depth = 1
+        _k = m.end()
+        while _k < len(t) and _depth > 0:
+            if t[_k] == "(":
+                _depth += 1
+            elif t[_k] == ")":
+                _depth -= 1
+            _k += 1
+        if _depth != 0:
             continue
-        if t.rfind(";", 0, ob) > t.rfind("(", 0, ob):   # 是声明不是定义
-            continue
+        _j = _k
+        while _j < len(t) and t[_j] in " \t\n":
+            _j += 1
+        if _j >= len(t) or t[_j] != "{":
+            continue                               # ';' 结尾 = 声明或调用
+        ob = _j
         cb = match_brace(t, ob)
         if cb < 0:
             continue
         class_bodies.append((cls, name, p, ob, cb))
 
-# 全仓 [.]name( 与 ->name( 形式的调用 (最宽松的一层)
-dot_cache = {}
+# 按类名分组。判定循环要对每个候选遍历「本类的函数体」, 不分组就是
+# 候选数 x 函数体总数 的线性扫描 (938 x 1661 = 156 万次), 全仓跑一次约 5 分钟。
+bodies_by_class = {}
+defs_by_pair = {}
+for c, n, p, ob, cb in class_bodies:
+    bodies_by_class.setdefault(c, []).append((p, ob, cb))
+    defs_by_pair[(c, n)] = defs_by_pair.get((c, n), 0) + 1
+
+# ---------------------------------------------------------------- 预计算索引
+# 早先每道闸门都全语料跑一遍 re.findall (938 候选 x 3 闸门 = 2800 次全量扫描,
+# cProfile 显示单这一项 136s / 总 240s)。改成一遍扫描把所有标识符出现点
+# 按上下文分类归档, 之后全部闸门都是字典查表。
+#
+# 四个上下文类别:
+#   qualified  前面是 identifier::  (归属类可判, 用于第一道闸门)
+#   dot        前面是 . 或 ->      (第三道闸门, 最宽松)
+#   bare       其余                (声明位 / 定义位 / 作为值传递的引用)
+# 另外单独记录「后面紧跟 (」的出现点带偏移, 供本类体内调用闸门二分/线性查。
+IDENT_RE = re.compile(r"[A-Za-z_]\w*")
+
+qual_owner = {}     # (owner_cls, name) -> count
+dot_calls = {}      # name -> count
+bare_refs = {}      # name -> count
+call_offsets = {}   # (name, path) -> [start_off, ...]
+
+for _p in files:
+    _t = text[_p]
+    for _m in IDENT_RE.finditer(_t):
+        _name = _m.group(0)
+        if len(_name) < 3:
+            continue
+        _i = _m.start() - 1
+        while _i >= 0 and _t[_i] in " \t\n":
+            _i -= 1
+        _c = _t[_i] if _i >= 0 else ""
+        _owner = ""
+        if _c == ":" and _i >= 1 and _t[_i - 1] == ":":
+            _j = _i - 2
+            while _j >= 0 and _t[_j] in " \t\n":
+                _j -= 1
+            _k = _j
+            while _k >= 0 and (_t[_k].isalnum() or _t[_k] == "_"):
+                _k -= 1
+            _owner = _t[_k + 1:_j + 1]
+        elif _c == ".":
+            dot_calls[_name] = dot_calls.get(_name, 0) + 1
+        elif _c == ">" and _i >= 1 and _t[_i - 1] == "-":
+            dot_calls[_name] = dot_calls.get(_name, 0) + 1
+        else:
+            bare_refs[_name] = bare_refs.get(_name, 0) + 1
+        if _owner:
+            qual_owner[(_owner, _name)] = qual_owner.get((_owner, _name), 0) + 1
+        _j = _m.end()
+        while _j < len(_t) and _t[_j] in " \t\n":
+            _j += 1
+        if _j < len(_t) and _t[_j] == "(":
+            call_offsets.setdefault((_name, _p), []).append(_m.start())
 
 
 def dot_count(name):
-    if name not in dot_cache:
-        dot_cache[name] = len(re.findall(
-            r"[.>]" + re.escape(name) + r"\s*\(", corpus))
-    return dot_cache[name]
+    return dot_calls.get(name, 0)
 
 
-# ---------------------------------------------------------------- 判定
-# 第四道闸门: 名字作为「值」传递的引用 (EventBus::subscribe(..., _handler, ...),
-# std::bind, std::function 参数) 既没有 Class:: 前缀也没有紧随的 (,
-# 前面三道闸门全部看不见。所以再数一遍裸 token, 减去声明与定义各 1 次,
-# 还剩任何出现就降级为「待人工」, 绝不判死。
 def bare_tokens(name):
-    return len(re.findall(r"\b" + re.escape(name) + r"\b", corpus))
+    return bare_refs.get(name, 0)
+
+
+# 裸 token 计数必须减去「全仓所有同名方法的声明位与定义位」, 而不是固定减 2。
+# 固定减 2 假设了全仓只有这一个方法叫这个名字 —— 只要另一个类也有同名方法
+# (VFXShader::enable / ModManager::enable), 别人的声明+定义就会冒充存活证据,
+# 把这个方法永久挡在「确证死」之外。这正是 ModManager::enable 漏报的原因。
+name_decl_sites = {}
+name_def_sites = {}
+for (c, n), ds in cands.items():
+    name_decl_sites[n] = name_decl_sites.get(n, 0) + len(set(ds))
+for (c, n), cnt in defs_by_pair.items():
+    name_def_sites[n] = name_def_sites.get(n, 0) + cnt
 
 
 dead, ambig = [], []
 for (cls, name), decls in cands.items():
-    q = len(re.findall(r"\b" + re.escape(cls) + r"::" + re.escape(name) + r"\b",
-                       corpus))
-    defs = sum(1 for c, n, _p, _a, _b in class_bodies if c == cls and n == name)
-    q -= defs                                   # 定义自身不算引用
+    q = qual_owner.get((cls, name), 0)
+    q -= defs_by_pair.get((cls, name), 0)   # 定义自身不算引用
+    q = max(q, 0)
     inner = 0
-    for c, n, p, a, b in class_bodies:
-        if c == cls:
-            inner += len(re.findall(r"\b" + re.escape(name) + r"\s*\(",
-                                    text[p][a:b]))
+    for p, ob, cb in bodies_by_class.get(cls, []):
+        for off in call_offsets.get((name, p), []):
+            if ob <= off < cb:
+                inner += 1
     d = dot_count(name)
     if q + inner > 0:
         continue                                # 存活
-    b = bare_tokens(name) - d - 2               # 减去调用形态与「声明+定义」
+    # 裸引用桶里混着「声明位」和「作为值传递的引用」两样东西。
+    # 定义不必扣 —— 成员函数定义永远是限定形式 (Foo::bar), 走的是 qual 桶。
+    # 只扣声明位, 剩下的就是 std::function/std::bind 传参那类引用。
+    # 例: EventBus::subscribe(EVT, _on_relic_gained, "AtkEvo") 的第三参
+    b = bare_tokens(name) - name_decl_sites[name]
     row = (cls, name, sorted(set(decls)), q, inner, d, max(b, 0))
     (ambig if d > 0 or b > 0 else dead).append(row)
 
 dead.sort()
 ambig.sort()
+
+# --debug NAME: 打印单个方法的全部中间量, 用于排查「为什么没被判死」
+if "--debug" in sys.argv:
+    want = sys.argv[sys.argv.index("--debug") + 1]
+    for (cls, name), decls in sorted(cands.items()):
+        if name != want:
+            continue
+        q = len(re.findall(r"\b" + re.escape(cls) + r"::" + re.escape(name) + r"\b",
+                           corpus))
+        defs = sum(1 for c, n, _p, _a, _b in class_bodies if c == cls and n == name)
+        print("DEBUG %-30s decls=%s rawq=%d defs=%d dot=%d bare=%d "
+              "name_decls=%d name_defs=%d"
+              % (cls + "::" + name, sorted(set(decls)), q, defs, dot_count(name),
+                 bare_tokens(name), name_decl_sites[name], name_def_sites[name]))
+    print("DEBUG class_bodies entries named %s:" % want)
+    for c, n, p, a, b in class_bodies:
+        if n == want:
+            print("   %s::%s  %s  span=%d" % (c, n, p.replace("/", "\\"), b - a))
+    print("DEBUG bare-token hits for %s:" % want)
+    for p in files:
+        for m in re.finditer(r"\b" + re.escape(want) + r"\b", text[p]):
+            ln = text[p].count("\n", 0, m.start()) + 1
+            print("   %s:%d" % (p.replace("/", "\\"), ln))
+
 print("=== 死方法扫描 v2 (限定名解析) ===")
 print("候选 (类, 方法): %d   cpp 作用域函数体: %d   扫描文件: %d"
       % (len(cands), len(class_bodies), len(files)))
