@@ -12,8 +12,8 @@ struct GameEvent;
 
 class SkillEvolutionManager {
 public:
+    // 设置已注册标记。EventBus 是进程级全局单例，故没有对应的注销接口。
     static void register_listener();
-    static void unregister_listener();
 
     // 检查所有技能的进化条件 (事件驱动, 每次技能使用后调用)
     static void check_unlock(Player* player);

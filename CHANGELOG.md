@@ -1,4 +1,106 @@
-# G22d — 修 MirrorMemoryStore 伪原子写的三处漏洞（2026-09-30）
+# G23 — 死方法扫描器修 5 个 bug + 删 21 个死方法（2026-10-01）
+
+起因是 G22 系列收尾后想继续做「40-100 行中批函数」，需要先有一把
+靠谱的尺子。结果先修了尺子本身。
+
+## 扫描器修的 5 个 bug
+
+**1. 调用点被当成定义（最严重，直接造成误删风险）**
+
+早先用 `t.find("{")` 找下一个大括号、再用 `rfind(";",0,ob)` 和
+`rfind("(",0,ob)` 比大小来判声明/定义。这两个 `rfind` 会跨过后续
+不相关的 `if (...) {`，于是调用语句 `FloorManager::spawn_floor_monsters(...)`
+被当成函数定义，`defs` 虚增、`q` 被扣到 0 —— **7 个真被调用的方法被报成
+确证死**，差点删掉 `ElementResolver::resolve`、`GameRenderer::draw_phase_banner`、
+`MetaSystem::unlock_ending` 这些主干路径。改成配平参数括号、要求签名正后方
+是 `{` 才算定义。
+
+**2. 上下文判定读错了位置**
+
+`_i = _m.end() - 1` 指向 token 自己的最后一个字符，不可能是 `:` 或 `.`，
+所以一切命中都落进「裸引用」桶，354 项膨胀成 399。应是 `_m.start() - 1`。
+
+**3. 裸引用公式扣错了东西**
+
+成员函数定义永远是限定形式（`Foo::bar`），走的是 qual 桶，不该再从裸引用里
+扣定义位数。正确公式：`值引用 = 裸引用 − 声明位数`。这条修复让
+`_on_relic_gained` 正确回到待人工 —— 它在 `EventBus::subscribe(...)` 里是
+值传递，是活的。
+
+**4. 同名方法互相当存活证据**
+
+`VFXShader::enable` 的裸 token 让 `ModManager::enable` 永久判活。全仓同名
+方法的声明位/定义位都要扣，不是固定扣 2。
+
+**5. 性能：289 秒 → 1.1 秒**
+
+原来每道闸门都全语料 `re.findall`（cProfile 显示 23196 次调用吃掉 136 秒）。
+改成一遍扫描把所有标识符出现点按上下文分类归档，之后全部闸门是字典查表。
+
+顺手加了 `--debug NAME`：打印单个方法的全部中间量（decls/rawq/defs/dot/bare
++ 全部命中位置）。上面 1 和 2 都是靠它定位的 —— 一个能自证的工具
+比一个快的工具重要。
+
+## 删掉的 21 个死方法
+
+| 类 | 方法 |
+| :--- | :--- |
+| `GameScene` | `_player_attack`、`_use_skill`（D6 Step7 委托后残留的壳） |
+| `ModManager` | `enable`、`disable`（启用状态只由 `load_config` 驱动） |
+| `Player` | `render`（空体，渲染走 `draw_no_cam`） |
+| `QuestManager` | `complete`、`fail`、`grant_reward` |
+| `ResourceManager` | `load_sound` |
+| 三个 Listener | `unregister_listener`（EventBus 进程级单例，回调幂等） |
+| `VFXServer` | `fireball`、`ice_nova`、`chain_lightning`、`shadow_strike`、
+`blood_frenzy`、`summon_spirit`、`slash_arc_3`、`bolt_spread_3`、
+`smash_impact_2` |
+
+`QuestManager::grant_reward` 是**级联**：它唯一的调用者是 `complete()`，
+`complete()` 删掉之后它才露出来。删完再跑一遍扫描器确认为 0，避免下一层。
+
+`VFXServer` 那 9 个是死包装：调用点（`player_controller.cpp:791`）直接
+`vfx.effects.push_back({"bolt_spread_3", ...})` 内联构造，特效字符串本身
+仍在用、渲染分支（`_draw_bolt_spread_3` 等）仍然活着。删方法不改任何表现。
+
+顺带删了 `ResourceManager::_sound_cache` —— `load_sound` 一去它就是
+永不填充的死状态，连同析构里那两行清理一起清掉。
+
+三处注释承载了真实信息，上提到仍存活的函数上，没有直接蒸发：
+
+- EventBus 为何不注销 → 上到三个 `register_listener`
+- 战斗输入去了哪 → 留一行在 `game_scene.cpp` 的「战斗」段头
+- `QuestState::FAILED` 为何留着 → 存档兼容，`restore_states` 按 `int` 读，
+  不能给枚举重新编号
+
+build 0 error 0 warning · ctest 77/77 · exe 7204644 → 7188952
+
+## 顺带发现一个真 bug（没修，需要你决定）
+
+`resources/quests.json` 有 8 条奖励配了 `buff_id` / `relic_id`：
+
+```
+[2]/[3]/[7] reward/buff_id=attack_up
+[8]         reward/relic_id=golden_dice
+[9]         reward/buff_id=defense_up
+[10]        reward/relic_id=infinity_orb, reward/buff_id=blessing
+[11]        reward/buff_id=growth
+```
+
+但唯一会发放它们的 `grant_reward()` 从没人调用；活跃路径
+`_auto_complete()` 只发 `set_flag` / `counter` / `relation`，**完全忽略
+`relic_id` 和 `buff_id`**。玩家完成这 8 个任务拿到的是状态标记和计数器，
+buff 和圣物从未到账。这个 bug 在 v1.14 已发布的包里同样存在。
+
+这次没动它 —— 给 `_auto_complete` 补上发奖逻辑是行为变更，不是清理，
+按规则 9 应该先讨论再编码。
+
+## 未做
+
+第 3 项（`_process` 1072 行）和第 4 项（40-100 行中批）仍未开始。
+第 4 项现在有 `tools/dead_method_scan.py --debug` 当尺子，可以动手了。
+
+
+
 
 起因：`saves/mirror_memory.json.tmp` 这个 134 字节的残留文件。
 它比正式档新 1.5 小时，长度相同内容不同 —— 查证后是正式档

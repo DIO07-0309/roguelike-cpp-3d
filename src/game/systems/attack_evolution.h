@@ -12,10 +12,9 @@ struct GameEvent;
 
 class AttackEvolutionManager {
 public:
-    // 注册到 EventBus (在 enter_floor 调用)
+    // 注册到 EventBus (在 enter_floor 调用)。
+    // EventBus 是进程级全局单例、回调幂等，故没有对应的注销接口。
     static void register_listener();
-    // 从 EventBus 注销 (在 enter_floor 调用)
-    static void unregister_listener();
 
     // 条件检查 (由 EventBus 回调触发)
     static void check_unlock(Player* player);

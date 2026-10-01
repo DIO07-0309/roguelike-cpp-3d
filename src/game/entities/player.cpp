@@ -53,8 +53,6 @@ int Player::attack_target(Player* target, double game_time) {
     return 0; // 玩家打怪物用 combat_system
 }
 
-void Player::render(Camera2D& cam) { (void)cam; }
-
 void Player::reset_attack_timers() {
     _last_attack_time = -999.0f;
     _last_skill_time = -999.0f;   // M4e

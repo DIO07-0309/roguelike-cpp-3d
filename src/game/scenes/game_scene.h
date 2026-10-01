@@ -267,8 +267,6 @@ public:
 
 private:
     // 战斗
-    void _player_attack();
-    void _use_skill(int index);
     void _update_monsters(float dt);
     void _unstuck_wedged_monsters(double gt);   // Q3.2: 怪物脱卡 (贴墙钉子户软锁修复)
     void _on_monster_killed(Monster* m);

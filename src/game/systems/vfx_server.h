@@ -75,8 +75,6 @@ public:
     void player_attack(float cx, float cy, float range,
                        const AttackEvolutionState& evo = AttackEvolutionState{});
 
-    // Legacy: internally delegates to beam + ring
-    void fireball(float cx, float cy, float tx, float ty, int level);
     // Legacy: internally delegates to ring + spark_burst
     void heal(float cx, float cy, int level);
     // Legacy
@@ -87,20 +85,12 @@ public:
     void time_stop(float cx, float cy);
     void hit_flash(float x, float y, float size);
 
-    // ── G5.8: Signature skill VFX (thin wrappers) ──
-    void ice_nova(float cx, float cy, float radius, int level);
-    void chain_lightning(float sx, float sy, float tx, float ty, int bounces);
-    void shadow_strike(float from_x, float from_y, float to_x, float to_y, int level);
-    void blood_frenzy(float cx, float cy, float radius, int hit_count);
-    void summon_spirit(float cx, float cy, int count);
-
     // ── G5.8: Boss Phase2 transition VFX ──
     void boss_phase2_flash(float cx, float cy, Color tint);
 
-    // ── A9: 武器特效增强 (15 种新特效) ──
+    // ── A9: 武器特效增强 (12 种; 另有 _3 级包装已被调用点内联 push_back 取代, 已删) ──
     void slash_arc_1(float cx, float cy, Direction dir, float radius, Color c, float dur);
     void slash_arc_2(float cx, float cy, Direction dir, float radius, Color c, float dur);
-    void slash_arc_3(float cx, float cy, Direction dir, float radius, Color c, float dur);
     void pierce_beam_1(float sx, float sy, float tx, float ty, Color c, float dur);
     void pierce_beam_2(float sx, float sy, float tx, float ty, Color c, float dur);
     void pierce_beam_3(float sx, float sy, float tx, float ty, Color c, float dur);
@@ -109,9 +99,7 @@ public:
     void whip_arc_3(float cx, float cy, Direction dir, float radius, Color c, float dur);
     void bolt_spread_1(float cx, float cy, float tx, float ty, Color c, float dur);
     void bolt_spread_2(float cx, float cy, float tx, float ty, Color c, float dur);
-    void bolt_spread_3(float cx, float cy, float tx, float ty, Color c, float dur);
     void smash_impact_1(float cx, float cy, float radius, Color c, float dur);
-    void smash_impact_2(float cx, float cy, float radius, Color c, float dur);
     void smash_impact_3(float cx, float cy, float radius, Color c, float dur);
 
     void portal_entry(float cx, float cy);

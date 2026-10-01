@@ -111,8 +111,6 @@ void ResourceManager::unload_all() {
     if (!_loaded) return;   // 防重入: main 显式卸载 + 静态析构双调 (double-free 根因)
     _loaded = false;
     _free_font();
-    for (auto& [_, s] : _sound_cache) UnloadSound(s);
-    _sound_cache.clear();
     for (auto& [_, t] : _texture_cache) UnloadTexture(t);
     _texture_cache.clear();
     _json_cache.clear();
@@ -190,15 +188,6 @@ std::string ResourceManager::load_json_text(const char* path) {
     fclose(f);
     _json_cache[path] = buf;
     return buf;
-}
-
-Sound ResourceManager::load_sound(const char* path) {
-    auto it = _sound_cache.find(path);
-    if (it != _sound_cache.end()) return it->second;
-    if (!FileExists(path)) { Sound dummy = {0}; return dummy; }
-    Sound s = LoadSound(path);
-    _sound_cache[path] = s;
-    return s;
 }
 
 // ═══════════════════════════════════════════════════════════════

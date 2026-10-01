@@ -210,12 +210,6 @@ void VFXServer::player_attack(float cx, float cy, float range, const AttackEvolu
     if (evo.level >= 3) flash(cx, cy, range * 0.8f, {255,220,60,100}, 0.20f);
 }
 
-void VFXServer::fireball(float cx, float cy, float tx, float ty, int level) {
-    beam(cx, cy, tx, ty, {255,100,50,200}, 0.4f);
-    for (int i = 0; i < level; i++)
-        ring(tx, ty, 16.0f + i * 8.0f, {255,180,60,150}, 1, 0.35f + i * 0.1f);
-}
-
 void VFXServer::heal(float cx, float cy, int) {
     ring(cx, cy, 40, {100,255,100,180}, 1, 0.5f);
     spark_burst(cx, cy, 6, {150,255,150,255}, 0.4f);
@@ -230,45 +224,6 @@ void VFXServer::boss_circle(float cx, float cy)  { ring(cx, cy, 80, {220,50,50,2
 void VFXServer::boss_summon(float cx, float cy)  { ring(cx, cy, 64, {150,50,200,200}, 1, 0.5f); }
 void VFXServer::time_stop(float cx, float cy)    { ring(cx, cy, 200, {180,180,200,150}, 1, 0.8f); }
 void VFXServer::hit_flash(float x, float y, float s) { flash(x, y, s*0.8f, {255,255,255,200}, 0.15f); }
-
-// ── G5.8 Signature Skills ──
-
-void VFXServer::ice_nova(float cx, float cy, float radius, int level) {
-    shockwave(cx, cy, radius, {100,200,255,200}, 3, 0.50f);
-    spark_burst(cx, cy, 12 + level * 3, {200,230,255,255}, 0.35f);
-    explosion(cx, cy, radius * 0.6f, {180,240,255,220}, 6, 0.40f);
-}
-
-void VFXServer::chain_lightning(float sx, float sy, float tx, float ty, int bounces) {
-    lightning(sx, sy, tx, ty, 3, {200,220,255,240}, 0.25f);
-    flash(tx, ty, 20.0f, {200,220,255,180}, 0.15f);
-    spark_burst(tx, ty, 4, {180,200,255,255}, 0.20f);
-}
-
-void VFXServer::shadow_strike(float fx, float fy, float tx, float ty, int level) {
-    smoke_puff(tx, ty, 14.0f, {60,20,120,180}, 3 + level, 0.30f);
-    slash_arc(tx, ty, Direction::DOWN, 48.0f, {140,40,220,200}, 0.35f);
-    flash(tx, ty, 28.0f, {180,60,255,150}, 0.20f);
-    spark_burst(tx, ty, 6, {120,40,200,200}, 0.30f);
-}
-
-void VFXServer::blood_frenzy(float cx, float cy, float radius, int hit_count) {
-    ring(cx, cy, radius, {200,30,40,180}, 1, 0.40f);
-    for (int i = 0; i < 15 + hit_count * 3; i++) {
-        // RNG-002: 视觉掷骰走 visual_rng 独立流, 不吃 gameplay rng
-        float a = (float)(visual_rng() % 360) * DEG2RAD;
-        float d = radius * (float)(visual_rng() % 100) / 100.0f;
-        effects.push_back(_ef("spark", cx + cosf(a) * d, cy + sinf(a) * d, 2.5f, {220,30,50,220}, 0.35f));
-    }
-    for (int i = 0; i < hit_count; i++)
-        effects.push_back(_ef("spark", cx - 20 + (float)(visual_rng()%40), cy - 30, 4.0f, {100,255,100,220}, 0.45f));
-}
-
-void VFXServer::summon_spirit(float cx, float cy, int count) {
-    ring(cx, cy, 60.0f, {120,180,255,180}, 2, 0.60f);
-    ring(cx, cy, 40.0f, {150,200,255,160}, 1, 0.50f);
-    spark_burst(cx, cy, count * 6, {180,200,255,200}, 0.50f);
-}
 
 // ── G5.8 Boss Phase2 VFX ──
 
@@ -293,10 +248,6 @@ void VFXServer::slash_arc_1(float cx, float cy, Direction dir, float radius, Col
 
 void VFXServer::slash_arc_2(float cx, float cy, Direction dir, float radius, Color c, float dur) {
     effects.push_back({"slash_arc_2", cx, cy, radius, c, dur, 0, dir});
-}
-
-void VFXServer::slash_arc_3(float cx, float cy, Direction dir, float radius, Color c, float dur) {
-    effects.push_back({"slash_arc_3", cx, cy, radius, c, dur, 0, dir});
 }
 
 void VFXServer::pierce_beam_1(float sx, float sy, float tx, float ty, Color c, float dur) {
@@ -331,16 +282,8 @@ void VFXServer::bolt_spread_2(float cx, float cy, float tx, float ty, Color c, f
     effects.push_back({"bolt_spread_2", cx, cy, 0, c, dur, 0, Direction::DOWN, tx, ty, 1});
 }
 
-void VFXServer::bolt_spread_3(float cx, float cy, float tx, float ty, Color c, float dur) {
-    effects.push_back({"bolt_spread_3", cx, cy, 0, c, dur, 0, Direction::DOWN, tx, ty, 1});
-}
-
 void VFXServer::smash_impact_1(float cx, float cy, float radius, Color c, float dur) {
     effects.push_back({"smash_impact_1", cx, cy, radius, c, dur, 0});
-}
-
-void VFXServer::smash_impact_2(float cx, float cy, float radius, Color c, float dur) {
-    effects.push_back({"smash_impact_2", cx, cy, radius, c, dur, 0});
 }
 
 void VFXServer::smash_impact_3(float cx, float cy, float radius, Color c, float dur) {

@@ -18,12 +18,6 @@ void AttackEvolutionManager::register_listener() {
     LOG_INFO("[ATK_EVO] EventBus listener registered");
 }
 
-void AttackEvolutionManager::unregister_listener() {
-    // RELIC_GAIN 回调幂等 — 重复触发不会造成副作用
-    // EventBus 是进程级全局单例，不需要在场景切换时注销
-    (void)0; // 保留接口供未来使用
-}
-
 void AttackEvolutionManager::check_unlock(Player* player) {
     if (!player) return;
     auto& evo = player->attack_evo;

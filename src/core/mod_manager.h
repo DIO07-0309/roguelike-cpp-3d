@@ -23,9 +23,7 @@ public:
     // ── 扫描 mods/ 目录 ──
     void scan(const std::string& mods_dir = "mods");
 
-    // ── 启用/禁用 ──
-    void enable(const std::string& mod_id);
-    void disable(const std::string& mod_id);
+    // ── 启用状态 ──
     bool is_enabled(const std::string& mod_id) const;
 
     // ── 持久化 ──

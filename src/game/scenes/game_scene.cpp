@@ -2018,9 +2018,8 @@ void GameScene::_collect_sim_stats() {
 // ============================================================
 // 战斗
 // ============================================================
-// _player_attack / _use_skill — delegated to PlayerController (D6 Step7)
-void GameScene::_player_attack() { _player_ctrl.player_attack(); }
-void GameScene::_use_skill(int index) { _player_ctrl.use_skill(index); }
+// 战斗输入直接由 PlayerController 处理 (D6 Step7)。
+// GameScene 层的 _player_attack / _use_skill 转发壳无调用方, 已删除。
 
 // 收官: 木桶可交互闭环 — 攻击范围内未触发的桶 → 点燃 (倒计时由 arena tick 驱动)
 void GameScene::_try_trigger_barrel_near(const Rectangle& rect) {

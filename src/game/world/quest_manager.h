@@ -59,10 +59,9 @@ public:
     // 每帧更新: 自动解锁/完成 (根据 WorldState)
     void update(WorldState& ws, const StoryDirector& story);
 
-    // 玩家操作
+    // 玩家操作。完成由 update() 自动判定 (_auto_complete),
+    // 没有手工完成/失败入口; QuestState::FAILED 为存档兼容保留。
     bool accept(int quest_id, WorldState& ws);
-    void complete(int quest_id, WorldState& ws, Player* player);
-    void fail(int quest_id);
 
     // G2.4: Save v3 读写
     void restore_states(const std::unordered_map<int, int>& states);
@@ -74,9 +73,6 @@ public:
     int          available_count() const;
     int          completed_count() const;
     const std::vector<Quest>& all_quests() const { return _quests; }
-
-    // 奖励发放
-    void grant_reward(const QuestReward& reward, Player* player, WorldState& ws);
 
 private:
     std::vector<Quest> _quests;

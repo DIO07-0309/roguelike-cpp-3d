@@ -22,8 +22,6 @@ void SkillEvolutionManager::register_listener() {
     LOG_INFO("[SKL_EVO] SkillEvolutionManager registered");
 }
 
-void SkillEvolutionManager::unregister_listener() {}
-
 void SkillEvolutionManager::check_unlock(Player* player) {
     if (!player) return;
     auto& skills = player->skills.active_skills;

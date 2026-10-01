@@ -108,18 +108,6 @@ bool ModManager::save_config(const std::string& config_path) const {
     return true;
 }
 
-void ModManager::enable(const std::string& mod_id) {
-    _enabled_set.insert(mod_id);
-    for (auto& mi : _mods)
-        if (mi.id == mod_id) mi.enabled = true;
-}
-
-void ModManager::disable(const std::string& mod_id) {
-    _enabled_set.erase(mod_id);
-    for (auto& mi : _mods)
-        if (mi.id == mod_id) mi.enabled = false;
-}
-
 bool ModManager::is_enabled(const std::string& mod_id) const {
     return _enabled_set.count(mod_id) > 0;
 }

@@ -38,9 +38,6 @@ public:
     // ── JSON (返回文件内容字符串, 由各系统自行解析) ──
     std::string load_json_text(const char* path);
 
-    // ── Sound (文件路径 → Sound) ──
-    Sound load_sound(const char* path); // MP3/WAV, 自动缓存
-
     // ── M4f: Texture (文件路径 → Texture, 自动缓存; 失败返回 {0}) ──
     Texture2D load_texture(const char* path);
     // 程序化像素纹理缓存 (key 唯一, 如 "wall_1a2a2e"); 同 key 复用
@@ -88,8 +85,6 @@ private:
     // JSON 缓存 (path → content)
     std::unordered_map<std::string, std::string> _json_cache;
 
-    // Sound 缓存 (path → Sound)
-    std::unordered_map<std::string, Sound> _sound_cache;
     // M4f: 纹理缓存 (path/key → Texture)
     std::unordered_map<std::string, Texture2D> _texture_cache;
     // M4f.4: 数据驱动精灵定义 (key → SpriteDef)

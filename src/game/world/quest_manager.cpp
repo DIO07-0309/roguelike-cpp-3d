@@ -125,34 +125,6 @@ bool QuestManager::accept(int quest_id, WorldState& ws) {
     return true;
 }
 
-void QuestManager::complete(int quest_id, WorldState& ws, Player* player) {
-    Quest* q = find(quest_id);
-    if (!q || q->state != QuestState::ACCEPTED) return;
-    q->state = QuestState::COMPLETED;
-    grant_reward(q->reward, player, ws);
-    EventBus::inst().emit(GameEventType::QUEST_COMPLETE, nullptr,
-                          quest_id, 0.0f, q->title.c_str());
-}
-
-void QuestManager::fail(int quest_id) {
-    Quest* q = find(quest_id);
-    if (q) q->state = QuestState::FAILED;
-}
-
-// ---- 奖励 ----
-void QuestManager::grant_reward(const QuestReward& r, Player* player, WorldState& ws) {
-    if (!player) return;
-    if (!r.relic_id.empty()) {
-        const RelicDef* def = get_relic_def(r.relic_id);
-        if (def && !player_has_relic(player, r.relic_id))
-            player->add_relic(r.relic_id, PersistenceScope::FLOOR);
-    }
-    if (!r.buff_id.empty()) apply_buff(player, r.buff_id, r.buff_stacks);
-    if (r.set_flag != WorldFlag::NONE) ws.set(r.set_flag);
-    if (!r.counter_name.empty()) ws.add_counter(r.counter_name, r.counter_add);
-    if (_rels && r.relation.npc_id != 0) _rels->apply_reward(r.relation);
-}
-
 // ---- G2.4: Save v3 ----
 void QuestManager::restore_states(const std::unordered_map<int, int>& states) {
     for (auto& q : _quests) {

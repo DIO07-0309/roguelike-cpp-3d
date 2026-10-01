@@ -18,10 +18,6 @@ void RuleChainManager::register_listener() {
     LOG_INFO("[RULE_CHAIN] Listener registered");
 }
 
-void RuleChainManager::unregister_listener() {
-    // EventBus 是进程级全局单例，回调幂等 — 无需显式注销
-}
-
 // ── Boss → 规则映射 ──
 std::vector<std::string> RuleChainManager::rules_for_boss(int boss_floor) {
     switch (boss_floor) {

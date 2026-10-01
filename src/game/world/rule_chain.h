@@ -25,8 +25,9 @@ struct GameEvent;
 
 class RuleChainManager {
 public:
+    // 注册 BOSS_DEAD 监听。EventBus 是进程级全局单例、回调幂等，
+    // 故没有对应的注销接口。
     static void register_listener();
-    static void unregister_listener();
 
     // Boss 死亡时激活对应规则 (由 BOSS_DEAD 事件触发)
     static void activate_for_boss(int boss_floor, WorldState& ws);
