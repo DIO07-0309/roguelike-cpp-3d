@@ -1,3 +1,95 @@
+# G24 — 任务奖励补发：relic/buff 从静默丢弃改为真正发放（2026-10-01）
+
+G23 收尾时顺手查了一遍 `quests.json`，发现一个比死方法更疼的问题：
+配置里写了奖励，游戏从不发。
+
+## 问题
+
+`quests.json` 有 8 条奖励配了 `relic_id` / `buff_id`：
+
+| 任务 | 奖励 |
+| :--- | :--- |
+| collector_items | `golden_dice` (rare) |
+| dreamer_quest | `infinity_orb` (legendary) + `blessing` x2 |
+| kill_warden / kill_fire_demon / hunter_bounty | `attack_up` x1~2 |
+| scout_intel / kill_10 | `defense_up` / `growth` x2 |
+
+唯一会发放这些字段的 `QuestManager::grant_reward()` 从没人调用过。
+活跃路径 `_auto_complete()` 只发 `set_flag` / `counter` / `relation`，
+把 `relic_id` 和 `buff_id` 直接漏掉。v1.14 已发布的包同样如此。
+
+G23 清理死方法时按「扫描器说没人调」删掉了 `grant_reward()`，
+**没察觉这条支路是活的配置 + 死代码** —— 配置侧没人管，调用侧没人查。
+这也是 `quests.json` 在 `world_validator.py` 里只被 `load_json`、
+从未被交叉校验的原因：错 id 不崩，只会静默发不出，所以从来没人发现。
+
+## 修法
+
+把 `Player*` 串进 `update() → _auto_complete()`，奖励发放抽成
+`_apply_reward()`，5 个字段一次覆盖，原来 `_auto_complete` 里的 3 个字段
+原地搬过去，算法一字未改：
+
+```
+_auto_complete: 判定完成 → _apply_reward → emit 事件
+_apply_reward:   relic / buff / set_flag / counter / relation
+```
+
+两个实现决策：
+
+**1. 圣物 scope 用 `RUN`，不是 `FLOOR`**
+
+被删的 `grant_reward()` 写的是 `PersistenceScope::FLOOR`（换层就消失）。
+但 `infinity_orb` 是 legendary、`golden_dice` 是 rare —— 用 FLOOR 等于
+让玩家辛苦打完 boss3 拿到的传奇圣物，下一层直接蒸发。对照现存发放点：
+战斗里程碑、保存还原、特殊房全部用 `RUN`；只有短暂遭遇（事件选择、
+特殊房普通奖励）用 `FLOOR`。任务奖励是剧情里程碑，归 `RUN`。
+
+**2. 走 `RewardManager::grant_relic` 而不是直接 `add_relic`**
+
+`Player::add_relic` 自己会做去重 + 应用 PASSIVE，但不会
+`g_relic_archive.mark_obtained()`。archive 驱动收集度和熟练度星星，
+漏记意味着玩家拿到传奇圣物、收集度却不涨。
+`RewardManager::grant_relic` 三件事一起做，是统一入口。
+
+## 顺带补上校验
+
+`world_validator.py` 新增 Step 5：交叉校验 `quests.json` 的
+`reward.relic_id` / `reward.buff_id`。现有 8 条引用全部有效，
+以后配错会直接报错而不是静默丢失。
+
+## 测试
+
+新增 `tests/world/quest_reward_test.cpp`（4 用例，走真实 JSON + 真实
+`QuestManager::update()` 全链路）：
+
+1. `collector_items` 完成 → `golden_dice` 且 **scope 必须为 RUN**、`collector_quest` counter +1
+2. `dreamer_quest` 完成 → `infinity_orb` (RUN) + `blessing` x2
+3. `player = nullptr` → 任务照常完成、counter 照常累计，不发奖不崩
+4. 连调 3 次 `update()` → 圣物只发 1 份（幂等）
+
+契约 1 的 scope 断言是这次修的关键保护 —— 谁把 `RUN` 改回 `FLOOR`，
+这个测试会立刻红。
+
+测试踩到一个真实的 loader 约束：`load_quest_defs` / `load_buff_defs`
+在同一进程内拒绝重复装载（已加载返回 `false`），所以 `load_defs()`
+用 `is_*_loaded()` 守卫，而不是每用例无条件断言。
+
+## 结果
+
+- `roguelike_cpp.exe`：0 error 0 warning
+- 测试：77 → **78/78**
+- World Validator：0 error 0 warning，新增 `[INFO] quests: 8 条奖励引用已校验`
+- 影响面：`quest_manager.{h,cpp}` 2 个签名 + 1 个新方法、
+  `game_scene.cpp` 2 个调用点、`world_validator.py` 1 个新 Step、
+  `tests/CMakeLists.txt` 1 行注册
+
+## 遗留
+
+`QuestReward.story_msg` 字段（12 个任务里 8 条有文案）仍无人使用 ——
+完成时既不弹框也不入叙事队列。要接的话需要确认演出位置，
+按规则 9 先讨论再编码。
+
+
 # G23 — 死方法扫描器修 5 个 bug + 删 21 个死方法（2026-10-01）
 
 起因是 G22 系列收尾后想继续做「40-100 行中批函数」，需要先有一把

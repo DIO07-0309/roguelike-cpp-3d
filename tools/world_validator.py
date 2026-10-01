@@ -451,6 +451,22 @@ else:
     print(f"  [INFO] spawn: {len(enemy_ids)} enemies, 直达 {len(reachable & enemy_ids)}, "
           f"仅经挑战房(需钥匙) {len(only_challenge)}: {', '.join(only_challenge)}")
 
+# ═══ Step 5: Quest reward refs ═══
+# 背景: quest_manager._auto_complete 会发放 relic/buff, 但 quests.json 从未被交叉校验过。
+# 错 id 不会崩, 只会静默发不出奖励 (玩家领不到任务回报)。
+_quest_rel_count = 0
+for q in quests:
+    r = q.get("reward", {}) or {}
+    if r.get("relic_id"):
+        check_ref(r["relic_id"], relic_ids, f"quests.json [{q.get('id','?')}] reward.relic_id")
+        _quest_rel_count += 1
+    if r.get("buff_id"):
+        check_ref(r["buff_id"], buff_ids, f"quests.json [{q.get('id','?')}] reward.buff_id")
+        _quest_rel_count += 1
+if _quest_rel_count:
+    print(f"  [INFO] quests: {_quest_rel_count} 条奖励引用已校验 (relic/buff)")
+
+
 # ═══ Report ═══
 print(f"\n{'='*60}")
 print(f"  WORLD VALIDATOR REPORT")

@@ -545,7 +545,7 @@ void GameScene::enter_floor(int floor, uint32_t seed) {
     g_behavior.on_floor_enter(game_time, floor);
     // D4 Step5.2: QuestManager 楼层推进
     _gameplay.quest_mgr.set_relationship_system(&_gameplay.rels);
-    _gameplay.quest_mgr.update(_gameplay.world_state, _gameplay.story);
+    _gameplay.quest_mgr.update(_gameplay.world_state, _gameplay.story, player.get());
 
     // B11: blood_charm — 进入新楼层时使用有效最大生命
     player->combat.current_hp = get_effective_max_hp(player.get());
@@ -1593,7 +1593,7 @@ void GameScene::_process(double delta) {
     // D4 Step4: 对话计时器
     _update_dialogue(dt);
     // D4 Step5.2: QuestManager 自动推进
-    _gameplay.quest_mgr.update(_gameplay.world_state, _gameplay.story);
+    _gameplay.quest_mgr.update(_gameplay.world_state, _gameplay.story, player.get());
 
     // D4 Step3: 楼层入场计时器
     if (_presentation.floor_intro_active) {

@@ -1,6 +1,7 @@
 #include "quest_manager.h"
 #include "player.h"
 #include "combat_system.h"
+#include "reward_manager.h"      // G24: 任务奖励发放走统一入口 (记收集存档 + PASSIVE)
 #include "relationship_system.h"
 #include "core/logger.h"
 #include "core/event_bus.h"        // G2.4: EventBus
@@ -78,10 +79,10 @@ QuestManager::QuestManager() {
 }
 
 // ---- 自动解锁 & 自动完成 (算法不变) ----
-void QuestManager::update(WorldState& ws, const StoryDirector& story) {
+void QuestManager::update(WorldState& ws, const StoryDirector& story, Player* player) {
     for (auto& q : _quests) {
         _auto_unlock(q, ws, story);
-        _auto_complete(q, ws);
+        _auto_complete(q, ws, player);
     }
 }
 
@@ -99,19 +100,29 @@ void QuestManager::_auto_unlock(Quest& q, const WorldState& ws, const StoryDirec
     LOG_INFO("[QUEST] Unlocked #%d: %s", q.id, q.title.c_str());
 }
 
-void QuestManager::_auto_complete(Quest& q, WorldState& ws) {
+void QuestManager::_auto_complete(Quest& q, WorldState& ws, Player* player) {
     if (q.state != QuestState::ACCEPTED && q.state != QuestState::AVAILABLE) return;
     if (q.complete_flag == WorldFlag::NONE) return;
     if (!ws.has(q.complete_flag)) return;
     q.state = QuestState::COMPLETED;
-    if (q.reward.set_flag != WorldFlag::NONE) ws.set(q.reward.set_flag);
-    if (!q.reward.counter_name.empty()) ws.add_counter(q.reward.counter_name, q.reward.counter_add);
-    if (_rels && q.reward.relation.npc_id != 0) _rels->apply_reward(q.reward.relation);
+    _apply_reward(q.reward, player, ws);
 
     // G2.4: EventBus emit
     EventBus::inst().emit(GameEventType::QUEST_COMPLETE, nullptr,
                           q.id, 0.0f, q.title.c_str());
     LOG_INFO("[QUEST] Completed #%d: %s", q.id, q.title.c_str());
+}
+
+void QuestManager::_apply_reward(const QuestReward& r, Player* player, WorldState& ws) {
+    // RUN: 任务奖励是剧情里程碑, 换层不该丢失。
+    // 用 FLOOR 等于让 legendary (infinity_orb) 白送一层就蒸发。
+    if (player && !r.relic_id.empty())
+        RewardManager::grant_relic(*player, r.relic_id, PersistenceScope::RUN);
+    if (player && !r.buff_id.empty())
+        apply_buff(player, r.buff_id, r.buff_stacks);
+    if (r.set_flag != WorldFlag::NONE) ws.set(r.set_flag);
+    if (!r.counter_name.empty()) ws.add_counter(r.counter_name, r.counter_add);
+    if (_rels && r.relation.npc_id != 0) _rels->apply_reward(r.relation);
 }
 
 // ---- 玩家操作 ----

@@ -93,6 +93,7 @@ add_roguelike_test(buff_test        combat/buff_test.cpp)
 add_roguelike_test(dodge_test       combat/dodge_test.cpp)   # B3: 翻滚纯逻辑组件
 add_roguelike_test(animation_test  animation/animation_test.cpp)  # A5: 骨骼动画数据层+求值器
 add_roguelike_test(biome_test       world/biome_test.cpp)
+add_roguelike_test(quest_reward_test world/quest_reward_test.cpp)  # G24: 任务奖励发放 (relic/buff 此前静默丢弃)
 add_roguelike_test(spawn_tables_test spawn_tables_test.cpp)  # A6-S2 批次9: 刷怪表数据化 golden oracle
 add_roguelike_test(encounter_test   world/encounter_test.cpp)
 add_roguelike_test(condition_test   world/condition_test.cpp)

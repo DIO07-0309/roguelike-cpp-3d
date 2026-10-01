@@ -56,8 +56,9 @@ public:
 
     void set_relationship_system(RelationshipSystem* rels) { _rels = rels; }
 
-    // 每帧更新: 自动解锁/完成 (根据 WorldState)
-    void update(WorldState& ws, const StoryDirector& story);
+    // 每帧更新: 自动解锁/完成 (根据 WorldState)。
+    // player 用于发放奖励 (relic/buff); 传 nullptr 时只推进世界状态, 不发奖。
+    void update(WorldState& ws, const StoryDirector& story, Player* player);
 
     // 玩家操作。完成由 update() 自动判定 (_auto_complete),
     // 没有手工完成/失败入口; QuestState::FAILED 为存档兼容保留。
@@ -78,5 +79,6 @@ private:
     std::vector<Quest> _quests;
     RelationshipSystem* _rels = nullptr;
     void _auto_unlock(Quest& q, const WorldState& ws, const StoryDirector& story);
-    void _auto_complete(Quest& q, WorldState& ws);
+    void _auto_complete(Quest& q, WorldState& ws, Player* player);
+    void _apply_reward(const QuestReward& r, Player* player, WorldState& ws);
 };
