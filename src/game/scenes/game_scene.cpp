@@ -1297,53 +1297,7 @@ void GameScene::_process(double delta) {
     // D2: tick enemy projectiles (MONSTER/ENVIRONMENT owner → hit player)
     // 时停期间世界冻结 — 敌方弹体不飞行不结算
     projectiles.for_each([&](Projectile& p, int) {
-        if (!p.alive) return;
-        if (time_stop_remaining > 0) return;
-        if (p.owner != (int)ProjectileOwner::MONSTER
-            && p.owner != (int)ProjectileOwner::ENVIRONMENT) return;
-        // Warning phase countdown only
-        if (p.active_time < 0.0f) {
-            p.active_time += dt;
-            if (p.active_time >= 0.0f) p.active_time = 0.0f; // just became ACTIVE
-            return;
-        }
-        // Active phase
-        p.active_time += dt;
-        if (p.active_time >= p.lifetime) { p.alive = false; return; }
-        p.pos.x += p.vel.x * dt;
-        p.pos.y += p.vel.y * dt;
-        // 墙体碰撞 — pierce_walls=false 的弹幕碰墙销毁
-        if (!p.pierce_walls && game_map) {
-            auto [wtx, wty] = game_map->pixel_to_tile(p.pos.x, p.pos.y);
-            if (!game_map->is_walkable(wtx, wty)) { p.alive = false; return; }
-        }
-        // D2: AOE 用 warning_radius, 点弹用宽容半径
-        float hit_radius = (p.owner == (int)ProjectileOwner::ENVIRONMENT)
-            ? p.warning_radius : kProjectileHitRadius;
-        // 收官: 敌方弹体命中木桶 → 点燃 (点弹销毁, AOE 弹体保留)
-        if (game_map) {
-            auto [btx, bty] = game_map->pixel_to_tile(p.pos.x, p.pos.y);
-            if (auto* ao = game_map->get_arena_at(btx, bty)) {
-                if (ao->active && ao->type == ArenaObjectType::EXPLOSIVE_BARREL && ao->timer <= 0.0f) {
-                    ao->timer = kBarrelFuse;
-                    if (!p.piercing) p.alive = false;
-                    return;
-                }
-            }
-        }
-        if (CheckCollisionCircleRec(p.pos, hit_radius, player->entity.rect)) {
-            int dmg = calculate_damage(p.damage,
-                player->combat.get_effective_defense((AttackType)p.damage_type),
-                (AttackType)p.damage_type);
-            player->combat.take_damage(dmg);
-            _presentation.damage_floats.push_back({
-                player->entity.rect.x + player->entity.rect.width/2,
-                player->entity.rect.y - 12, 0.6f, 0.6f, dmg,
-                dmg_color_for(dmg, p.damage_type != 0, false)
-            });
-            _presentation.trigger_shake(dmg > 20 ? 8.0f : 3.0f);
-            if (!p.piercing) p.alive = false;
-        }
+        _tick_enemy_projectile(p, dt);
     });
     // G11: 池回收取代 erase-remove, 免每帧 O(n) 搬移
     projectiles.release_if([](const Projectile& p) { return !p.alive; });
@@ -1746,6 +1700,65 @@ void GameScene::_domain_state_vfx() {
         break;
     default: break;
     }
+}
+
+// G25-F: 敌方投射物 tick
+void GameScene::_tick_enemy_projectile(Projectile& p, float dt) {
+    if (!p.alive) return;
+    if (time_stop_remaining > 0) return;
+    if (p.owner != (int)ProjectileOwner::MONSTER
+        && p.owner != (int)ProjectileOwner::ENVIRONMENT) return;
+    // Warning phase countdown only
+    if (p.active_time < 0.0f) {
+        p.active_time += dt;
+        if (p.active_time >= 0.0f) p.active_time = 0.0f; // just became ACTIVE
+        return;
+    }
+    // Active phase
+    p.active_time += dt;
+    if (p.active_time >= p.lifetime) { p.alive = false; return; }
+    p.pos.x += p.vel.x * dt;
+    p.pos.y += p.vel.y * dt;
+    // 墙体碰撞 — pierce_walls=false 的弹幕碰墙销毁
+    if (!p.pierce_walls && game_map) {
+        auto [wtx, wty] = game_map->pixel_to_tile(p.pos.x, p.pos.y);
+        if (!game_map->is_walkable(wtx, wty)) { p.alive = false; return; }
+    }
+    // D2: AOE 用 warning_radius, 点弹用宽容半径
+    float hit_radius = (p.owner == (int)ProjectileOwner::ENVIRONMENT)
+        ? p.warning_radius : kProjectileHitRadius;
+    if (_enemy_projectile_hit_barrel(p)) return;
+    _enemy_projectile_hit_player(p, hit_radius);
+}
+
+bool GameScene::_enemy_projectile_hit_barrel(Projectile& p) {
+    // 收官: 敌方弹体命中木桶 → 点燃 (点弹销毁, AOE 弹体保留)
+    if (!game_map) return false;
+    auto [btx, bty] = game_map->pixel_to_tile(p.pos.x, p.pos.y);
+    if (auto* ao = game_map->get_arena_at(btx, bty)) {
+        if (ao->active && ao->type == ArenaObjectType::EXPLOSIVE_BARREL
+            && ao->timer <= 0.0f) {
+            ao->timer = kBarrelFuse;
+            if (!p.piercing) p.alive = false;
+            return true;
+        }
+    }
+    return false;
+}
+
+void GameScene::_enemy_projectile_hit_player(Projectile& p, float hit_radius) {
+    if (!CheckCollisionCircleRec(p.pos, hit_radius, player->entity.rect)) return;
+    int dmg = calculate_damage(p.damage,
+        player->combat.get_effective_defense((AttackType)p.damage_type),
+        (AttackType)p.damage_type);
+    player->combat.take_damage(dmg);
+    _presentation.damage_floats.push_back({
+        player->entity.rect.x + player->entity.rect.width/2,
+        player->entity.rect.y - 12, 0.6f, 0.6f, dmg,
+        dmg_color_for(dmg, p.damage_type != 0, false)
+    });
+    _presentation.trigger_shake(dmg > 20 ? 8.0f : 3.0f);
+    if (!p.piercing) p.alive = false;
 }
 
 // ============================================================

@@ -352,6 +352,10 @@ private:
     void _check_boss_last_stand();
     void _tick_boss_behavior(float dt);
     void _domain_state_vfx();
+    // G25-F: 敌方投射物 tick (墙体/木桶/玩家 三层碰撞)
+    void _tick_enemy_projectile(Projectile& p, float dt);
+    bool _enemy_projectile_hit_barrel(Projectile& p);
+    void _enemy_projectile_hit_player(Projectile& p, float hit_radius);
 
     // D4 Step3: 楼层/章节叙事 — moved to PresentationSystemDirector
 

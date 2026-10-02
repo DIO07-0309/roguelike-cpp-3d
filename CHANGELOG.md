@@ -236,8 +236,53 @@ _tick_boss_system(dt)      5 行  三段调度
 | 起点 | 1072 |
 | G25-A/B/C/D/E | 1045 / 985 / 952 / 828 / **757** |
 
-5 批累计 **−315 行**，新增 23 个方法。剩余：G25-F（怪物投射物）、
-G25-G（战斗段）、G25-H（表现层 gate）。
+5 批累计 **−315 行**，新增 23 个方法。
+
+## G25-F：敌方投射物（已完成）
+
+`projectiles.for_each` 里的一个 48 行 lambda 体，是 `_process` 里唯一
+被大括号包起来的「循环体巨块」。做三层碰撞：墙体（`pierce_walls`）→
+木桶点燃（收官彩蛋，点弹销毁/AOE 保留）→ 玩家（伤害 + 飘字 + 震屏）。
+
+```cpp
+projectiles.for_each([&](Projectile& p, int) {
+    _tick_enemy_projectile(p, dt);
+});
+```
+
+```cpp
+_tick_enemy_projectile(p, dt)    27 行  守卫 + 预警倒计时 + 飞行 + 墙体 + 派发
+  ├─ _enemy_projectile_hit_barrel(p)  14 行  命中木桶 → 点燃, 返回 true 则跳过玩家判定
+  └─ _enemy_projectile_hit_player(p, r) 14 行  碰撞 → 伤害 → 飘字 → 震屏
+```
+
+木桶分支原来是 lambda 内 `return;`（跳过玩家判定），现在改成
+`_enemy_projectile_hit_barrel` 返回 `bool`，语义等价。
+
+### 结果
+
+| 项 | 数值 |
+| :--- | :--- |
+| `_process` | 757 → **711** 行 |
+| 新增方法 | 3 个（14/14/27 行） |
+| 纯搬运 | 31 行字节级相同，仅 3 行 `if` 脚手架被替换 |
+| 构建 / 测试 / 确定性 | 0 err 0 warn · 78/78 · SHA256 逐字节等于基线 |
+
+### G25 累计
+
+| 阶段 | `_process` 行数 |
+| :--- | :--- |
+| 起点 | 1072 |
+| A / B / C / D / E / F | 1045 / 985 / 952 / 828 / 757 / **711** |
+
+6 批累计 **−361 行**，新增 26 个方法，全部 ≤40 行。
+剩余：G25-G（战斗段，264 行，耦合最深）、G25-H（表现层 gate，74 行）。
+
+**流程事故记录**：G25-F 第一次触发构建时 `Start-Process` 报
+`Unknown: ChildProcess.kill`，构建实际**没有启动**，但随后的 ctest 78/78
+与 sim hash 校验全部「通过」——那跑的是 G25-E 的旧二进制。
+靠检查 `roguelike_cpp.exe` 的 `LastWriteTime`（16:31 未变）才发现。
+此后每批强制核对 exe 时间戳与构建日志是否新建，作为第四道闸门的前置。
 
 ---
 
