@@ -323,6 +323,8 @@ private:
     void _start_event_presentation(EventType et);
     void _tick_event_ui(float dt);
     void _draw_event_ui(int sw, int sh);
+    // G25-A: _process 尾段纯计时器衰减 (FlowDirector/房间消息/横幅/gamble/事件/对话/Quest/入场)
+    void _tick_decay_timers(float dt);
 
     // D4 Step3: 楼层/章节叙事 — moved to PresentationSystemDirector
 

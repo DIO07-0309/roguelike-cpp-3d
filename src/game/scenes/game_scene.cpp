@@ -1576,36 +1576,9 @@ void GameScene::_process(double delta) {
     // G11: 池回收取代 erase-remove, 免每帧 O(n) 搬移
     projectiles.release_if([](const Projectile& p) { return !p.alive; });
 
-    // D4.6 Step3: FlowDirector tick
-    _gameplay.flow.tick(dt);
+    // G25-A: 尾段纯计时器衰减 (FlowDirector/房间消息/横幅/gamble/事件/对话/Quest/入场)
+    _tick_decay_timers(dt);
 
-    // B10: 房间消息计时器
-    if (_presentation.room_msg_timer > 0) _presentation.room_msg_timer -= dt;
-
-    // v1.6-B1: 镜像晋升横幅计时器
-    if (_mirror_banner_timer > 0) _mirror_banner_timer -= dt;
-
-    // Batch 3H: Gamble result timer decay
-    if (gamble_result_timer > 0) gamble_result_timer -= dt;
-
-    // D4 Step2: 事件演出 tick
-    _tick_event_ui(dt);
-    // D4 Step4: 对话计时器
-    _update_dialogue(dt);
-    // D4 Step5.2: QuestManager 自动推进
-    _gameplay.quest_mgr.update(_gameplay.world_state, _gameplay.story, player.get());
-
-    // D4 Step3: 楼层入场计时器
-    if (_presentation.floor_intro_active) {
-        _presentation.floor_intro_timer -= dt;
-        _presentation.floor_intro_fade = std::min(1.0f, _presentation.floor_intro_fade + dt * 2.5f);
-        if (_presentation.floor_intro_timer <= 0) _presentation.floor_intro_active = false;
-    }
-    // D4 Step3: 章节入场计时器
-    if (_presentation.chapter_intro_active) {
-        _presentation.chapter_intro_timer -= dt;
-        if (_presentation.chapter_intro_timer <= 0) _presentation.chapter_intro_active = false;
-    }
     // D4 Step3: 随机旁白 (25-40秒间隔, 不在事件中)
     if (!_presentation.floor_intro_active && !_presentation.chapter_intro_active && !_is_event_running()
         && !inventory_open && state == GameState::PLAYING && !is_boss_floor(current_floor)) {
@@ -1679,6 +1652,39 @@ void GameScene::_process(double delta) {
 
     // D6 Step5: Presentation tick (shake/freeze/damage/message/intro)
     _presentation.tick(dt);
+}
+
+void GameScene::_tick_decay_timers(float dt) {
+    // D4.6 Step3: FlowDirector tick
+    _gameplay.flow.tick(dt);
+
+    // B10: 房间消息计时器
+    if (_presentation.room_msg_timer > 0) _presentation.room_msg_timer -= dt;
+
+    // v1.6-B1: 镜像晋升横幅计时器
+    if (_mirror_banner_timer > 0) _mirror_banner_timer -= dt;
+
+    // Batch 3H: Gamble result timer decay
+    if (gamble_result_timer > 0) gamble_result_timer -= dt;
+
+    // D4 Step2: 事件演出 tick
+    _tick_event_ui(dt);
+    // D4 Step4: 对话计时器
+    _update_dialogue(dt);
+    // D4 Step5.2: QuestManager 自动推进
+    _gameplay.quest_mgr.update(_gameplay.world_state, _gameplay.story, player.get());
+
+    // D4 Step3: 楼层入场计时器
+    if (_presentation.floor_intro_active) {
+        _presentation.floor_intro_timer -= dt;
+        _presentation.floor_intro_fade = std::min(1.0f, _presentation.floor_intro_fade + dt * 2.5f);
+        if (_presentation.floor_intro_timer <= 0) _presentation.floor_intro_active = false;
+    }
+    // D4 Step3: 章节入场计时器
+    if (_presentation.chapter_intro_active) {
+        _presentation.chapter_intro_timer -= dt;
+        if (_presentation.chapter_intro_timer <= 0) _presentation.chapter_intro_active = false;
+    }
 }
 
 // ============================================================
