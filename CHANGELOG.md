@@ -45,9 +45,65 @@ PLAYING、非 Boss 层。里面 6 次 `rng()` 抽取。整块搬走没问题，
 | 确定性 | `--sim 5 --sim-seed 42` → `balance_report.json` SHA256
   **逐字节等于拆分前基线** `B098BB53D40E71FD555B4B7CD67DC4EDC6030D50F85DB839C6481795C1652080` |
 
-后续批次：G25-B（旁白 + FlowDirector 自动补救）、G25-C（sim 超时快照）、
-G25-D（元素事件，127 行最大单块）、G25-E（Boss 系统）、G25-F（怪物投射物）、
-G25-G（战斗段）、G25-H（表现层 gate）。做到 D 停下来看，不一次做完。
+## G25-B：旁白 + Story 世界事件 + FlowDirector 自动补救（已完成）
+
+紧接 G25-A 之后的一段（1610-1676）。它被一个复合大 `if` 整体包住——
+楼层/章节入场未激活、无事件进行中、背包未开、PLAYING、非 Boss 层。
+
+**做法**：`if` 守卫留在 `_process`（它是这一整段的语义前提），
+把体抽成 3 个调用：
+
+```cpp
+if (!floor_intro && !chapter_intro && !_is_event_running()
+    && !inventory_open && state == PLAYING && !is_boss_floor(floor)) {
+    _tick_random_narration(dt);
+    _tick_story_world_event(dt);
+    _tick_flow_auto_spawn();
+}
+```
+
+`_tick_flow_auto_spawn` 里 4 个 `AUTO_*` 分支各自成方法
+（否则整体 46 行，超 40 行红线）。共 7 个新方法。
+
+### 一处刻意的偏差，不装作没有
+
+`AUTO_*` 那段原本是
+
+```cpp
+if (suggest && game_map && !monsters.empty()) { ... 4 个分支 ... }
+```
+
+我改成了 De Morgan 早返回：
+
+```cpp
+if (!suggest || !game_map || monsters.empty()) return;
+```
+
+理由：不展平这层嵌套，`_tick_flow_auto_spawn` 就得留着外层大括号，
+而 4 个分支已经各自成方法，嵌套没有保留价值。
+
+安全性论证：`auto_spawn_suggestion()` 在两个版本里都在守卫**之前**调用；
+`suggest` 是 `const char*`、`game_map` 是成员、`monsters.empty()` 是 const，
+三者都无副作用。守卫语义等价，任何分支内的 `rng()` 抽取次序不变。
+`AUTO_STORY`/`AUTO_REWARD` 分支体是字节级搬运，零改动。
+
+diff 校验结果：38 行两侧完全相同（纯搬运），仅 5 行是这套 `if` 脚手架
+被 5 行扁平派发替换。
+
+### 结果
+
+| 项 | 数值 |
+| :--- | :--- |
+| `_process` | 1045 → **985** 行 |
+| 新增方法 | 7 个，全部 4-15 行 |
+| 构建 | 0 error 0 warning |
+| 测试 | 78/78 |
+| 确定性 | SHA256 仍逐字节等于基线 `B098BB53...C1652080` |
+
+后续批次：G25-C（sim 超时快照，含 return 的守卫，需 bool 返回值）、
+G25-D（元素事件，127 行最大单块，价值最高）、G25-E（Boss 系统）、
+G25-F（怪物投射物）、G25-G（战斗段）、G25-H（表现层 gate）。做到 D 停下来看。
+
 
 ## 确定性基线（G25 全程使用）
 

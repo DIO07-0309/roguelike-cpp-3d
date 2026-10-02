@@ -1582,69 +1582,9 @@ void GameScene::_process(double delta) {
     // D4 Step3: 随机旁白 (25-40秒间隔, 不在事件中)
     if (!_presentation.floor_intro_active && !_presentation.chapter_intro_active && !_is_event_running()
         && !inventory_open && state == GameState::PLAYING && !is_boss_floor(current_floor)) {
-        _gameplay.narr_state.narration_timer -= dt;
-        if (_gameplay.narr_state.narration_timer <= 0) {
-            // D4 Step5.4: WorldReaction overlay 优先覆盖随机旁白
-            const char* nar = StoryDirector::world_flag_narration(_gameplay.world_state);
-            if (!nar) nar = pick_random_narration(current_floor, _gameplay.narr_state);
-            if (nar) { _presentation.room_msg = nar; _presentation.room_msg_timer = 3.0f; }
-            _gameplay.narr_state.narration_timer = 25.0f + (float)(rng() % 15);
-        }
-        // D4 Step5.1: StoryDirector update + 世界事件 (~30秒)
-        _gameplay.story.update(dt);
-        if (_gameplay.story.should_trigger_story()) {
-            // D4 Step5.4: WorldReaction 世界事件优先
-            const char* we = g_reactions.current_world_event(_gameplay.world_state, _gameplay.story.stage());
-            if (!we) we = _gameplay.story.tick_world_event(_gameplay.world_state);
-            if (we) { _presentation.room_msg = we; _presentation.room_msg_timer = 3.0f; }
-        }
-
-        // D4.6 Step3: FlowDirector自动补救 (超过阈值触发动态内容)
-        const char* suggest = _gameplay.flow.auto_spawn_suggestion();
-        if (suggest && game_map && !monsters.empty()) {
-            if (strcmp(suggest, "AUTO_STORY") == 0) {
-                const char* we = _gameplay.story.tick_world_event(_gameplay.world_state);
-                if (we) { _presentation.room_msg = we; _presentation.room_msg_timer = 3.0f; _gameplay.flow.mark_story(); }
-            } else if (strcmp(suggest, "AUTO_REWARD") == 0) {
-                // 在玩家附近生成药水
-                auto [tx, ty] = game_map->pixel_to_tile(
-                    player->entity.rect.x + player->entity.rect.width/2,
-                    player->entity.rect.y + player->entity.rect.height/2);
-                auto p = std::make_shared<ConsumableItem>("探索发现", Rarity::RARE, "heal", 25);
-                ground_items.push_back({p, tx + 2, ty + 1});
-                _presentation.room_msg = "你在角落发现了一件物品。";
-                _presentation.room_msg_timer = 2.0f;
-                _gameplay.flow.mark_reward();
-            } else if (strcmp(suggest, "AUTO_PATROL") == 0) {
-                // 在玩家附近生成巡逻怪
-                auto [tx, ty] = game_map->pixel_to_tile(
-                    player->entity.rect.x + (rng()%10-5) * TILE_SIZE,
-                    player->entity.rect.y + (rng()%10-5) * TILE_SIZE);
-                auto [px, py] = game_map->tile_to_pixel(tx, ty);
-                if (game_map->is_walkable(tx, ty)) {
-                    auto* m = spawn_monster(px, py, (rng()%3==0)?"orc":"slime");
-                    m->combat.max_hp = (int)(m->combat.max_hp * g_growth.hp_scale(current_floor));
-                    m->combat.current_hp = m->combat.max_hp;
-                    m->combat.attack = (int)(m->combat.attack * g_growth.atk_scale(current_floor));
-                    monsters.emplace_back(m);
-                    _gameplay.flow.mark_combat();
-                }
-            } else if (strcmp(suggest, "AUTO_ELITE") == 0) {
-                auto [tx, ty] = game_map->pixel_to_tile(
-                    player->entity.rect.x + (rng()%8-4) * TILE_SIZE,
-                    player->entity.rect.y + (rng()%8-4) * TILE_SIZE);
-                if (game_map->is_walkable(tx, ty)) {
-                    auto [px, py] = game_map->tile_to_pixel(tx, ty);
-                    auto* m = spawn_monster(px, py, "elite");
-                    m->combat.max_hp = (int)(m->combat.max_hp * g_growth.elite_scale(current_floor));
-                    m->combat.current_hp = m->combat.max_hp;
-                    monsters.emplace_back(m);
-                    _presentation.room_msg = "一支精英巡逻队出现了！";
-                    _presentation.room_msg_timer = 2.0f;
-                    _gameplay.flow.mark_combat();
-                }
-            }
-        }
+        _tick_random_narration(dt);
+        _tick_story_world_event(dt);
+        _tick_flow_auto_spawn();
     }
 
     // D2: Combo 窗口衰减 — 超过 WINDOW 未命中则重置
@@ -1684,6 +1624,87 @@ void GameScene::_tick_decay_timers(float dt) {
     if (_presentation.chapter_intro_active) {
         _presentation.chapter_intro_timer -= dt;
         if (_presentation.chapter_intro_timer <= 0) _presentation.chapter_intro_active = false;
+    }
+}
+
+void GameScene::_tick_random_narration(float dt) {
+    _gameplay.narr_state.narration_timer -= dt;
+    if (_gameplay.narr_state.narration_timer <= 0) {
+        // D4 Step5.4: WorldReaction overlay 优先覆盖随机旁白
+        const char* nar = StoryDirector::world_flag_narration(_gameplay.world_state);
+        if (!nar) nar = pick_random_narration(current_floor, _gameplay.narr_state);
+        if (nar) { _presentation.room_msg = nar; _presentation.room_msg_timer = 3.0f; }
+        _gameplay.narr_state.narration_timer = 25.0f + (float)(rng() % 15);
+    }
+}
+
+void GameScene::_tick_story_world_event(float dt) {
+    // D4 Step5.1: StoryDirector update + 世界事件 (~30秒)
+    _gameplay.story.update(dt);
+    if (_gameplay.story.should_trigger_story()) {
+        // D4 Step5.4: WorldReaction 世界事件优先
+        const char* we = g_reactions.current_world_event(_gameplay.world_state, _gameplay.story.stage());
+        if (!we) we = _gameplay.story.tick_world_event(_gameplay.world_state);
+        if (we) { _presentation.room_msg = we; _presentation.room_msg_timer = 3.0f; }
+    }
+}
+
+void GameScene::_tick_flow_auto_spawn() {
+    // D4.6 Step3: FlowDirector自动补救 (超过阈值触发动态内容)
+    const char* suggest = _gameplay.flow.auto_spawn_suggestion();
+    if (!suggest || !game_map || monsters.empty()) return;
+    if (strcmp(suggest, "AUTO_STORY") == 0)      _flow_auto_story();
+    else if (strcmp(suggest, "AUTO_REWARD") == 0) _flow_auto_reward();
+    else if (strcmp(suggest, "AUTO_PATROL") == 0) _flow_auto_patrol();
+    else if (strcmp(suggest, "AUTO_ELITE") == 0)  _flow_auto_elite();
+}
+
+void GameScene::_flow_auto_story() {
+    const char* we = _gameplay.story.tick_world_event(_gameplay.world_state);
+    if (we) { _presentation.room_msg = we; _presentation.room_msg_timer = 3.0f; _gameplay.flow.mark_story(); }
+}
+
+void GameScene::_flow_auto_reward() {
+    // 在玩家附近生成药水
+    auto [tx, ty] = game_map->pixel_to_tile(
+        player->entity.rect.x + player->entity.rect.width/2,
+        player->entity.rect.y + player->entity.rect.height/2);
+    auto p = std::make_shared<ConsumableItem>("探索发现", Rarity::RARE, "heal", 25);
+    ground_items.push_back({p, tx + 2, ty + 1});
+    _presentation.room_msg = "你在角落发现了一件物品。";
+    _presentation.room_msg_timer = 2.0f;
+    _gameplay.flow.mark_reward();
+}
+
+void GameScene::_flow_auto_patrol() {
+    // 在玩家附近生成巡逻怪
+    auto [tx, ty] = game_map->pixel_to_tile(
+        player->entity.rect.x + (rng()%10-5) * TILE_SIZE,
+        player->entity.rect.y + (rng()%10-5) * TILE_SIZE);
+    auto [px, py] = game_map->tile_to_pixel(tx, ty);
+    if (game_map->is_walkable(tx, ty)) {
+        auto* m = spawn_monster(px, py, (rng()%3==0)?"orc":"slime");
+        m->combat.max_hp = (int)(m->combat.max_hp * g_growth.hp_scale(current_floor));
+        m->combat.current_hp = m->combat.max_hp;
+        m->combat.attack = (int)(m->combat.attack * g_growth.atk_scale(current_floor));
+        monsters.emplace_back(m);
+        _gameplay.flow.mark_combat();
+    }
+}
+
+void GameScene::_flow_auto_elite() {
+    auto [tx, ty] = game_map->pixel_to_tile(
+        player->entity.rect.x + (rng()%8-4) * TILE_SIZE,
+        player->entity.rect.y + (rng()%8-4) * TILE_SIZE);
+    if (game_map->is_walkable(tx, ty)) {
+        auto [px, py] = game_map->tile_to_pixel(tx, ty);
+        auto* m = spawn_monster(px, py, "elite");
+        m->combat.max_hp = (int)(m->combat.max_hp * g_growth.elite_scale(current_floor));
+        m->combat.current_hp = m->combat.max_hp;
+        monsters.emplace_back(m);
+        _presentation.room_msg = "一支精英巡逻队出现了！";
+        _presentation.room_msg_timer = 2.0f;
+        _gameplay.flow.mark_combat();
     }
 }
 

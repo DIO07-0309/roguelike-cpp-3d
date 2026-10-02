@@ -325,6 +325,14 @@ private:
     void _draw_event_ui(int sw, int sh);
     // G25-A: _process 尾段纯计时器衰减 (FlowDirector/房间消息/横幅/gamble/事件/对话/Quest/入场)
     void _tick_decay_timers(float dt);
+    // G25-B: 旁白 + Story 世界事件 + FlowDirector 自动补救 (AUTO_* 四分支各自成方法)
+    void _tick_random_narration(float dt);
+    void _tick_story_world_event(float dt);
+    void _tick_flow_auto_spawn();
+    void _flow_auto_story();
+    void _flow_auto_reward();
+    void _flow_auto_patrol();
+    void _flow_auto_elite();
 
     // D4 Step3: 楼层/章节叙事 — moved to PresentationSystemDirector
 
