@@ -317,6 +317,81 @@ _tick_arena_objects(dt)      37 行  守卫 + 循环 + switch (木桶/毒池留�
 
 ---
 
+## G25-H：表现层 gate（G25 收尾，本批最棘手）
+
+G25 计划里的最后一块，也是风险最高的一块：**wall clock / game_time 双分叉**。
+原 `661-734` 共 74 行里有两处裸 `return`（HitStop 击杀顿帧、
+`_presentation.is_frozen()` 冻结门），语义是「本帧在此停住，不进入世界模拟」。
+拆分必须保住停住的帧完全一致，否则 sim 的 900s 超时守卫与真实时间会错位。
+
+```cpp
+_tick_boss_cinematic(dt)              14 行  BOSS_CINEMATIC 状态机, 两路计时器
+_begin_boss_battle()                  15 行  两路共享的「Boss 已进入」过渡 (去重)
+_hit_stop_gate(dt)                     9 行  击杀顿帧, 返回 true = 本帧停住
+_tick_camera_director(dt)             14 行  运镜, sim 模式跳过
+_presentation_frozen_gate(dt)          7 行  冻结门, 返回 true = 本帧停住
+```
+
+两处裸 `return` 改成方法返回 `bool`，`_process` 侧变成
+`if (_hit_stop_gate(dt)) return;` / `if (_presentation_frozen_gate(dt)) return;`。
+
+### 两个偏差，都记录在案（本批不是字节级纯搬运）
+
+**偏差 1 — 12 行去重。** BOSS_CINEMATIC 的两个分支（`_boss_entrance_timer > 0`
+与 else）在计时器归零后执行**完全相同的 12 行**：`_boss_entered = true` →
+`state = PLAYING` → `mark_boss_room` → `enter_boss_war`。原本复制两份，
+现合并成 `_begin_boss_battle()`，两分支各调一次。逐语句相同、调用点不变、
+每帧仍只执行一次，语义等价。不去重也会到 38 行仍在 40 行内，但留着 12 行
+重复代码不值当。计时器的差异保留原样：else 分支有 `boss_cinematic_timer = 0;`
+钳位、`_boss_entrance_timer` 分支没有，不统一。
+
+**偏差 2 — 整段缩进减 4 空格。** 外层 `if (state == BOSS_CINEMATIC) { ... }`
+改写成早返回 `if (state != BOSS_CINEMATIC) return;`，剥掉一层大括号，
+段内所有搬运行少 4 空格缩进。同理 HitStop 的 `if (!_sim_mode) { ... }` 改成
+`if (_sim_mode) return false;`，内部 3 行也减 4 空格。
+
+按 `git diff` 逐行核对：**51 行内容移出，其中仅 14 行字节级相同**
+（CameraDirector 全段 11 行 + 冻结门 3 行，这两处缩进层级没变），
+其余 37 行仅缩进变化、内容一致；脚手架 11 行（签名 / 守卫 / `return` 改写）。
+
+### 结果
+
+| 项 | 数值 |
+| :--- | :--- |
+| `_process` | 658 → **602** 行 |
+| 新增方法 | 5 个（14/15/9/14/7 行） |
+| 字节级相同 | 14 / 51 行（其余为缩进变化） |
+| 构建 / 测试 / 确定性 | 0 err 0 warn · 78/78 · SHA256 逐字节等于基线 |
+
+### G25 累计（完结）
+
+| 阶段 | `_process` 行数 |
+| :--- | :--- |
+| 起点 | 1072 |
+| A / B / C / D / E / F / G / H | 1045 / 985 / 952 / 828 / 757 / 711 / 658 / **602** |
+
+8 批累计 **−470 行**，新增 34 个方法，全部 ≤40 行。
+`_process` 从 god function 降为 602 行的调度骨架。
+
+### 「先手动测试再开 H」的建议未执行
+
+G25-G 收尾时我写了「建议先跑一轮手动测试确认 A~G 无回归，再开 H」。
+用户明确指示继续，故 H 直接开做。**确定性基线是结构拆分的强证据但不是替代**：
+sim 只跑 5 局、`avg_floor=1.20`、0 胜率，根本没摸到 Boss 层，
+所以 H 拆的 BOSS_CINEMATIC / HitStop / 运镜路径**在确定性校验里没有覆盖**。
+这三块只靠 0 编译错误 + 逐语句比对 + 78 个单测撑着——建议实际进游戏
+打一场 Boss 验证登场运镜与击杀顿帧。
+
+### 构建方式修正
+
+G25-F 记录过 `Start-Process` 假阴性事故。G25-H 第一次重试时踩了同一个坑
+（两次报 `no output`，进程根本没起来，原因是没加 `-RedirectStandardOutput`
+导致日志不落盘、也无法确认进程是否启动）。可靠做法：把构建命令写进 `.ps1`
+脚本，用 `Start-Process powershell.exe -File` 拉起，再写一个 done-marker 文件
+判定结束——比轮询构建进程存活可靠，因为脚本的子进程会自行退出。
+
+---
+
 # G24 — 任务奖励补发：relic/buff 从静默丢弃改为真正发放（2026-10-01）
 
 G23 收尾时顺手查了一遍 `quests.json`，发现一个比死方法更疼的问题：

@@ -658,77 +658,21 @@ void GameScene::_process(double delta) {
         return;
     }
 
-    if (state == GameState::BOSS_CINEMATIC) {
-        // B15: Boss登场 — 玩家冻结, Boss暂停, 2秒后启动
-        if (_boss_entrance_timer > 0) {
-            _boss_entrance_timer -= dt;
-            if (_boss_entrance_timer <= 0) {
-                _boss_entered = true;
-                state = GameState::PLAYING;
-                // A6: Boss 出场预渲染其所在房间 (解决镜头聚焦后视野虚空)
-                Monster* boss_monster = _get_boss();
-                if (boss_monster && game_map) {
-                    int boss_tx = (int)(boss_monster->entity.rect.x / TILE_SIZE);
-                    int boss_ty = (int)(boss_monster->entity.rect.y / TILE_SIZE);
-                    game_map->mark_boss_room(boss_tx, boss_ty);
-                }
-                // A6-T4: Boss 出场触发运镜
-                if (!_sim_mode && _camera_def_loaded) {
-                    _camera_director.enter_boss_war();
-                }
-            }
-        } else {
-            boss_cinematic_timer -= dt;
-            if (boss_cinematic_timer <= 0) {
-                boss_cinematic_timer = 0;
-                _boss_entered = true;
-                state = GameState::PLAYING;
-                // A6: Boss 出场预渲染其所在房间 (解决镜头聚焦后视野虚空)
-                Monster* boss_monster = _get_boss();
-                if (boss_monster && game_map) {
-                    int boss_tx = (int)(boss_monster->entity.rect.x / TILE_SIZE);
-                    int boss_ty = (int)(boss_monster->entity.rect.y / TILE_SIZE);
-                    game_map->mark_boss_room(boss_tx, boss_ty);
-                }
-                // A6-T4: Boss 出场触发运镜
-                if (!_sim_mode && _camera_def_loaded) {
-                    _camera_director.enter_boss_war();
-                }
-            }
-        }
-    }
+    // B15: Boss 登场运镜状态机
+    _tick_boss_cinematic(dt);
 
     if (state != GameState::PLAYING) return;
 
     // A6-T2: HitStop — 击杀顿帧 (wall clock, 独立于 PresentationSystem)
     // sim 模式跳过: 顿帧使 game_time 变慢, 影响 sim 确定性
-    if (!_sim_mode) {
-        _hit_stop.update(dt);
-        if (_hit_stop.is_stunned()) {
-            _presentation.tick(dt);
-            return;
-        }
-    }
+    if (_hit_stop_gate(dt)) return;
 
-    // A6-T4: CameraDirector 更新 (wall clock, sim 模式跳过)
-    if (!_sim_mode && _camera_def_loaded) {
-        Vector2 player_pos = {player->entity.rect.x + player->entity.rect.width/2,
-                              player->entity.rect.y + player->entity.rect.height/2};
-        Vector2 boss_pos = {0, 0};
-        Monster* boss_monster = _get_boss();
-        if (boss_monster && boss_monster->combat.is_alive) {
-            boss_pos.x = boss_monster->entity.rect.x + boss_monster->entity.rect.width/2;
-            boss_pos.y = boss_monster->entity.rect.y + boss_monster->entity.rect.height/2;
-        }
-        _camera_director.update(dt, player_pos, boss_pos);
-    }
+    _tick_camera_director(dt);
 
     // Q4.1: HitStop — 冻结期间只推表现层, 世界模拟暂停 (打击感)
     // Q3.10: sim 模式跳过 — 表现层冻结使 game_time 变慢, 900s 超时被稀释成数十分钟
-    if (!_sim_mode && _presentation.is_frozen()) {
-        _presentation.tick(dt);
-        return;
-    }
+    if (_presentation_frozen_gate(dt)) return;
+
     game_time += dt;
     if (_sim_ai) _sim_ai->set_time(game_time); // Q3.2: AI 技能冷却判定需要当前时间
     if (_sim_bt) _sim_bt->set_time(game_time); // Q3.15: BT agent 同样需要真实时间 (P0-2 fix)
@@ -1647,6 +1591,72 @@ void GameScene::_domain_state_vfx() {
         break;
     default: break;
     }
+}
+
+// G25-H: Boss 登场运镜状态机
+void GameScene::_tick_boss_cinematic(float dt) {
+    if (state != GameState::BOSS_CINEMATIC) return;
+    // B15: Boss登场 — 玩家冻结, Boss暂停, 2秒后启动
+    if (_boss_entrance_timer > 0) {
+        _boss_entrance_timer -= dt;
+        if (_boss_entrance_timer <= 0) _begin_boss_battle();
+    } else {
+        boss_cinematic_timer -= dt;
+        if (boss_cinematic_timer <= 0) {
+            boss_cinematic_timer = 0;
+            _begin_boss_battle();
+        }
+    }
+}
+
+void GameScene::_begin_boss_battle() {
+    _boss_entered = true;
+    state = GameState::PLAYING;
+    // A6: Boss 出场预渲染其所在房间 (解决镜头聚焦后视野虚空)
+    Monster* boss_monster = _get_boss();
+    if (boss_monster && game_map) {
+        int boss_tx = (int)(boss_monster->entity.rect.x / TILE_SIZE);
+        int boss_ty = (int)(boss_monster->entity.rect.y / TILE_SIZE);
+        game_map->mark_boss_room(boss_tx, boss_ty);
+    }
+    // A6-T4: Boss 出场触发运镜
+    if (!_sim_mode && _camera_def_loaded) {
+        _camera_director.enter_boss_war();
+    }
+}
+
+// G25-H: 表现层 gate — 返回 true 表示本帧在此停住 (不进入世界模拟)
+bool GameScene::_hit_stop_gate(float dt) {
+    if (_sim_mode) return false;
+    _hit_stop.update(dt);
+    if (_hit_stop.is_stunned()) {
+        _presentation.tick(dt);
+        return true;
+    }
+    return false;
+}
+
+void GameScene::_tick_camera_director(float dt) {
+    // A6-T4: CameraDirector 更新 (wall clock, sim 模式跳过)
+    if (!_sim_mode && _camera_def_loaded) {
+        Vector2 player_pos = {player->entity.rect.x + player->entity.rect.width/2,
+                              player->entity.rect.y + player->entity.rect.height/2};
+        Vector2 boss_pos = {0, 0};
+        Monster* boss_monster = _get_boss();
+        if (boss_monster && boss_monster->combat.is_alive) {
+            boss_pos.x = boss_monster->entity.rect.x + boss_monster->entity.rect.width/2;
+            boss_pos.y = boss_monster->entity.rect.y + boss_monster->entity.rect.height/2;
+        }
+        _camera_director.update(dt, player_pos, boss_pos);
+    }
+}
+
+bool GameScene::_presentation_frozen_gate(float dt) {
+    if (!_sim_mode && _presentation.is_frozen()) {
+        _presentation.tick(dt);
+        return true;
+    }
+    return false;
 }
 
 // G25-F: 敌方投射物 tick

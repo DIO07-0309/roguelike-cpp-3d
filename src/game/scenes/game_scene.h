@@ -361,6 +361,12 @@ private:
     void _tick_healing_totem(ArenaObject& ao, float ax, float ay,
                              float dist, float ascale, float dt);
     void _tick_spike(float px, float py, float ax, float ay, float dist, float ascale);
+    // G25-H: 表现层 gate — Boss 登场运镜 + HitStop/镜头/冻结 三道停住门
+    void _tick_boss_cinematic(float dt);
+    void _begin_boss_battle();
+    bool _hit_stop_gate(float dt);
+    void _tick_camera_director(float dt);
+    bool _presentation_frozen_gate(float dt);
 
     // D4 Step3: 楼层/章节叙事 — moved to PresentationSystemDirector
 
