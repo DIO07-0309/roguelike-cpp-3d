@@ -133,9 +133,66 @@ if (_sim_timeout_forced(game_time)) return;   // _process 内一行
 | 测试 | 78/78 |
 | 确定性 | SHA256 仍逐字节等于基线 |
 
-后续批次：G25-D（元素事件，127 行最大单块，价值最高）、
-G25-E（Boss 系统）、G25-F（怪物投射物）、G25-G（战斗段）、
-G25-H（表现层 gate）。做到 D 停下来看。
+## G25-D：元素事件 VFX（已完成，本批最大）
+
+G10.3 留下的 127 行单块——`_process` 里最长的一段。它是元素系统的
+表现层落点：`ElementResolver` 在武器执行时同步发射事件，`_process`
+在这里一次性消费队列并刷出 VFX。
+
+**结构**：一次性 EventBus 订阅（8 类事件，含 Q4.4 怪物攻击音效）→
+遍历事件队列 → 按怪物名反查目标 → 7 分支 switch 刷 VFX → 汇入
+`active_effects` → 清空队列。
+
+**做法**：四层。
+
+```cpp
+_process_element_events()      34 行  订阅注册 + 队列遍历
+  └─ _emit_element_vfx(ev)     31 行  目标反查 + 坐标 + VFXServer + 派发 switch
+       ├─ _vfx_fire(ev, vfx, px, py, tx, ty, target)    24 行  命中 + 暴击
+       ├─ _vfx_ice(...)                                23 行  缓速 + 冻结
+       ├─ _vfx_poison(...)                             20 行  上毒 + 毒跳
+       └─ _vfx_level_up(ev, vfx, px, py)               40 行  元素核心升级
+```
+
+`switch` 从「每个 case 内联一串 VFX 调用」变成了纯派发表——4 行 `case`
+直接落到 4 个方法，7 个 case 压成 4 个入口（火/冰/毒各管 2 个子事件，
+元素核心升级走自己）。
+
+**为什么按元素而不是按子事件切**：切 7 个方法签名完全一样，
+收益低；按元素切，每个方法内部用 `ev.type` 区分两个子事件，
+`if/else` 两分支各自保留原本的 `if (target)` 守卫，字节一致。
+
+`static std::vector<GameEvent> _elem_events` 和 `static bool _subscribed`
+是块内函数局部静态，搬到 `_process_element_events` 里变成该函数的局部
+静态，作用域与生命周期不变。
+
+### 结果
+
+| 项 | 数值 |
+| :--- | :--- |
+| `_process` | 952 → **828** 行 |
+| 新增方法 | 6 个，全部 ≤40 行 |
+| 纯搬运 | 83 行字节级相同，仅 3 行 `case`/`for` 脚手架被替换 |
+| 构建 | 0 error 0 warning |
+| 测试 | 78/78 |
+| 确定性 | SHA256 仍逐字节等于基线 |
+
+### G25 累计
+
+| 阶段 | `_process` 行数 |
+| :--- | :--- |
+| 起点 | 1072 |
+| G25-A | 1045 |
+| G25-B | 985 |
+| G25-C | 952 |
+| G25-D | **828** |
+
+4 批累计 −244 行，新增 18 个方法，全部 ≤40 行。
+sim 确定性基线全程未变——**没有一次 RNG 抽取次序被破坏**。
+
+剩余：G25-E（Boss 系统，93 行）、G25-F（怪物投射物，54 行）、
+G25-G（战斗段，264 行）、G25-H（表现层 gate，74 行）。按原计划在此停下。
+
 
 
 

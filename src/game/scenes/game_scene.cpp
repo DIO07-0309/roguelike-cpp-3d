@@ -923,132 +923,8 @@ void GameScene::_process(double delta) {
     // 清理被毒死的怪物
     _cleanup_dead_monsters();
 
-    // ═══════════════════════════════════════════════════
     // G10.3: Element VFX — process pending element events
-    // ═══════════════════════════════════════════════════
-    {
-        static std::vector<GameEvent> _elem_events;
-        // Events are emitted synchronously by ElementResolver during weapon_executor
-        // We process them here by subscribing once and storing in a static list
-        static bool _subscribed = false;
-        if (!_subscribed) {
-            EventBus::inst().subscribe(GameEventType::ELEMENT_FIRE_HIT,
-                [](const GameEvent& e) { _elem_events.push_back(e); }, "_elem");
-            EventBus::inst().subscribe(GameEventType::ELEMENT_FIRE_CRITICAL,
-                [](const GameEvent& e) { _elem_events.push_back(e); }, "_elem");
-            EventBus::inst().subscribe(GameEventType::ELEMENT_ICE_SLOW,
-                [](const GameEvent& e) { _elem_events.push_back(e); }, "_elem");
-            EventBus::inst().subscribe(GameEventType::ELEMENT_ICE_FREEZE,
-                [](const GameEvent& e) { _elem_events.push_back(e); }, "_elem");
-            EventBus::inst().subscribe(GameEventType::ELEMENT_POISON_APPLY,
-                [](const GameEvent& e) { _elem_events.push_back(e); }, "_elem");
-            EventBus::inst().subscribe(GameEventType::ELEMENT_POISON_TICK,
-                [](const GameEvent& e) { _elem_events.push_back(e); }, "_elem");
-            EventBus::inst().subscribe(GameEventType::ELEMENT_LEVEL_UP,
-                [](const GameEvent& e) { _elem_events.push_back(e); }, "_elem");
-            // Q4.4: 怪物攻击音效 (AI 层通过事件解耦音频访问)
-            EventBus::inst().subscribe(GameEventType::MONSTER_ATTACK,
-                [](const GameEvent& e) {
-                    auto* tree = ServiceLocator::get<SceneTree>();
-                    if (tree) tree->get_audio()->play_sfx("monster_atk", 0.45f);
-                }, "_elem");
-            _subscribed = true;
-        }
-        // Process queued element events this frame
-        for (auto& ev : _elem_events) {
-            // Find target monster by name
-            Monster* target = nullptr;
-            if (ev.str_val) {
-                for (auto& m : monsters) {
-                    if (m->name == ev.str_val) { target = m.get(); break; }
-                }
-            }
-            float tx = target ? target->entity.rect.x + target->entity.rect.width/2 : 0;
-            float ty = target ? target->entity.rect.y + target->entity.rect.height/2 : 0;
-            float px = player->entity.rect.x + player->entity.rect.width/2;
-            float py = player->entity.rect.y + player->entity.rect.height/2;
-            VFXServer vfx;
-
-            switch (ev.type) {
-            case GameEventType::ELEMENT_FIRE_HIT:
-                if (target) {
-                    vfx.beam(px, py, tx, ty, {255,140,30,200}, 0.28f);
-                    vfx.explosion(tx, ty, 16.0f, {255,150,40,230}, 8, 0.32f);
-                    vfx.ring(tx, ty, 20.0f, {255,120,20,220}, 2, 0.28f);
-                    vfx.spark_burst(tx, ty + 10, 6, {255,160,50,200}, 0.25f);
-                    _presentation.spawn_label(tx, ty - 18, "[火]", {255,140,40,255}, 0.8f);
-                }
-                break;
-            case GameEventType::ELEMENT_FIRE_CRITICAL:
-                if (target) {
-                    vfx.beam(px, py, tx, ty, {255,180,40,240}, 0.35f);
-                    vfx.explosion(tx, ty, 32.0f, {255,180,50,255}, 16, 0.40f);
-                    vfx.shockwave(tx, ty, 50.0f, {255,140,30,230}, 3, 0.35f);
-                    vfx.ring(tx, ty, 24.0f, {255,200,60,230}, 3, 0.45f);
-                    vfx.flash(tx, ty, 18.0f, {255,220,100,220}, 0.12f);
-                    _presentation.trigger_shake(8.0f);
-                    _presentation.trigger_freeze(0.05f);
-                    _presentation.spawn_label(tx, ty - 24, "[暴击!]", {255,220,40,255}, 1.0f);
-                }
-                break;
-            case GameEventType::ELEMENT_ICE_SLOW:
-                if (target) {
-                    vfx.beam(px, py, tx, ty, {80,180,255,220}, 0.35f);
-                    vfx.ring(tx, ty, 22.0f, {80,180,255,200}, 3, 0.40f);
-                    vfx.spark_burst(tx, ty, 8, {100,200,255,200}, 0.35f);
-                    vfx.ring(tx, ty, 16.0f, {100,200,255,120}, 1, 0.50f);
-                    _presentation.spawn_label(tx, ty - 18, "[缓]", {80,180,255,255}, 0.8f);
-                }
-                break;
-            case GameEventType::ELEMENT_ICE_FREEZE:
-                if (target) {
-                    vfx.flash(tx, ty, 26.0f, {120,200,255,240}, 0.18f);
-                    vfx.shockwave(tx, ty, 35.0f, {100,180,255,220}, 3, 0.40f);
-                    vfx.ring(tx, ty, 18.0f, {180,220,255,230}, 3, 0.50f);
-                    vfx.explosion(tx, ty, 20.0f, {120,200,255,200}, 12, 0.35f);
-                    _presentation.trigger_freeze(0.08f);
-                    _presentation.trigger_shake(4.0f);
-                    _presentation.spawn_label(tx, ty - 24, "[冻!]", {120,200,255,255}, 1.2f);
-                }
-                break;
-            case GameEventType::ELEMENT_POISON_APPLY:
-                if (target) {
-                    vfx.beam(px, py, tx, ty, {80,200,80,200}, 0.30f);
-                    vfx.ring(tx, ty, 18.0f, {80,210,80,200}, 3, 0.40f);
-                    vfx.smoke_puff(tx, ty, 14.0f, {60,190,60,160}, 6, 0.50f);
-                    vfx.spark_burst(tx, ty + 8, 5, {100,220,80,180}, 0.30f);
-                    vfx.ring(tx, ty, 22.0f, {60,180,60,100}, 1, 0.55f);
-                    _presentation.spawn_label(tx, ty - 18, "[毒]", {80,210,80,255}, 0.8f);
-                }
-                break;
-            case GameEventType::ELEMENT_POISON_TICK:
-                if (target) {
-                    vfx.beam(px, py, tx, ty, {100,200,60,150}, 0.15f);
-                    vfx.ring(tx, ty + 8, 12.0f, {80,210,70,180}, 2, 0.25f);
-                    vfx.spark_burst(tx, ty + 4, 4, {100,230,80,180}, 0.22f);
-                }
-                break;
-            case GameEventType::ELEMENT_LEVEL_UP: {
-                const char* ename = ev.str_val ? ev.str_val : "fire";
-                Color lc = (ename[0] == 'f') ? Color{255,140,30,220}
-                         : (ename[0] == 'i') ? Color{100,200,255,220}
-                         : Color{80,220,80,220};
-                vfx.ring(px, py, 50.0f, lc, 3, 0.60f);
-                vfx.spark_burst(px, py, 12, lc, 0.50f);
-                vfx.flash(px, py, 20.0f, {lc.r,lc.g,lc.b,(unsigned char)(lc.a/2)}, 0.15f);
-                {
-                    char buf[64];
-                    snprintf(buf, sizeof(buf), "%s Core Lv%d", ename, ev.int_val);
-                    _presentation.show_message(buf, 2.0f);
-                }
-                break;
-            }
-            default: break;
-            }
-            for (auto& e : vfx.effects) active_effects.push_back(e);
-        }
-        _elem_events.clear();
-    }
+    _process_element_events();
 
     // D2 Step5: Arena 环境 tick (D4.6: arena_scale) — 时停期间世界冻结
     if (game_map && !game_map->arena_objects.empty() && time_stop_remaining <= 0) {
@@ -1710,6 +1586,153 @@ void GameScene::_log_sim_timeout_snapshot() {
         LOG_INFO("[P0DIAG] player tile=(%d,%d) type=%d walkable=%d",
             stx, sty, (int)game_map->tile_at(stx, sty),
             (int)game_map->is_walkable(stx, sty));
+    }
+}
+
+void GameScene::_process_element_events() {
+    static std::vector<GameEvent> _elem_events;
+    // Events are emitted synchronously by ElementResolver during weapon_executor
+    // We process them here by subscribing once and storing in a static list
+    static bool _subscribed = false;
+    if (!_subscribed) {
+        EventBus::inst().subscribe(GameEventType::ELEMENT_FIRE_HIT,
+            [](const GameEvent& e) { _elem_events.push_back(e); }, "_elem");
+        EventBus::inst().subscribe(GameEventType::ELEMENT_FIRE_CRITICAL,
+            [](const GameEvent& e) { _elem_events.push_back(e); }, "_elem");
+        EventBus::inst().subscribe(GameEventType::ELEMENT_ICE_SLOW,
+            [](const GameEvent& e) { _elem_events.push_back(e); }, "_elem");
+        EventBus::inst().subscribe(GameEventType::ELEMENT_ICE_FREEZE,
+            [](const GameEvent& e) { _elem_events.push_back(e); }, "_elem");
+        EventBus::inst().subscribe(GameEventType::ELEMENT_POISON_APPLY,
+            [](const GameEvent& e) { _elem_events.push_back(e); }, "_elem");
+        EventBus::inst().subscribe(GameEventType::ELEMENT_POISON_TICK,
+            [](const GameEvent& e) { _elem_events.push_back(e); }, "_elem");
+        EventBus::inst().subscribe(GameEventType::ELEMENT_LEVEL_UP,
+            [](const GameEvent& e) { _elem_events.push_back(e); }, "_elem");
+        // Q4.4: 怪物攻击音效 (AI 层通过事件解耦音频访问)
+        EventBus::inst().subscribe(GameEventType::MONSTER_ATTACK,
+            [](const GameEvent& e) {
+                auto* tree = ServiceLocator::get<SceneTree>();
+                if (tree) tree->get_audio()->play_sfx("monster_atk", 0.45f);
+            }, "_elem");
+        _subscribed = true;
+    }
+    // Process queued element events this frame
+    for (auto& ev : _elem_events)
+        _emit_element_vfx(ev);
+    _elem_events.clear();
+}
+
+void GameScene::_emit_element_vfx(const GameEvent& ev) {
+    // Find target monster by name
+    Monster* target = nullptr;
+    if (ev.str_val) {
+        for (auto& m : monsters) {
+            if (m->name == ev.str_val) { target = m.get(); break; }
+        }
+    }
+    float tx = target ? target->entity.rect.x + target->entity.rect.width/2 : 0;
+    float ty = target ? target->entity.rect.y + target->entity.rect.height/2 : 0;
+    float px = player->entity.rect.x + player->entity.rect.width/2;
+    float py = player->entity.rect.y + player->entity.rect.height/2;
+    VFXServer vfx;
+
+    switch (ev.type) {
+    case GameEventType::ELEMENT_FIRE_HIT:
+    case GameEventType::ELEMENT_FIRE_CRITICAL:
+        _vfx_fire(ev, vfx, px, py, tx, ty, target); break;
+    case GameEventType::ELEMENT_ICE_SLOW:
+    case GameEventType::ELEMENT_ICE_FREEZE:
+        _vfx_ice(ev, vfx, px, py, tx, ty, target); break;
+    case GameEventType::ELEMENT_POISON_APPLY:
+    case GameEventType::ELEMENT_POISON_TICK:
+        _vfx_poison(ev, vfx, px, py, tx, ty, target); break;
+    case GameEventType::ELEMENT_LEVEL_UP:
+        _vfx_level_up(ev, vfx, px, py); break;
+    default: break;
+    }
+    for (auto& e : vfx.effects) active_effects.push_back(e);
+}
+
+void GameScene::_vfx_fire(const GameEvent& ev, VFXServer& vfx,
+                          float px, float py, float tx, float ty, Monster* target) {
+    if (ev.type == GameEventType::ELEMENT_FIRE_HIT) {
+        if (target) {
+            vfx.beam(px, py, tx, ty, {255,140,30,200}, 0.28f);
+            vfx.explosion(tx, ty, 16.0f, {255,150,40,230}, 8, 0.32f);
+            vfx.ring(tx, ty, 20.0f, {255,120,20,220}, 2, 0.28f);
+            vfx.spark_burst(tx, ty + 10, 6, {255,160,50,200}, 0.25f);
+            _presentation.spawn_label(tx, ty - 18, "[火]", {255,140,40,255}, 0.8f);
+        }
+    } else {
+        if (target) {
+            vfx.beam(px, py, tx, ty, {255,180,40,240}, 0.35f);
+            vfx.explosion(tx, ty, 32.0f, {255,180,50,255}, 16, 0.40f);
+            vfx.shockwave(tx, ty, 50.0f, {255,140,30,230}, 3, 0.35f);
+            vfx.ring(tx, ty, 24.0f, {255,200,60,230}, 3, 0.45f);
+            vfx.flash(tx, ty, 18.0f, {255,220,100,220}, 0.12f);
+            _presentation.trigger_shake(8.0f);
+            _presentation.trigger_freeze(0.05f);
+            _presentation.spawn_label(tx, ty - 24, "[暴击!]", {255,220,40,255}, 1.0f);
+        }
+    }
+}
+
+void GameScene::_vfx_ice(const GameEvent& ev, VFXServer& vfx,
+                         float px, float py, float tx, float ty, Monster* target) {
+    if (ev.type == GameEventType::ELEMENT_ICE_SLOW) {
+        if (target) {
+            vfx.beam(px, py, tx, ty, {80,180,255,220}, 0.35f);
+            vfx.ring(tx, ty, 22.0f, {80,180,255,200}, 3, 0.40f);
+            vfx.spark_burst(tx, ty, 8, {100,200,255,200}, 0.35f);
+            vfx.ring(tx, ty, 16.0f, {100,200,255,120}, 1, 0.50f);
+            _presentation.spawn_label(tx, ty - 18, "[缓]", {80,180,255,255}, 0.8f);
+        }
+    } else {
+        if (target) {
+            vfx.flash(tx, ty, 26.0f, {120,200,255,240}, 0.18f);
+            vfx.shockwave(tx, ty, 35.0f, {100,180,255,220}, 3, 0.40f);
+            vfx.ring(tx, ty, 18.0f, {180,220,255,230}, 3, 0.50f);
+            vfx.explosion(tx, ty, 20.0f, {120,200,255,200}, 12, 0.35f);
+            _presentation.trigger_freeze(0.08f);
+            _presentation.trigger_shake(4.0f);
+            _presentation.spawn_label(tx, ty - 24, "[冻!]", {120,200,255,255}, 1.2f);
+        }
+    }
+}
+
+void GameScene::_vfx_poison(const GameEvent& ev, VFXServer& vfx,
+                            float px, float py, float tx, float ty, Monster* target) {
+    if (ev.type == GameEventType::ELEMENT_POISON_APPLY) {
+        if (target) {
+            vfx.beam(px, py, tx, ty, {80,200,80,200}, 0.30f);
+            vfx.ring(tx, ty, 18.0f, {80,210,80,200}, 3, 0.40f);
+            vfx.smoke_puff(tx, ty, 14.0f, {60,190,60,160}, 6, 0.50f);
+            vfx.spark_burst(tx, ty + 8, 5, {100,220,80,180}, 0.30f);
+            vfx.ring(tx, ty, 22.0f, {60,180,60,100}, 1, 0.55f);
+            _presentation.spawn_label(tx, ty - 18, "[毒]", {80,210,80,255}, 0.8f);
+        }
+    } else {
+        if (target) {
+            vfx.beam(px, py, tx, ty, {100,200,60,150}, 0.15f);
+            vfx.ring(tx, ty + 8, 12.0f, {80,210,70,180}, 2, 0.25f);
+            vfx.spark_burst(tx, ty + 4, 4, {100,230,80,180}, 0.22f);
+        }
+    }
+}
+
+void GameScene::_vfx_level_up(const GameEvent& ev, VFXServer& vfx, float px, float py) {
+    const char* ename = ev.str_val ? ev.str_val : "fire";
+    Color lc = (ename[0] == 'f') ? Color{255,140,30,220}
+             : (ename[0] == 'i') ? Color{100,200,255,220}
+             : Color{80,220,80,220};
+    vfx.ring(px, py, 50.0f, lc, 3, 0.60f);
+    vfx.spark_burst(px, py, 12, lc, 0.50f);
+    vfx.flash(px, py, 20.0f, {lc.r,lc.g,lc.b,(unsigned char)(lc.a/2)}, 0.15f);
+    {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "%s Core Lv%d", ename, ev.int_val);
+        _presentation.show_message(buf, 2.0f);
     }
 }
 

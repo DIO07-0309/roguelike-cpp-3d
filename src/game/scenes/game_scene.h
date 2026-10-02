@@ -336,6 +336,16 @@ private:
     // G25-C: sim 单局超时守卫 (返回 true 则本帧强制结算并 return)
     bool _sim_timeout_forced(float game_time);
     void _log_sim_timeout_snapshot();
+    // G25-D: 元素事件 VFX (EventBus 订阅 → 目标定位 → 按元素派发)
+    void _process_element_events();
+    void _emit_element_vfx(const GameEvent& ev);
+    void _vfx_fire(const GameEvent& ev, VFXServer& vfx,
+                   float px, float py, float tx, float ty, Monster* target);
+    void _vfx_ice(const GameEvent& ev, VFXServer& vfx,
+                  float px, float py, float tx, float ty, Monster* target);
+    void _vfx_poison(const GameEvent& ev, VFXServer& vfx,
+                     float px, float py, float tx, float ty, Monster* target);
+    void _vfx_level_up(const GameEvent& ev, VFXServer& vfx, float px, float py);
 
     // D4 Step3: 楼层/章节叙事 — moved to PresentationSystemDirector
 
