@@ -856,61 +856,8 @@ void GameScene::_process(double delta) {
     _process_element_events();
 
     // D2 Step5: Arena 环境 tick (D4.6: arena_scale) — 时停期间世界冻结
-    if (game_map && !game_map->arena_objects.empty() && time_stop_remaining <= 0) {
-        float px = player->entity.rect.x + player->entity.rect.width/2;
-        float py = player->entity.rect.y + player->entity.rect.height/2;
-        float ascale = g_growth.arena_scale(current_floor);
-        for (auto& ao : game_map->arena_objects) {
-            if (!ao.active) continue;
-            float ax = ao.tile_x * TILE_SIZE + TILE_SIZE/2;
-            float ay = ao.tile_y * TILE_SIZE + TILE_SIZE/2;
-            float dist = hypotf(px - ax, py - ay);
-            switch (ao.type) {
-            case ArenaObjectType::EXPLOSIVE_BARREL:
-                // 收官: 点燃倒计时 → 到期爆炸销毁 (触发源: 玩家攻击/敌方投射物)
-                if (ao.timer > 0.0f) {
-                    ao.timer -= dt;
-                    if (ao.timer <= 0.0f) { ao.timer = 0; _explode_barrel(ao); ao.active = false; }
-                }
-                break;
-            case ArenaObjectType::HEALING_TOTEM:
-                ao.timer += dt;
-                if (ao.timer >= 2.0f) { ao.timer = 0;
-                    if (dist < 2.5f * TILE_SIZE) heal_player(player.get(), (int)(5 * ascale));
-                    for (auto& m : monsters)
-                        if (m->combat.is_alive && hypotf(m->entity.rect.x + m->entity.rect.width/2 - ax,
-                            m->entity.rect.y + m->entity.rect.height/2 - ay) < 2.5f * TILE_SIZE)
-                            m->combat.heal((int)(m->combat.max_hp * 0.08f * ascale));
-                }
-                break;
-            case ArenaObjectType::POISON_POOL:
-                // M4a-fix: 0.5s 间隔叠层 (原每帧 1 层 — 踩毒 0.1s 即叠满 5 层,
-                // 离开后 4s 内每跳 15 伤害 = "离老远莫名死亡" 元凶)
-                ao.timer += dt;
-                if (ao.timer >= 0.5f) {
-                    ao.timer = 0;
-                    if (dist < 1.2f * TILE_SIZE) apply_buff(player.get(), "pool_poison", 1);
-                }
-                break;
-            case ArenaObjectType::SPIKE: {
-                int sd = (int)(3 * ascale), md = (int)(4 * ascale);
-                if (dist < 0.8f * TILE_SIZE) {
-                    player->combat.take_damage(sd);
-                    player->combat.mark_damage_logged();
-                    player->combat.last_damage_source = "env:尖刺";   // M2-B
-                    LOG_INFO("[DMG] 尖刺 造成 %d 伤害 → 玩家", sd);
-                    _presentation.damage_floats.push_back({px, py-8, 0.4f, 0.4f, sd, {255, 60, 40, 255}});
-                }
-                for (auto& m : monsters)
-                    if (m->combat.is_alive && hypotf(m->entity.rect.x + m->entity.rect.width/2 - ax,
-                        m->entity.rect.y + m->entity.rect.height/2 - ay) < 0.8f * TILE_SIZE)
-                        m->combat.take_damage(md);
-                break;
-            }
-            default: break;
-            }
-        }
-    }
+    // G25-G: 场地道具 tick (木桶/图腾/毒池/尖刺)
+    _tick_arena_objects(dt);
 
     // M4b: 熔岩地砖灼烧 (0.5s 节拍, Boss 免疫, 时停冻结)
     if (game_map && time_stop_remaining <= 0) {
@@ -1759,6 +1706,74 @@ void GameScene::_enemy_projectile_hit_player(Projectile& p, float hit_radius) {
     });
     _presentation.trigger_shake(dmg > 20 ? 8.0f : 3.0f);
     if (!p.piercing) p.alive = false;
+}
+
+// G25-G: 场地道具 tick
+void GameScene::_tick_arena_objects(float dt) {
+    if (!game_map || game_map->arena_objects.empty() || time_stop_remaining > 0) return;
+    float px = player->entity.rect.x + player->entity.rect.width/2;
+    float py = player->entity.rect.y + player->entity.rect.height/2;
+    float ascale = g_growth.arena_scale(current_floor);
+    for (auto& ao : game_map->arena_objects) {
+        if (!ao.active) continue;
+        float ax = ao.tile_x * TILE_SIZE + TILE_SIZE/2;
+        float ay = ao.tile_y * TILE_SIZE + TILE_SIZE/2;
+        float dist = hypotf(px - ax, py - ay);
+        switch (ao.type) {
+        case ArenaObjectType::EXPLOSIVE_BARREL:
+            // 收官: 点燃倒计时 → 到期爆炸销毁 (触发源: 玩家攻击/敌方投射物)
+            if (ao.timer > 0.0f) {
+                ao.timer -= dt;
+                if (ao.timer <= 0.0f) { ao.timer = 0; _explode_barrel(ao); ao.active = false; }
+            }
+            break;
+        case ArenaObjectType::HEALING_TOTEM:
+            _tick_healing_totem(ao, ax, ay, dist, ascale, dt);
+            break;
+        case ArenaObjectType::POISON_POOL:
+            // M4a-fix: 0.5s 间隔叠层 (原每帧 1 层 — 踩毒 0.1s 即叠满 5 层,
+            // 离开后 4s 内每跳 15 伤害 = "离老远莫名死亡" 元凶)
+            ao.timer += dt;
+            if (ao.timer >= 0.5f) {
+                ao.timer = 0;
+                if (dist < 1.2f * TILE_SIZE) apply_buff(player.get(), "pool_poison", 1);
+            }
+            break;
+        case ArenaObjectType::SPIKE:
+            _tick_spike(px, py, ax, ay, dist, ascale);
+            break;
+        default: break;
+        }
+    }
+}
+
+void GameScene::_tick_healing_totem(ArenaObject& ao, float ax, float ay,
+                                    float dist, float ascale, float dt) {
+    ao.timer += dt;
+    if (ao.timer >= 2.0f) {
+        ao.timer = 0;
+        if (dist < 2.5f * TILE_SIZE) heal_player(player.get(), (int)(5 * ascale));
+        for (auto& m : monsters)
+            if (m->combat.is_alive && hypotf(m->entity.rect.x + m->entity.rect.width/2 - ax,
+                m->entity.rect.y + m->entity.rect.height/2 - ay) < 2.5f * TILE_SIZE)
+                m->combat.heal((int)(m->combat.max_hp * 0.08f * ascale));
+    }
+}
+
+void GameScene::_tick_spike(float px, float py, float ax, float ay,
+                            float dist, float ascale) {
+    int sd = (int)(3 * ascale), md = (int)(4 * ascale);
+    if (dist < 0.8f * TILE_SIZE) {
+        player->combat.take_damage(sd);
+        player->combat.mark_damage_logged();
+        player->combat.last_damage_source = "env:尖刺";   // M2-B
+        LOG_INFO("[DMG] 尖刺 造成 %d 伤害 → 玩家", sd);
+        _presentation.damage_floats.push_back({px, py-8, 0.4f, 0.4f, sd, {255, 60, 40, 255}});
+    }
+    for (auto& m : monsters)
+        if (m->combat.is_alive && hypotf(m->entity.rect.x + m->entity.rect.width/2 - ax,
+            m->entity.rect.y + m->entity.rect.height/2 - ay) < 0.8f * TILE_SIZE)
+            m->combat.take_damage(md);
 }
 
 // ============================================================

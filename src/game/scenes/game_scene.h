@@ -356,6 +356,11 @@ private:
     void _tick_enemy_projectile(Projectile& p, float dt);
     bool _enemy_projectile_hit_barrel(Projectile& p);
     void _enemy_projectile_hit_player(Projectile& p, float hit_radius);
+    // G25-G: 场地道具 tick (木桶/图腾/毒池/尖刺)
+    void _tick_arena_objects(float dt);
+    void _tick_healing_totem(ArenaObject& ao, float ax, float ay,
+                             float dist, float ascale, float dt);
+    void _tick_spike(float px, float py, float ax, float ay, float dist, float ascale);
 
     // D4 Step3: 楼层/章节叙事 — moved to PresentationSystemDirector
 
