@@ -1183,40 +1183,7 @@ void GameScene::_process(double delta) {
     if (_tw_speed_boost > 0) _tw_speed_boost -= dt;
 
     // Q3.2: sim 单局时间上限 — 防止罕见卡死拖死整个批量 (正常对局 ~50s, 上限 900s)
-    if (_sim_mode && game_time > 900.0f) {
-        LOG_INFO("[SIM] 单局超时 t=%.0f 第%d层 — 强制结算", game_time, current_floor);
-        // P0-M1 诊断: 超时现场快照 (玩家位置/朝向/存活怪/最近怪距离/楼梯状态)
-        {
-            float px = player->entity.rect.x + player->entity.rect.width/2;
-            float py = player->entity.rect.y + player->entity.rect.height/2;
-            LOG_INFO("[P0DIAG] player@(%.0f,%.0f) dir=%d hp=%d/%d stairs=%d monsters=%zu",
-                px, py, (int)player->direction, player->combat.current_hp,
-                player->combat.max_hp, (int)stairs_active, monsters.size());
-            for (auto& m : monsters) {
-                if (!m || !m->combat.is_alive) continue;
-                float d = hypotf(m->entity.rect.x + 14 - px, m->entity.rect.y + 14 - py);
-                LOG_INFO("[P0DIAG] monster '%s' hp=%d/%d dist=%.0f pos=(%.0f,%.0f)",
-                    m->name.c_str(), m->combat.current_hp, m->combat.max_hp,
-                    d, m->entity.rect.x, m->entity.rect.y);
-            }
-            // P0-M1 诊断: 全部门 tile 状态 (经公共 API, 不触私有 _tiles)
-            if (game_map) {
-                for (int y = 0; y < game_map->height; y++)
-                    for (int x = 0; x < game_map->width; x++)
-                        if (game_map->is_door(x, y))
-                            LOG_INFO("[P0DIAG] door@(%d,%d) state=%d walkable=%d",
-                                x, y, (int)game_map->door_state_at(x, y),
-                                (int)game_map->is_walkable(x, y));
-                auto [stx, sty] = game_map->pixel_to_tile(px, py);
-                LOG_INFO("[P0DIAG] player tile=(%d,%d) type=%d walkable=%d",
-                    stx, sty, (int)game_map->tile_at(stx, sty),
-                    (int)game_map->is_walkable(stx, sty));
-            }
-        }
-        _sim_game_timeout = true;   // M2-A: 结算归 TIMEOUT_GAME
-        _collect_sim_stats();
-        return;
-    }
+    if (_sim_timeout_forced(game_time)) return;
 
     if (!player->combat.is_alive) {
         // G5.6: sim 模式短路死亡流程 — _collect_sim_stats 内部已处理重启/退出
@@ -1705,6 +1672,44 @@ void GameScene::_flow_auto_elite() {
         _presentation.room_msg = "一支精英巡逻队出现了！";
         _presentation.room_msg_timer = 2.0f;
         _gameplay.flow.mark_combat();
+    }
+}
+
+bool GameScene::_sim_timeout_forced(float game_time) {
+    if (!_sim_mode || game_time <= 900.0f) return false;
+    LOG_INFO("[SIM] 单局超时 t=%.0f 第%d层 — 强制结算", game_time, current_floor);
+    _log_sim_timeout_snapshot();
+    _sim_game_timeout = true;   // M2-A: 结算归 TIMEOUT_GAME
+    _collect_sim_stats();
+    return true;
+}
+
+void GameScene::_log_sim_timeout_snapshot() {
+    // P0-M1 诊断: 超时现场快照 (玩家位置/朝向/存活怪/最近怪距离/楼梯状态)
+    float px = player->entity.rect.x + player->entity.rect.width/2;
+    float py = player->entity.rect.y + player->entity.rect.height/2;
+    LOG_INFO("[P0DIAG] player@(%.0f,%.0f) dir=%d hp=%d/%d stairs=%d monsters=%zu",
+        px, py, (int)player->direction, player->combat.current_hp,
+        player->combat.max_hp, (int)stairs_active, monsters.size());
+    for (auto& m : monsters) {
+        if (!m || !m->combat.is_alive) continue;
+        float d = hypotf(m->entity.rect.x + 14 - px, m->entity.rect.y + 14 - py);
+        LOG_INFO("[P0DIAG] monster '%s' hp=%d/%d dist=%.0f pos=(%.0f,%.0f)",
+            m->name.c_str(), m->combat.current_hp, m->combat.max_hp,
+            d, m->entity.rect.x, m->entity.rect.y);
+    }
+    // P0-M1 诊断: 全部门 tile 状态 (经公共 API, 不触私有 _tiles)
+    if (game_map) {
+        for (int y = 0; y < game_map->height; y++)
+            for (int x = 0; x < game_map->width; x++)
+                if (game_map->is_door(x, y))
+                    LOG_INFO("[P0DIAG] door@(%d,%d) state=%d walkable=%d",
+                        x, y, (int)game_map->door_state_at(x, y),
+                        (int)game_map->is_walkable(x, y));
+        auto [stx, sty] = game_map->pixel_to_tile(px, py);
+        LOG_INFO("[P0DIAG] player tile=(%d,%d) type=%d walkable=%d",
+            stx, sty, (int)game_map->tile_at(stx, sty),
+            (int)game_map->is_walkable(stx, sty));
     }
 }
 

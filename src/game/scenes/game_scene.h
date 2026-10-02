@@ -333,6 +333,9 @@ private:
     void _flow_auto_reward();
     void _flow_auto_patrol();
     void _flow_auto_elite();
+    // G25-C: sim 单局超时守卫 (返回 true 则本帧强制结算并 return)
+    bool _sim_timeout_forced(float game_time);
+    void _log_sim_timeout_snapshot();
 
     // D4 Step3: 楼层/章节叙事 — moved to PresentationSystemDirector
 
