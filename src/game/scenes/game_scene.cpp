@@ -794,79 +794,8 @@ void GameScene::_process(double delta) {
         player->combat.logged_hp = hp_now;
     }
 
-    // B15: Boss Phase2 提示
-    if (!_boss_phase2_shown) {
-        auto* boss = _get_boss();
-        if (boss) {
-            auto* bai = dynamic_cast<BossAI*>(boss->ai);
-            if (bai && bai->phase2) {
-                // D4 Step5.5: Boss Phase2对话
-                BuildType bt = calculate_build(player.get()).identify();
-                const BossDialogue* pd = _boss.narrative.find_phase2(
-                    current_floor, _gameplay.world_state, bt);
-                _presentation.room_msg = pd && pd->phase2 ? pd->phase2 : "BOSS 狂暴！";
-                _presentation.room_msg_timer = 2.5f;
-                _boss_phase2_shown = true;
-                _presentation.trigger_shake(10.0f);
-                _boss.notify_phase2();   // D5 Step6 (cinematic + timeline 收敛)
-            }
-        }
-    }
-
-    // D5 Step2: LastStand 检测  D5 Step3: BossBehavior 评估
-    if (!_boss.evolution.last_stand_triggered) {
-        auto* boss = _get_boss();
-        if (boss && boss->is_boss && (float)boss->combat.current_hp / boss->combat.max_hp < 0.15f) {
-            _boss.evolution.last_stand_triggered = true;
-            _boss.notify_last_stand(boss);  // CD减半 + 范围提升 + cinematic + timeline
-            _presentation.room_msg = _boss.evolution.evolution_name
-                ? std::string(_boss.evolution.evolution_name) + std::string("!")
-                : std::string("LAST STAND!");
-            _presentation.room_msg_timer = 2.5f;
-            _presentation.trigger_shake(14.0f);
-        }
-    }
-
-    // D5 Step3: Boss Memory tick + Behavior 评估 (收敛至 BossSystemDirector::tick)
-    {
-        auto* boss = _get_boss();
-        if (boss && boss->is_boss && time_stop_remaining <= 0) {
-            _boss._weak_point_pool = &monsters;  // F10.2: pass pool for core spawn
-            _boss.tick(dt, boss, player.get(), current_floor, game_time,
-                       _gameplay.world_state,
-                       _gameplay.rels, _gameplay.story.stage(), monsters,
-                       &active_effects);  // F15-fix: 镜像战特效通道
-
-            // F10.1: Domain state change VFX
-            if (_boss._behavior_type == "domain"
-                && _boss.arena_state != _boss_last_arena_state) {
-                _boss_last_arena_state = _boss.arena_state;
-                switch (_boss.arena_state) {
-                case BossArenaState::DOMAIN_PHASE:
-                    _presentation.show_message("【领域展开】Boss受到保护 — 寻找破绽!", 2.5f);
-                    _presentation.trigger_shake(6.0f);
-                    get_tree()->get_audio()->play_sfx("domain_expand", 1.0f);
-                    break;
-                case BossArenaState::ENRAGED_PHASE:
-                    _presentation.show_message("【狂暴领域!】核心周期减半 — 最终回响!", 2.5f);
-                    _presentation.trigger_shake(14.0f);
-                    _presentation.trigger_freeze(0.10f);
-                    break;
-                case BossArenaState::VULNERABLE_PHASE:
-                    _presentation.show_message("【弱点暴露】全力输出! 伤害 x2", 2.0f);
-                    _presentation.trigger_shake(10.0f);
-                    _presentation.trigger_freeze(0.08f);
-                    break;
-                case BossArenaState::MECHANIC_PHASE:
-                    _presentation.show_message("【核心粉碎!】弹幕风暴降临 — 躲避!", 2.2f);
-                    _presentation.trigger_shake(8.0f);
-                    _presentation.trigger_freeze(0.06f);
-                    break;
-                default: break;
-                }
-            }
-        }
-    }
+    // B15/D5: Boss 系统 — Phase2 提示、LastStand、Memory/Behavior tick
+    _tick_boss_system(dt);
 
     // D3 Step4: Build Fusion 检测 — 构筑成型/切换
     {
@@ -1733,6 +1662,89 @@ void GameScene::_vfx_level_up(const GameEvent& ev, VFXServer& vfx, float px, flo
         char buf[64];
         snprintf(buf, sizeof(buf), "%s Core Lv%d", ename, ev.int_val);
         _presentation.show_message(buf, 2.0f);
+    }
+}
+
+// G25-E: Boss 系统 tick
+void GameScene::_tick_boss_system(float dt) {
+    _check_boss_phase2();
+    _check_boss_last_stand();
+    _tick_boss_behavior(dt);
+}
+
+void GameScene::_check_boss_phase2() {
+    // B15: Boss Phase2 提示
+    if (_boss_phase2_shown) return;
+    auto* boss = _get_boss();
+    if (!boss) return;
+    auto* bai = dynamic_cast<BossAI*>(boss->ai);
+    if (!bai || !bai->phase2) return;
+    // D4 Step5.5: Boss Phase2对话
+    BuildType bt = calculate_build(player.get()).identify();
+    const BossDialogue* pd = _boss.narrative.find_phase2(
+        current_floor, _gameplay.world_state, bt);
+    _presentation.room_msg = pd && pd->phase2 ? pd->phase2 : "BOSS 狂暴！";
+    _presentation.room_msg_timer = 2.5f;
+    _boss_phase2_shown = true;
+    _presentation.trigger_shake(10.0f);
+    _boss.notify_phase2();   // D5 Step6 (cinematic + timeline 收敛)
+}
+
+void GameScene::_check_boss_last_stand() {
+    // D5 Step2: LastStand 检测
+    if (_boss.evolution.last_stand_triggered) return;
+    auto* boss = _get_boss();
+    if (!boss || !boss->is_boss) return;
+    if ((float)boss->combat.current_hp / boss->combat.max_hp >= 0.15f) return;
+    _boss.evolution.last_stand_triggered = true;
+    _boss.notify_last_stand(boss);  // CD减半 + 范围提升 + cinematic + timeline
+    _presentation.room_msg = _boss.evolution.evolution_name
+        ? std::string(_boss.evolution.evolution_name) + std::string("!")
+        : std::string("LAST STAND!");
+    _presentation.room_msg_timer = 2.5f;
+    _presentation.trigger_shake(14.0f);
+}
+
+void GameScene::_tick_boss_behavior(float dt) {
+    // D5 Step3: Boss Memory tick + Behavior 评估 (收敛至 BossSystemDirector::tick)
+    auto* boss = _get_boss();
+    if (!boss || !boss->is_boss || time_stop_remaining > 0) return;
+    _boss._weak_point_pool = &monsters;  // F10.2: pass pool for core spawn
+    _boss.tick(dt, boss, player.get(), current_floor, game_time,
+               _gameplay.world_state,
+               _gameplay.rels, _gameplay.story.stage(), monsters,
+               &active_effects);  // F15-fix: 镜像战特效通道
+    // F10.1: Domain state change VFX
+    if (_boss._behavior_type == "domain"
+        && _boss.arena_state != _boss_last_arena_state) {
+        _boss_last_arena_state = _boss.arena_state;
+        _domain_state_vfx();
+    }
+}
+
+void GameScene::_domain_state_vfx() {
+    switch (_boss.arena_state) {
+    case BossArenaState::DOMAIN_PHASE:
+        _presentation.show_message("【领域展开】Boss受到保护 — 寻找破绽!", 2.5f);
+        _presentation.trigger_shake(6.0f);
+        get_tree()->get_audio()->play_sfx("domain_expand", 1.0f);
+        break;
+    case BossArenaState::ENRAGED_PHASE:
+        _presentation.show_message("【狂暴领域!】核心周期减半 — 最终回响!", 2.5f);
+        _presentation.trigger_shake(14.0f);
+        _presentation.trigger_freeze(0.10f);
+        break;
+    case BossArenaState::VULNERABLE_PHASE:
+        _presentation.show_message("【弱点暴露】全力输出! 伤害 x2", 2.0f);
+        _presentation.trigger_shake(10.0f);
+        _presentation.trigger_freeze(0.08f);
+        break;
+    case BossArenaState::MECHANIC_PHASE:
+        _presentation.show_message("【核心粉碎!】弹幕风暴降临 — 躲避!", 2.2f);
+        _presentation.trigger_shake(8.0f);
+        _presentation.trigger_freeze(0.06f);
+        break;
+    default: break;
     }
 }
 

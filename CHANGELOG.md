@@ -187,11 +187,8 @@ _process_element_events()      34 行  订阅注册 + 队列遍历
 | G25-C | 952 |
 | G25-D | **828** |
 
-4 批累计 −244 行，新增 18 个方法，全部 ≤40 行。
+G25-D 收尾时累计 −244 行，新增 18 个方法，全部 ≤40 行。
 sim 确定性基线全程未变——**没有一次 RNG 抽取次序被破坏**。
-
-剩余：G25-E（Boss 系统，93 行）、G25-F（怪物投射物，54 行）、
-G25-G（战斗段，264 行）、G25-H（表现层 gate，74 行）。按原计划在此停下。
 
 
 
@@ -205,6 +202,42 @@ exit=0, avg_floor=1.20, avg_turns=11335.8, wins=0/5
 ```
 
 每批必须与这个 hash 逐字节相等。任何 RNG 抽取次序变化都会立刻暴露。
+
+## G25-E：Boss 系统（已完成）
+
+`_process` 里的 Boss 专属段（73 行）：Phase2 提示对话 → LastStand 检测 →
+Memory/Behavior tick + Domain 状态切换 VFX。
+
+拆成 4 个方法：
+
+```cpp
+_tick_boss_system(dt)      5 行  三段调度
+  ├─ _check_boss_phase2()      17 行  未提示 + boss 存在 + phase2 → 对话/震屏/通知
+  ├─ _check_boss_last_stand()  14 行  未触发 + HP<15% → CD减半/范围提升/通知
+  └─ _tick_boss_behavior(dt)   16 行  BossSystemDirector::tick + Domain VFX
+       └─ _domain_state_vfx()  25 行  4 个 arena_state 分支的消息/震屏/冻结/音效
+```
+
+守卫从嵌套 `if` 改成 De Morgan 早返回（与 G25-B 同模式）。
+`_get_boss()` 无 RNG 参与、`dynamic_cast` 无副作用，展平前后行为等价。
+
+### 结果
+
+| 项 | 数值 |
+| :--- | :--- |
+| `_process` | 828 → **757** 行 |
+| 新增方法 | 5 个（5/14/16/17/25 行） |
+| 构建 / 测试 / 确定性 | 0 err 0 warn · 78/78 · SHA256 逐字节等于基线 |
+
+### G25 累计
+
+| 阶段 | `_process` 行数 |
+| :--- | :--- |
+| 起点 | 1072 |
+| G25-A/B/C/D/E | 1045 / 985 / 952 / 828 / **757** |
+
+5 批累计 **−315 行**，新增 23 个方法。剩余：G25-F（怪物投射物）、
+G25-G（战斗段）、G25-H（表现层 gate）。
 
 ---
 

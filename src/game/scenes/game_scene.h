@@ -346,6 +346,12 @@ private:
     void _vfx_poison(const GameEvent& ev, VFXServer& vfx,
                      float px, float py, float tx, float ty, Monster* target);
     void _vfx_level_up(const GameEvent& ev, VFXServer& vfx, float px, float py);
+    // G25-E: Boss 系统 tick (Phase2 提示 / LastStand / Behavior + Domain VFX)
+    void _tick_boss_system(float dt);
+    void _check_boss_phase2();
+    void _check_boss_last_stand();
+    void _tick_boss_behavior(float dt);
+    void _domain_state_vfx();
 
     // D4 Step3: 楼层/章节叙事 — moved to PresentationSystemDirector
 
