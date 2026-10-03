@@ -1,3 +1,105 @@
+# G26 — sim STUCK_RECOVERED 死锁链根因修复（2026-10-03）
+
+> 目标：解释并修复「`--sim 5 --sim-seed 42` 下 3/5 局 `STUCK_RECOVERED`
+> 死锁」。**这是本仓库唯一的确定性可复现缺陷**（见下方基线），
+> 且同时是平衡数据不可信的唯一根因。
+
+## 现象与死锁链
+
+修复前 5 局：`0/5` 胜率，`avg_floor=1.20`，`avg_turns=11335`，
+`avg_relics=0.20`，`avg_equipment=0.20`，结局 3 `DEATH_MONSTER` +
+**2 `STUCK_RECOVERED`**。死锁局 `kills=0-2`、`picks=0`。
+
+埋点归因后死锁链还原（seed42 全程）：
+
+1. **`_pickup_fail_streak` 把成功记成失败** —— 该计数在 `_evaluate_pickup`
+   **评估时** `++`，无法区分本次拾取成败。出生点簇拥 ≥3 件物品时，
+   开局 4.5s 内 **3 次成功的拾取被记为 3 次失败**，`>= 3` 触发**永久放弃**。
+2. **拾取是特殊房间的唯一触发路径** —— 房间 `triggered` 只由
+   `InteractionHandler::try_interact` 置位。pickup 死后房间永不触发。
+3. **房间永不触发 → 搜刮分支永久空转** —— `_bfs_toward_room` 永远有目标
+   （`untrig_rooms=3` 恒定），`_evaluate_move` 永远命中搜刮分支。
+4. **搜刮分支吃掉了战斗分支** —— `_eval_move_loot_and_rooms` 原先对
+   **不匹配**的方向返回 `0.0f` 而非 `std::nullopt`，导致下游
+   `_eval_move_approach` **永不可达**。
+5. **净效果：`atk=0%` 全程**，最近怪恒定在 220-407px 外，玩家永远无法攻击，
+   120s 累计卡死预算耗尽 → 看门狗强制结算 `STUCK_RECOVERED`。
+
+## 两处修复
+
+### 1. `_eval_move_loot_and_rooms`：`0.0f` → `std::nullopt`
+
+```cpp
+// 修复前：返回 0.0 阻塞整条 move 评分链
+return (dir == loot_step) ? 0.7f : 0.0f;
+// 修复后：不匹配 → 交还给下游 approach 分支
+if (dir == loot_step) { sim_move_branch[1]++; return 0.7f; }
+return std::nullopt;
+```
+
+房间分支同款修复，并把权重 **0.6 → 0.5**：原来房间分（0.6）与
+approach（0.6）**同分**，`best_dir` 用严格 `>` 判定，方向索引低的
+房间方向恒胜 —— AI 持续追一个永远触发不了的特殊房，且 `atk` 分被
+直接比下去。降到 0.5 后「活着打怪」恒压过「去摸房」，房间仍远高于
+随机游走（0.1）。
+
+### 2. `_evaluate_pickup`：删除永久放弃
+
+删除 `if (_pickup_fail_streak >= 3) return 0;` 与 `++`，连同
+`_pickup_fail_streak` 成员一并移除（声明在 `sim_ai.h:173`）。
+**保留 1.5s 冷却** —— 它才是真正的节流器。重复发 `pickup` 只是无害
+no-op；真正失败（物品不在 64px 内）由 `_near_loot_dist < 0` 提前返回。
+
+原「累计 3 次才放弃」的意图无法用评估时计数实现（评估发生在拾取之前），
+要正确计数必须在拾取**之后**读结果，那是更大的重构，而永久放弃本身
+没有任何正当用途 —— 它只造成 1/5 概率的开局自杀。
+
+## 结果（同一确定性基线）
+
+| 指标 | 修复前 | 修复后 |
+| :--- | :--- | :--- |
+| Win rate | 0.0% (0/5) | 0.0% (0/5) |
+| avg_floor | 1.20 | **1.80** |
+| avg_turns | 11335.4 | **3876.2**（−66%） |
+| avg damage dealt | ~17 | **42.0** |
+| avg_equipment | 0.20 | **1.20** |
+| 单局 picks | 0 | **5, 8** |
+| 单局 kills | 0-2 | **14, 9** |
+| 最深层 | 2 | **4** |
+| `STUCK_RECOVERED` | 2 | 2（但已到 2、4 层） |
+
+**胜率没变**，但死亡原因变了：修复前 `kills=0` 全程空手、`picks=0`；
+修复后 AI 真正打仗（`dealt=42`、`kills=14`）并死于战斗。
+修复后 `stuck_for_max=19.3s`，说明 8.0s 的传送脱困门槛**已能到达**
+（修复前全程到不了），剩余 STUCK 来自战斗拉锯的间歇性进展，属正常。
+
+## 新增诊断（永久保留）
+
+`[SIM-DIAG] G26 progress_src move=N monhp=N php=N alive=N | stuck_early
+near=N anchor=N | stuck_for_max=Xs` —— 把 `_stuck_progress` 的四个进展
+信号与 `_stuck_escape` 的两个早退分支分别计数，用于判断「假进展」到底
+由哪个信号反复重置 `_stuck_since`。探查用的逐帧轨迹埋点已清理。
+
+## 确定性基线已变更
+
+这是**修 bug 而非重构**，基线必须更新：
+
+- 旧基线 `B098BB53D40E71FD555B4B7CD67DC4EDC6030D50F85DB839C6481795C1652080`
+- **新基线 `4FA7ADBBAFC558B5F949AB628A1DD4B140FD167CBF0D7654A010D5A2C3B2B9FC`**
+
+四道闸门：build 0 error 0 warning · ctest 78/78 · 上述 SHA256 逐字节
+· 新增函数均 ≤40 行。
+
+## 遗留（不属 G26 范围）
+
+- **胜率仍为 0** —— 修复后死于战斗而非死锁，但 1.80 层仍是弱平衡。
+  致死来源转向精英兽人 / 兽人 / 毒伤（新增 `DEATH_DOT`）。
+  这是真正的调数值问题，需要独立一轮。
+- `avg_relics` 0.20 → 0.00：房间不再被追，换层前未必碰到能出圣物的房。
+- sim 只跑到 1-4 层，**Boss 层依旧未被确定性校验覆盖**（见 G25 记录）。
+
+---
+
 # G25 — `_process` 1072 行拆分（2026-10-02）
 
 > 用户指定的遗留第 3 项。按规则 9 先出设计方案（见对话记录），

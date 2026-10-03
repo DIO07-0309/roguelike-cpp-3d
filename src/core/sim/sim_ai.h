@@ -170,7 +170,6 @@ private:
     // Q3.3: 药水决策冷却 — 防止残血时逐帧连喝清空背包
     mutable double _last_potion_time = -999.0;
     mutable float _last_pickup_attempt = -1.0f;   // G14b: 拾取冷却 — 防 pick 死循环
-    mutable int _pickup_fail_streak = 0;          // G14b: 连续拾取失败数 (3 次放弃)
     // P1-A2: 地面物品快照 (每帧 set_ground_items 注入)
     std::vector<GroundSpot> _ground;
     // P1-C3: 楼梯目标 tile (-1=未注入) — set_stairs_pos 每帧注入
@@ -248,3 +247,6 @@ extern int sim_rot_blocked;          // G14: 旋转脱困撞墙次数
 extern int sim_stuck_bfs_hit;        // G14: 卡死 BFS 朝怪命中数
 extern int sim_stuck_bfs_fail;       // G14: 卡死 BFS 朝怪失败数
 extern int sim_tp_attempts;          // G14: 传送尝试次数
+extern int sim_progress_src[4];      // G26: _stuck_progress 四信号归因
+extern int sim_stuck_early[2];       // G26: _stuck_escape 早退归因
+extern double sim_stuck_for_max;     // G26: 单段 stuck_for 观测最大值

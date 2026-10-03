@@ -46,6 +46,14 @@ int sim_stuck_bfs_hit = 0, sim_stuck_bfs_fail = 0;
 // G14: 传送尝试次数 (含失败) — 判断传送分支是否被走到
 int sim_tp_attempts = 0;
 
+// G26: _stuck_progress 四信号归因 — 定位"假进展"反复重置 _stuck_since 的来源
+// 0:移动>2格 1:怪HP和变化 2:玩家HP变化 3:存活数变化
+int sim_progress_src[4] = {0};
+// G26: _stuck_escape 早退归因 — 0:近身战豁免 1:刚锚定(锚点重置)
+int sim_stuck_early[2] = {0};
+// G26: 单段 stuck_for 观测到的最大值 (验证是否始终到不了 8.0 的传送门槛)
+double sim_stuck_for_max = 0.0;
+
 static int _action_bucket(const std::string& a) {
     if (a.empty()) return 0;
     if (a.rfind("move_", 0) == 0) return 1;
@@ -781,8 +789,11 @@ std::optional<float> DecisionAgent::_eval_move_loot_and_rooms(
         if (loot_d >= 0 && loot_d < 5.0f * 32.0f) {
             const int loot_step = _bfs_toward_loot(p, map);
             if (loot_step >= 0) {
-                if (dir == loot_step) sim_move_branch[1]++;
-                return (dir == loot_step) ? 0.7f : 0.0f;
+                // G26-fix: 仅给房间/物品方向打分, 其余方向返回 nullopt 交还战斗分支.
+                // 原实现返回 0.0f 使 _eval_move_approach 永不可达 → AI 永不朝怪移动
+                // (seed42: atk=0% 全程, 怪恒定 220-407px 外, 120s 累计卡死).
+                if (dir == loot_step) { sim_move_branch[1]++; return 0.7f; }
+                return std::nullopt;
             }
         }
     }
@@ -790,8 +801,11 @@ std::optional<float> DecisionAgent::_eval_move_loot_and_rooms(
     // 交战圈内(≤ideal)先打; rect级BFS保证路径真实可达, 不会卡墙
     const int room_step = _bfs_toward_room(p, map);
     if (room_step >= 0) {
-        if (dir == room_step) sim_move_branch[2]++;
-        return (dir == room_step) ? 0.6f : 0.0f;
+        // G26-fix: 0.6 → 0.5. 房间方向与 approach(0.6) 同分时, 方向索引低的房间
+        // 方向会赢 (best_dir 严格 > 判定), 使 AI 持续追永远触发不了的特殊房.
+        // 降到 0.5 让"活着打怪"恒压过"去摸房", 房间仍远高于随机游走(0.1).
+        if (dir == room_step) { sim_move_branch[2]++; return 0.5f; }
+        return std::nullopt;   // G26-fix: 其余方向交还战斗分支
     }
     return std::nullopt;
 }
@@ -925,11 +939,15 @@ float DecisionAgent::_evaluate_move(int dir, const Player* p,
 float DecisionAgent::_evaluate_pickup(const Player* p, const GameMap* map,
     const std::vector<Monster*>& monsters) const {
     if (!map) return 0;
-    // G14b: 拾取冷却 + 放弃 — 冷却中不评估; 累计 3 次"真实尝试后物品仍在"
-    //        (在下方 loot 命中处 ++) 才放弃, 避免冷却期间每帧误累加 (旧 bug
-    //        1.5s 内 streak 涨到 90 → 永久放弃 → picks=0 全程空手)
+    // G26-fix: 只保留 1.5s 冷却节流, 删除"累计 3 次永久放弃".
+    // 原 _pickup_fail_streak 在评估时 ++, 无法区分成功/失败 — 出生点簇拥 ≥3 件
+    // 物品时, 3 次"成功拾取"被记成 3 次失败 → 开局 ~4.5s 拾取永久禁用.
+    // 拾取是特殊房间唯一的触发路径 (InteractionHandler::try_interact 才置
+    // room->triggered) → 房间永不触发 → _bfs_toward_room 永远有目标 → 搜刮分支
+    // 永久空转, AI 永不朝怪移动 (seed42: atk=0%/pick=0%/desc=0%, 怪恒定
+    // 220-407px 外, 120s 累计卡死 → STUCK_RECOVERED).
+    // 1.5s 冷却本身已是正确的节流器; 重复发 pickup 只是无害 no-op.
     if (_game_time - _last_pickup_attempt < 1.5f) return 0;
-    if (_pickup_fail_streak >= 3) return 0;
     float threat = 0.0f;
     for (auto* m : monsters) {
         if (!m || !m->combat.is_alive) continue;
@@ -940,8 +958,8 @@ float DecisionAgent::_evaluate_pickup(const Player* p, const GameMap* map,
     // P1-A2: 地面物品拾取判定 (原 AI 对 ground_items 全盲 → picks=0 → 无药无武器)
     // 拾取半径与 InteractionHandler::pickup_item 对齐 (PICKUP_RANGE=2.0 * TILE_SIZE)
     float loot_d = _near_loot_dist(p);
-    if (loot_d >= 0 && loot_d < 2.0f * 32.0f) {
-        _pickup_fail_streak++;   // G14b: 真实尝试计数 (冷却已过仍见物品 = 上次失败)
+    if (loot_d < 0) return 0;
+    if (loot_d < 2.0f * 32.0f) {
         // P1-A2-fix: 被围殴 (threat>0.55, 怪 <2 格) 时拾取消分 → 还手保命
         float loot_w = (threat > 0.55f) ? 0.0f : 1.6f;
         if (loot_w > 0 && _hp_ratio(p) < 0.5f) loot_w *= 1.8f;  // 残血药水加权
@@ -1003,10 +1021,17 @@ bool DecisionAgent::_stuck_progress(const Player* p,
         if (!m || !m->combat.is_alive) continue;
         mon += m->combat.current_hp; alive++;
     }
-    bool progressed = hypotf((float)(tx - (int)_last_px), (float)(ty - (int)_last_py)) > 2.0f
-                   || fabsf(mon - _last_mon_sum) > 0.01f
-                   || fabsf(php - _last_hp_sum) > 0.01f
-                   || alive != _last_alive_count;
+    bool p_move  = hypotf((float)(tx - (int)_last_px), (float)(ty - (int)_last_py)) > 2.0f;
+    bool p_mon   = fabsf(mon - _last_mon_sum) > 0.01f;
+    bool p_hp    = fabsf(php - _last_hp_sum) > 0.01f;
+    bool p_alive = alive != _last_alive_count;
+    bool progressed = p_move || p_mon || p_hp || p_alive;
+    if (progressed) {   // G26: 记录是哪类信号构成"进展"
+        sim_progress_src[0] += p_move ? 1 : 0;
+        sim_progress_src[1] += p_mon ? 1 : 0;
+        sim_progress_src[2] += p_hp ? 1 : 0;
+        sim_progress_src[3] += p_alive ? 1 : 0;
+    }
     if (progressed && _stuck_since >= 0)
         _stuck_total += std::max(0.0f, (float)_game_time - _stuck_since);
     if (progressed) { _stuck_since = -1; _escape_dir = -1;
@@ -1056,15 +1081,18 @@ std::string DecisionAgent::_stuck_escape(const Player* p,
     if (tx != (int)_last_px || ty != (int)_last_py) _escape_dir = -1;
     // G14: 近身战豁免 — 2 格内有怪 = 真实战斗 (围殴/拉锯), 卡死机制让位
     if (_count_in_range(p, monsters, 2.0f * 32.0f) > 0) {
+        sim_stuck_early[0]++;   // G26: 近身战豁免
         _stuck_since = -1; _escape_dir = -1;
         return "";
     }
     if (_stuck_since < 0) {   // 锚定徘徊中心, 开始计时
+        sim_stuck_early[1]++;   // G26: 刚锚定
         _stuck_since = (float)_game_time;
         _last_px = (float)tx; _last_py = (float)ty;
         return "";
     }
     float stuck_for = std::max(0.0f, (float)_game_time - _stuck_since);
+    if (stuck_for > sim_stuck_for_max) sim_stuck_for_max = stuck_for;   // G26
     if (_stuck_total + stuck_for > kStuckTotalBudget) {   // 累计卡死超预算
         sim_stuck_watchdog = 1;
         LOG_INFO("[SIM] 卡死看门狗: 累计 %.0fs → 强制结算", _stuck_total + stuck_for);

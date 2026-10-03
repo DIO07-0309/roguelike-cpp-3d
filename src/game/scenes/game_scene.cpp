@@ -2025,6 +2025,11 @@ void GameScene::_collect_sim_stats() {
     }
     LOG_INFO("[SIM-DIAG] rot_blocked=%d bfs_stuck_hit=%d bfs_stuck_fail=%d",
         sim_rot_blocked, sim_stuck_bfs_hit, sim_stuck_bfs_fail);
+    // G26: 假进展归因 — 哪个信号在反复重置 _stuck_since
+    LOG_INFO("[SIM-DIAG] G26 progress_src move=%d monhp=%d php=%d alive=%d | "
+             "stuck_early near=%d anchor=%d | stuck_for_max=%.1fs",
+        sim_progress_src[0], sim_progress_src[1], sim_progress_src[2], sim_progress_src[3],
+        sim_stuck_early[0], sim_stuck_early[1], sim_stuck_for_max);
     LOG_INFO("[SIM-DIAG] map=%dx%d stuck_tp=%d tp_attempts=%d", game_map->width, game_map->height,
         s.stuck_teleports, sim_tp_attempts);
     if (sim_stuck_sample_count > 0 && player) {
@@ -2084,6 +2089,9 @@ void GameScene::_collect_sim_stats() {
     sim_stuck_sample_count = 0;
     sim_rot_blocked = 0;
     sim_stuck_bfs_hit = 0; sim_stuck_bfs_fail = 0;
+    for (int i = 0; i < 4; i++) sim_progress_src[i] = 0;   // G26
+    for (int i = 0; i < 2; i++) sim_stuck_early[i] = 0;   // G26
+    sim_stuck_for_max = 0.0;                               // G26
 
     // ── M2: enemies_fought 修复 — 字段一直存在但从未填充 (P1 审计) ──
     for (auto& m : monsters) {
