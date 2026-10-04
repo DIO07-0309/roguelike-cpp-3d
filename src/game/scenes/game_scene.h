@@ -17,6 +17,7 @@ class DecisionAgent;
 class BTAgent;
 class PlayerAvatar;   // A5: 渲染路径懒建, 仅前向声明
 struct FloorConfig;   // G28: enter_floor 子步骤参数, 仅用指针
+struct PlayerHabitProfile;   // G30-E: 镜像解析面板上下文, 仅用引用
 
 namespace hd2d { struct SceneView; }   // G12-4: 3D 只读视图 (定义在 rendering3d/)
 #include "item.h"
@@ -87,6 +88,17 @@ struct EventPresentation {
     std::string reward_text;      // 奖励文字 (phase=REWARD时显示)
     std::string complete_text;    // 完成文字 (phase=COMPLETE时显示)
     Color  anim_color{255,200,50,255}; // 动画颜色
+};
+
+// F15.5 / G30-E: 镜像解析面板绘制上下文 — 共享竖向游标 + 复用缓冲 + 剖析结果
+struct MirrorPanelCtx {
+    const PlayerHabitProfile& profile;  // 行为剖析结果 (引用, 必须首位)
+    float cx = 0, cy = 0;               // 面板中心
+    float pw = 0, ph = 0;               // 面板宽高
+    float ly = 0;                       // 竖向文本游标 (逐段下推)
+    int  fav = -1;                      // 本命技能索引 (-1 = 无)
+    const char* fav_name = nullptr;     // 本命技能名
+    char buf[128] = {};                 // 复用文本缓冲 (snprintf 目标)
 };
 
 // ============================================================
@@ -434,6 +446,15 @@ private:
     void  _draw_quest_log(int sw, int sh);
     // F15.5: Mirror analysis panel
     void  _draw_mirror_analysis_panel(int sw, int sh);
+    // G30-E: 镜像解析面板子步骤 (102->11 行, 纯结构搬运, 绘制顺序零改动)
+    PlayerHabitProfile _mirror_analyze_profile();
+    void _mirror_draw_frame(int sw, int sh, MirrorPanelCtx& c);
+    void _mirror_draw_title(MirrorPanelCtx& c);
+    void _mirror_draw_divider(MirrorPanelCtx& c);
+    void _mirror_draw_profile_lines(MirrorPanelCtx& c);
+    void _mirror_draw_receipt(MirrorPanelCtx& c);
+    void _mirror_draw_stats(MirrorPanelCtx& c);
+    void _mirror_draw_bottom(MirrorPanelCtx& c);
     GameSceneInput  _input_handler{*this};
     GameSceneCombat _combat{*this};
     GameSceneInteraction _interaction{*this};

@@ -3785,106 +3785,134 @@ void GameScene::_draw_quest_log(int sw, int sh) { _interaction.draw_quest_log(sw
 // F15.5: Mirror analysis panel — Ending Echo boss intro
 // ============================================================
 void GameScene::_draw_mirror_analysis_panel(int sw, int sh) {
+    const PlayerHabitProfile profile = _mirror_analyze_profile();
+    MirrorPanelCtx c{profile};
+    _mirror_draw_frame(sw, sh, c);
+    _mirror_draw_title(c);
+    _mirror_draw_divider(c);
+    _mirror_draw_profile_lines(c);
+    _mirror_draw_receipt(c);
+    _mirror_draw_stats(c);
+    _mirror_draw_bottom(c);
+}
+
+PlayerHabitProfile GameScene::_mirror_analyze_profile() {
     // Build a profile from the recorded action stream
     const auto& history = g_behavior.history();
     PlayerHabitProfile profile = history.empty()
         ? PlayerHabitProfile{}
         : PlayerBehaviorAnalyzer::analyze(history);
+    return profile;
+}
 
+void GameScene::_mirror_draw_frame(int sw, int sh, MirrorPanelCtx& c) {
     // Background — dark void
     ClearBackground({10, 8, 20, 255});
 
-    float pw = 500, ph = 380;
-    float cx = sw/2.0f, cy = sh/2.0f + 10;
-    DrawRectangleRounded({cx - pw/2, cy - ph/2, pw, ph}, 0.06f, 10, {18, 12, 28, 240});
+    c.pw = 500;
+    c.ph = 380;
+    c.cx = sw/2.0f;
+    c.cy = sh/2.0f + 10;
+    DrawRectangleRounded({c.cx - c.pw/2, c.cy - c.ph/2, c.pw, c.ph}, 0.06f, 10, {18, 12, 28, 240});
+}
 
+void GameScene::_mirror_draw_title(MirrorPanelCtx& c) {
     // Title
     const char* title = "终焉回响 · 人格解析";
     float tw = MeasureTextEx(g_font_small, title, 24, 1).x;
-    DrawTextEx(g_font_small, title, {cx - tw/2, cy - ph/2 + 20}, 24, 1, {255, 80, 60, 255});
+    DrawTextEx(g_font_small, title, {c.cx - tw/2, c.cy - c.ph/2 + 20}, 24, 1, {255, 80, 60, 255});
+}
 
+void GameScene::_mirror_draw_divider(MirrorPanelCtx& c) {
     // Divider
-    DrawLine(cx - pw/2 + 30, cy - ph/2 + 55, cx + pw/2 - 30, cy - ph/2 + 55,
+    DrawLine(c.cx - c.pw/2 + 30, c.cy - c.ph/2 + 55, c.cx + c.pw/2 - 30, c.cy - c.ph/2 + 55,
         {80, 30, 30, 200});
-    DrawLine(cx - pw/2 + 32, cy - ph/2 + 56, cx + pw/2 - 28, cy - ph/2 + 56,
+    DrawLine(c.cx - c.pw/2 + 32, c.cy - c.ph/2 + 56, c.cx + c.pw/2 - 28, c.cy - c.ph/2 + 56,
         {120, 20, 20, 100});
+}
 
+void GameScene::_mirror_draw_profile_lines(MirrorPanelCtx& c) {
     // Style line
-    float ly = cy - ph/2 + 75;
-    char buf[128];
-    snprintf(buf, sizeof(buf), "Combat Style:  %s", profile.style_name());
-    DrawTextEx(g_font_small, buf, {cx - pw/2 + 40, ly}, 16, 1, {220, 200, 180, 240});
+    c.ly = c.cy - c.ph/2 + 75;
+    snprintf(c.buf, sizeof(c.buf), "Combat Style:  %s", c.profile.style_name());
+    DrawTextEx(g_font_small, c.buf, {c.cx - c.pw/2 + 40, c.ly}, 16, 1, {220, 200, 180, 240});
 
     // Favorite skill
-    ly += 30;
+    c.ly += 30;
     const char* skill_names[] = {"斩击","神罚","自愈","The World"};
-    int fav = profile.predicted_fav_skill;
-    const char* fav_name = (fav >= 0 && fav < 4) ? skill_names[fav] : "无偏好";
-    snprintf(buf, sizeof(buf), "Fav Skill:  %s (%.0f%%)",
-        fav_name, fav >= 0 ? profile.skill_preference[fav]*100 : 0);
-    DrawTextEx(g_font_small, buf, {cx - pw/2 + 40, ly}, 16, 1, {220, 200, 180, 240});
+    c.fav = c.profile.predicted_fav_skill;
+    c.fav_name = (c.fav >= 0 && c.fav < 4) ? skill_names[c.fav] : "无偏好";
+    snprintf(c.buf, sizeof(c.buf), "Fav Skill:  %s (%.0f%%)",
+        c.fav_name, c.fav >= 0 ? c.profile.skill_preference[c.fav]*100 : 0);
+    DrawTextEx(g_font_small, c.buf, {c.cx - c.pw/2 + 40, c.ly}, 16, 1, {220, 200, 180, 240});
 
     // Weakness
-    ly += 30;
-    if (profile.predict_attack_heavy)
-        snprintf(buf, sizeof(buf), "Weakness: Attack Pattern Predictable");
-    else if (profile.predict_low_dodge)
-        snprintf(buf, sizeof(buf), "Weakness: Low Evasion");
-    else if (profile.predict_panic_heal)
-        snprintf(buf, sizeof(buf), "Weakness: Heal Timing Exploitable");
+    c.ly += 30;
+    if (c.profile.predict_attack_heavy)
+        snprintf(c.buf, sizeof(c.buf), "Weakness: Attack Pattern Predictable");
+    else if (c.profile.predict_low_dodge)
+        snprintf(c.buf, sizeof(c.buf), "Weakness: Low Evasion");
+    else if (c.profile.predict_panic_heal)
+        snprintf(c.buf, sizeof(c.buf), "Weakness: Heal Timing Exploitable");
     else
-        snprintf(buf, sizeof(buf), "Weakness: Balanced — No Obvious Pattern");
-    DrawTextEx(g_font_small, buf, {cx - pw/2 + 40, ly}, 16, 1, {220, 200, 180, 240});
+        snprintf(c.buf, sizeof(c.buf), "Weakness: Balanced — No Obvious Pattern");
+    DrawTextEx(g_font_small, c.buf, {c.cx - c.pw/2 + 40, c.ly}, 16, 1, {220, 200, 180, 240});
 
     // Counter strategy
-    ly += 35;
+    c.ly += 35;
     DrawTextEx(g_font_small, "─ Counter Strategy ─",
-        {cx - pw/2 + 40, ly}, 14, 1, {180, 140, 60, 220});
-    ly += 25;
-    snprintf(buf, sizeof(buf), "%s", profile.counter_strategy_text());
-    DrawTextEx(g_font_small, buf, {cx - pw/2 + 40, ly}, 13, 1, {200, 180, 160, 200});
+        {c.cx - c.pw/2 + 40, c.ly}, 14, 1, {180, 140, 60, 220});
+    c.ly += 25;
+    snprintf(c.buf, sizeof(c.buf), "%s", c.profile.counter_strategy_text());
+    DrawTextEx(g_font_small, c.buf, {c.cx - c.pw/2 + 40, c.ly}, 13, 1, {200, 180, 160, 200});
+}
 
+void GameScene::_mirror_draw_receipt(MirrorPanelCtx& c) {
     // M1: 实数回执 — "你做了什么, 它看到什么" (镜像分析的具体凭证)
-    ly += 30;
+    c.ly += 30;
     {
         const auto& bd = g_behavior.data();
-        snprintf(buf, sizeof(buf),
+        snprintf(c.buf, sizeof(c.buf),
                  "回执: 挥击x%d · 技能x%d · 闪避x%d · 累计承伤%d",
                  bd.weapon_attacks_total, bd.skill_uses_total,
                  bd.dodge_count, bd.total_damage_taken);
-        DrawTextEx(g_font_small, buf, {cx - pw/2 + 40, ly}, 13, 1,
+        DrawTextEx(g_font_small, c.buf, {c.cx - c.pw/2 + 40, c.ly}, 13, 1,
                    {255, 150, 130, 220});
         // 本命技能具体次数 (最爱技能在它手上的注脚)
-        if (fav >= 0 && fav < 4) {
+        if (c.fav >= 0 && c.fav < 4) {
             static const char* skill_ids[] = {"slash", "fireball", "self_heal", "the_world"};
-            auto it = bd.skill_uses.find(skill_ids[fav]);
+            auto it = bd.skill_uses.find(skill_ids[c.fav]);
             int uses = (it != bd.skill_uses.end()) ? it->second : 0;
-            ly += 22;
-            snprintf(buf, sizeof(buf), "「%s」共释放 %d 次 — 镜像已掌握",
-                     fav_name, uses);
-            DrawTextEx(g_font_small, buf, {cx - pw/2 + 40, ly}, 13, 1,
+            c.ly += 22;
+            snprintf(c.buf, sizeof(c.buf), "「%s」共释放 %d 次 — 镜像已掌握",
+                     c.fav_name, uses);
+            DrawTextEx(g_font_small, c.buf, {c.cx - c.pw/2 + 40, c.ly}, 13, 1,
                        {255, 120, 100, 200});
         }
     }
+}
 
+void GameScene::_mirror_draw_stats(MirrorPanelCtx& c) {
     // Aggression gauge
-    ly += 35;
-    int ag_bar_w = (int)(pw - 80);
-    DrawRectangle(cx - pw/2 + 40, ly, ag_bar_w, 8, {30, 30, 30, 200});
-    int fill = (int)(ag_bar_w * profile.aggression_score);
-    DrawRectangle(cx - pw/2 + 40, ly, fill, 8, {220, 60, 30, 240});
-    snprintf(buf, sizeof(buf), "Aggression: %.0f%%", profile.aggression_score * 100);
-    DrawTextEx(g_font_small, buf, {cx - pw/2 + 40, ly + 12}, 12, 1, {180, 180, 180, 180});
+    c.ly += 35;
+    int ag_bar_w = (int)(c.pw - 80);
+    DrawRectangle(c.cx - c.pw/2 + 40, c.ly, ag_bar_w, 8, {30, 30, 30, 200});
+    int fill = (int)(ag_bar_w * c.profile.aggression_score);
+    DrawRectangle(c.cx - c.pw/2 + 40, c.ly, fill, 8, {220, 60, 30, 240});
+    snprintf(c.buf, sizeof(c.buf), "Aggression: %.0f%%", c.profile.aggression_score * 100);
+    DrawTextEx(g_font_small, c.buf, {c.cx - c.pw/2 + 40, c.ly + 12}, 12, 1, {180, 180, 180, 180});
 
     // Floors recorded
-    ly += 35;
-    snprintf(buf, sizeof(buf), "Data: %d floors | %d actions recorded",
-        g_behavior.data().floors_recorded, profile.total_actions);
-    DrawTextEx(g_font_small, buf, {cx - pw/2 + 40, ly}, 11, 1, {120, 120, 140, 180});
+    c.ly += 35;
+    snprintf(c.buf, sizeof(c.buf), "Data: %d floors | %d actions recorded",
+        g_behavior.data().floors_recorded, c.profile.total_actions);
+    DrawTextEx(g_font_small, c.buf, {c.cx - c.pw/2 + 40, c.ly}, 11, 1, {120, 120, 140, 180});
+}
 
+void GameScene::_mirror_draw_bottom(MirrorPanelCtx& c) {
     // Bottom message
     DrawTextEx(g_font_small, "[Enter] 开始战斗",
-        {cx - 60, cy + ph/2 - 36}, 14, 1, {255, 200, 100, 220});
+        {c.cx - 60, c.cy + c.ph/2 - 36}, 14, 1, {255, 200, 100, 220});
 }
 
 // _draw_player_buffs, _draw_player_relics, _draw_relic_panel,
