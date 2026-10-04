@@ -41,6 +41,20 @@ int PlayerController::sell_selected_item(Inventory& inv, Player* player,
     return val;
 }
 
+// G27: 层/局状态复位 — tick() 内的步进节流/去抖/采样相位原为函数级 static,
+// 跨层跨局累积不重置。_sim_last_step 与 gs.game_time 比较, 而 game_time 在
+// enter_floor 归零 → 后续层/后续局的 sim 玩家永久无法移动 (批次 run1+ 与
+// 单独跑结果分叉的根因)。PlayerController 是 GameScene 成员, 新局自动拿默认值,
+// 跨层残留由此处显式清掉。
+void PlayerController::reset_floor_state() {
+    _last_move_dir = -1;
+    _last_mx = 0.0f;
+    _last_my = 0.0f;
+    _last_seen_hp = -1;
+    _hit_window = 0.0f;
+    _sim_last_step = -1.0f;
+}
+
 void PlayerController::tick(float dt) {
     if (!_scene || !_scene->player || !_scene->player->combat.is_alive) return;
 
@@ -73,8 +87,6 @@ void PlayerController::tick(float dt) {
 
     // ── 移动 ──
     auto& gs = *_scene;
-    static float _last_mx = 0, _last_my = 0;
-    static int _last_move_dir = -1;
     // F15.2: movement state-change detection
     auto _record_move = [&](float mx, float my) {
         float dx = mx - _last_mx, dy = my - _last_my;
@@ -142,7 +154,6 @@ void PlayerController::tick(float dt) {
             else if (move.x < 0) gs.player->direction = Direction::LEFT;
             else if (move.x > 0) gs.player->direction = Direction::RIGHT;
             gs.player->is_moving = (move.x != 0 || move.y != 0);
-            static int _loot_dbg = 0;
             if (++_loot_dbg % 240 == 0)
                 LOG_INFO("[SIM-LOOT] items=%d best=%s inv=%zu",
                     (int)gs.ground_items.size(),
@@ -192,9 +203,8 @@ void PlayerController::tick(float dt) {
             if (gs._sim_mode) {
                 // G14b: sim 整格步进 — 半格位置(px=112)使 rect 跨 2 tile,
                 //       连续移动(is_rect_walkable 全tile)与 BFS(中心tile)分裂,
-                //       玩家永远"走不动". 整格步进后位置恒对齐格点, rect 28px
-                //       落单 tile → 决策/执行完全一致. 0.14s/格≈228px/s 同步速.
-                static float _sim_last_step = -1.0f;
+                    // 玩家永远"走不动". 整格步进后位置恒对齐格点, rect 28px
+                    //       落单 tile → 决策/执行完全一致. 0.14s/格≈228px/s 同步速.
                 if ((move.x != 0.0f || move.y != 0.0f) &&
                     gs.game_time - _sim_last_step >= 0.14f) {
                     _sim_last_step = gs.game_time;

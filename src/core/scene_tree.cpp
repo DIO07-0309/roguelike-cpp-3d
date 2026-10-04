@@ -78,6 +78,15 @@ void SceneTree::change_scene(std::shared_ptr<Node> new_scene) {
     }
     _pending_scene = new_scene;
     _scene_changed = true;
+    // G27: change_scene 由旧场景的 _process (process_frame 末尾) 调用, 而 process_frame
+    // 顶部的 swap 判定本轮已跑完 — 所以 swap 必然发生在"下一轮"的 process_frame。
+    // main.cpp sim 主循环每轮顺序是 process_input → process_frame, 于是下一轮
+    // process_input 先跑, 那时 swap 还没发生。若 _skip_input==0, 这次 process_input
+    // 会把动作派发给正在退场的旧场景; 置正数则跳过它, 与"循环内首次换场景"
+    // (standalone 路径: change_scene 先于循环 → 第 1 轮 process_input 读到正数 →
+    // 跳过 → 紧接着 swap 覆盖为 5) 的跳过节奏完全一致。
+    // 注意: 具体数值不影响等价性, 只要求 >0 (只被判定一次, 随后被 swap 覆盖为 5)。
+    _skip_input = 5;
 }
 
 void SceneTree::process_frame(double delta) {
