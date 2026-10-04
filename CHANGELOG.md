@@ -1,4 +1,90 @@
-﻿# G28 — `enter_floor` 255 行拆成 14 个 ≤40 行子步骤（2026-10-04）
+﻿# G29 — 重复源树清理 + 两个守护工具（2026-10-04）
+
+> 目标：清掉仓库里潜伏的嵌套自复制源树，并补上防止复发的守卫。
+> **这批清理本身不可提交 —— 那些文件从未被 git 跟踪。**
+
+## 发现的脏数据
+
+git 全报 `??`（未跟踪），说明是某次同步脚本跑歪留下的：
+
+| 位置 | 文件 | 体积 |
+|---|---|---|
+| `assets/assets/` | 632 | 58.00 MB |
+| `src/src/`（含 `src/src/src/`） | 720 | 4.30 MB |
+| `docs/docs/` | 189 | 2.29 MB |
+| `tests/tests/` `resources/resources/` `tools/tools/` `vendor/vendor/` `.github/.github/` | 429 | ~3.1 MB |
+| `vendor/` 根层误放的仓库根副本（`CHANGELOG.md` 265957 B、`roguelike_cpp.exe` 7033 KB…） | 8 | ~9 MB |
+| `pc_spec.json`（无关垃圾） | 1 | — |
+
+`vendor/` 的合法内容只有 `json/` 和 `raylib/`，其余全是误放。
+
+## 为什么这个坑很危险
+
+`CMakeLists.txt:44` 是 `file(GLOB_RECURSE SOURCES src/*.cpp)`，递归 GLOB 会把任何
+意外出现的嵌套副本全收进来。而 **`main.cpp` 当时存在三份**：
+
+```
+src/main.cpp        src/src/main.cpp        src/src/src/main.cpp
+```
+
+`src` 下 `.cpp` 共 486 个（真实只有 162）。任何人做一次干净的 `cmake -B build`
+就会三份全收，直接 LNK2005 多定义编译失败 —— 而**增量构建完全无感**，
+只有清干净重跑才暴露。`.gitignore` 也挡不住，因为那些文件本来就没被跟踪。
+
+## 清理与验证
+
+删除前做安全审计：拟删目标里 **git 跟踪文件数 = 0**；删完
+`git ls-files` 计数 1331 → 1331，无一丢失。释放 **67.6 MB**，
+`src` 的 `.cpp` 486 → **162**，`main.cpp` 3 份 → **1 份**。
+
+从零构建验证（`build` 整个删掉重跑）：
+
+```
+cmake -B build -G "MinGW Makefiles" -DCMAKE_CXX_COMPILER=C:/mingw64/bin/c++.exe ...
+GLOB 重算 → src/*.cpp 条目=162  去重=162  src/src 残留=0
+cmake --build build -j 32       # 107 秒全量
+ctest                           # 78/78
+--sim 5 --sim-seed 42           # SHA256 与 G27 基线逐字节一致
+```
+
+## 两个新工具
+
+**`tools/fn_length_scan.py`** — 函数长度扫描。修掉 G28 期间暴露的三类误判：
+① 带 `::` 的限定名被漏 —— 旧扫描器的 `(\w+)\(` 匹配不到
+`PlayerController::tick(`，**219 行的 `tick` 就这么漏掉的**；
+② 嵌套重复树重复计数（每个函数被数 3 遍）；
+③ 字符串/注释里的花括号破坏深度统计（复用 `dead_method_scan.py` 的
+`strip_noise` 等长替换）。参数列表支持跨行：先定位 `)`，再看其后是否跟
+`{`（定义）/ `;`（声明）/ `=`（lambda），不必为多行签名写正则。
+
+**`tools/check_source_layout.py`** — 布局守卫，三项检查：嵌套自复制目录、
+源目录下的构建产物、仓库根文档误入 `vendor/`。退出码可接 CI / pre-commit。
+
+**真实超规账本**：162 个 `.cpp` 里 **108 个函数超过 40 行**（此前那份"36 个"
+是坏扫描器在重复树上数出来的假数）。榜首 `_process` 609 行、
+`_build_effects` 419、`_tick_boss_state` 394、`_render_ui_tail` 391、
+`GameMap::draw` 315、`main` 292、`handle_input` 272、`_weapon_attack` 252、
+`PlayerController::tick` 219。
+
+## 写工具时自己抓到的两个 bug
+
+1. **嵌套检测一开始完全失效**：`relpath(root, base)` 以顶层目录为 base，
+   外层 `src` 被剥掉，`src/src/game` 变成 `src/game` 就不重复了。必须从仓库根
+   往下算。
+2. **`parts[-2:-1]` 取的是倒数第二段**，判断 `lib/` 时永远不成立，
+   把合法的 `vendor/raylib/lib/raylib.dll` 报成了违规。应为 `parts[-1]`。
+
+两项都用「造故障 → 必须抓到 → 清掉 → 必须回到 0」的回路验证过。
+
+## 遗留
+
+- 超规函数从 108 个起步，`_process` 609 行是 G25 刻意留下的调度骨架。
+  下一步拆谁需要先按文件聚合看分布。
+- `file(GLOB_RECURSE)` 本身没改（CLAUDE.md 禁止动 CMake 标志），
+  目前靠布局守卫兜住。彻底修法是换成显式源文件清单。
+
+
+# G28 — `enter_floor` 255 行拆成 14 个 ≤40 行子步骤（2026-10-04）
 
 > 目标：把函数长度榜第二的 `enter_floor`（255 行）降到规范线 40 行以内。
 > **约束：纯结构重排，执行顺序零改动，确定性基线零漂移。**
