@@ -228,6 +228,9 @@ public:
 
     // 输入 (override Node::_input)
     void _input(const InputMap& input) override;
+    bool _handle_element_select(const InputMap& input);
+    void _resume_after_element_select();
+    void _tick_frame_clocks();
 
     // G9.2 (audit TEST-001): 生命周期回归测试访问器 — 仅测试/诊断用, 勿在业务逻辑中穿透
     ChallengeRoomController&       challenge_ctrl()       { return _challenge; }
@@ -271,6 +274,16 @@ private:
     // 战斗
     void _update_monsters(float dt);
     void _unstuck_wedged_monsters(double gt);   // Q3.2: 怪物脱卡 (贴墙钉子户软锁修复)
+    bool _unstuck_track_pos(Monster* mon, int mt0, int mt1, double gt);
+    bool _unstuck_should_engage(Monster* mon, int ptx, int pty, bool far_away, double gt);
+    bool _unstuck_try_ring_place(Monster* mon, int mt0, int mt1, int ptx, int pty,
+                                 int monster_room, bool far_away, double gt);
+    void _unstuck_try_home_reset(Monster* mon, int monster_room, double gt);
+    // 换层自动存档 (G1 Step7 rule_* / M1-D1 镜像记忆 / G10.9-B2 槽位化)
+    std::unordered_map<std::string, int> _collect_rule_counters();
+    void _export_mirror_memory();
+    void _auto_save_floor_cleared(const std::vector<bool>& spr,
+                                  const std::vector<bool>& spd);
     void _on_monster_killed(Monster* m);
     void _cleanup_dead_monsters();
     void _apply_pending_damage();
@@ -447,12 +460,14 @@ private:
     std::vector<DroppedItem> _saved_dungeon_ground_items;
     int _return_portal_tx_arena = -1, _return_portal_ty_arena = -1;
     std::pair<int,int> _boss_last_known{-1,-1};  // Boss 最后已知可见位置（已发现才记录）
+    void _setup_arena_map();   // Batch 3I: 15x15 竞技场建图 + 中央传送
 
     // 渲染辅助 (保留 GameScene 中的轻量级方法)
     void _draw_map();
     void _draw_entities();
     void _npc_avatars_tick();   // A6-S2 批次6: NPC 骨骼懒建+idle 驱动 (白名单取自 _avatars)
     void _draw_ground_items();
+    void _draw_ground_item(const DroppedItem& d);
 
     // F15.5.1/M6-v2a: Echo 面板数据构建 (2D/3D 分支共用, 防 60 行复制)
     void _build_echo_panel_data(CharacterPanelData& out) const;

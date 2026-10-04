@@ -1923,49 +1923,62 @@ void GameScene::_tick_replay_hash() {
 }
 
 // _input / debug / event / dialogue — delegated to GameSceneInput
-void GameScene::_input(const InputMap& input) {    // G10.1: Element select input
-    if (element_select_active) {
-        if (input.is_action_just_pressed("move_left"))
-            element_select_cursor = (element_select_cursor + 2) % 3;
-        if (input.is_action_just_pressed("move_right"))
-            element_select_cursor = (element_select_cursor + 1) % 3;
-        if (input.is_action_just_pressed("attack") || input.is_action_just_pressed("pickup")) {
-            static const ElementType choices[] = {
-                ElementType::FIRE, ElementType::ICE, ElementType::POISON
-            };
-            player->element.select(choices[element_select_cursor]);
-            element_select_active = false;
-            // Continue new_game flow that was interrupted for element selection
-            auto sk = random_active_skill({}, true);
-            player->skills.learn(std::move(sk));
-            g_meta.load();
-            _gameplay.run_stats = RunSummary{};
-            player->skills.apply_all_passives(player.get());
-            current_floor = 1;
-            max_unlocked_floor = 1;
-            enter_floor(1);
-            _presentation.set_build_theme(BuildType::BERSERKER);
-            if (g_replay_mode && !g_replay_path.empty())
-                start_replay(g_replay_path);
-            else if (g_record_mode && !g_record_path.empty())
-                start_recording(_dungeon_seed);
-            return;
-        }
-    }
+void GameScene::_input(const InputMap& input) {
+    // G10.1: Element select input (确认后直接结束本帧, 不再走常规输入)
+    if (element_select_active && _handle_element_select(input)) return;
 
     // G4.5: frame tick
-    if (_recorder.is_active()) _recorder.tick();
-    if (_replay_player.is_active()) _replay_player.tick();
-    // G5.6/G8.1: SimAI / BTAgent tick
-    if (_sim_mode) {
-        if (_use_bt_agent && _sim_bt) _sim_bt->tick();
-        else if (_sim_ai) _sim_ai->tick();
-    }
-
+    _tick_frame_clocks();
     if (!element_select_active) _input_handler.handle_input(input);
 
     // G4.5: hash computation
     _tick_replay_hash();
+}
+
+// G10.1: 开局元素选择 — 方向键移光标, 攻击/拾取确认
+bool GameScene::_handle_element_select(const InputMap& input) {
+    if (input.is_action_just_pressed("move_left"))
+        element_select_cursor = (element_select_cursor + 2) % 3;
+    if (input.is_action_just_pressed("move_right"))
+        element_select_cursor = (element_select_cursor + 1) % 3;
+    if (!input.is_action_just_pressed("attack") &&
+        !input.is_action_just_pressed("pickup")) return false;
+
+    static const ElementType choices[] = {
+        ElementType::FIRE, ElementType::ICE, ElementType::POISON
+    };
+    player->element.select(choices[element_select_cursor]);
+    element_select_active = false;
+    _resume_after_element_select();
+    return true;
+}
+
+// 元素选定后继续 new_game 被中断的流程 (随机主动技 + 首层入场 + 回放/录制)
+void GameScene::_resume_after_element_select() {
+    // Continue new_game flow that was interrupted for element selection
+    auto sk = random_active_skill({}, true);
+    player->skills.learn(std::move(sk));
+    g_meta.load();
+    _gameplay.run_stats = RunSummary{};
+    player->skills.apply_all_passives(player.get());
+    current_floor = 1;
+    max_unlocked_floor = 1;
+    enter_floor(1);
+    _presentation.set_build_theme(BuildType::BERSERKER);
+    if (g_replay_mode && !g_replay_path.empty())
+        start_replay(g_replay_path);
+    else if (g_record_mode && !g_record_path.empty())
+        start_recording(_dungeon_seed);
+}
+
+// G4.5/G5.6/G8.1: 录像回放 tick + SimAI/BTAgent tick
+void GameScene::_tick_frame_clocks() {
+    if (_recorder.is_active()) _recorder.tick();
+    if (_replay_player.is_active()) _replay_player.tick();
+    if (_sim_mode) {
+        if (_use_bt_agent && _sim_bt) _sim_bt->tick();
+        else if (_sim_ai) _sim_ai->tick();
+    }
 }
 
 // ── G5.6: Simulation stats collection ──
@@ -2289,70 +2302,95 @@ void GameScene::_update_monsters(float dt) {
 
 // Q3.2: 怪物脱卡 — 存活非boss怪 ≥5s 未位移 → 拉到玩家周边可行走格 (消除贴墙/口袋钉子户软锁)
 void GameScene::_unstuck_wedged_monsters(double gt) {
-    auto& last_pos = _unstuck_last_pos;
-    auto& stuck_since = _unstuck_since;
     for (auto& m : monsters) {
-        if (!m || !m->combat.is_alive) { last_pos.erase(m->instance_id); stuck_since.erase(m->instance_id); continue; }
-        int mt0 = (int)(m->entity.rect.x + m->entity.rect.width / 2) / 32;
-        int mt1 = (int)(m->entity.rect.y + m->entity.rect.height / 2) / 32;
-        auto it = last_pos.find(m->instance_id);
-        if (it == last_pos.end() || it->second.first != mt0 || it->second.second != mt1) {
-            last_pos[m->instance_id] = {mt0, mt1};
-            stuck_since[m->instance_id] = gt;
+        if (!m || !m->combat.is_alive) {
+            _unstuck_last_pos.erase(m->instance_id);
+            _unstuck_since.erase(m->instance_id);
             continue;
         }
-        bool placed = false;
+        Monster* mon = m.get();
+        int mt0 = (int)(mon->entity.rect.x + mon->entity.rect.width / 2) / 32;
+        int mt1 = (int)(mon->entity.rect.y + mon->entity.rect.height / 2) / 32;
+        if (!_unstuck_track_pos(mon, mt0, mt1, gt)) continue;
+
         int ptx = (int)(player->entity.rect.x + player->entity.rect.width / 2) / 32;
         int pty = (int)(player->entity.rect.y + player->entity.rect.height / 2) / 32;
         bool far_away = abs(mt0 - ptx) > 38 || abs(mt1 - pty) > 38;   // 远距怪: 强制吸引
-        double idle_need = m->is_boss ? 12.0 : 5.0;
-        if (!far_away) {
-            // Q3.3: 战斗中不脱卡 — 怪在自身攻击射程内即换血/狙击 (传送会打断战局 → 无限循环)
-            float mdx = m->entity.rect.x + m->entity.rect.width/2
-                      - (player->entity.rect.x + player->entity.rect.width/2);
-            float mdy = m->entity.rect.y + m->entity.rect.height/2
-                      - (player->entity.rect.y + player->entity.rect.height/2);
-            float atk_px = (m->ai ? m->ai->attack_range : 1.5f) * 32.0f;
-            if (atk_px < 1.6f * 32.0f) atk_px = 1.6f * 32.0f;
-            if (sqrtf(mdx*mdx + mdy*mdy) < atk_px) continue;
-            if (gt - stuck_since[m->instance_id] < idle_need) continue;
-        }
-        // Q3.10: 近距环仅 1 格 — r=2(64px) 超出玩家近战48px, 怪仍够不着 → 追打循环拖死
-        // 1 格(32px) 落点必在玩家近战内 → 战斗立即恢复 (Q3.2: 远距吸引放远环 8-12格 不变)
+        if (!_unstuck_should_engage(mon, ptx, pty, far_away, gt)) continue;
+
         int monster_room = _room_mgr.room_at(mt0, mt1);
-        for (int r = (far_away ? 8 : 1); r <= (far_away ? 12 : 1) && !placed; r++)
-            for (int a = 0; a < 8 && !placed; a++) {
-                int tx = ptx + (int)(cosf(a * 0.785398f) * r);
-                int ty = pty + (int)(sinf(a * 0.785398f) * r);
-                // Q3.5: 禁止原地传送 — 环内首个可行走格常等于怪当前格 (堆叠/口袋)
-                // → 每 5s 传送回原格 → 900s 死锁 (v38 F11 4怪同格循环)
-                if (tx == mt0 && ty == mt1) continue;
-                if (monster_room >= 0 && _room_mgr.room_at(tx, ty) != monster_room) continue;
-                Rectangle rr = { (float)(tx * 32), (float)(ty * 32),
-                                 m->entity.rect.width, m->entity.rect.height };
-                if (game_map->is_rect_walkable(rr)) {
-                    m->entity.position.x = tx * 32.0f;
-                    m->entity.position.y = ty * 32.0f;
-                    m->entity.sync_rect();
-                    LOG_INFO("[FIX] 脱卡: %s → tile(%d,%d)", m->name.c_str(), tx, ty);
-                    last_pos[m->instance_id] = {tx, ty};
-                    stuck_since[m->instance_id] = gt;
-                    placed = true;
-                }
-            }
-        // Room boundary fallback: if no valid tile in room found, reset to home
-        if (!placed && m->ai && m->ai->home_x >= 0 && m->ai->home_y >= 0) {
-            int htx = (int)(m->ai->home_x) / 32;
-            int hty = (int)(m->ai->home_y) / 32;
-            if (monster_room < 0 || _room_mgr.room_at(htx, hty) == monster_room) {
-                m->entity.position.x = m->ai->home_x - m->entity.rect.width / 2;
-                m->entity.position.y = m->ai->home_y - m->entity.rect.height / 2;
-                m->entity.sync_rect();
-                last_pos[m->instance_id] = {htx, hty};
-                stuck_since[m->instance_id] = gt;
-            }
+        if (_unstuck_try_ring_place(mon, mt0, mt1, ptx, pty, monster_room, far_away, gt)) continue;
+        _unstuck_try_home_reset(mon, monster_room, gt);
+    }
+}
+
+// Q3.2: 记录本帧所在格; 首次记录或刚换格则本轮不脱卡
+bool GameScene::_unstuck_track_pos(Monster* mon, int mt0, int mt1, double gt) {
+    auto it = _unstuck_last_pos.find(mon->instance_id);
+    if (it == _unstuck_last_pos.end() ||
+        it->second.first != mt0 || it->second.second != mt1) {
+        _unstuck_last_pos[mon->instance_id] = {mt0, mt1};
+        _unstuck_since[mon->instance_id] = gt;
+        return false;
+    }
+    return true;
+}
+
+// Q3.3: 近距怪在自身攻击射程内即换血/狙击, 不得脱卡 (传送会打断战局 → 无限循环)
+bool GameScene::_unstuck_should_engage(Monster* mon, int ptx, int pty,
+                                       bool far_away, double gt) {
+    if (far_away) return true;
+    double idle_need = mon->is_boss ? 12.0 : 5.0;
+    float mdx = mon->entity.rect.x + mon->entity.rect.width / 2
+              - (player->entity.rect.x + player->entity.rect.width / 2);
+    float mdy = mon->entity.rect.y + mon->entity.rect.height / 2
+              - (player->entity.rect.y + player->entity.rect.height / 2);
+    float atk_px = (mon->ai ? mon->ai->attack_range : 1.5f) * 32.0f;
+    if (atk_px < 1.6f * 32.0f) atk_px = 1.6f * 32.0f;
+    if (sqrtf(mdx * mdx + mdy * mdy) < atk_px) return false;
+    return gt - _unstuck_since[mon->instance_id] >= idle_need;
+}
+
+// Q3.10: 近距环仅 1 格 — r=2(64px) 超出玩家近战48px, 怪仍够不着 → 追打循环拖死
+// 1 格(32px) 落点必在玩家近战内 → 战斗立即恢复 (Q3.2: 远距吸引放远环 8-12格 不变)
+bool GameScene::_unstuck_try_ring_place(Monster* mon, int mt0, int mt1, int ptx, int pty,
+                                        int monster_room, bool far_away, double gt) {
+    int r_lo = far_away ? 8 : 1;
+    int r_hi = far_away ? 12 : 1;
+    for (int r = r_lo; r <= r_hi; r++) {
+        for (int a = 0; a < 8; a++) {
+            int tx = ptx + (int)(cosf(a * 0.785398f) * r);
+            int ty = pty + (int)(sinf(a * 0.785398f) * r);
+            // Q3.5: 禁止原地传送 — 环内首个可行走格常等于怪当前格 (堆叠/口袋)
+            // → 每 5s 传送回原格 → 900s 死锁 (v38 F11 4怪同格循环)
+            if (tx == mt0 && ty == mt1) continue;
+            if (monster_room >= 0 && _room_mgr.room_at(tx, ty) != monster_room) continue;
+            Rectangle rr = { (float)(tx * 32), (float)(ty * 32),
+                             mon->entity.rect.width, mon->entity.rect.height };
+            if (!game_map->is_rect_walkable(rr)) continue;
+            mon->entity.position.x = tx * 32.0f;
+            mon->entity.position.y = ty * 32.0f;
+            mon->entity.sync_rect();
+            LOG_INFO("[FIX] 脱卡: %s → tile(%d,%d)", mon->name.c_str(), tx, ty);
+            _unstuck_last_pos[mon->instance_id] = {tx, ty};
+            _unstuck_since[mon->instance_id] = gt;
+            return true;
         }
     }
+    return false;
+}
+
+// Room boundary fallback: 环内无有效 tile 则重置回出生点 (须在自身房间内)
+void GameScene::_unstuck_try_home_reset(Monster* mon, int monster_room, double gt) {
+    if (!mon->ai || mon->ai->home_x < 0 || mon->ai->home_y < 0) return;
+    int htx = (int)(mon->ai->home_x) / 32;
+    int hty = (int)(mon->ai->home_y) / 32;
+    if (monster_room >= 0 && _room_mgr.room_at(htx, hty) != monster_room) return;
+    mon->entity.position.x = mon->ai->home_x - mon->entity.rect.width / 2;
+    mon->entity.position.y = mon->ai->home_y - mon->entity.rect.height / 2;
+    mon->entity.sync_rect();
+    _unstuck_last_pos[mon->instance_id] = {htx, hty};
+    _unstuck_since[mon->instance_id] = gt;
 }
 
 void GameScene::_on_monster_killed(Monster* m)  { _combat.on_monster_killed(m); }
@@ -2404,48 +2442,60 @@ void GameScene::_activate_stairs() {
     if (_world_mode != WorldMode::DUNGEON) return;
     auto boss = _get_boss();
     if (boss && boss->combat.is_alive) return;
+
     game_map->set_tile(stairs_pos.first, stairs_pos.second, TileType::STAIRS_DOWN);
     stairs_active = true;
     max_unlocked_floor = std::max(max_unlocked_floor, current_floor);
     LOG_INFO("第%d层清空! 楼梯已激活, 自动存档", current_floor);
+
     std::vector<bool> spr, spd;
     if (game_map) for (auto& sr : game_map->special_rooms) {
         spr.push_back(sr.triggered);
         spd.push_back(sr.discovered);
     }
     // B13: Relic 不再跨层 (无需保存圣物)
-    // ── G1 Step7: 收集 rule_* counters ──
-    {
-        std::unordered_map<std::string, int> rcm;
-        static const char* ALL_RULES[] = {
-            "rule_shadow_charge","rule_summon_priority","rule_arena_movement",
-            "rule_shield_patience","rule_rule_override", nullptr
-        };
-        for (int i = 0; ALL_RULES[i]; i++) {
-            int v = _gameplay.world_state.counter(ALL_RULES[i]);
-            if (v > 0) rcm[ALL_RULES[i]] = v;
-        }
-        // M1-D1: last-known 镜像记忆 — Boss 存活时导出更新缓存; 否则透传上一已知值
-        // (修复: F15 前任意存档曾用空导出覆盖档, 抹掉上一局学习成果)
-        {
-            std::vector<float> fresh_alpha, fresh_beta;
-            _boss.export_mirror_memory(fresh_alpha, fresh_beta);
-            if (!fresh_alpha.empty()) {
-                _mirror_mem_alpha = fresh_alpha;
-                _mirror_mem_beta = fresh_beta;
-            }
-        }
-        // G10.9-B2: 槽位化保存 — endings 不再入档 (Meta 侧落盘); 补记账号最高层
-        // play_time 源 = game_time (本 run 进度内累计的帧时钟, 换层不清零)
-        SaveManager::save_game(SaveManager::active_slot(), player.get(),
-                               current_floor, max_unlocked_floor,
-                               _dungeon_seed, spr, spd, rcm,
-                               _gameplay.quest_mgr.export_states(),
-                               _mirror_mem_alpha, _mirror_mem_beta,
-                               (float)game_time);
-        MetaSystem::record_floor_reached(max_unlocked_floor);
-    }
+    _auto_save_floor_cleared(spr, spd);
     on_floor_cleared.emit();
+}
+
+// ── G1 Step7: 收集 rule_* counters (>0 才入档)
+std::unordered_map<std::string, int> GameScene::_collect_rule_counters() {
+    std::unordered_map<std::string, int> rcm;
+    static const char* ALL_RULES[] = {
+        "rule_shadow_charge","rule_summon_priority","rule_arena_movement",
+        "rule_shield_patience","rule_rule_override", nullptr
+    };
+    for (int i = 0; ALL_RULES[i]; i++) {
+        int v = _gameplay.world_state.counter(ALL_RULES[i]);
+        if (v > 0) rcm[ALL_RULES[i]] = v;
+    }
+    return rcm;
+}
+
+// M1-D1: last-known 镜像记忆 — Boss 存活时导出更新缓存; 否则透传上一已知值
+// (修复: F15 前任意存档曾用空导出覆盖档, 抹掉上一局学习成果)
+void GameScene::_export_mirror_memory() {
+    std::vector<float> fresh_alpha, fresh_beta;
+    _boss.export_mirror_memory(fresh_alpha, fresh_beta);
+    if (!fresh_alpha.empty()) {
+        _mirror_mem_alpha = fresh_alpha;
+        _mirror_mem_beta = fresh_beta;
+    }
+}
+
+// G10.9-B2: 槽位化保存 — endings 不再入档 (Meta 侧落盘); 补记账号最高层
+void GameScene::_auto_save_floor_cleared(const std::vector<bool>& spr,
+                                         const std::vector<bool>& spd) {
+    std::unordered_map<std::string, int> rcm = _collect_rule_counters();
+    _export_mirror_memory();
+    // play_time 源 = game_time (本 run 进度内累计的帧时钟, 换层不清零)
+    SaveManager::save_game(SaveManager::active_slot(), player.get(),
+                           current_floor, max_unlocked_floor,
+                           _dungeon_seed, spr, spd, rcm,
+                           _gameplay.quest_mgr.export_states(),
+                           _mirror_mem_alpha, _mirror_mem_beta,
+                           (float)game_time);
+    MetaSystem::record_floor_reached(max_unlocked_floor);
 }
 
 void GameScene::_check_floor_transition() {
@@ -3524,42 +3574,46 @@ void GameScene::_draw_ground_items() {
     for (auto& d : ground_items) {
         // Phase 1: 物品 tile 不可见 → 跳过渲染
         if (game_map && !game_map->isVisible(d.tile_x, d.tile_y)) continue;
-        float px = d.tile_x * TILE_SIZE - _cam_x;
-        float py = d.tile_y * TILE_SIZE - _cam_y;
-        float size = TILE_SIZE - 4;
-        float cx = px + TILE_SIZE / 2, cy = py + TILE_SIZE / 2;
+        _draw_ground_item(d);
+    }
+}
 
-        // M4f.13: 物品图标 → 数据驱动贴图 (武器/装甲/药水/护符) + 稀有度光环
-        const char* ikey = item_icon_key(d.item.get());
-        if (ikey) {
-            SpriteDef xd;
-            Texture2D itex = ResourceManager::inst().sprite_by_key(ikey, xd);
-            if (itex.id > 0) {
-                float pulse = 6 + sinf((float)GetTime() * 5 + px * 0.1f) * 3;
-                DrawRectangleLinesEx({cx - pulse, cy - pulse, pulse * 2, pulse * 2}, 1,
-                                     rarity_color(d.item->rarity));
-                SpriteRenderer::draw_sprite(itex, xd, 0,
-                    {cx - size/2, cy - size/2, size, size});
-                continue;
-            }
+void GameScene::_draw_ground_item(const DroppedItem& d) {
+    float px = d.tile_x * TILE_SIZE - _cam_x;
+    float py = d.tile_y * TILE_SIZE - _cam_y;
+    float size = TILE_SIZE - 4;
+    float cx = px + TILE_SIZE / 2, cy = py + TILE_SIZE / 2;
+
+    // M4f.13: 物品图标 → 数据驱动贴图 (武器/装甲/药水/护符) + 稀有度光环
+    const char* ikey = item_icon_key(d.item.get());
+    if (ikey) {
+        SpriteDef xd;
+        Texture2D itex = ResourceManager::inst().sprite_by_key(ikey, xd);
+        if (itex.id > 0) {
+            float pulse = 6 + sinf((float)GetTime() * 5 + px * 0.1f) * 3;
+            DrawRectangleLinesEx({cx - pulse, cy - pulse, pulse * 2, pulse * 2}, 1,
+                                 rarity_color(d.item->rarity));
+            SpriteRenderer::draw_sprite(itex, xd, 0,
+                {cx - size/2, cy - size/2, size, size});
+            return;
         }
+    }
 
-        float pulse = 6 + sinf((float)GetTime() * 5 + px * 0.1f) * 3;
-        DrawRectangleLinesEx({cx - pulse, cy - pulse, pulse * 2, pulse * 2}, 1,
-                             Color{(unsigned char)(d.item->color.r / 3),
-                                   (unsigned char)(d.item->color.g / 3),
-                                   (unsigned char)(d.item->color.b / 3), 200});
-        DrawRectangleRounded({px + 2, py + 2, size, size}, 0.1f, 4, d.item->color);
-        DrawRectangleRoundedLines({px + 2, py + 2, size, size}, 0.1f, 4, 1, BLACK);
+    float pulse = 6 + sinf((float)GetTime() * 5 + px * 0.1f) * 3;
+    DrawRectangleLinesEx({cx - pulse, cy - pulse, pulse * 2, pulse * 2}, 1,
+                         Color{(unsigned char)(d.item->color.r / 3),
+                                (unsigned char)(d.item->color.g / 3),
+                                (unsigned char)(d.item->color.b / 3), 200});
+    DrawRectangleRounded({px + 2, py + 2, size, size}, 0.1f, 4, d.item->color);
+    DrawRectangleRoundedLines({px + 2, py + 2, size, size}, 0.1f, 4, 1, BLACK);
 
-        // G9.4: 玩家相邻 → E 拾取提示
-        if (player && game_map) {
-            auto [itx, ity] = game_map->pixel_to_tile(
-                player->entity.rect.x + player->entity.rect.width/2,
-                player->entity.rect.y + player->entity.rect.height/2);
-            if (abs(d.tile_x - itx) <= 1 && abs(d.tile_y - ity) <= 1)
-                _draw_interact_hint("E 拾取", cx, cy - TILE_SIZE/2 - 8);
-        }
+    // G9.4: 玩家相邻 → E 拾取提示
+    if (player && game_map) {
+        auto [itx, ity] = game_map->pixel_to_tile(
+            player->entity.rect.x + player->entity.rect.width/2,
+            player->entity.rect.y + player->entity.rect.height/2);
+        if (abs(d.tile_x - itx) <= 1 && abs(d.tile_y - ity) <= 1)
+            _draw_interact_hint("E 拾取", cx, cy - TILE_SIZE/2 - 8);
     }
 }
 
@@ -3713,7 +3767,19 @@ void GameScene::enter_challenge_arena() {
     monsters.clear();
     ground_items.clear();
 
-    // Create a 15x15 arena map
+    _setup_arena_map();
+
+    _world_mode = WorldMode::CHALLENGE_ARENA;
+    _teleport_fade_timer = 0.3f;
+    _portal_fade_in = true;
+    _portal_pulse_timer = 0.0f;
+
+    // G10.7-B: 竞技场专属 BGM (160bpm 小调急促波次战斗曲)
+    if (get_tree()) get_tree()->get_audio()->play_bgm("challenge", 0.42f);
+}
+
+// 15x15 竞技场: 边界墙 + 中央传送 + 挑战控制器房间矩形
+void GameScene::_setup_arena_map() {
     const int AW = 15, AH = 15, TS = TILE_SIZE;
     _arena_map = std::make_shared<GameMap>(AW, AH, TS);
     for (int y = 0; y < AH; y++)
@@ -3733,14 +3799,6 @@ void GameScene::enter_challenge_arena() {
     // Setup challenge controller for arena
     _challenge.set_room_rect(1, 1, AW-2, AH-2);
     _challenge.set_return_portal(AW/2, AH/2);
-
-    _world_mode = WorldMode::CHALLENGE_ARENA;
-    _teleport_fade_timer = 0.3f;
-    _portal_fade_in = true;
-    _portal_pulse_timer = 0.0f;
-
-    // G10.7-B: 竞技场专属 BGM (160bpm 小调急促波次战斗曲)
-    if (get_tree()) get_tree()->get_audio()->play_bgm("challenge", 0.42f);
 }
 
 void GameScene::exit_challenge_arena() {
