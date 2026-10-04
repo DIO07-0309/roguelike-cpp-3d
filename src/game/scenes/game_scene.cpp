@@ -1984,6 +1984,37 @@ void GameScene::_tick_frame_clocks() {
 // ── G5.6: Simulation stats collection ──
 void GameScene::_collect_sim_stats() {
     RunResult s;
+    _fill_sim_run_result(s);
+    _classify_sim_outcome(s);
+    _fill_sim_build_snapshot(s);
+    _collect_sim_behavior_metrics(s);
+
+    _log_sim_action_counters();
+    _log_sim_move_branch_counters();
+    _log_sim_stuck_samples(s);
+    _dump_sim_reachability();
+    _reset_sim_diag_counters();
+    _fill_sim_enemies_fought(s);
+
+    auto& sim = SimRunner::inst();
+    sim.record_run(s);
+
+    _reset_sim_run_state();
+
+    if (sim.should_restart()) {
+        // G7.4: all-builds rotation
+        if (sim.all_builds()) g_sim_build_type = sim.next_build_type();
+        // G27: 走 change_scene 管线, 不直调 new_game() — 见 _restart_sim_run
+        _restart_sim_run();
+    } else {
+        sim.finalize();
+        if (get_tree()) get_tree()->quit();
+    }
+}
+
+// ── G5.6: _collect_sim_stats 子步骤 (纯搬运, 执行顺序零改动) ──
+
+void GameScene::_fill_sim_run_result(RunResult& s) {
     s.seed = _dungeon_seed;
     s.victory = (current_floor >= MAX_FLOORS) && player->combat.is_alive;  // Q3.7: 死在F15不算通关
     s.floor_reached = current_floor;
@@ -2000,8 +2031,10 @@ void GameScene::_collect_sim_stats() {
     s.build_type = (int)calculate_build(player.get()).identify();
     s.build_name = calculate_build(player.get()).build_name();
     for (auto& r : player->relics) s.relics_picked.push_back(r.id);
+}
 
-    // ── M2-A: 结果分类 — 不再所有失败混成一个 victory=false ──
+// ── M2-A: 结果分类 — 不再所有失败混成一个 victory=false ──
+void GameScene::_classify_sim_outcome(RunResult& s) {
     if (s.victory) {
         s.outcome = RunOutcome::VICTORY;
     } else if (_sim_game_timeout) {
@@ -2023,8 +2056,10 @@ void GameScene::_collect_sim_stats() {
     } else {
         s.outcome = RunOutcome::STUCK_RECOVERED;  // 存活但被强制结算
     }
+}
 
-    // ── M2-D: 构筑/状态快照 (死亡瞬间) ──
+// ── M2-D: 构筑/状态快照 (死亡瞬间) ──
+void GameScene::_fill_sim_build_snapshot(RunResult& s) {
     if (player->weapon.current_def()) {
         s.weapon_type_final = (int)player->weapon.current_def()->type;
         s.weapon_id_final = player->weapon.current_weapon_id();
@@ -2036,55 +2071,72 @@ void GameScene::_collect_sim_stats() {
     s.relics_held = (int)player->relics.size();
     s.buffs_held = (int)player->active_buffs.size();
     s.gold_earned = player->gold;
+}
 
-    // ── M2-C: 行为指标 ──
+// ── M2-C: 行为指标 (诊断计数读后清零) ──
+void GameScene::_collect_sim_behavior_metrics(RunResult& s) {
     if (game_map) {
         for (auto& sr : game_map->special_rooms)
             if (sr.discovered) s.rooms_discovered++;
     }
     s.items_picked = _sim_items_picked;
     s.combat_frames = _sim_combat_frames;
-    s.stuck_teleports = sim_stuck_teleports;   // M2-C: sim_ai 诊断计数 (读后清零)    s.stuck_rotations = sim_stuck_rotations;
+    s.stuck_teleports = sim_stuck_teleports;   // M2-C: sim_ai 诊断计数 (读后清零)
+    s.stuck_rotations = sim_stuck_rotations;
     s.loot_watchdog_descends = sim_stuck_loot_wd;
     sim_stuck_teleports = 0; sim_stuck_rotations = 0; sim_stuck_loot_wd = 0;
     sim_stuck_watchdog = 0;
+}
+
+// ── M2: enemies_fought 修复 — 字段一直存在但从未填充 (P1 审计) ──
+void GameScene::_fill_sim_enemies_fought(RunResult& s) {
+    for (auto& m : monsters) {
+        if (!m) continue;
+        bool dup = false;
+        for (auto& n : s.enemies_fought) if (n == m->name) { dup = true; break; }
+        if (!dup) s.enemies_fought.push_back(m->name);
+    }
+}
+
+// G13: 动作分布诊断 — 定位 AI 实际行为 (none/move/atk/skill/pick/desc/pot/oth)
+void GameScene::_log_sim_action_counters() {
     // G13: 卡死累计诊断 — 看门狗阈值调参依据
     if (_sim_ai) LOG_INFO("[SIM-DIAG] 累计卡死=%.1fs", _sim_ai->stuck_total());
-    // G13: 动作分布诊断 — 定位 AI 实际行为 (none/move/atk/skill/pick/desc/pot/oth)
-    {
-        int tot = 0; for (int i = 0; i < 8; i++) tot += sim_action_counts[i];
-        if (tot > 0) LOG_INFO("[SIM-DIAG] 动作: none=%d%% move=%d%% atk=%d%% skill=%d%% pick=%d%% desc=%d%% pot=%d%% oth=%d%%",
-            sim_action_counts[0]*100/tot, sim_action_counts[1]*100/tot, sim_action_counts[2]*100/tot,
-            sim_action_counts[3]*100/tot, sim_action_counts[4]*100/tot, sim_action_counts[5]*100/tot,
-            sim_action_counts[6]*100/tot, sim_action_counts[7]*100/tot);
-        for (int i = 0; i < 8; i++) sim_action_counts[i] = 0;
-    }
-    // G14: 移动分支归因 — recovery/loot/room/approach/stand 占比
-    {
-        int tot = 0; for (int i = 0; i < 5; i++) tot += sim_move_branch[i];
-        if (tot > 0) LOG_INFO("[SIM-DIAG] 移动分支: rec=%d%% loot=%d%% room=%d%% appr=%d%% stand=%d%%",
-            sim_move_branch[0]*100/tot, sim_move_branch[1]*100/tot, sim_move_branch[2]*100/tot,
-            sim_move_branch[3]*100/tot, sim_move_branch[4]*100/tot);
-    }
-    // G14: BFS 失败率 — appr 分支中 step==-1 的帧数
-    {
-        int appr_tot = sim_move_branch[3] + sim_bfs_fail;
-        if (appr_tot > 0)
-            LOG_INFO("[SIM-DIAG] bfs_fail=%d appr=%d fail=%.1f%%",
-                sim_bfs_fail, appr_tot, 100.0f * sim_bfs_fail / appr_tot);
-    }
-    // G14: 无怪随机游走 — 解释 move 与 appr 的差额
+    int tot = 0;
+    for (int i = 0; i < 8; i++) tot += sim_action_counts[i];
+    if (tot > 0) LOG_INFO("[SIM-DIAG] 动作: none=%d%% move=%d%% atk=%d%% skill=%d%% pick=%d%% desc=%d%% pot=%d%% oth=%d%%",
+        sim_action_counts[0]*100/tot, sim_action_counts[1]*100/tot, sim_action_counts[2]*100/tot,
+        sim_action_counts[3]*100/tot, sim_action_counts[4]*100/tot, sim_action_counts[5]*100/tot,
+        sim_action_counts[6]*100/tot, sim_action_counts[7]*100/tot);
+    for (int i = 0; i < 8; i++) sim_action_counts[i] = 0;
+}
+
+// G14: 移动分支/楼梯归因 — recovery/loot/room/approach/stand + BFS 失败率
+void GameScene::_log_sim_move_branch_counters() {
+    int tot = 0;
+    for (int i = 0; i < 5; i++) tot += sim_move_branch[i];
+    if (tot > 0) LOG_INFO("[SIM-DIAG] 移动分支: rec=%d%% loot=%d%% room=%d%% appr=%d%% stand=%d%%",
+        sim_move_branch[0]*100/tot, sim_move_branch[1]*100/tot, sim_move_branch[2]*100/tot,
+        sim_move_branch[3]*100/tot, sim_move_branch[4]*100/tot);
+    // BFS 失败率 — appr 分支中 step==-1 的帧数
+    int appr_tot = sim_move_branch[3] + sim_bfs_fail;
+    if (appr_tot > 0)
+        LOG_INFO("[SIM-DIAG] bfs_fail=%d appr=%d fail=%.1f%%",
+            sim_bfs_fail, appr_tot, 100.0f * sim_bfs_fail / appr_tot);
+    // 无怪随机游走 — 解释 move 与 appr 的差额
     LOG_INFO("[SIM-DIAG] noenemy=%d appr=%d", sim_move_noenemy, sim_move_branch[3]);
     for (int i = 0; i < 5; i++) sim_move_branch[i] = 0;
     sim_bfs_fail = 0;
-    // G14: stairs 分支归因 — 定位 AI 为何走楼梯却不 descend
-    {
-        int tot = sim_stairs[0];
-        if (tot > 0) LOG_INFO("[SIM-DIAG] stairs: total=%d descend=%d%% move=%d%%",
-            tot, sim_stairs[1]*100/tot, sim_stairs[2]*100/tot);
-        for (int i = 0; i < 3; i++) sim_stairs[i] = 0;
-    }
+    // stairs 分支归因 — 定位 AI 为何走楼梯却不 descend
+    if (sim_stairs[0] > 0)
+        LOG_INFO("[SIM-DIAG] stairs: total=%d descend=%d%% move=%d%%",
+            sim_stairs[0], sim_stairs[1]*100/sim_stairs[0], sim_stairs[2]*100/sim_stairs[0]);
+    for (int i = 0; i < 3; i++) sim_stairs[i] = 0;
     sim_move_noenemy = 0;
+}
+
+// G14/G26: 卡死采样摘要 + 假进展归因 + 地图尺寸
+void GameScene::_log_sim_stuck_samples(const RunResult& s) {
     // G14: 卡死采样摘要 — 最近怪距离分布 + AI 位置轨迹
     if (sim_stuck_sample_count > 0) {
         int n = std::min(sim_stuck_sample_count, 8);
@@ -2107,79 +2159,83 @@ void GameScene::_collect_sim_stats() {
         sim_stuck_early[0], sim_stuck_early[1], sim_stuck_for_max);
     LOG_INFO("[SIM-DIAG] map=%dx%d stuck_tp=%d tp_attempts=%d", game_map->width, game_map->height,
         s.stuck_teleports, sim_tp_attempts);
-    if (sim_stuck_sample_count > 0 && player) {
-        // 连通性报告: 从玩家 tile flood fill, 统计可达域是否含怪/楼梯
-        int w = game_map->width, h = game_map->height;
-        std::vector<char> reach((size_t)w * h, 0);
-        std::queue<int> q;
-        auto [px0, py0] = game_map->pixel_to_tile(
-            player->entity.rect.x + player->entity.rect.width/2,
-            player->entity.rect.y + player->entity.rect.height/2);
-        if (px0>=0 && px0<w && py0>=0 && py0<h) { reach[py0*w+px0]=1; q.push(py0*w+px0); }
-        while (!q.empty()) {
-            int cur = q.front(); q.pop();
-            int cx = cur % w, cy = cur / w;
-            for (int d = 0; d < 4; d++) {
-                int ndx = cx + (d==2?-1:d==3?1:0), ndy = cy + (d==0?-1:d==1?1:0);
-                if (ndx<0||ndx>=w||ndy<0||ndy>=h) continue;
-                int ni = ndy*w+ndx;
-                if (reach[ni]) continue;
-                DoorState ds = game_map->door_state_at(ndx, ndy);
-                if (ds == DoorState::LOCKED || ds == DoorState::SEALED) continue;
-                if (ds == DoorState::CLOSED) { reach[ni]=1; q.push(ni); continue; }
-                if (game_map->tile_at(ndx,ndy) != TileType::WALL) { reach[ni]=1; q.push(ni); }
-            }
-        }
-        bool monOK = false, stairsOK = false;
-        for (auto& m : monsters) {
-            if (!m || !m->combat.is_alive) continue;
-            auto [mtx2, mty2] = game_map->pixel_to_tile(
-                m->entity.rect.x + m->entity.rect.width/2,
-                m->entity.rect.y + m->entity.rect.height/2);
-            if (mtx2>=0&&mtx2<w&&mty2>=0&&mty2<h && reach[mty2*w+mtx2]) monOK = true;
-        }
-        for (int y = 0; y < h && !stairsOK; y++)
-            for (int x = 0; x < w; x++)
-                if (game_map->tile_at(x,y)==TileType::STAIRS_DOWN && reach[y*w+x]) stairsOK = true;
-        LOG_INFO("[SIM-DIAG] reach=%d 怪可达=%d 楼梯可达=%d",
-            std::count(reach.begin(), reach.end(), (char)1), (int)monOK, (int)stairsOK);
-        for (int y = 0; y < game_map->height; y++) {
-            std::string row;
-            for (int x = 0; x < game_map->width; x++) {
-                char c = '.';
-                TileType tt = game_map->tile_at(x, y);
-                if (tt == TileType::WALL) c = '#';
-                else if (tt == TileType::LAVA) c = '~';
-                else if (tt == TileType::STAIRS_DOWN) c = '>';
-                else if (tt == TileType::DOOR) {
-                    DoorState ds = game_map->door_state_at(x, y);
-                    c = (ds == DoorState::OPEN) ? 'D' : (ds == DoorState::CLOSED) ? 'd'
-                       : (ds == DoorState::LOCKED) ? 'L' : 'S';
-                }
-                row.push_back(c);
-            }
-            LOG_INFO("[MAP] %s", row.c_str());
+}
+
+// 从玩家 tile flood fill, 门状态感知: LOCKED/SEALED 阻断, CLOSED 可穿
+std::vector<char> GameScene::_sim_reach_from_player() {
+    int w = game_map->width, h = game_map->height;
+    std::vector<char> reach((size_t)w * h, 0);
+    std::queue<int> q;
+    auto [px0, py0] = game_map->pixel_to_tile(
+        player->entity.rect.x + player->entity.rect.width / 2,
+        player->entity.rect.y + player->entity.rect.height / 2);
+    if (px0 >= 0 && px0 < w && py0 >= 0 && py0 < h) { reach[py0*w+px0] = 1; q.push(py0*w+px0); }
+    while (!q.empty()) {
+        int cur = q.front(); q.pop();
+        int cx = cur % w, cy = cur / w;
+        for (int d = 0; d < 4; d++) {
+            int ndx = cx + (d==2?-1:d==3?1:0), ndy = cy + (d==0?-1:d==1?1:0);
+            if (ndx < 0 || ndx >= w || ndy < 0 || ndy >= h) continue;
+            int ni = ndy*w+ndx;
+            if (reach[ni]) continue;
+            DoorState ds = game_map->door_state_at(ndx, ndy);
+            if (ds == DoorState::LOCKED || ds == DoorState::SEALED) continue;
+            if (ds == DoorState::CLOSED) { reach[ni] = 1; q.push(ni); continue; }
+            if (game_map->tile_at(ndx, ndy) != TileType::WALL) { reach[ni] = 1; q.push(ni); }
         }
     }
+    return reach;
+}
+
+void GameScene::_dump_sim_reachability() {
+    if (sim_stuck_sample_count <= 0 || !player) return;
+    // 连通性报告: 从玩家 tile flood fill, 统计可达域是否含怪/楼梯
+    int w = game_map->width, h = game_map->height;
+    std::vector<char> reach = _sim_reach_from_player();
+
+    bool monOK = false, stairsOK = false;
+    for (auto& m : monsters) {
+        if (!m || !m->combat.is_alive) continue;
+        auto [mtx2, mty2] = game_map->pixel_to_tile(
+            m->entity.rect.x + m->entity.rect.width / 2,
+            m->entity.rect.y + m->entity.rect.height / 2);
+        if (mtx2 >= 0 && mtx2 < w && mty2 >= 0 && mty2 < h && reach[mty2*w+mtx2]) monOK = true;
+    }
+    for (int y = 0; y < h && !stairsOK; y++)
+        for (int x = 0; x < w; x++)
+            if (game_map->tile_at(x,y) == TileType::STAIRS_DOWN && reach[y*w+x]) stairsOK = true;
+    LOG_INFO("[SIM-DIAG] reach=%d 怪可达=%d 楼梯可达=%d",
+        std::count(reach.begin(), reach.end(), (char)1), (int)monOK, (int)stairsOK);
+    for (int y = 0; y < game_map->height; y++) {
+        std::string row;
+        for (int x = 0; x < game_map->width; x++) {
+            char c = '.';
+            TileType tt = game_map->tile_at(x, y);
+            if (tt == TileType::WALL) c = '#';
+            else if (tt == TileType::LAVA) c = '~';
+            else if (tt == TileType::STAIRS_DOWN) c = '>';
+            else if (tt == TileType::DOOR) {
+                DoorState ds = game_map->door_state_at(x, y);
+                c = (ds == DoorState::OPEN) ? 'D' : (ds == DoorState::CLOSED) ? 'd'
+                   : (ds == DoorState::LOCKED) ? 'L' : 'S';
+            }
+            row.push_back(c);
+        }
+        LOG_INFO("[MAP] %s", row.c_str());
+    }
+}
+
+void GameScene::_reset_sim_diag_counters() {
     sim_stuck_sample_count = 0;
     sim_rot_blocked = 0;
     sim_stuck_bfs_hit = 0; sim_stuck_bfs_fail = 0;
     for (int i = 0; i < 4; i++) sim_progress_src[i] = 0;   // G26
     for (int i = 0; i < 2; i++) sim_stuck_early[i] = 0;   // G26
     sim_stuck_for_max = 0.0;                               // G26
+}
 
-    // ── M2: enemies_fought 修复 — 字段一直存在但从未填充 (P1 审计) ──
-    for (auto& m : monsters) {
-        if (!m) continue;
-        bool dup = false;
-        for (auto& n : s.enemies_fought) if (n == m->name) { dup = true; break; }
-        if (!dup) s.enemies_fought.push_back(m->name);
-    }
-
-    auto& sim = SimRunner::inst();
-    sim.record_run(s);
-
-    // Q3.2: 重置统计, 供下一局使用
+// Q3.2: 重置统计, 供下一局使用
+void GameScene::_reset_sim_run_state() {
     _sim_hp_prev = -1;
     _sim_dmg_taken = 0;
     _sim_dmg_dealt = 0;
@@ -2187,18 +2243,6 @@ void GameScene::_collect_sim_stats() {
     _sim_mon_hp.clear();
     _sim_items_picked = 0;
     _sim_combat_frames = 0;
-
-    if (sim.should_restart()) {
-        // G7.4: all-builds rotation
-        if (sim.all_builds()) {
-            g_sim_build_type = sim.next_build_type();
-        }
-        // G27: 走 change_scene 管线, 不直调 new_game() — 见 _restart_sim_run
-        _restart_sim_run();
-    } else {
-        sim.finalize();
-        if (get_tree()) get_tree()->quit();
-    }
 }
 
 // G27: 批次 sim 局间独立性 — 每局新建 GameScene 走 change_scene 管线.

@@ -104,6 +104,8 @@ enum class WorldMode : uint8_t {
 // A6-T2: HitStop — 击杀顿帧
 #include "game/systems/hit_stop.h"
 
+struct RunResult;   // core/sim/sim_runner.h: G5.6 sim 结算结果
+
 class GameScene : public Node {
     friend class GameFlowDirector;
     friend class PlayerController;
@@ -530,6 +532,19 @@ private:
     bool _sim_mode = false;
     bool _use_bt_agent = false;        // G8.1: true = BT, false = DecisionAgent
     void _collect_sim_stats();
+    // G5.6: _collect_sim_stats 子步骤 (纯搬运, 执行顺序零改动)
+    void _fill_sim_run_result(RunResult& s);
+    void _classify_sim_outcome(RunResult& s);
+    void _fill_sim_build_snapshot(RunResult& s);
+    void _collect_sim_behavior_metrics(RunResult& s);
+    void _fill_sim_enemies_fought(RunResult& s);
+    void _log_sim_action_counters();
+    void _log_sim_move_branch_counters();
+    void _log_sim_stuck_samples(const RunResult& s);
+    std::vector<char> _sim_reach_from_player();
+    void _dump_sim_reachability();
+    void _reset_sim_diag_counters();
+    void _reset_sim_run_state();
     // G27: 批次 sim 局间独立 — 每局新建 GameScene 走 change_scene 管线
     void _restart_sim_run();
     // v1.5.0-P0: sim goto-floor 玩家强度对标 (bot 裸装进深层被秒, 取证无意义)
