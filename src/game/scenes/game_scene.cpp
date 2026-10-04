@@ -2782,7 +2782,27 @@ void GameScene::_render() {
 
 // M6-v2a: _render UI tail (2D/3D common) - hitflash/fade/panels/HUD/minimap/dialogue/event/freeze/cinematic
 void GameScene::_render_ui_tail(int sw, int sh) {
+    _render_ui_overlays(sw, sh);
+    _render_hud(sw, sh);
+    _render_minimap(sw, sh);
+    _render_combo_stage(sw, sh);
+    _render_debug_overlay(sw, sh);
+    _render_optional_panels(sw, sh);
+    _render_mirror_acc_debug();
+    _render_growth_debug(sw, sh);
+    _render_flow_debug(sw, sh);
+    _render_boss_behavior_debug(sw, sh);
+    _render_boss_cmd_debug(sw, sh);
+    _render_boss_report_debug(sw, sh);
+    _render_chapter_intro(sw, sh);
+    _render_floor_intro(sw, sh);
+    _render_dialogue_quest_event(sw, sh);
+    _render_mirror_banner_and_freeze(sw, sh);
+    _render_boss_cinematic_entrance(sw, sh);
+    _render_boss_cinematic_vignette(sw, sh);
+}
 
+void GameScene::_render_ui_overlays(int sw, int sh) {
     // Q4.7: 玩家受击红屏 — 全屏叠加主题 hit_flash_tint (alpha 随计时衰减)
     if (_presentation.hit_flash_timer > 0 && g_font_loaded) {
         Color ft = _presentation.get_theme().screen.hit_flash_tint;
@@ -2797,7 +2817,9 @@ void GameScene::_render_ui_tail(int sw, int sh) {
         _renderer.draw_challenge_choice(sw, sh, challenge_choice_cursor,
             ChallengeRoomController::boss_wave_hint(_challenge_pity_streak).c_str());
     }
+}
 
+void GameScene::_render_hud(int sw, int sh) {
     // F15.5.1: Build echo mirror panel data (M6-v2a: 提取为共用方法)
     CharacterPanelData echo_panel_data;
     _build_echo_panel_data(echo_panel_data);
@@ -2815,7 +2837,9 @@ void GameScene::_render_ui_tail(int sw, int sh) {
                         echo_panel_data.mirror_mode ? &echo_panel_data : nullptr,
                         ch_wave, _challenge.total_waves());
     _render_mirror_hud_overlay(sw, game_time);   // v1.6-B1.1: 顶部分析/观察卡
+}
 
+void GameScene::_render_minimap(int sw, int sh) {
     // Phase 3: Minimap — 右下角常驻面板 (M 键开关)
     if (_show_minimap && game_map && player) {
         MinimapInput mm;
@@ -2824,47 +2848,8 @@ void GameScene::_render_ui_tail(int sw, int sh) {
             player->entity.rect.y + player->entity.rect.height / 2);
         mm.player_tx = ptx; mm.player_ty = pty;
 
-        // Boss — 始终显示（让玩家知道 BOSS 方向）
-        if (_boss_last_known.first >= 0) {
-            mm.boss_marker.tx = _boss_last_known.first;
-            mm.boss_marker.ty = _boss_last_known.second;
-            mm.boss_marker.visible = true;
-            mm.boss_marker.color = Color{220, 60, 50, 255};  // 红 — Boss
-            mm.boss_marker.type = MinimapMarker::Type::BOSS;
-        }
-        // 楼梯（发现后永久地标）
-        if (MinimapRenderer::should_show_stairs(*game_map, stairs_pos.first, stairs_pos.second)) {
-            mm.stairs_marker.tx = stairs_pos.first;
-            mm.stairs_marker.ty = stairs_pos.second;
-            mm.stairs_marker.visible = true;
-            mm.stairs_marker.color = Color{230, 210, 70, 255};  // 黄 — 楼梯
-            mm.stairs_marker.type = MinimapMarker::Type::STAIRS;
-        }
-        // 当前可见的怪物/物品（仅当前 is_visible 才显示）
-        for (auto& m : monsters) {
-            if (!m) continue;
-            auto [mtx, mty] = game_map->pixel_to_tile(m->entity.position.x, m->entity.position.y);
-            if (!m->is_boss && MinimapRenderer::should_show_entity(*game_map, mtx, mty)) {
-                MinimapMarker mark;
-                mark.tx = mtx;
-                mark.ty = mty;
-                mark.visible = true;
-                mark.color = Color{200, 80, 80, 255};  // 暗红 — 普通怪
-                mark.type = MinimapMarker::Type::MONSTER;
-                mm.markers.push_back(mark);
-            }
-        }
-        for (auto& d : ground_items) {
-            if (MinimapRenderer::should_show_entity(*game_map, d.tile_x, d.tile_y)) {
-                MinimapMarker mark;
-                mark.tx = d.tile_x;
-                mark.ty = d.tile_y;
-                mark.visible = true;
-                mark.color = Color{80, 200, 120, 255};  // 绿 — 物品
-                mark.type = MinimapMarker::Type::ITEM;
-                mm.markers.push_back(mark);
-            }
-        }
+        _collect_minimap_markers(mm);
+        _collect_minimap_entity_markers(mm);
 
         Rectangle panel = {(float)(sw - MINIMAP_WIDTH - 14), (float)(sh - MINIMAP_HEIGHT - 40),
                            (float)MINIMAP_WIDTH, (float)MINIMAP_HEIGHT};
@@ -2875,7 +2860,58 @@ void GameScene::_render_ui_tail(int sw, int sh) {
         DrawText(hint, (int)(panel.x + panel.width / 2 - hint_w / 2),
                  (int)(panel.y + panel.height + 4), 14, {160, 160, 200, 180});
     }
+}
 
+// 小地图静态地标: Boss 常驻 + 已发现楼梯
+void GameScene::_collect_minimap_markers(MinimapInput& mm) {
+    // Boss — 始终显示（让玩家知道 BOSS 方向）
+    if (_boss_last_known.first >= 0) {
+        mm.boss_marker.tx = _boss_last_known.first;
+        mm.boss_marker.ty = _boss_last_known.second;
+        mm.boss_marker.visible = true;
+        mm.boss_marker.color = Color{220, 60, 50, 255};  // 红 — Boss
+        mm.boss_marker.type = MinimapMarker::Type::BOSS;
+    }
+    // 楼梯（发现后永久地标）
+    if (MinimapRenderer::should_show_stairs(*game_map, stairs_pos.first, stairs_pos.second)) {
+        mm.stairs_marker.tx = stairs_pos.first;
+        mm.stairs_marker.ty = stairs_pos.second;
+        mm.stairs_marker.visible = true;
+        mm.stairs_marker.color = Color{230, 210, 70, 255};  // 黄 — 楼梯
+        mm.stairs_marker.type = MinimapMarker::Type::STAIRS;
+    }
+}
+
+// 小地图动态标记: 当前可见的怪物/物品
+void GameScene::_collect_minimap_entity_markers(MinimapInput& mm) {
+    // 当前可见的怪物/物品（仅当前 is_visible 才显示）
+    for (auto& m : monsters) {
+        if (!m) continue;
+        auto [mtx, mty] = game_map->pixel_to_tile(m->entity.position.x, m->entity.position.y);
+        if (!m->is_boss && MinimapRenderer::should_show_entity(*game_map, mtx, mty)) {
+            MinimapMarker mark;
+            mark.tx = mtx;
+            mark.ty = mty;
+            mark.visible = true;
+            mark.color = Color{200, 80, 80, 255};  // 暗红 — 普通怪
+            mark.type = MinimapMarker::Type::MONSTER;
+            mm.markers.push_back(mark);
+        }
+    }
+    for (auto& d : ground_items) {
+        if (MinimapRenderer::should_show_entity(*game_map, d.tile_x, d.tile_y)) {
+            MinimapMarker mark;
+            mark.tx = d.tile_x;
+            mark.ty = d.tile_y;
+            mark.visible = true;
+            mark.color = Color{80, 200, 120, 255};  // 绿 — 物品
+            mark.type = MinimapMarker::Type::ITEM;
+            mm.markers.push_back(mark);
+        }
+    }
+}
+
+void GameScene::_render_combo_stage(int sw, int sh) {
     // G9.1: Combo stage UI (bottom center)
     if (player->weapon.weapon_type() != WeaponType::FIST && player->weapon.combo_index() > 0) {
         int stage = player->weapon.combo_index() + 1;
@@ -2887,7 +2923,9 @@ void GameScene::_render_ui_tail(int sw, int sh) {
         else
             DrawText(mark, sw/2 - 10, sh - 60, fs, sc);
     }
+}
 
+void GameScene::_render_debug_overlay(int sw, int sh) {
 #ifdef _DEBUG
     // D9: Debug overlay (右上角, fps/floor/seed/build/monsters)
     if (g_font_loaded) {
@@ -2907,10 +2945,15 @@ void GameScene::_render_ui_tail(int sw, int sh) {
         DrawTextEx(g_font_small, dbg, {sw - dw - 10.0f, 4.0f}, 11, 1, Color{120, 200, 120, 180});
     }
 #endif
+}
 
+    // 背包/赌局面板 (打开时才绘制)
+void GameScene::_render_optional_panels(int sw, int sh) {
     if (inventory_open) _renderer.draw_inventory_panel(player.get(), inventory_cursor, sw, sh);
     if (gamble_open) _renderer.draw_gamble_panel(player.get(), gamble_result_msg, gamble_result_timer, sw, sh);
+}
 
+void GameScene::_render_mirror_acc_debug() {
     // D4.6 Step1: F8 Growth Curve debug
     // F15.2: F9 — print player behavior stats
 #ifdef _DEBUG
@@ -2938,7 +2981,9 @@ void GameScene::_render_ui_tail(int sw, int sh) {
         }
     }
 #endif
+}
 
+void GameScene::_render_growth_debug(int sw, int sh) {
     if (_presentation.show_growth_debug && g_font_loaded) {
         const GrowthCurve& gc = g_growth.curve(current_floor);
         float pw = 240, ph = 260;
@@ -2960,7 +3005,9 @@ void GameScene::_render_ui_tail(int sw, int sh) {
         line("Relic Scale x%.2f",  gc.relic_scale);
         line("Arena Scale x%.2f",  gc.arena_scale);
     }
+}
 
+void GameScene::_render_flow_debug(int sw, int sh) {
     // D4.6 Step3: F10 FlowDirector debug
     if (_presentation.show_flow_debug && g_font_loaded) {
         float pw = 220, ph = 210;
@@ -2980,7 +3027,9 @@ void GameScene::_render_ui_tail(int sw, int sh) {
         line("Rooms   %d",     ft.rooms_explored);
         line("MaxGap  %.1fs",  _gameplay.flow.worst_gap());
     }
+}
 
+void GameScene::_render_boss_behavior_debug(int sw, int sh) {
     // D5 Step3: F11 BossBehavior debug
     if (_presentation.show_boss_behavior && g_font_loaded) {
         auto* boss = _get_boss();
@@ -3014,7 +3063,9 @@ void GameScene::_render_ui_tail(int sw, int sh) {
             }
         }
     }
+}
 
+void GameScene::_render_boss_cmd_debug(int sw, int sh) {
     // D5 Step4: F12 BossCombat debug
     if (_presentation.show_boss_cmd && g_font_loaded) {
         float pw = 220, ph = 200;
@@ -3043,7 +3094,9 @@ void GameScene::_render_ui_tail(int sw, int sh) {
             y += 14; if (y > pr.y+ph-20) break;
         }
     }
+}
 
+void GameScene::_render_boss_report_debug(int sw, int sh) {
     // D5 Step5: F13 BossReport debug
     if (_presentation.show_boss_report && g_font_loaded) {
         auto& r = _boss.battle_report;
@@ -3070,7 +3123,9 @@ void GameScene::_render_ui_tail(int sw, int sh) {
         line("BloodRit %s", (float)r.replay.blood_ritual);
         line("Curse    %s", (float)r.replay.curse);
     }
+}
 
+void GameScene::_render_chapter_intro(int sw, int sh) {
     // D4 Step3: 章节入场 (全屏大标题, 3秒)
     if (_presentation.chapter_intro_active) {
         int ch = _presentation.chapter_intro_ch;
@@ -3086,7 +3141,9 @@ void GameScene::_render_ui_tail(int sw, int sh) {
         if (fn) GameRenderer::draw_glow_text(fn->subtitle, sw/2.0f, sh/2.0f + 50,
                                               18, Color{180,180,200,(unsigned char)(160*a)}, true);
     }
+}
 
+void GameScene::_render_floor_intro(int sw, int sh) {
     // D4 Step3: 楼层入场演出 (非章节覆盖时)
     if (_presentation.floor_intro_active && !_presentation.chapter_intro_active) {
         auto* fn = get_floor_narrative(_presentation.floor_intro_floor);
@@ -3105,7 +3162,9 @@ void GameScene::_render_ui_tail(int sw, int sh) {
             GameRenderer::draw_glow_text("══════════════", sw/2.0f, sh/2.0f + 60, 18, gold, true);
         }
     }
+}
 
+void GameScene::_render_dialogue_quest_event(int sw, int sh) {
     // D4 Step4: 对话UI (在HUD之上, 事件之下)
     _draw_dialogue(sw, sh);
     // D4 Step4: 任务日志
@@ -3113,7 +3172,9 @@ void GameScene::_render_ui_tail(int sw, int sh) {
 
     // D4 Step2: 事件演出 UI (在所有 HUD 之上)
     _draw_event_ui(sw, sh);
+}
 
+void GameScene::_render_mirror_banner_and_freeze(int sw, int sh) {
     // v1.6-B1: 镜像阶段晋升横幅 (最高优先级 — 招牌时刻)
     if (_mirror_banner_timer > 0)
         GameRenderer::draw_phase_banner(sw, sh, _mirror_banner_phase,
@@ -3133,6 +3194,9 @@ void GameScene::_render_ui_tail(int sw, int sh) {
     } else if (time_stop_remaining > 0) {
         _renderer.draw_time_stop_overlay(sw, sh, time_stop_remaining);
     }
+}
+
+void GameScene::_render_boss_cinematic_entrance(int sw, int sh) {
     if (state == GameState::BOSS_CINEMATIC && _boss_entrance_timer > 0) {
         // B15/F15.5: Boss entrance cinematic
         DrawRectangle(0, 0, sw, sh, {0, 0, 0, 160});
@@ -3154,7 +3218,9 @@ void GameScene::_render_ui_tail(int sw, int sh) {
     } else if (state == GameState::BOSS_CINEMATIC) {
         _renderer.draw_boss_cinematic_overlay(sw, sh);
     }
+}
 
+void GameScene::_render_boss_cinematic_vignette(int sw, int sh) {
     // D5 Step6: BossCinematic overlay (Phase2/LastStand vignette)
     if (_boss.cinematic.is_running()) {
         float a = std::min(1.0f, _boss.cinematic.timer());
@@ -3172,6 +3238,7 @@ void GameScene::_render_ui_tail(int sw, int sh) {
         }
     }
 }
+
 void GameScene::_draw_map() {
     if (game_map) game_map->draw(_cam_x, _cam_y, get_tree()->get_width(), get_tree()->get_height());
 }

@@ -484,6 +484,27 @@ private:
 
     // M6-v2a: _render UI 尾段共用 (红屏/HUD/小地图/对话/冻结/演出; 2D/3D 同 UI)
     void _render_ui_tail(int sw, int sh);
+    // G30-C: _render_ui_tail 子步骤 (391->21 行, 纯结构搬运, 绘制顺序零改动)
+    void _render_ui_overlays(int sw, int sh);
+    void _render_hud(int sw, int sh);
+    void _render_minimap(int sw, int sh);
+    void _collect_minimap_markers(MinimapInput& mm);
+    void _collect_minimap_entity_markers(MinimapInput& mm);
+    void _render_combo_stage(int sw, int sh);
+    void _render_debug_overlay(int sw, int sh);
+    void _render_optional_panels(int sw, int sh);
+    void _render_mirror_acc_debug();
+    void _render_growth_debug(int sw, int sh);
+    void _render_flow_debug(int sw, int sh);
+    void _render_boss_behavior_debug(int sw, int sh);
+    void _render_boss_cmd_debug(int sw, int sh);
+    void _render_boss_report_debug(int sw, int sh);
+    void _render_chapter_intro(int sw, int sh);
+    void _render_floor_intro(int sw, int sh);
+    void _render_dialogue_quest_event(int sw, int sh);
+    void _render_mirror_banner_and_freeze(int sw, int sh);
+    void _render_boss_cinematic_entrance(int sw, int sh);
+    void _render_boss_cinematic_vignette(int sw, int sh);
 
     // M6-v2a: 3D 分支 UI 桥 (vignette + 完整 HUD 参数 + ui_tail)
     void _render_hd2d_ui_bridge(int sw, int sh);
