@@ -1,3 +1,228 @@
+﻿# G28 — `enter_floor` 255 行拆成 14 个 ≤40 行子步骤（2026-10-04）
+
+> 目标：把函数长度榜第二的 `enter_floor`（255 行）降到规范线 40 行以内。
+> **约束：纯结构重排，执行顺序零改动，确定性基线零漂移。**
+
+## 为什么是第二个 G25
+
+G25 把 `_process` 从 1072 行压到 602 行，`enter_floor` 一直是长度榜第二名且
+没动过。它比 `_process` 难拆一层：`_process` 的段与段之间靠成员变量传状态，
+而 `enter_floor` 有一段**栈上局部变量跨段落存活**——`DungeonGenerator gen`
+与 `rooms` 在生成块创建，20 行后还被刷怪和事件生成消费。
+
+所以不能像 G25 那样按行段盲切，必须先划出"变量的生命线"：
+
+| 局部变量 | 创建点 | 最后消费点 | 约束 |
+|---|---|---|---|
+| `fcfg` | L365 | L476 | 全流程可用 |
+| `gen` | L369 | L386 (`_spawn_normal_floor`) | 生成块必须与刷怪同作用域 |
+| `rooms` | L376 | L476 (事件/NPC 推进) | 必须传引用给 4 个下游 |
+
+结论：`gen` 无法抽走（要么传引用、要么污染成员），只能把**不依赖 `gen` 的段**
+抽出去，`gen`/`rooms` 相关的段留在主函数或收进各自的小方法。
+
+## 拆法：按生命周期分三阶段，14 个方法
+
+```
+enter_floor(floor, seed)                              39 行 (调度骨架)
+├─ 阶段一：重置        _reset_floor_play_state   23
+│                      _reset_floor_subsystems   27
+│                      _roll_floor_seed           9
+├─ 阶段二：生成+放置   _ensure_rest_fountain      7
+│   (gen/rooms 留主函数) _setup_floor_visuals    14
+│                      _place_player_at_entry     7
+│                      _spawn_boss_floor         19
+│                      _spawn_normal_floor       33
+│                      _setup_challenge_portal    9
+└─ 阶段三：事件+推进   _spawn_floor_events       18
+                       _advance_floor_progression 13
+                       _refresh_player_for_floor 15
+                       _setup_floor_intros       26
+                       _announce_floor_enter     19
+```
+
+## 两处自抓的语义偏离（本批真正的价值）
+
+纯搬行的重构，风险从来不在搬错行，而在**顺手优化**。两处都是我先写了"更合理"
+的版本，然后自己判定为违规并改回：
+
+1. **`ev_chance > 0.0f &&` 前置守卫** — 原式
+   `if ((float)(rng() % 1000) / 1000.0f >= ev_chance) continue;`
+   我加了个防零守卫，但短路会**改变 `rng()` 掷骰次数**。虽然 `ev_chance`
+   恒为 0.40/0.70，实际结果不受影响——但这正是"看着等价其实不等价"的典型，
+   已还原为原式。
+2. **`fcfg->is_boss` → `is_boss_floor(floor)`** — 前者是配置值，后者是楼层号
+   推导，二者不能假设等价。已改回，并把 `fcfg` 显式传入
+   `_advance_floor_progression`。
+
+另有 1 处编译期错误：`std::make_shared<EquipmentItem(` 括号漏配，Batch II
+落盘后补修。
+
+## 验证
+
+| 项 | 结果 |
+|---|---|
+| 编译 | 0 error / 0 warning |
+| 超规函数 | **0**（14 个方法 + 主函数全部 ≤40 行） |
+| 确定性基线 | SHA256 逐字节一致，**G28 不变更基线** |
+| ctest | **78/78 通过** |
+| `rng()` 调用点 | 3 处全保留，顺序未变（`_roll_floor_seed` → `_spawn_floor_events`×2 → `_setup_floor_intros`） |
+
+`rng()` 调用顺序是这次唯一真正可能破基线的东西——只要掷骰次数或次序变了，
+500 局报告会整体偏移。所以除了 SHA256 全量比对，还单独 grep 了
+`game_scene.cpp` 全部 `rng()` 出现点逐一核对。
+
+## 结果
+
+- `enter_floor`：255 → **39 行**
+- `game_scene.cpp` 超规函数：**1 → 0**
+- G25 之后第二个**零基线漂移**的重构批次（G26/G27 都改动了基线）
+
+## 遗留
+
+- `_spawn_normal_floor` 33 行是 14 个里最大的，内部还有个武器掉落子块可以再
+  拆一层，但已在线内，不值得为拆而拆。
+- `_roll_floor_seed` / `_setup_floor_visuals` 等 7~14 行的小方法，密度偏碎。
+  如果之后要合并同类小方法，需要先确认 `rng()` 调用顺序不会被并到一起。
+
+# G27 — sim 批次局间独立性（2026-10-04）
+
+> 目标：让「一次进程跑 N 局」的每一局都等于「同种子的单独跑」。
+> **根因是函数级 `static` 跨层跨局泄漏，与随机流无关。**
+
+## 结论：不是 RNG 问题
+
+先用 `CountingRng` 加逐掷钩子比对，三条证据证明随机流完全同步：
+
+- 批次 run1 与单独跑的 `draws` 逐帧序列完全相同（`0,10,13,16,19,22,…`）
+- 前 122+ 次掷骰**取值逐字节一致**
+- 楼层地图 `rooms` 数量与房间坐标**完全相同**
+
+但同期玩家坐标轨迹不同：单独跑 `130→162→194`，批次 run1 卡在 `130` 不动。
+据此判定问题在**移动/碰撞执行层**，转查后定位到
+`player_controller.cpp:197`。
+
+## 根因：`_sim_last_step` 是函数内 `static`
+
+```cpp
+// sim 整格步进节流
+static float _sim_last_step = -1.0f;
+if ((move.x != 0.0f || move.y != 0.0f) &&
+    gs.game_time - _sim_last_step >= 0.14f) {
+    _sim_last_step = gs.game_time;
+    ...
+```
+
+`_sim_last_step` 是 `tick()` 内的函数级 `static`，只初始化一次、**永不被
+重置**。而 `game_time` 在 `enter_floor` 里**每次归零**（`game_scene.cpp:357`）。
+于是进层后 `game_time - _sim_last_step` 为负，条件永假，
+**sim 玩家无法移动**。
+
+单独跑能走完第一层，只是因为首次进入时 `_sim_last_step` 仍是初值 `-1.0f`，
+`0.0f - (-1.0f) = 1.0f ≥ 0.14f` 恰好成立。
+
+## 影响范围远大于预期
+
+这不只是批次局间问题 —— **单独跑同样中招**：
+
+| | 第一层 | 第二层起 |
+| :--- | :--- | :--- |
+| `_sim_last_step` 初值 | `-1.0f`（首次进入） | 第一层的 `game_time` 残留（≥0） |
+| 步进条件 | 成立，能动 | **恒假，永久冻住** |
+| 批次第 2+ 局 | 上一局的残留值 | 恒假 |
+
+**G26 采集的整份平衡数据集，都是在「玩家第一层之后基本动不了」的状态下
+跑出来的**，`avg_floor=1.80` 里有相当部分是冻结假象压出来的低值。
+
+## 修复
+
+4 个同类 static 一并归位为 `PlayerController` 实例成员（该类本就持有
+`_last_seen_hp`/`_hit_window` 同类帧间状态，模式一致）：
+
+| 原 static | 用途 |
+| :--- | :--- |
+| `_sim_last_step` | sim 整格步进节流基准 —— **根因** |
+| `_last_mx`/`_last_my`/`_last_move_dir` | 移动向量去抖、行为录制方向变化检测 |
+| `_loot_dbg` | SIM-LOOT 日志采样相位 |
+
+新增 `reset_floor_state()`，由 `enter_floor` 在 `game_time = 0` 同一处调用：
+
+```cpp
+    game_time = 0;
+    // G27: game_time 归零须同步复位步进节流基准, 否则 sim 玩家在后续层无法移动
+    _player_ctrl.reset_floor_state();
+```
+
+`PlayerController` 是 `GameScene` 成员，所以**新局自动拿默认值** —— 跨局
+泄漏随 G27 的「每局新建 GameScene」方案一并消解；跨层残留由
+`reset_floor_state()` 显式清掉。
+
+### 连带修掉的批次重启边界
+
+1. **`scene_tree.cpp` `change_scene` 提前置 `_skip_input`** —— 否则
+   「已请求切换、尚未 swap」那一轮 `process_input` 仍会把输入派发给正在退场
+   的旧场景。
+2. **`game_scene.cpp` 新局首帧清零 `sim_stuck_watchdog`** —— 旧场景 agent
+   可能在退场前置位残留。
+
+## 取证过程的反面教材
+
+`_loot_dbg` 是**同类 static**，它让 SIM-LOOT 日志的采样相位跨局漂移 ——
+两跑之间 `inv=3` vs `inv=4` 纯属**采样点不同**，不是状态差异。这处假象
+曾一度把排查方向带偏到背包/掉落数据上。
+
+教训：**任何做采样或节流的 `static` 局部变量，只要与「会被重置的计数器」
+比较，都天然是一个跨边界泄漏点。**
+
+## 验证
+
+批次 5 局逐个对拍 5 个同种子单独跑（`42 / 1234609 / 2469176 / 3703743 /
+4938310`）：
+
+| run | seed | 楼层序列 | 累计卡死 | progress 快照 |
+| :-: | :--- | :-: | :--- | :-: |
+| 0 | 42 | 1→4 | 137.9s | MATCH |
+| 1 | 1234609 | 1→6 | 119.5s | MATCH |
+| 2 | 2469176 | 1→6 | 一致 | MATCH |
+| 3 | 3703743 | 1→6 | 一致 | MATCH |
+| 4 | 4938310 | 1→6 | 一致 | MATCH |
+
+`SequenceMatcher` 逐行比对整局日志：**只剩 1 处差异** —— 单独跑多 3 行
+一次性监听器注册日志（`[ATK_EVO]`/`[SKL_EVO]`/`[RULE_CHAIN]`）。这是
+`_ready()` 里由 `_s_registered` 静态量守护的幂等注册，批次第 2 个场景被
+**正确跳过**，属预期行为，非状态差异。
+
+## 结果
+
+| 指标 | G26 后 | G27 后 |
+| :--- | :--- | :--- |
+| avg_floor | 1.80 | **4.0** |
+| avg_turns | 3876.2 | **1786.8** |
+| 最深层 | 4 | **6** |
+| avg_damage_dealt | 42.0 | **278.8** |
+| avg_damage_taken | ~3.7x | **60.0** |
+| 最远进度 | 第 4 层 | **F5 Boss 层** |
+
+胜率仍 `0/5`，但**首次打到了 F5 Boss 层**，数据集才真正开始覆盖中后期。
+
+## 确定性基线已变更
+
+- 旧基线 `4FA7ADBBAFC558B5F949AB628A1DD4B140FD167CBF0D7654A010D5A2C3B2B9FC`
+- **新基线 `8EE12B30AC155DBBCCE672AF1F9A9D65AEBD86E4E9E4C709F64EF987BFF6BA42`**
+  （连续两次运行逐字节一致）
+
+四道闸门：build 0 error 0 warning · ctest 78/78 · 上述 SHA256 · 新增函数
+`reset_floor_state` 8 行。
+
+## 遗留
+
+- `enter_floor`(255 行) / `PlayerController::tick`(219 行) /
+  `new_game`(99 行) 仍超 40 行规范 —— 属 G25 未覆盖的 god function，
+  本批未新增违规类型（仅 `enter_floor` +2 行）。
+- 胜率仍为 0，深层平衡尚未验证（F6 之后无数据）。
+
+---
+
 # G26 — sim STUCK_RECOVERED 死锁链根因修复（2026-10-03）
 
 > 目标：解释并修复「`--sim 5 --sim-seed 42` 下 3/5 局 `STUCK_RECOVERED`
