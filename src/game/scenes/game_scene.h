@@ -218,6 +218,16 @@ public:
     // G19: 换层激活移至 public — 回归测试需直接驱动「竞技场内禁止激活楼梯」
     void _activate_stairs();
     void new_game();
+    // G30-D: new_game 子步骤 (99->11 行, 纯结构搬运, 执行顺序零改动)
+    // _init_element_choice 返回 false = 首次元素选择停在标题, 调度骨架据此短路
+    void _clear_cross_run_state();
+    void _create_player_loadout();
+    bool _init_element_choice();
+    void _seed_sim_run();
+    void _load_meta_and_apply_passives();
+    void _enter_start_floor();
+    void _autostart_replay_record();
+    void _init_sim_agents();
     // B13: Relic 不再跨层 (load_saved_game 不再接收 relics 参数)
     // G10.9-B2: unlocked_endings 参数移除 (账号级, 从 meta 恢复); 新增 play_time
     void load_saved_game(int floor, int max_floor, std::unique_ptr<Player> p,

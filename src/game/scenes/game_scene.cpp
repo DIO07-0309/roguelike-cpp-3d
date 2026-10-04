@@ -192,6 +192,17 @@ void GameScene::_sim_goto_scale_player(int start_floor) {
 }
 
 void GameScene::new_game() {
+    _clear_cross_run_state();
+    _create_player_loadout();
+    if (!_init_element_choice()) return;   // G10.1: 首次元素选择停在标题
+    _seed_sim_run();
+    _load_meta_and_apply_passives();
+    _enter_start_floor();
+    _autostart_replay_record();
+    _init_sim_agents();
+}
+
+void GameScene::_clear_cross_run_state() {
     // M1: 新对局清空行为录制 — 修复跨局流污染
     // (旧代码 g_behavior 从不清: 上一局的死亡记录混入本局镜像分析)
     g_behavior.clear();
@@ -207,7 +218,9 @@ void GameScene::new_game() {
     // 全残留 (evolution/encounter/battle_report 等)。mirror 跨局记忆走
     // export/inject 独立通道, reset_run 不清 (语义正确)
     _boss.reset_run();
+}
 
+void GameScene::_create_player_loadout() {
     player = std::make_unique<Player>(TILE_SIZE * 2, TILE_SIZE * 2,
         PLAYER_SPEED, PLAYER_MAX_HP, PLAYER_ATTACK, PLAYER_PDEF, PLAYER_MDEF);
 
@@ -216,7 +229,9 @@ void GameScene::new_game() {
     for (int potion_i = 0; potion_i < 3; potion_i++)
         player->inventory.items.push_back(
             std::make_shared<ConsumableItem>("治疗药水", Rarity::COMMON, "heal", 30));
+}
 
+bool GameScene::_init_element_choice() {
     // G10.1: Element select on first-ever game
     if (!player->element.initialized) {
         if (g_sim_mode) {
@@ -227,10 +242,13 @@ void GameScene::new_game() {
             element_select_active = true;
             element_select_cursor = 0;
             state = GameState::TITLE;
-            return;
+            return false;
         }
     }
+    return true;
+}
 
+void GameScene::_seed_sim_run() {
     // Q3.5: sim run 1 在 enter_floor 前播种 rng — 否则楼层种子从
     // random_device^time 初始态抽取 → 同种子不可重放 (F5 boss 每进程随机)
     if (g_sim_mode) {
@@ -244,7 +262,9 @@ void GameScene::new_game() {
         _sim_game_timeout = false;   // M2-A: 超时标记跨局清零
         sim_stuck_watchdog = 0;      // G13: 卡死看门狗标记跨局清零
     }
+}
 
+void GameScene::_load_meta_and_apply_passives() {
     auto sk = random_active_skill({}, true);  // G9: first skill always base 4
     player->skills.learn(std::move(sk));
 
@@ -252,6 +272,9 @@ void GameScene::new_game() {
     g_meta.load();
     _gameplay.run_stats = RunSummary{};
     player->skills.apply_all_passives(player.get());
+}
+
+void GameScene::_enter_start_floor() {
     // v1.5.0-P0: sim goto-floor 直达 (取证/冒烟深层的测试通道; 默认 0 时
     // 与原路径完全一致, RNG 基线不受影响; 仅 sim 模式生效)
     int start_floor = 1;
@@ -263,13 +286,17 @@ void GameScene::new_game() {
     max_unlocked_floor = start_floor;
     enter_floor(start_floor);
     _presentation.set_build_theme(BuildType::BERSERKER);  // G5.8.2: default theme
+}
 
+void GameScene::_autostart_replay_record() {
     // ── G4.5: Replay/Record auto-start ──
     if (g_replay_mode && !g_replay_path.empty())
         start_replay(g_replay_path);
     else if (g_record_mode && !g_record_path.empty())
         start_recording(_dungeon_seed);
+}
 
+void GameScene::_init_sim_agents() {
     // ── G5.6: Sim mode init ──
     if (g_sim_mode) {
         _sim_mode = true;
