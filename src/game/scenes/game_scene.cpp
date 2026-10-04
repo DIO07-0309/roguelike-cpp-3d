@@ -355,6 +355,46 @@ void GameScene::enter_floor(int floor, uint32_t seed) {
     current_floor = floor;
     player->current_floor = floor;
     game_time = 0;
+    // G27: game_time 归零须同步复位步进节流基准, 否则 sim 玩家在后续层无法移动
+    _player_ctrl.reset_floor_state();
+    _reset_floor_play_state();
+    _reset_floor_subsystems();
+    _roll_floor_seed(seed);
+
+    // D1: FloorConfig — 统一难度/敌人池/特殊房间/BGM/剧情
+    const FloorConfig* fcfg = get_floor_config(floor);
+    _fov_radius = (fcfg->fov_radius > 0) ? fcfg->fov_radius : FOV_RADIUS_DEFAULT;  // Batch 1 (D4)
+    // 生成地牢 (B8: seed 驱动; D1: special_room_count 从配置读)
+    DungeonGenerator gen(MAP_WIDTH, MAP_HEIGHT, TILE_SIZE);
+    game_map = gen.generate(_dungeon_seed, fcfg->special_room_count, fcfg->arena_density);
+    _setup_boss_arena_terrain(gen, floor);   // M4b: Boss 房机制地形
+    game_map->reset_visibility();
+    _last_player_tile_x = -1;
+    _last_player_tile_y = -1;
+    _boss_last_known = {-1, -1};   // Phase 3: 新楼层重置 Boss 最后已知位置
+    auto rooms = gen.get_room_centers();
+
+    _ensure_rest_fountain(fcfg);
+    _setup_floor_visuals(floor);
+    _place_player_at_entry(rooms);
+    if (is_boss_floor(floor)) {
+        _spawn_boss_floor(floor);
+    } else {
+        _spawn_normal_floor(floor, gen, rooms);
+    }
+    _setup_challenge_portal();
+    stairs_pos = rooms.back();
+    _spawn_floor_events(floor, fcfg, rooms);
+    _advance_floor_progression(floor, fcfg, rooms);
+    _refresh_player_for_floor();
+    _setup_floor_intros(floor, fcfg);
+    _announce_floor_enter(floor, fcfg);
+}
+
+// ── G28: enter_floor 子步骤 (按原顺序调用, 执行顺序零改动) ──
+
+// I-1: 局内瞬时状态清零 + 楼层级遗物回收
+void GameScene::_reset_floor_play_state() {
     ground_items.clear();
     inventory_open = false;
     inventory_cursor = 0;
@@ -376,7 +416,10 @@ void GameScene::enter_floor(int floor, uint32_t seed) {
     for (auto& id : floor_relic_ids) {
         player->remove_relic(id);
     }
+}
 
+// I-2: 跨层子系统状态复位 (事件 / Boss / 脱卡 / 挑战 / 房间 / 账号级保底)
+void GameScene::_reset_floor_subsystems() {
     // D4 Step1: 重置事件状态
     if (game_map) {
         game_map->event_room_index = -1;
@@ -402,7 +445,10 @@ void GameScene::enter_floor(int floor, uint32_t seed) {
     // B4-T9: 压轴保底是账号级记忆 — 每次进层从 meta 重新载入.
     // 只靠控制器自持会在 GameScene 重建时清零 (玩家反复进出同层 → 保底永远到不了阈值).
     _challenge_pity_streak = g_meta.challenge_pity_streak();
+}
 
+// I-3: 楼层种子确定 + 视觉随机流按层重播种
+void GameScene::_roll_floor_seed(uint32_t seed) {
     if (seed != 0) {
         _dungeon_seed = seed;
     } else {
@@ -410,29 +456,19 @@ void GameScene::enter_floor(int floor, uint32_t seed) {
     }
     // G9.3 (RNG-001): 视觉流按层重播种 — 派生自 dungeon seed, 不触碰 gameplay 流
     seed_visual_rng(_dungeon_seed ^ 0x9E3779B9u);
+}
 
-    // D1: FloorConfig — 统一难度/敌人池/特殊房间/BGM/剧情
-    const FloorConfig* fcfg = get_floor_config(floor);
-    _fov_radius = (fcfg->fov_radius > 0) ? fcfg->fov_radius : FOV_RADIUS_DEFAULT;  // Batch 1 (D4)
+// J-1: 休息层保证 1 个泉水房 — 50% landmark 替换可能吞掉治疗资源
+void GameScene::_ensure_rest_fountain(const FloorConfig* fcfg) {
+    if (!fcfg->is_rest_floor || game_map->special_rooms.empty()) return;
+    bool has_fountain = false;
+    for (auto& sr : game_map->special_rooms)
+        if (sr.type == SpecialRoomType::FOUNTAIN) { has_fountain = true; break; }
+    if (!has_fountain) game_map->special_rooms[0].type = SpecialRoomType::FOUNTAIN;
+}
 
-    // 生成地牢 (B8: seed 驱动; D1: special_room_count 从配置读)
-    DungeonGenerator gen(MAP_WIDTH, MAP_HEIGHT, TILE_SIZE);
-    game_map = gen.generate(_dungeon_seed, fcfg->special_room_count, fcfg->arena_density);
-    _setup_boss_arena_terrain(gen, floor);   // M4b: Boss 房机制地形
-    game_map->reset_visibility();
-    _last_player_tile_x = -1;
-    _last_player_tile_y = -1;
-    _boss_last_known = {-1, -1};   // Phase 3: 新楼层重置 Boss 最后已知位置
-    auto rooms = gen.get_room_centers();
-
-    // D9-rest: 休息层保证 1 个泉水房 — 50% landmark 替换可能吞掉治疗资源
-    if (fcfg->is_rest_floor && !game_map->special_rooms.empty()) {
-        bool has_fountain = false;
-        for (auto& sr : game_map->special_rooms)
-            if (sr.type == SpecialRoomType::FOUNTAIN) { has_fountain = true; break; }
-        if (!has_fountain) game_map->special_rooms[0].type = SpecialRoomType::FOUNTAIN;
-    }
-
+// J-2: 群系贴图基色 + 氛围层情绪 + 门贴图懒加载
+void GameScene::_setup_floor_visuals(int floor) {
     // M4f: biome palette → 地图 (程序化像素纹理基色)
     const BiomeDef* biome = get_biome_for_floor(floor);
     game_map->set_palette(biome ? &biome->palette : nullptr);
@@ -445,69 +481,75 @@ void GameScene::enter_floor(int floor, uint32_t seed) {
     // Door sprites — load once, reuse across floors
     if (!DoorRenderer::inst().is_loaded())
         DoorRenderer::inst().init();
+}
 
-    // 放置玩家
-    if (!rooms.empty()) {
-        auto [tx, ty] = rooms[0];
-        auto [px, py] = game_map->tile_to_pixel(tx, ty);
-        player->entity.position = {px, py};
-        player->entity.sync_rect();
+// J-3: 玩家落到出生房中心
+void GameScene::_place_player_at_entry(const std::vector<std::pair<int, int>>& rooms) {
+    if (rooms.empty()) return;
+    auto [tx, ty] = rooms[0];
+    auto [px, py] = game_map->tile_to_pixel(tx, ty);
+    player->entity.position = {px, py};
+    player->entity.sync_rect();
+}
+
+// K-1: Boss 层 — 登场配置 + 叙事覆盖 (原分支中 rooms.back() 为死读取, 已去除)
+void GameScene::_spawn_boss_floor(int floor) {
+    boss_floor = floor;
+    BossType btype = boss_type_for_floor(floor, _dungeon_seed);
+    const BossDef* bdef = get_boss_def_for_type((int)btype);  // G1 Step6: BossType → BossDef
+    boss_intro_title = bdef->title.c_str();
+    boss_intro_lore = bdef->lore.c_str();
+    boss_intro_skills = get_boss_skills_text(bdef);
+    boss_intro_color = get_boss_visual_color(bdef->visual_id);
+    boss_intro_visual = bdef->visual_id;   // M5-C: 立绘 key 派生用
+    state = GameState::BOSS_INTRO;
+
+    // D4 Step5.5: BossNarrative覆盖intro对话
+    BuildType bt = calculate_build(player.get()).identify();
+    const BossDialogue* bd = _boss.narrative.find_intro(
+        floor, _gameplay.world_state, bt, _gameplay.rels, _gameplay.story);
+    if (bd && bd->intro) {
+        _presentation.boss_intro_text = bd->intro;
     }
+}
 
-    // 放置怪物
-    const BossDef* bdef = nullptr;  // G1 Step6: BossDef replaces BossTemplate
-    if (is_boss_floor(floor)) {
-        auto pos = rooms.back();
-        boss_floor = floor;
-        BossType btype = boss_type_for_floor(floor, _dungeon_seed);
-        bdef = get_boss_def_for_type((int)btype);  // G1 Step6: BossType → BossDef
-        boss_intro_title = bdef->title.c_str();
-        boss_intro_lore = bdef->lore.c_str();
-        boss_intro_skills = get_boss_skills_text(bdef);
-        boss_intro_color = get_boss_visual_color(bdef->visual_id);
-        boss_intro_visual = bdef->visual_id;   // M5-C: 立绘 key 派生用
-        state = GameState::BOSS_INTRO;
-
-        // D4 Step5.5: BossNarrative覆盖intro对话
-        BuildType bt = calculate_build(player.get()).identify();
-        const BossDialogue* bd = _boss.narrative.find_intro(
-            floor, _gameplay.world_state, bt, _gameplay.rels, _gameplay.story);
-        if (bd && bd->intro) {
-            _presentation.boss_intro_text = bd->intro;
+// K-2: 普通层 — 刷怪 + 第 1 层保底武器 + Room Encounter 映射固化
+void GameScene::_spawn_normal_floor(int floor, const DungeonGenerator& gen,
+                                    const std::vector<std::pair<int, int>>& rooms) {
+    FloorManager::spawn_floor_monsters(floor, game_map.get(), monsters, rooms);
+    // G15: 第 1 层保底武器 — 出生房旁固定 1 把 common 武器 (空手死亡螺旋:
+    //       sim 50 局 avg_damage 42 vs 承伤 231, 拿到武器局 kills 8 vs 空手 0-2)
+    if (floor == 1 && !rooms.empty()) {
+        const WeaponDef* wdef = get_weapon_def("sword_common");
+        if (wdef) {
+            auto weapon = std::make_shared<EquipmentItem>(
+                pick_weapon_name(wdef, 0), Rarity::COMMON, "weapon",
+                (int)wdef->base_damage);
+            weapon->weapon_def_id = "sword_common";
+            auto [wtx, wty] = rooms[0];
+            ground_items.push_back({weapon, wtx + 2, wty});
         }
-    } else {
-        FloorManager::spawn_floor_monsters(floor, game_map.get(), monsters, rooms);
-        // G15: 第 1 层保底武器 — 出生房旁固定 1 把 common 武器 (空手死亡螺旋:
-        //       sim 50 局 avg_damage 42 vs 承伤 231, 拿到武器局 kills 8 vs 空手 0-2)
-        if (floor == 1 && !rooms.empty()) {
-            const WeaponDef* wdef = get_weapon_def("sword_common");
-            if (wdef) {
-                auto weapon = std::make_shared<EquipmentItem>(
-                    pick_weapon_name(wdef, 0), Rarity::COMMON, "weapon",
-                    (int)wdef->base_damage);
-                weapon->weapon_def_id = "sword_common";
-                auto [wtx, wty] = rooms[0];
-                ground_items.push_back({weapon, wtx + 2, wty});
-            }
-        }
-        state = GameState::PLAYING;
-        // Batch 2C: 进层构建 Room Encounter 映射 (房间矩形 + 门组, 一次性固化)
-        RoomEncounterCallbacks cb;
-        cb.on_locked = [this](int) {
-            show_room_message("房间封锁了!");
-            // G10.8-B4: 首次封门教学 — 新手最大断崖 (P0 调查证明连 SimAI 都会困住)
-            first_hint(*this, "encounter_lock",
-                       "房间已封锁!", "击败房内所有敌人后门自动打开");
-            EventBus::inst().emit(GameEventType::ROOM_LOCKED, this, 0, 0.0f, nullptr);
-        };
-        cb.on_cleared = [this](int) {
-            EventBus::inst().emit(GameEventType::ROOM_CLEAR, this, 0, 0.0f, nullptr);
-            /* 掉落钩子 Batch 3 接 */
-        };
-        _room_mgr.set_callbacks(cb);
-        _room_mgr.build(game_map.get(), gen.get_room_rects(), is_boss_floor(floor));
     }
+    state = GameState::PLAYING;
+    // Batch 2C: 进层构建 Room Encounter 映射 (房间矩形 + 门组, 一次性固化)
+    RoomEncounterCallbacks cb;
+    cb.on_locked = [this](int) {
+        show_room_message("房间封锁了!");
+        // G10.8-B4: 首次封门教学 — 新手最大断崖 (P0 调查证明连 SimAI 都会困住)
+        first_hint(*this, "encounter_lock",
+                   "房间已封锁!", "击败房内所有敌人后门自动打开");
+        EventBus::inst().emit(GameEventType::ROOM_LOCKED, this, 0, 0.0f, nullptr);
+    };
+    cb.on_cleared = [this](int) {
+        EventBus::inst().emit(GameEventType::ROOM_CLEAR, this, 0, 0.0f, nullptr);
+        /* 掉落钩子 Batch 3 接 */
+    };
+    _room_mgr.set_callbacks(cb);
+    _room_mgr.build(game_map.get(), gen.get_room_rects(), is_boss_floor(floor));
+}
 
+// K-3: 挑战房门 — 绑定传送门坐标与房间矩形 (仅第一个 CHALLENGE 房)
+void GameScene::_setup_challenge_portal() {
     for (auto& sr : game_map->special_rooms) {
         if (sr.type == SpecialRoomType::CHALLENGE) {
             _challenge.setup_portal(sr.portal_tx, sr.portal_ty);
@@ -515,27 +557,31 @@ void GameScene::enter_floor(int floor, uint32_t seed) {
             break;
         }
     }
+}
 
-    stairs_pos = rooms.back();
-
-    // ── G5.5: 非Boss层生成动态事件 (概率提升 + 深层多事件) ──
-    if (!fcfg->is_boss && rooms.size() > 3) {
-        float ev_chance = fcfg->is_rest_floor ? 0.70f : 0.40f; // G5.5: up from 0.50/0.25
-        ChapterConfig ch = *get_chapter_config(fcfg->chapter);
-        int ev_count = (fcfg->chapter >= 1) ? 2 : 1; // G5.5: ch2+ spawns 2 events
-        for (int ei = 0; ei < ev_count; ei++) {
-            if ((float)(rng() % 1000) / 1000.0f >= ev_chance) continue;
-            DungeonEvent ev = generate_event(floor, ch, rng);
-            int ev_room = 1 + (int)(rng() % ((uint32_t)rooms.size() - 2));
-            auto [etx, ety] = rooms[ev_room];
-            game_map->event_room_index = ev_room;
-            game_map->event_tile_x = etx;
-            game_map->event_tile_y = ety;
-            game_map->event_triggered = false;
-            game_map->event_type = ev.type;  // 存储事件类型
-        }
+// L-1: 非Boss层动态事件 (概率提升 + 深层多事件)
+void GameScene::_spawn_floor_events(int floor, const FloorConfig* fcfg,
+                                    const std::vector<std::pair<int, int>>& rooms) {
+    if (fcfg->is_boss || rooms.size() <= 3) return;
+    float ev_chance = fcfg->is_rest_floor ? 0.70f : 0.40f; // G5.5: up from 0.50/0.25
+    ChapterConfig ch = *get_chapter_config(fcfg->chapter);
+    int ev_count = (fcfg->chapter >= 1) ? 2 : 1; // G5.5: ch2+ spawns 2 events
+    for (int ei = 0; ei < ev_count; ei++) {
+        if ((float)(rng() % 1000) / 1000.0f >= ev_chance) continue;
+        DungeonEvent ev = generate_event(floor, ch, rng);
+        int ev_room = 1 + (int)(rng() % ((uint32_t)rooms.size() - 2));
+        auto [etx, ety] = rooms[ev_room];
+        game_map->event_room_index = ev_room;
+        game_map->event_tile_x = etx;
+        game_map->event_tile_y = ety;
+        game_map->event_triggered = false;
+        game_map->event_type = ev.type;  // 存储事件类型
     }
+}
 
+// L-2: NPC 生成 + 剧情推进 + 任务推进
+void GameScene::_advance_floor_progression(int floor, const FloorConfig* fcfg,
+                                           const std::vector<std::pair<int, int>>& rooms) {
     // D4 Step4: NPC 生成 (配置中有NPC的楼层)
     if (!fcfg->is_boss) _spawn_floor_npcs(floor, rooms);
 
@@ -546,7 +592,10 @@ void GameScene::enter_floor(int floor, uint32_t seed) {
     // D4 Step5.2: QuestManager 楼层推进
     _gameplay.quest_mgr.set_relationship_system(&_gameplay.rels);
     _gameplay.quest_mgr.update(_gameplay.world_state, _gameplay.story, player.get());
+}
 
+// L-3: 入场回满 + 遗物入场效果 + 攻击计时复位
+void GameScene::_refresh_player_for_floor() {
     // B11: blood_charm — 进入新楼层时使用有效最大生命
     player->combat.current_hp = get_effective_max_hp(player.get());
     if (_sim_mode) _sim_hp_prev = player->combat.current_hp; // Q3.2: 入场回满不计入治疗统计
@@ -560,7 +609,10 @@ void GameScene::enter_floor(int floor, uint32_t seed) {
 
     // M1A.1: 新遗物系统 on_floor_enter
     _combat.relic_fx().on_floor_enter(player.get());
+}
 
+// L-4: 楼层与章节入场演出 + BGM + 剧情提示
+void GameScene::_setup_floor_intros(int floor, const FloorConfig* fcfg) {
     // D4 Step3: 楼层入场演出 (非Boss层, 首次进入, new_game)
     if (!fcfg->is_boss && !_gameplay.narr_state.floor_intro_played[floor - 1]) {
         _gameplay.narr_state.floor_intro_played[floor - 1] = true;
@@ -585,7 +637,10 @@ void GameScene::enter_floor(int floor, uint32_t seed) {
         _presentation.room_msg = fcfg->story_msg;
         _presentation.room_msg_timer = 3.0f;
     }
+}
 
+// L-5: 进层日志 + 首层首遇提示 + FLOOR_ENTER 事件
+void GameScene::_announce_floor_enter(int floor, const FloorConfig* fcfg) {
     if (fcfg->is_boss) {
         LOG_INFO("进入第%d层 (Boss floor)", floor);
     } else {
@@ -647,6 +702,13 @@ void GameScene::_process(double delta) {
         _collect_sim_stats();
         return;
     }
+
+    // G27: 场景切换是延后的 — change_scene 之后、真正 swap 之前, 那一轮的
+    // process_input 仍把 is_action_just_pressed 派发给旧场景 agent, 可能再置位
+    // 全局 sim_stuck_watchdog; 新局首帧便误判结算 (实测批次 run1 首帧 STUCK,
+    // 看门狗 this 仍指上一局 agent)。此处新局首帧强制清零。
+    // 安全: 合法看门狗需 累计卡死 > 120s, 首帧 _stuck_total=0 不可能触发。
+    if (_sim_mode && _sim_wall_frames <= 1) sim_stuck_watchdog = 0;
 
     // G13: 卡死看门狗 — 传送连续失败即判定本局不可恢复, 提前结算。
     // 不设 _sim_wall_timeout, 结算分类落到末尾 else 分支 → STUCK_RECOVERED。
@@ -2118,14 +2180,27 @@ void GameScene::_collect_sim_stats() {
         if (sim.all_builds()) {
             g_sim_build_type = sim.next_build_type();
         }
-        uint32_t next_seed = sim.next_seed();
-        _dungeon_seed = next_seed;
-        seed_rng(next_seed);
-        new_game();
+        // G27: 走 change_scene 管线, 不直调 new_game() — 见 _restart_sim_run
+        _restart_sim_run();
     } else {
         sim.finalize();
         if (get_tree()) get_tree()->quit();
     }
+}
+
+// G27: 批次 sim 局间独立性 — 每局新建 GameScene 走 change_scene 管线.
+// 根因实测: 直调 new_game() 复用同一 GameScene 对象, 场景级运行时状态跨局残留
+// (seed 1234609: standalone 3层/累计卡死76.3s vs 批次 run1 2层/119.7s;
+//  floor1 map_seed 字节级相同却在第 1 帧分叉). 新建场景走 main.cpp:348-351
+// 完全同一路径 (_ready→init_events→ServiceLocator::provide), 独立性可证,
+// 而非靠逐字段枚举重置 (旧 _sim_wall_frames/_unstuck_* 重置清单必然漏项).
+// 时序安全: 旧场景析构 unregister_events 先于新场景 _ready init_events,
+// 且 _collect_sim_stats 的 5 个调用点全部紧随 return, 不在旧场景上继续推进.
+void GameScene::_restart_sim_run() {
+    auto fresh = std::make_shared<GameScene>();
+    fresh->name = "GameScene";
+    fresh->new_game();
+    get_tree()->change_scene(fresh);
 }
 
 // ============================================================

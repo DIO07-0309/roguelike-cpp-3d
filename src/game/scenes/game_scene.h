@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include <memory>
 #include <vector>
+#include <utility>
 #include <string>
 #include <unordered_map>
 #include <map>
@@ -15,6 +16,7 @@
 class DecisionAgent;
 class BTAgent;
 class PlayerAvatar;   // A5: 渲染路径懒建, 仅前向声明
+struct FloorConfig;   // G28: enter_floor 子步骤参数, 仅用指针
 
 namespace hd2d { struct SceneView; }   // G12-4: 3D 只读视图 (定义在 rendering3d/)
 #include "item.h"
@@ -296,6 +298,26 @@ private:
     void _setup_boss_arena_terrain(const class DungeonGenerator& gen, int floor);
     float _lava_tick_timer = 0.0f;   // M4b: 熔岩灼烧 0.5s 节拍
 
+    // G28: enter_floor 拆分 (255 行 god function → 调度骨架 + ≤40 行子步骤)
+    // 子步骤按 enter_floor 原顺序调用, 执行顺序零改动
+    void _reset_floor_play_state();
+    void _reset_floor_subsystems();
+    void _roll_floor_seed(uint32_t seed);
+    void _ensure_rest_fountain(const FloorConfig* fcfg);
+    void _setup_floor_visuals(int floor);
+    void _place_player_at_entry(const std::vector<std::pair<int, int>>& rooms);
+    void _spawn_boss_floor(int floor);
+    void _spawn_normal_floor(int floor, const class DungeonGenerator& gen,
+                             const std::vector<std::pair<int, int>>& rooms);
+    void _setup_challenge_portal();
+    void _spawn_floor_events(int floor, const FloorConfig* fcfg,
+                             const std::vector<std::pair<int, int>>& rooms);
+    void _advance_floor_progression(int floor, const FloorConfig* fcfg,
+                                    const std::vector<std::pair<int, int>>& rooms);
+    void _refresh_player_for_floor();
+    void _setup_floor_intros(int floor, const FloorConfig* fcfg);
+    void _announce_floor_enter(int floor, const FloorConfig* fcfg);
+
     // 特殊房间 (委托给 InteractionHandler)
 
     // Relic 面板
@@ -493,6 +515,8 @@ private:
     bool _sim_mode = false;
     bool _use_bt_agent = false;        // G8.1: true = BT, false = DecisionAgent
     void _collect_sim_stats();
+    // G27: 批次 sim 局间独立 — 每局新建 GameScene 走 change_scene 管线
+    void _restart_sim_run();
     // v1.5.0-P0: sim goto-floor 玩家强度对标 (bot 裸装进深层被秒, 取证无意义)
     void _sim_goto_scale_player(int start_floor);
     int  _sim_wall_frames = 0;         // M2-E: 帧数兜底超时 (36000f=600s, 替代 GetTime 墙钟)
