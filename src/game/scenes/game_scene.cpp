@@ -3330,64 +3330,98 @@ void GameScene::_draw_entities() {
             player->entity.rect.y + player->entity.rect.height/2)
         : std::pair<int,int>{0, 0};
     int ptx = ppl.first, pty = ppl.second;
+    _draw_monsters(ptx, pty);
+    _draw_player_entity();
+    _draw_npcs(ptx, pty);
+    _draw_event_room_hint(ptx, pty);
+}
+
+void GameScene::_draw_monsters(int ptx, int pty) {
     for (auto& m : monsters) {
-        // Phase 1: 实体中心 tile 不可见 → 跳过渲染
-        bool label_visible = true;
-        if (game_map) {
-            auto [mtx, mty] = game_map->pixel_to_tile(
-                m->entity.rect.x + m->entity.rect.width / 2,
-                m->entity.rect.y + m->entity.rect.height / 2);
-            if (!game_map->isVisible(mtx, mty)) continue;
-            // M6-v2d: 墙后名条裁剪 — 玩家→怪无视线则隐藏名条 (本体仍画)
-            label_visible = game_map->has_line_of_sight(ptx, pty, mtx, mty);
-        }
-        m->draw(_cam_x, _cam_y);
-        // F10.2: Weak point glow
-        if (m->is_weak_point && m->combat.is_alive) {
-            float ex = m->entity.rect.x + m->entity.rect.width/2 - _cam_x;
-            float ey = m->entity.rect.y + m->entity.rect.height/2 - _cam_y;
-            float pulse = 14.0f + sinf((float)GetTime() * 8.0f) * 4.0f;
-            DrawRing({ex, ey}, pulse - 3, pulse + 3, 0, 360, 16,
-                {255, 120, 30, 180});
-            DrawCircleLines(ex, ey, pulse, {255, 80, 20, 200});
-        }
-        float mx = m->entity.rect.x + m->entity.rect.width/2 - _cam_x;
-        float my = m->entity.rect.y - 14 - _cam_y;
-        // G9: name label above monster (small, tinted by type)
-        Color nc = m->is_boss ? Color{255,80,40,200}
-                 : m->is_elite ? Color{255,180,60,180}
-                 : Color{200,200,200,140};
-        if (g_font_loaded && !m->name.empty() && label_visible) {
-            float tw = MeasureTextEx(g_font_small, m->name.c_str(), 10, 1).x;
-            DrawTextEx(g_font_small, m->name.c_str(),
-                {mx - tw/2, my - 4}, 10, 1, nc);
-        }
-        _renderer.draw_monster_buffs(*m,
-            m->entity.position.x - _cam_x,
-            m->entity.position.y - _cam_y);
-        // M4a: Boss 连招技能渲染 (弹幕光球 + 扇形预警 + 瞬移落点)
-        if (m->is_boss && m->ai) {
-            if (auto* bai = dynamic_cast<BossAI*>(m->ai)) {
-                if (bai->barrage_skill())
-                    bai->barrage_skill()->draw(_cam_x, _cam_y);
-                if (bai->cone_skill() && player)
-                    bai->cone_skill()->draw(m.get(), player.get(), _cam_x, _cam_y);
-                if (bai->blink_skill())
-                    bai->blink_skill()->draw(_cam_x, _cam_y);
-                if (bai->whirlwind_skill())
-                    bai->whirlwind_skill()->draw(m.get(), _cam_x, _cam_y);
-            }
-        }
-        // D2 Step4: Tank守护连线 (淡蓝色)
-        if (m->ai && m->team_role == TeamRole::FRONTLINE && m->ai->_protect_target) {
-            float x1 = m->entity.rect.x + m->entity.rect.width/2 - _cam_x;
-            float y1 = m->entity.rect.y + m->entity.rect.height/2 - _cam_y;
-            auto* t = m->ai->_protect_target;
-            float x2 = t->entity.rect.x + t->entity.rect.width/2 - _cam_x;
-            float y2 = t->entity.rect.y + t->entity.rect.height/2 - _cam_y;
-            DrawLineEx({x1, y1}, {x2, y2}, 1.5f, {60, 140, 255, 100});
+        _draw_monster(m, ptx, pty);
+    }
+}
+
+void GameScene::_draw_monster(std::unique_ptr<Monster>& m, int ptx, int pty) {
+    // Phase 1: 实体中心 tile 不可见 → 跳过渲染
+    bool label_visible = true;
+    if (game_map) {
+        auto [mtx, mty] = game_map->pixel_to_tile(
+            m->entity.rect.x + m->entity.rect.width / 2,
+            m->entity.rect.y + m->entity.rect.height / 2);
+        if (!game_map->isVisible(mtx, mty)) return;
+        // M6-v2d: 墙后名条裁剪 — 玩家→怪无视线则隐藏名条 (本体仍画)
+        label_visible = game_map->has_line_of_sight(ptx, pty, mtx, mty);
+    }
+    m->draw(_cam_x, _cam_y);
+    _draw_monster_weak_point(m);
+    float mx = m->entity.rect.x + m->entity.rect.width/2 - _cam_x;
+    float my = m->entity.rect.y - 14 - _cam_y;
+    _draw_monster_name_label(m, mx, my, label_visible);
+    _draw_monster_buff_overlay(m);
+    _draw_monster_boss_skills(m);
+    _draw_monster_protect_link(m);
+}
+
+void GameScene::_draw_monster_weak_point(std::unique_ptr<Monster>& m) {
+    // F10.2: Weak point glow
+    if (m->is_weak_point && m->combat.is_alive) {
+        float ex = m->entity.rect.x + m->entity.rect.width/2 - _cam_x;
+        float ey = m->entity.rect.y + m->entity.rect.height/2 - _cam_y;
+        float pulse = 14.0f + sinf((float)GetTime() * 8.0f) * 4.0f;
+        DrawRing({ex, ey}, pulse - 3, pulse + 3, 0, 360, 16,
+            {255, 120, 30, 180});
+        DrawCircleLines(ex, ey, pulse, {255, 80, 20, 200});
+    }
+}
+
+void GameScene::_draw_monster_name_label(std::unique_ptr<Monster>& m, float mx, float my, bool label_visible) {
+    // G9: name label above monster (small, tinted by type)
+    Color nc = m->is_boss ? Color{255,80,40,200}
+             : m->is_elite ? Color{255,180,60,180}
+             : Color{200,200,200,140};
+    if (g_font_loaded && !m->name.empty() && label_visible) {
+        float tw = MeasureTextEx(g_font_small, m->name.c_str(), 10, 1).x;
+        DrawTextEx(g_font_small, m->name.c_str(),
+            {mx - tw/2, my - 4}, 10, 1, nc);
+    }
+}
+
+void GameScene::_draw_monster_buff_overlay(std::unique_ptr<Monster>& m) {
+    _renderer.draw_monster_buffs(*m,
+        m->entity.position.x - _cam_x,
+        m->entity.position.y - _cam_y);
+}
+
+void GameScene::_draw_monster_boss_skills(std::unique_ptr<Monster>& m) {
+    // M4a: Boss 连招技能渲染 (弹幕光球 + 扇形预警 + 瞬移落点)
+    if (m->is_boss && m->ai) {
+        if (auto* bai = dynamic_cast<BossAI*>(m->ai)) {
+            if (bai->barrage_skill())
+                bai->barrage_skill()->draw(_cam_x, _cam_y);
+            if (bai->cone_skill() && player)
+                bai->cone_skill()->draw(m.get(), player.get(), _cam_x, _cam_y);
+            if (bai->blink_skill())
+                bai->blink_skill()->draw(_cam_x, _cam_y);
+            if (bai->whirlwind_skill())
+                bai->whirlwind_skill()->draw(m.get(), _cam_x, _cam_y);
         }
     }
+}
+
+void GameScene::_draw_monster_protect_link(std::unique_ptr<Monster>& m) {
+    // D2 Step4: Tank守护连线 (淡蓝色)
+    if (m->ai && m->team_role == TeamRole::FRONTLINE && m->ai->_protect_target) {
+        float x1 = m->entity.rect.x + m->entity.rect.width/2 - _cam_x;
+        float y1 = m->entity.rect.y + m->entity.rect.height/2 - _cam_y;
+        auto* t = m->ai->_protect_target;
+        float x2 = t->entity.rect.x + t->entity.rect.width/2 - _cam_x;
+        float y2 = t->entity.rect.y + t->entity.rect.height/2 - _cam_y;
+        DrawLineEx({x1, y1}, {x2, y2}, 1.5f, {60, 140, 255, 100});
+    }
+}
+
+void GameScene::_draw_player_entity() {
     if (player) {
         auto* player_avatar = _avatars.player_avatar();
         if (player_avatar && player_avatar->active()) {
@@ -3396,7 +3430,9 @@ void GameScene::_draw_entities() {
             player->draw_no_cam(_cam_x, _cam_y, game_map.get());
         }
     }
+}
 
+void GameScene::_draw_npcs(int ptx, int pty) {
     // D4 Step4: NPC — sprite (floor-based lookup) + name label
     static const struct { int floor; const char* name; } _npc_lookup[] = {
         {2,"埃德加"},{3,"瑞卡"},{4,"卡利安"},{6,"卡兹"},{7,"泰伦斯"},
@@ -3414,23 +3450,7 @@ void GameScene::_draw_entities() {
             nn = lk.name;
             break;
         }
-        float s = TILE_SIZE - 4;
-        float sx = nx - s/2, sy = ny - s/2;
-        SkeletonAvatar* npc_sk = npc_avatar(_npc_state[i].id);
-        if (npc_sk && npc_sk->active()) {
-            npc_sk->draw_at({nx, ny + s * 0.5f}, 1.f, 255);
-        } else {
-            SpriteDef sdef;
-            Texture2D stex = ResourceManager::inst().sprite_by_key(
-                npc_sprite_key(current_floor), sdef);
-            if (stex.id > 0) {
-                SpriteRenderer::draw_sprite(stex, sdef, 0, {sx, sy, s, s});
-            } else {
-                float pulse = 4 + sinf((float)GetTime() * 4) * 2;
-                DrawCircle(nx, ny - 10, pulse, {100, 220, 140, 180});
-                DrawCircle(nx, ny - 10, 3, {60, 180, 80, 255});
-            }
-        }
+        _draw_npc_sprite(i, nx, ny);
         // G9: NPC name label
         if (g_font_loaded) {
             float tw = MeasureTextEx(g_font_small, nn, 10, 1).x;
@@ -3440,7 +3460,29 @@ void GameScene::_draw_entities() {
                 _draw_interact_hint("E 对话", nx, ny - 42);
         }
     }
+}
 
+void GameScene::_draw_npc_sprite(int i, float nx, float ny) {
+    float s = TILE_SIZE - 4;
+    float sx = nx - s/2, sy = ny - s/2;
+    SkeletonAvatar* npc_sk = npc_avatar(_npc_state[i].id);
+    if (npc_sk && npc_sk->active()) {
+        npc_sk->draw_at({nx, ny + s * 0.5f}, 1.f, 255);
+    } else {
+        SpriteDef sdef;
+        Texture2D stex = ResourceManager::inst().sprite_by_key(
+            npc_sprite_key(current_floor), sdef);
+        if (stex.id > 0) {
+            SpriteRenderer::draw_sprite(stex, sdef, 0, {sx, sy, s, s});
+        } else {
+            float pulse = 4 + sinf((float)GetTime() * 4) * 2;
+            DrawCircle(nx, ny - 10, pulse, {100, 220, 140, 180});
+            DrawCircle(nx, ny - 10, 3, {60, 180, 80, 255});
+        }
+    }
+}
+
+void GameScene::_draw_event_room_hint(int ptx, int pty) {
     // G9.4: 事件房间未触发 → E 调查
     if (game_map && game_map->event_room_index >= 0 && !game_map->event_triggered) {
         if (ptx == game_map->event_tile_x && pty == game_map->event_tile_y) {

@@ -498,6 +498,19 @@ private:
     // 渲染辅助 (保留 GameScene 中的轻量级方法)
     void _draw_map();
     void _draw_entities();
+    // G30-F: _draw_entities 子步骤 (128->13 行, 绘制顺序零改动)
+    void _draw_monsters(int ptx, int pty);
+    void _draw_monster(std::unique_ptr<Monster>& m, int ptx, int pty);
+    void _draw_monster_weak_point(std::unique_ptr<Monster>& m);
+    void _draw_monster_name_label(std::unique_ptr<Monster>& m, float mx, float my,
+                                  bool label_visible);
+    void _draw_monster_buff_overlay(std::unique_ptr<Monster>& m);
+    void _draw_monster_boss_skills(std::unique_ptr<Monster>& m);
+    void _draw_monster_protect_link(std::unique_ptr<Monster>& m);
+    void _draw_player_entity();
+    void _draw_npcs(int ptx, int pty);
+    void _draw_npc_sprite(int i, float nx, float ny);
+    void _draw_event_room_hint(int ptx, int pty);
     void _npc_avatars_tick();   // A6-S2 批次6: NPC 骨骼懒建+idle 驱动 (白名单取自 _avatars)
     void _draw_ground_items();
     void _draw_ground_item(const DroppedItem& d);
