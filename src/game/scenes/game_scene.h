@@ -234,6 +234,19 @@ public:
     void _tick_enemy_projectiles(float dt);
     void _tick_world_ambience(float dt);
 
+    // G30-I: _process 子步骤 (挑战室/竞技场/世界视图, 纯结构搬运, 执行顺序零改动)
+    // _tick_challenge_arena 返回 true = 已进竞技场分支, 调度骨架据此短路 (等价原 return)
+    void _tick_challenge_dungeon(float dt);
+    void _tick_teleport_fade(float dt);
+    bool _tick_challenge_arena(float dt);
+    void _tick_arena_challenge(float dt);
+    void _tick_arena_player(float dt);
+    void _tick_arena_tail(float dt);
+    void _tick_world_entities(float dt);
+    void _tick_player_fov();
+    void _tick_ambient_view(float dt);
+    void _tick_boss_fov();
+
     // 场景间通信
     void enter_floor(int floor, uint32_t seed = 0);
     // Batch 3I: 挑战竞技场往返 (场景级转换; G9.2 移至 public 以支持回归测试驱动)

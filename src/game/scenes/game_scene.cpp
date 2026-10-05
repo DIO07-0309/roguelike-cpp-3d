@@ -1005,6 +1005,44 @@ void GameScene::_process(double delta) {
         return;
     }
 
+    _tick_challenge_dungeon(dt);
+
+    if (_challenge.phase() == ChallengePhase::PORTAL_ACTIVE ||
+        _challenge.phase() == ChallengePhase::CLEARED ||
+        _world_mode == WorldMode::CHALLENGE_ARENA) {
+        _portal_pulse_timer += dt;
+    }
+    _tick_teleport_fade(dt);
+
+    if (_tick_challenge_arena(dt)) return;
+
+    _tick_world_entities(dt);
+
+    _tick_player_fov();
+
+    _tick_ambient_view(dt);
+
+    _tick_boss_fov();
+
+    _tick_player_autonomy(dt);
+
+    _tick_player_combat(dt);
+
+    _tick_enemy_projectiles(dt);
+
+    // G25-A: 尾段纯计时器衰减 (FlowDirector/房间消息/横幅/gamble/事件/对话/Quest/入场)
+    _tick_decay_timers(dt);
+
+    _tick_world_ambience(dt);
+
+    // D2: Combo 窗口衰减 — 超过 WINDOW 未命中则重置
+    player->combo.tick(dt);
+
+    // D6 Step5: Presentation tick (shake/freeze/damage/message/intro)
+    _presentation.tick(dt);
+}
+
+void GameScene::_tick_challenge_dungeon(float dt) {
     // Batch 3F: Challenge Room tick (runs in both DUNGEON and CHALLENGE_ARENA)
     if (player && game_map && _world_mode == WorldMode::DUNGEON &&
         _challenge.phase() != ChallengePhase::INACTIVE &&
@@ -1037,12 +1075,9 @@ void GameScene::_process(double delta) {
                 ChallengeRoomController::reward_message(_challenge.last_reward()).c_str(),
                 3.0f);
     }
+}
 
-    if (_challenge.phase() == ChallengePhase::PORTAL_ACTIVE ||
-        _challenge.phase() == ChallengePhase::CLEARED ||
-        _world_mode == WorldMode::CHALLENGE_ARENA) {
-        _portal_pulse_timer += dt;
-    }
+void GameScene::_tick_teleport_fade(float dt) {
     if (_teleport_fade_timer > 0) {
         _teleport_fade_timer -= dt;
         if (_teleport_fade_timer <= 0) {
@@ -1058,71 +1093,88 @@ void GameScene::_process(double delta) {
             }
         }
     }
+}
 
+bool GameScene::_tick_challenge_arena(float dt) {
     if (_world_mode == WorldMode::CHALLENGE_ARENA) {
-        int pity_before = _challenge_pity_streak;
-        ChallengePhase phase_before = _challenge.phase();
-        _challenge.tick(dt, game_map.get(), player.get(), monsters,
-                        current_floor, _dungeon_seed, 0, ground_items,
-                        &_challenge_pity_streak);
-        if (_challenge_pity_streak != pity_before)
-            g_meta.set_challenge_pity_streak(_challenge_pity_streak);
-        if (_challenge.phase() == ChallengePhase::ARMED) {
-            _challenge.on_doors_locked();
-        }
-        if (_challenge.phase() == ChallengePhase::CLEARED) {
-            _return_portal_tx_arena = _challenge.return_portal_tx();
-            _return_portal_ty_arena = _challenge.return_portal_ty();
-        }
-        if (phase_before != ChallengePhase::CLEARED &&
-            _challenge.phase() == ChallengePhase::CLEARED)
-            _presentation.show_message(
-                ChallengeRoomController::reward_message(_challenge.last_reward()).c_str(),
-                3.0f);
-        // Player movement/attack/input — monsters is already arena monsters
-        _player_ctrl.tick(dt);  // includes monster AI (gated by time_stop_remaining)
-        // Weapon cooldown tick + specials + projectiles
-        if (player) {
-            player->weapon.tick(dt);
-            if (player->weapon.range_indicator_timer > 0.0f)
-                player->weapon.range_indicator_timer -= dt;
-            std::vector<Monster*> mlist;
-            for (auto& m : monsters) if (m && m->combat.is_alive) mlist.push_back(m.get());
-            auto spec_results = WeaponExecutor::tick_specials(player.get(), mlist, dt);
-            auto proj_results = WeaponExecutor::tick_projectiles(projectiles, mlist, dt, game_map.get());
-            for (auto& r : spec_results) {
-                _boss.dmg_done += r.damage;
-                _presentation.spawn_damage(r.hit_point.x, r.hit_point.y, r.damage,
-                    r.is_crit ? Color{255,220,30,255} : Color{100,200,255,255}, 0.5f);
-                // G10.5-B B4: 特殊段每击命中 VFX (原 5/10 连击零反馈)
-                VFXServer svfx;
-                svfx.hit_flash(r.hit_point.x, r.hit_point.y, 12.0f);
-                for (auto& e : svfx.effects) active_effects.push_back(e);
-            }
-            for (auto& r : proj_results) {
-                _boss.dmg_done += r.damage;
-                _presentation.spawn_damage(r.hit_point.x, r.hit_point.y, r.damage,
-                    Color{255,180,50,255}, 0.5f);
-            }
-        }
-        _cleanup_dead_monsters();
-        _apply_pending_damage();
-        // VFX tick — must run in arena too or effects stick forever
-        for (auto& fx : active_effects) fx.elapsed += dt;
-        active_effects.erase(std::remove_if(active_effects.begin(), active_effects.end(),
-            [](auto& fx) { return fx.elapsed >= fx.duration + fx.start_delay; }),
-            active_effects.end());
-        if (player && game_map) {
-            auto [tx, ty] = game_map->pixel_to_tile(
-                player->entity.rect.x + player->entity.rect.width / 2,
-                player->entity.rect.y + player->entity.rect.height / 2);
-            game_map->update_fov(tx, ty, _fov_radius);
-        }
-        player->combo.tick(dt);
-        _presentation.tick(dt);
-        return;
+        _tick_arena_challenge(dt);
+        _tick_arena_player(dt);
+        _tick_arena_tail(dt);
+        return true;
     }
+    return false;
+}
 
+void GameScene::_tick_arena_challenge(float dt) {
+    int pity_before = _challenge_pity_streak;
+    ChallengePhase phase_before = _challenge.phase();
+    _challenge.tick(dt, game_map.get(), player.get(), monsters,
+                    current_floor, _dungeon_seed, 0, ground_items,
+                    &_challenge_pity_streak);
+    if (_challenge_pity_streak != pity_before)
+        g_meta.set_challenge_pity_streak(_challenge_pity_streak);
+    if (_challenge.phase() == ChallengePhase::ARMED) {
+        _challenge.on_doors_locked();
+    }
+    if (_challenge.phase() == ChallengePhase::CLEARED) {
+        _return_portal_tx_arena = _challenge.return_portal_tx();
+        _return_portal_ty_arena = _challenge.return_portal_ty();
+    }
+    if (phase_before != ChallengePhase::CLEARED &&
+        _challenge.phase() == ChallengePhase::CLEARED)
+        _presentation.show_message(
+            ChallengeRoomController::reward_message(_challenge.last_reward()).c_str(),
+            3.0f);
+}
+
+void GameScene::_tick_arena_player(float dt) {
+    // Player movement/attack/input — monsters is already arena monsters
+    _player_ctrl.tick(dt);  // includes monster AI (gated by time_stop_remaining)
+    // Weapon cooldown tick + specials + projectiles
+    if (player) {
+        player->weapon.tick(dt);
+        if (player->weapon.range_indicator_timer > 0.0f)
+            player->weapon.range_indicator_timer -= dt;
+        std::vector<Monster*> mlist;
+        for (auto& m : monsters) if (m && m->combat.is_alive) mlist.push_back(m.get());
+        auto spec_results = WeaponExecutor::tick_specials(player.get(), mlist, dt);
+        auto proj_results = WeaponExecutor::tick_projectiles(projectiles, mlist, dt, game_map.get());
+        for (auto& r : spec_results) {
+            _boss.dmg_done += r.damage;
+            _presentation.spawn_damage(r.hit_point.x, r.hit_point.y, r.damage,
+                r.is_crit ? Color{255,220,30,255} : Color{100,200,255,255}, 0.5f);
+            // G10.5-B B4: 特殊段每击命中 VFX (原 5/10 连击零反馈)
+            VFXServer svfx;
+            svfx.hit_flash(r.hit_point.x, r.hit_point.y, 12.0f);
+            for (auto& e : svfx.effects) active_effects.push_back(e);
+        }
+        for (auto& r : proj_results) {
+            _boss.dmg_done += r.damage;
+            _presentation.spawn_damage(r.hit_point.x, r.hit_point.y, r.damage,
+                Color{255,180,50,255}, 0.5f);
+        }
+    }
+}
+
+void GameScene::_tick_arena_tail(float dt) {
+    _cleanup_dead_monsters();
+    _apply_pending_damage();
+    // VFX tick — must run in arena too or effects stick forever
+    for (auto& fx : active_effects) fx.elapsed += dt;
+    active_effects.erase(std::remove_if(active_effects.begin(), active_effects.end(),
+        [](auto& fx) { return fx.elapsed >= fx.duration + fx.start_delay; }),
+        active_effects.end());
+    if (player && game_map) {
+        auto [tx, ty] = game_map->pixel_to_tile(
+            player->entity.rect.x + player->entity.rect.width / 2,
+            player->entity.rect.y + player->entity.rect.height / 2);
+        game_map->update_fov(tx, ty, _fov_radius);
+    }
+    player->combo.tick(dt);
+    _presentation.tick(dt);
+}
+
+void GameScene::_tick_world_entities(float dt) {
     // D6 Step7: 玩家移动/交互/怪物AI — 委托给 PlayerController
     _player_ctrl.tick(dt);
 
@@ -1131,7 +1183,9 @@ void GameScene::_process(double delta) {
 
     // Door animation update
     DoorRenderer::inst().update(dt);
+}
 
+void GameScene::_tick_player_fov() {
     // Phase 1: FOV — 玩家跨 tile 时更新
     if (player && game_map) {
         auto [tx, ty] = game_map->pixel_to_tile(
@@ -1161,7 +1215,9 @@ void GameScene::_process(double delta) {
                 _kill_streak_timer > 0 ? 1.0f : 0.0f);
         }
     }
+}
 
+void GameScene::_tick_ambient_view(float dt) {
     // G11.2: 氛围层 tick — 粒子飘动 + 足迹渐隐 + 击杀势头衰减
     if (game_map) {
         _ambient.update(dt, game_map->pixel_width, game_map->pixel_height,
@@ -1169,7 +1225,9 @@ void GameScene::_process(double delta) {
         game_map->tick_footsteps(dt);
         if (_kill_streak_timer > 0) _kill_streak_timer -= dt;
     }
+}
 
+void GameScene::_tick_boss_fov() {
     // Boss 位置 + FOV — 始终追踪
     if (player && game_map) {
         Monster* b = _get_boss();
@@ -1179,23 +1237,6 @@ void GameScene::_process(double delta) {
             game_map->update_boss_fov(btx, bty, FOV_RADIUS_DEFAULT);
         }
     }
-
-    _tick_player_autonomy(dt);
-
-    _tick_player_combat(dt);
-
-    _tick_enemy_projectiles(dt);
-
-    // G25-A: 尾段纯计时器衰减 (FlowDirector/房间消息/横幅/gamble/事件/对话/Quest/入场)
-    _tick_decay_timers(dt);
-
-    _tick_world_ambience(dt);
-
-    // D2: Combo 窗口衰减 — 超过 WINDOW 未命中则重置
-    player->combo.tick(dt);
-
-    // D6 Step5: Presentation tick (shake/freeze/damage/message/intro)
-    _presentation.tick(dt);
 }
 
 void GameScene::_tick_player_autonomy(float dt) {
