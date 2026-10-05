@@ -325,178 +325,222 @@ void PlayerController::handle_input(const InputMap& input) {
     if (gs._is_action_just_pressed(input, "dodge"))
         _try_start_dodge(gs, input);
 
-    if (gs._is_action_just_pressed(input,"attack")) {
-        if (gs._sim_mode) {
-            // Q3.10: 武器命中形状朝前 (长枪矩形/扇形) — 攻击前须面向最近目标, 否则原地空挥
-            // 实锤: sim 自动装备长枪后 F1 被围, 朝旧方向空挥 180s, 怪血量纹丝不动
-            float px = gs.player->entity.rect.x + gs.player->entity.rect.width/2;
-            float py = gs.player->entity.rect.y + gs.player->entity.rect.height/2;
-            float bd = 1e18f;
-            Direction fd = gs.player->direction;
-            for (auto& m : gs.monsters) {
-                if (!m || !m->combat.is_alive) continue;
-                float dx = m->entity.rect.x + m->entity.rect.width/2 - px;
-                float dy = m->entity.rect.y + m->entity.rect.height/2 - py;
-                float dd = dx*dx + dy*dy;
-                if (dd < bd) {
-                    bd = dd;
-                    fd = (fabsf(dx) > fabsf(dy))
-                         ? (dx > 0 ? Direction::RIGHT : Direction::LEFT)
-                         : (dy > 0 ? Direction::DOWN : Direction::UP);
-                }
-            }
-            gs.player->direction = fd;
-        }
-        player_attack();
-    }
-    else if (gs._is_action_just_pressed(input,"pickup")) {
-        // E 键门交互 — 只开 CLOSED 门 (LOCKED 不可开)
-        {
-            auto [ptx, pty] = gs.game_map->pixel_to_tile(
-                gs.player->entity.rect.x + gs.player->entity.rect.width/2,
-                gs.player->entity.rect.y + gs.player->entity.rect.height/2);
-            constexpr int dx4[] = {0, 0, -1, 1};
-            constexpr int dy4[] = {-1, 1, 0, 0};
-            for (int i = 0; i < 4; i++) {
-                int nx = ptx + dx4[i], ny = pty + dy4[i];
-                if (gs.game_map->door_state_at(nx, ny) == DoorState::CLOSED) {
-                    gs.game_map->set_door_state(nx, ny, DoorState::OPEN);
-                    gs.on_door_opened();
-                    gs.get_tree()->get_audio()->play_sfx("door_open", 0.5f);
-                    return;
-                }
-            }
-        }
-        // D4 Step4: NPC交互 + D4 Step1: 事件交互 + B8: 特殊房间
-        {
-            auto [ptx, pty] = gs.game_map->pixel_to_tile(
-                gs.player->entity.rect.x + gs.player->entity.rect.width/2,
-                gs.player->entity.rect.y + gs.player->entity.rect.height/2);
-            for (int i = 0; i < gs._npc_count; i++) {
-                int dtx = abs(ptx - gs._npc_tile_x[i]);
-                int dty = abs(pty - gs._npc_tile_y[i]);
-                if (dtx <= 1 && dty <= 1 && !gs._npc_state[i].finished) {
-                    gs._current_npc_index = i; gs._start_dialogue(i); return;
-                }
-            }
-        }
-        if (gs.game_map && gs.game_map->event_room_index >= 0 && !gs.game_map->event_triggered) {
-            auto [tx, ty] = gs.game_map->pixel_to_tile(
-                gs.player->entity.rect.x + gs.player->entity.rect.width/2,
-                gs.player->entity.rect.y + gs.player->entity.rect.height/2);
-            if (tx == gs.game_map->event_tile_x && ty == gs.game_map->event_tile_y) {
-                gs._start_event_presentation(gs.game_map->event_type);
-                return;
-            }
-        }
-        // Batch 3I: Challenge Room — Portal interaction (portal is on wall OUTSIDE room rect)
-        {
-            auto [ptx, pty] = gs.game_map->pixel_to_tile(
-                gs.player->entity.rect.x + gs.player->entity.rect.width/2,
-                gs.player->entity.rect.y + gs.player->entity.rect.height/2);
-            // Arena return portal (arena map has no special_rooms, check controller directly)
-            if (gs._world_mode == WorldMode::CHALLENGE_ARENA &&
-                gs._challenge.phase() == ChallengePhase::CLEARED &&
-                gs._challenge.return_portal_tx() >= 0) {
-                int dx = abs(ptx - gs._challenge.return_portal_tx());
-                int dy = abs(pty - gs._challenge.return_portal_ty());
-                if (dx + dy <= 1) {
-                    gs.exit_challenge_arena();
-                    gs.get_tree()->get_audio()->play_sfx("door_open", 0.6f);
-                    return;
-                }
-            }
-            for (auto& sr : gs.game_map->special_rooms) {
-                if (sr.type != SpecialRoomType::CHALLENGE) continue;
-                if (gs._challenge.phase() == ChallengePhase::PORTAL_ACTIVE) {
-                    int dx = abs(ptx - sr.portal_tx);
-                    int dy = abs(pty - sr.portal_ty);
-                    if (dx + dy <= 1) {
-                        if (!gs.challenge_choice_active) {
-                            gs.challenge_choice_active = true;
-                            gs.challenge_choice_cursor = 0;
-                            gs.get_tree()->get_audio()->play_sfx("ui_click", 0.35f);
-                        }
-                        return;
-                    }
-                }
-            }
-        SpecialRoom* room = gs.game_map->get_special_room_at(ptx, pty);
-        // P1-A4-fix: sim 模式禁入赌局面板 — AI 无"关闭面板"决策, 进即永久卡死
-        // (v9 探针实锤: gmb=1 后 AI 被面板锁死, 怪在外面磨死 = M4 基线 DEATH_MONSTER 62% 根因)
-        if (room && room->type == SpecialRoomType::GAMBLER && !gs._sim_mode) {
-                if (!gs.gamble_open) {
-                    gs.gamble_open = true;
-                    gs.gamble_cursor = 0;
-                    gs.get_tree()->get_audio()->play_sfx("ui_click", 0.35f);
-                }
-                return;
-            }
-        }
-        std::string result = gs._interact.try_interact(gs.player.get(), gs.game_map.get(), gs.ground_items);
-        if (!result.empty()) {
-            gs._gameplay.flow.mark_reward();
-            bool is_relic = (result.find("圣物") != std::string::npos);
-            gs._presentation.room_msg = result;
-            gs._presentation.room_msg_timer = is_relic ? 3.5f : 2.5f;
-            // Q4.3: 拾取音效 + 拾取闪光
-            if (result.find("拾取: ") == 0) {
-                gs._sim_items_picked++;   // M2-C: 拾取计数 (sim 仪表盘)
-                gs.get_tree()->get_audio()->play_sfx("pickup", 0.55f);
-                float px = gs.player->entity.rect.x + gs.player->entity.rect.width/2;
-                float py = gs.player->entity.rect.y + gs.player->entity.rect.height/2;
-                VFXServer vfx;
-                vfx.ring(px, py, 22.0f, is_relic ? Color{255,220,80,220} : Color{255,200,120,200}, 2, 0.35f);
-                vfx.spark_burst(px, py, 8, is_relic ? Color{255,240,140,230} : Color{255,220,160,210}, 0.30f);
-                for (auto& e : vfx.effects) gs.active_effects.push_back(e);
-            }
-            // D9: 获得圣物 — shake+freeze 仪式感
-            if (is_relic && gs._presentation.combat_juice_on) {
-                gs._presentation.trigger_shake(CombatFeelSystem::SHAKE_LIGHT);
-                gs._presentation.trigger_freeze(CombatFeelSystem::RELIC_PICKUP);
-            }
-            if (!gs._interact.shown_relic_hint && !gs.player->relics.empty()) {
-                gs._interact.shown_relic_hint = true;
-                gs._presentation.room_msg = "按 R 可查看圣物面板";
-                gs._presentation.room_msg_timer = 2.5f;
-            }
-        }
-    }
-    else if (gs._is_action_just_pressed(input,"inventory")) { gs.inventory_open = true; gs.inventory_cursor = 0;
-        gs.get_tree()->get_audio()->play_sfx("ui_click", 0.35f); }  // Q4.5
+    if (gs._is_action_just_pressed(input,"attack")) _handle_attack();
+    else if (gs._is_action_just_pressed(input,"pickup")) _handle_pickup();
+    else if (gs._is_action_just_pressed(input,"inventory")) _handle_inventory_open();
     else if (gs._is_action_just_pressed(input,"skill_1")) use_skill(0);
     else if (gs._is_action_just_pressed(input,"skill_2")) use_skill(1);
     else if (gs._is_action_just_pressed(input,"skill_3")) use_skill(2);
     else if (gs._is_action_just_pressed(input,"skill_4")) use_skill(3);
 }
 
+    // Q3.10: 武器命中形状朝前 (长枪矩形/扇形) — 攻击前须面向最近目标, 否则原地空挥
+    // 实锤: sim 自动装备长枪后 F1 被围, 朝旧方向空挥 180s, 怪血量纹丝不动
+void PlayerController::_face_nearest_target() {
+    auto& gs = *_scene;
+    float px = gs.player->entity.rect.x + gs.player->entity.rect.width/2;
+    float py = gs.player->entity.rect.y + gs.player->entity.rect.height/2;
+    float bd = 1e18f;
+    Direction fd = gs.player->direction;
+    for (auto& m : gs.monsters) {
+        if (!m || !m->combat.is_alive) continue;
+        float dx = m->entity.rect.x + m->entity.rect.width/2 - px;
+        float dy = m->entity.rect.y + m->entity.rect.height/2 - py;
+        float dd = dx*dx + dy*dy;
+        if (dd < bd) {
+            bd = dd;
+            fd = (fabsf(dx) > fabsf(dy))
+                 ? (dx > 0 ? Direction::RIGHT : Direction::LEFT)
+                 : (dy > 0 ? Direction::DOWN : Direction::UP);
+        }
+    }
+    gs.player->direction = fd;
+}
+
+void PlayerController::_handle_attack() {
+    auto& gs = *_scene;
+    if (gs._sim_mode) _face_nearest_target();
+    player_attack();
+}
+
+void PlayerController::_handle_pickup() {
+    auto& gs = *_scene;
+    if (_try_pickup_door()) return;
+    if (_try_pickup_npc()) return;
+    if (_try_pickup_event()) return;
+    if (_try_pickup_portal()) return;
+    _handle_interact_result();
+}
+
+bool PlayerController::_try_pickup_door() {
+    auto& gs = *_scene;
+    // E 键门交互 — 只开 CLOSED 门 (LOCKED 不可开)
+    auto [ptx, pty] = gs.game_map->pixel_to_tile(
+        gs.player->entity.rect.x + gs.player->entity.rect.width/2,
+        gs.player->entity.rect.y + gs.player->entity.rect.height/2);
+    constexpr int dx4[] = {0, 0, -1, 1};
+    constexpr int dy4[] = {-1, 1, 0, 0};
+    for (int i = 0; i < 4; i++) {
+        int nx = ptx + dx4[i], ny = pty + dy4[i];
+        if (gs.game_map->door_state_at(nx, ny) == DoorState::CLOSED) {
+            gs.game_map->set_door_state(nx, ny, DoorState::OPEN);
+            gs.on_door_opened();
+            gs.get_tree()->get_audio()->play_sfx("door_open", 0.5f);
+            return true;
+        }
+    }
+    return false;
+}
+
+bool PlayerController::_try_pickup_npc() {
+    auto& gs = *_scene;
+    // D4 Step4: NPC交互 + D4 Step1: 事件交互 + B8: 特殊房间
+    auto [ptx, pty] = gs.game_map->pixel_to_tile(
+        gs.player->entity.rect.x + gs.player->entity.rect.width/2,
+        gs.player->entity.rect.y + gs.player->entity.rect.height/2);
+    for (int i = 0; i < gs._npc_count; i++) {
+        int dtx = abs(ptx - gs._npc_tile_x[i]);
+        int dty = abs(pty - gs._npc_tile_y[i]);
+        if (dtx <= 1 && dty <= 1 && !gs._npc_state[i].finished) {
+            gs._current_npc_index = i; gs._start_dialogue(i); return true;
+        }
+    }
+    return false;
+}
+
+bool PlayerController::_try_pickup_event() {
+    auto& gs = *_scene;
+    if (gs.game_map && gs.game_map->event_room_index >= 0 && !gs.game_map->event_triggered) {
+        auto [tx, ty] = gs.game_map->pixel_to_tile(
+            gs.player->entity.rect.x + gs.player->entity.rect.width/2,
+            gs.player->entity.rect.y + gs.player->entity.rect.height/2);
+        if (tx == gs.game_map->event_tile_x && ty == gs.game_map->event_tile_y) {
+            gs._start_event_presentation(gs.game_map->event_type);
+            return true;
+        }
+    }
+    return false;
+}
+
+bool PlayerController::_try_pickup_portal() {
+    auto& gs = *_scene;
+    // Batch 3I: Challenge Room — Portal interaction (portal is on wall OUTSIDE room rect)
+    auto [ptx, pty] = gs.game_map->pixel_to_tile(
+        gs.player->entity.rect.x + gs.player->entity.rect.width/2,
+        gs.player->entity.rect.y + gs.player->entity.rect.height/2);
+    // Arena return portal (arena map has no special_rooms, check controller directly)
+    if (_try_arena_return_portal(ptx, pty)) return true;
+    for (auto& sr : gs.game_map->special_rooms) {
+        if (sr.type != SpecialRoomType::CHALLENGE) continue;
+        if (gs._challenge.phase() == ChallengePhase::PORTAL_ACTIVE) {
+            int dx = abs(ptx - sr.portal_tx);
+            int dy = abs(pty - sr.portal_ty);
+            if (dx + dy <= 1) {
+                if (!gs.challenge_choice_active) {
+                    gs.challenge_choice_active = true;
+                    gs.challenge_choice_cursor = 0;
+                    gs.get_tree()->get_audio()->play_sfx("ui_click", 0.35f);
+                }
+                return true;
+            }
+        }
+    }
+    SpecialRoom* room = gs.game_map->get_special_room_at(ptx, pty);
+    // P1-A4-fix: sim 模式禁入赌局面板 — AI 无"关闭面板"决策, 进即永久卡死
+    // (v9 探针实锤: gmb=1 后 AI 被面板锁死, 怪在外面磨死 = M4 基线 DEATH_MONSTER 62% 根因)
+    if (room && room->type == SpecialRoomType::GAMBLER && !gs._sim_mode) {
+            if (!gs.gamble_open) {
+                gs.gamble_open = true;
+                gs.gamble_cursor = 0;
+                gs.get_tree()->get_audio()->play_sfx("ui_click", 0.35f);
+            }
+            return true;
+        }
+    return false;
+}
+
+bool PlayerController::_try_arena_return_portal(int ptx, int pty) {
+    auto& gs = *_scene;
+    if (gs._world_mode == WorldMode::CHALLENGE_ARENA &&
+        gs._challenge.phase() == ChallengePhase::CLEARED &&
+        gs._challenge.return_portal_tx() >= 0) {
+        int dx = abs(ptx - gs._challenge.return_portal_tx());
+        int dy = abs(pty - gs._challenge.return_portal_ty());
+        if (dx + dy <= 1) {
+            gs.exit_challenge_arena();
+            gs.get_tree()->get_audio()->play_sfx("door_open", 0.6f);
+            return true;
+        }
+    }
+    return false;
+}
+
+void PlayerController::_handle_interact_result() {
+    auto& gs = *_scene;
+    std::string result = gs._interact.try_interact(gs.player.get(), gs.game_map.get(), gs.ground_items);
+    if (!result.empty()) {
+        gs._gameplay.flow.mark_reward();
+        bool is_relic = (result.find("圣物") != std::string::npos);
+        gs._presentation.room_msg = result;
+        gs._presentation.room_msg_timer = is_relic ? 3.5f : 2.5f;
+        // Q4.3: 拾取音效 + 拾取闪光
+        if (result.find("拾取: ") == 0) {
+            gs._sim_items_picked++;   // M2-C: 拾取计数 (sim 仪表盘)
+            gs.get_tree()->get_audio()->play_sfx("pickup", 0.55f);
+            float px = gs.player->entity.rect.x + gs.player->entity.rect.width/2;
+            float py = gs.player->entity.rect.y + gs.player->entity.rect.height/2;
+            VFXServer vfx;
+            vfx.ring(px, py, 22.0f, is_relic ? Color{255,220,80,220} : Color{255,200,120,200}, 2, 0.35f);
+            vfx.spark_burst(px, py, 8, is_relic ? Color{255,240,140,230} : Color{255,220,160,210}, 0.30f);
+            for (auto& e : vfx.effects) gs.active_effects.push_back(e);
+        }
+        // D9: 获得圣物 — shake+freeze 仪式感
+        if (is_relic && gs._presentation.combat_juice_on) {
+            gs._presentation.trigger_shake(CombatFeelSystem::SHAKE_LIGHT);
+            gs._presentation.trigger_freeze(CombatFeelSystem::RELIC_PICKUP);
+        }
+        if (!gs._interact.shown_relic_hint && !gs.player->relics.empty()) {
+            gs._interact.shown_relic_hint = true;
+            gs._presentation.room_msg = "按 R 可查看圣物面板";
+            gs._presentation.room_msg_timer = 2.5f;
+        }
+    }
+}
+
+void PlayerController::_handle_inventory_open() {
+    auto& gs = *_scene;
+    gs.inventory_open = true; gs.inventory_cursor = 0;
+    gs.get_tree()->get_audio()->play_sfx("ui_click", 0.35f);  // Q4.5
+}
+
+
 void PlayerController::_handle_inventory_ui(const InputMap& input) {
     auto& gs = *_scene;
-        const int kPage = Inventory::kPageSize;
-        int item_count = (int)gs.player->inventory.items.size();
-        int max_page = std::max(0, (item_count + kPage - 1) / kPage - 1);
-        int page = gs.inventory_cursor / kPage;
-        int rel = gs.inventory_cursor % kPage;
-        if (gs._is_action_just_pressed(input,"inventory") || gs._is_action_just_pressed(input,"cancel"))
-            gs.inventory_open = false;
-        else if (IsKeyPressed(KEY_X))
-            { gs.player->inventory.equip(gs.inventory_cursor, gs.player.get()); gs.inventory_cursor = std::min(gs.inventory_cursor, std::max(0, (int)gs.player->inventory.items.size() - 1)); }
-        else if (IsKeyPressed(KEY_U))
-            { gs.player->inventory.use_item(gs.inventory_cursor, gs.player.get()); gs.inventory_cursor = std::min(gs.inventory_cursor, std::max(0, (int)gs.player->inventory.items.size() - 1)); }
-        else if (IsKeyPressed(KEY_D))
-            { gs.player->inventory.remove(gs.inventory_cursor); gs.inventory_cursor = std::min(gs.inventory_cursor, std::max(0, (int)gs.player->inventory.items.size() - 1)); }
-        else if (IsKeyPressed(KEY_T))
-            sell_selected_item(gs.player->inventory, gs.player.get(),
-                               gs.inventory_cursor, gs._presentation);
-        else if (IsKeyPressed(KEY_W) || IsKeyPressed(KEY_UP))
-            gs.inventory_cursor = std::max(0, gs.inventory_cursor - 1);
-        else if (IsKeyPressed(KEY_S) || IsKeyPressed(KEY_DOWN))
-            gs.inventory_cursor = std::min(std::max(0, item_count - 1), gs.inventory_cursor + 1);
-        else if (IsKeyPressed(KEY_LEFT) && page > 0)
-            gs.inventory_cursor = (page - 1) * kPage + rel;
-        else if (IsKeyPressed(KEY_RIGHT) && page < max_page)
-            gs.inventory_cursor = std::min((page + 1) * kPage + rel, item_count - 1);
-        return;
+    const int kPage = Inventory::kPageSize;
+    int item_count = (int)gs.player->inventory.items.size();
+    int max_page = std::max(0, (item_count + kPage - 1) / kPage - 1);
+    int page = gs.inventory_cursor / kPage;
+    int rel = gs.inventory_cursor % kPage;
+    if (gs._is_action_just_pressed(input,"inventory") || gs._is_action_just_pressed(input,"cancel"))
+        gs.inventory_open = false;
+    else if (IsKeyPressed(KEY_X))
+        { gs.player->inventory.equip(gs.inventory_cursor, gs.player.get()); gs.inventory_cursor = std::min(gs.inventory_cursor, std::max(0, (int)gs.player->inventory.items.size() - 1)); }
+    else if (IsKeyPressed(KEY_U))
+        { gs.player->inventory.use_item(gs.inventory_cursor, gs.player.get()); gs.inventory_cursor = std::min(gs.inventory_cursor, std::max(0, (int)gs.player->inventory.items.size() - 1)); }
+    else if (IsKeyPressed(KEY_D))
+        { gs.player->inventory.remove(gs.inventory_cursor); gs.inventory_cursor = std::min(gs.inventory_cursor, std::max(0, (int)gs.player->inventory.items.size() - 1)); }
+    else if (IsKeyPressed(KEY_T))
+        sell_selected_item(gs.player->inventory, gs.player.get(),
+                           gs.inventory_cursor, gs._presentation);
+    else if (IsKeyPressed(KEY_W) || IsKeyPressed(KEY_UP))
+        gs.inventory_cursor = std::max(0, gs.inventory_cursor - 1);
+    else if (IsKeyPressed(KEY_S) || IsKeyPressed(KEY_DOWN))
+        gs.inventory_cursor = std::min(std::max(0, item_count - 1), gs.inventory_cursor + 1);
+    else if (IsKeyPressed(KEY_LEFT) && page > 0)
+        gs.inventory_cursor = (page - 1) * kPage + rel;
+    else if (IsKeyPressed(KEY_RIGHT) && page < max_page)
+        gs.inventory_cursor = std::min((page + 1) * kPage + rel, item_count - 1);
+    return;
 }
 
 void PlayerController::_handle_gamble_ui(const InputMap& input) {
@@ -567,33 +611,33 @@ void PlayerController::_gamble_relic_reward() {
 
 void PlayerController::_handle_challenge_choice_ui(const InputMap& input) {
     auto& gs = *_scene;
-        if (gs._is_action_just_pressed(input, "ui_up")) {
-            gs.challenge_choice_cursor = (gs.challenge_choice_cursor + 1) % 2;
-            gs.get_tree()->get_audio()->play_sfx("ui_click", 0.35f);
-        }
-        if (gs._is_action_just_pressed(input, "ui_down")) {
-            gs.challenge_choice_cursor = (gs.challenge_choice_cursor + 1) % 2;
-            gs.get_tree()->get_audio()->play_sfx("ui_click", 0.35f);
-        }
-        if (gs._is_action_just_pressed(input, "confirm") || gs._is_action_just_pressed(input, "interact")) {
-            if (gs.challenge_choice_cursor == 0) {
-                // Start challenge
-                if (gs._challenge.consume_key_for_challenge(*gs.player)) {
-                    gs.enter_challenge_arena();
-                    gs.get_tree()->get_audio()->play_sfx("door_open", 0.6f);
-                } else {
-                    gs._presentation.room_msg = "需要钥匙才能开启挑战。";
-                    gs._presentation.room_msg_timer = 2.0f;
-                }
+    if (gs._is_action_just_pressed(input, "ui_up")) {
+        gs.challenge_choice_cursor = (gs.challenge_choice_cursor + 1) % 2;
+        gs.get_tree()->get_audio()->play_sfx("ui_click", 0.35f);
+    }
+    if (gs._is_action_just_pressed(input, "ui_down")) {
+        gs.challenge_choice_cursor = (gs.challenge_choice_cursor + 1) % 2;
+        gs.get_tree()->get_audio()->play_sfx("ui_click", 0.35f);
+    }
+    if (gs._is_action_just_pressed(input, "confirm") || gs._is_action_just_pressed(input, "interact")) {
+        if (gs.challenge_choice_cursor == 0) {
+            // Start challenge
+            if (gs._challenge.consume_key_for_challenge(*gs.player)) {
+                gs.enter_challenge_arena();
+                gs.get_tree()->get_audio()->play_sfx("door_open", 0.6f);
+            } else {
+                gs._presentation.room_msg = "需要钥匙才能开启挑战。";
+                gs._presentation.room_msg_timer = 2.0f;
             }
-            gs.challenge_choice_active = false;
-            gs.get_tree()->get_audio()->play_sfx("ui_click", 0.35f);
         }
-        if (gs._is_action_just_pressed(input, "cancel")) {
-            gs.challenge_choice_active = false;
-            gs.get_tree()->get_audio()->play_sfx("ui_click", 0.35f);
-        }
-        return;
+        gs.challenge_choice_active = false;
+        gs.get_tree()->get_audio()->play_sfx("ui_click", 0.35f);
+    }
+    if (gs._is_action_just_pressed(input, "cancel")) {
+        gs.challenge_choice_active = false;
+        gs.get_tree()->get_audio()->play_sfx("ui_click", 0.35f);
+    }
+    return;
 }
 
 

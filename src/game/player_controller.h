@@ -80,4 +80,17 @@ private:
     void _gamble_spin();
     void _gamble_relic_reward();
     void _handle_challenge_choice_ui(const InputMap& input);
+
+    // G31-C: handle_input 动作链 (纯结构搬运, else-if 互斥语义零改动)
+    // 4 个 bool helper 返回 true = 已消费该次交互 (门/NPC/事件/传送门), 上游据此短路
+    void _face_nearest_target();
+    void _handle_attack();
+    void _handle_pickup();
+    bool _try_pickup_door();
+    bool _try_pickup_npc();
+    bool _try_pickup_event();
+    bool _try_pickup_portal();
+    bool _try_arena_return_portal(int ptx, int pty);
+    void _handle_interact_result();
+    void _handle_inventory_open();
 };
