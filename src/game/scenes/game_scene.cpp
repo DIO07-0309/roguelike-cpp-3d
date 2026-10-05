@@ -2639,13 +2639,27 @@ void GameScene::_drop_boss_reward(Monster* boss) {
 // ============================================================
 void GameScene::_render() {
     int sw = get_tree()->get_width(), sh = get_tree()->get_height();
+    if (_render_fullscreen_states(sw, sh)) return;
+    _render_setup(sw, sh);
+    float saved_cx = _cam_x, saved_cy = _cam_y;
+    float shake_ox = 0, shake_oy = 0;
+    _apply_camera_offsets(shake_ox, shake_oy);
+    if (_render_hd2d_frame(sw, sh, shake_ox, shake_oy)) return;   // 3D 分支提前返回, 不恢复相机 (原行为)
+    _render_world_layers(sw, sh);
+    _cam_x = saved_cx; _cam_y = saved_cy;  // 恢复
+    // M6-v2a: UI tail extracted to shared method (2D/3D common)
+    _render_ui_tail(sw, sh);
+}
 
+bool GameScene::_render_fullscreen_states(int sw, int sh) {
     // G12-2: 全屏状态界面委托 (元素核心选择)
-    if (_render_pass.draw_element_select(sw, sh)) return;
-
+    if (_render_pass.draw_element_select(sw, sh)) return true;
     // G12-2: 全屏状态界面委托 (Boss 出场介绍)
-    if (_render_pass.draw_boss_intro_screen(sw, sh)) return;
+    if (_render_pass.draw_boss_intro_screen(sw, sh)) return true;
+    return false;
+}
 
+void GameScene::_render_setup(int sw, int sh) {
     ClearBackground(BLACK);
     _renderer.update_camera(_cam_x, _cam_y, player.get(), game_map.get(), sw, sh);
 
@@ -2657,11 +2671,13 @@ void GameScene::_render() {
             DrawRectangle(0, 0, sw, sh, {tr, tg, tb, 18});  // 18 alpha = 7% overlay
         }
     }
+}
 
+void GameScene::_apply_camera_offsets(float& ox, float& oy) {
     // C1: 屏幕震动 (相机偏移) — G9.3 (RNG-001): 走独立视觉流, 不消耗战斗 RNG
     auto [shake_ox, shake_oy] = shake_offset(_presentation.shake_intensity,
                                               _presentation.shake_timer);
-    float saved_cx = _cam_x, saved_cy = _cam_y;
+    ox = shake_ox; oy = shake_oy;
     
     // A6-T4: CameraDirector 焦点偏移 (Boss 战运镜)
     if (!_sim_mode && _camera_def_loaded) {
@@ -2671,7 +2687,9 @@ void GameScene::_render() {
     }
     
     _cam_x += shake_ox; _cam_y += shake_oy;
+}
 
+bool GameScene::_render_hd2d_frame(int sw, int sh, float shake_ox, float shake_oy) {
     // M6-HD2D: 3D 表现层分支 (--hd2d) — 世界层走 3D 渲染器, HUD/overlay 走 2D 桥
     // (方案一: 3D 世界 + 屏幕空间 UI)。逻辑层零改动; 初始化失败自动回退 2D
     if (g_hd2d_mode) {
@@ -2684,10 +2702,27 @@ void GameScene::_render() {
             hd2d.set_camera_shake(shake_ox, shake_oy);
             hd2d.render_frame(hd2d_view());
             _render_hd2d_ui_bridge(sw, sh);   // M6-v2a: HUD + 全 overlay 桥
-            return;
+            return true;
         }
         g_hd2d_mode = false;  // 初始化失败: 本次会话回退 2D
     }
+    return false;
+}
+
+void GameScene::_render_world_layers(int sw, int sh) {
+    _render_world_avatars();
+    // G11.2: 氛围粒子层 — 实体之上, HUD 之下 (世界空间)
+    if (game_map) _ambient.draw(_cam_x, _cam_y, sw, sh);
+    _render_challenge_portals();
+    // D5 Step4: Boss战场绘制
+    _boss.arena.draw(_cam_x, _cam_y);
+    _render_projectiles();
+    _render_range_indicator();
+    // C1: 伤害数字 (世界坐标→屏幕; M6-v2b 提取共用)
+    _render_damage_floats_2d();
+}
+
+void GameScene::_render_world_avatars() {
     _avatars.ensure_player(player.get());
     _avatars.tick_player(player.get());
     _avatars.tick_monsters(monsters);
@@ -2696,8 +2731,9 @@ void GameScene::_render() {
     _draw_ground_items();
     _draw_entities();
     _renderer.draw_effects(active_effects, _cam_x, _cam_y);
-    // G11.2: 氛围粒子层 — 实体之上, HUD 之下 (世界空间)
-    if (game_map) _ambient.draw(_cam_x, _cam_y, sw, sh);
+}
+
+void GameScene::_render_challenge_portals() {
     // Batch 3I: Challenge portal VFX (entry in DUNGEON, return in CHALLENGE_ARENA)
     if (_challenge.phase() == ChallengePhase::PORTAL_ACTIVE && game_map) {
         for (auto& sr : game_map->special_rooms) {
@@ -2715,53 +2751,67 @@ void GameScene::_render() {
             _challenge.return_portal_tx(), _challenge.return_portal_ty(),
             _portal_pulse_timer, false);
     }
-    // D5 Step4: Boss战场绘制
-    _boss.arena.draw(_cam_x, _cam_y);
+}
 
+void GameScene::_render_projectiles() {
     // D2: draw unified projectiles (PLAYER + MONSTER + ENVIRONMENT)
     projectiles.for_each([&](const Projectile& p, int) {
-        if (!p.alive) return;
-        float sx = p.pos.x - _cam_x, sy = p.pos.y - _cam_y;
-        bool is_enemy = (p.owner != (int)ProjectileOwner::PLAYER);
-
-        // WARNING phase: AOE → danger circle; point projectile → trajectory preview
-        if (p.active_time < 0.0f) {
-            float fade = 1.0f - (-p.active_time / p.warning_time);
-            float pulse = 1.0f + sinf(p.active_time * 12.0f) * 0.12f;
-            Color wc = (p.warning_level >= 2) ? Color{255,40,20,120}
-                     : (p.warning_level >= 1) ? Color{255,160,30,120}
-                     : Color{255,200,60,110};
-            if (p.owner == (int)ProjectileOwner::ENVIRONMENT && p.warning_radius > 0.0f) {
-                float wr = p.warning_radius * pulse;
-                DrawRing({sx, sy}, wr - 3, wr + 3, 0, 360, 20,
-                    {wc.r, wc.g, wc.b, (unsigned char)(wc.a * 2/3)});
-                DrawCircleLines(sx, sy, wr, wc);
-            } else {
-                _draw_projectile_preview(sx, sy, p, wc, fade, pulse, game_map.get());
-            }
-        }
-        // ACTIVE phase: draw the projectile itself
-        else {
-            if (p.piercing) {
-                DrawCircle(sx, sy, 10.0f, {255,200,40,100});
-                DrawCircle(sx, sy, 7.0f, {255,180,40,220});
-                DrawCircle(sx, sy, 3.0f, {255,255,220,255});
-                Vector2 back = { sx - p.vel.x * 0.03f, sy - p.vel.y * 0.03f };
-                DrawLineEx({sx, sy}, back, 3.0f, {255,180,40,180});
-            } else if (is_enemy) {
-                Color ec = (p.element == 1) ? Color{255,80,30,255}
-                         : (p.element == 2) ? Color{80,180,255,255}
-                         : Color{255,60,40,220};
-                DrawCircle(sx, sy, 6.0f, ec);
-                DrawCircle(sx, sy, 3.0f, {255,255,200,200});
-            } else {
-                DrawCircle(sx, sy, 6.0f, {0, 0, 0, 150});
-                DrawCircle(sx, sy, 4.0f, {200,160,100,255});
-                DrawCircle(sx, sy, 2.0f, {255,255,220,180});
-            }
-        }
+        _draw_projectile(p);
     });
+}
 
+void GameScene::_draw_projectile(const Projectile& p) {
+    if (!p.alive) return;
+    float sx = p.pos.x - _cam_x, sy = p.pos.y - _cam_y;
+    bool is_enemy = (p.owner != (int)ProjectileOwner::PLAYER);
+
+    // WARNING phase: AOE → danger circle; point projectile → trajectory preview
+    if (p.active_time < 0.0f) {
+        _draw_projectile_warning(sx, sy, p);
+    }
+    // ACTIVE phase: draw the projectile itself
+    else {
+        _draw_projectile_active(sx, sy, p, is_enemy);
+    }
+}
+
+void GameScene::_draw_projectile_warning(float sx, float sy, const Projectile& p) {
+    float fade = 1.0f - (-p.active_time / p.warning_time);
+    float pulse = 1.0f + sinf(p.active_time * 12.0f) * 0.12f;
+    Color wc = (p.warning_level >= 2) ? Color{255,40,20,120}
+             : (p.warning_level >= 1) ? Color{255,160,30,120}
+             : Color{255,200,60,110};
+    if (p.owner == (int)ProjectileOwner::ENVIRONMENT && p.warning_radius > 0.0f) {
+        float wr = p.warning_radius * pulse;
+        DrawRing({sx, sy}, wr - 3, wr + 3, 0, 360, 20,
+            {wc.r, wc.g, wc.b, (unsigned char)(wc.a * 2/3)});
+        DrawCircleLines(sx, sy, wr, wc);
+    } else {
+        _draw_projectile_preview(sx, sy, p, wc, fade, pulse, game_map.get());
+    }
+}
+
+void GameScene::_draw_projectile_active(float sx, float sy, const Projectile& p, bool is_enemy) {
+    if (p.piercing) {
+        DrawCircle(sx, sy, 10.0f, {255,200,40,100});
+        DrawCircle(sx, sy, 7.0f, {255,180,40,220});
+        DrawCircle(sx, sy, 3.0f, {255,255,220,255});
+        Vector2 back = { sx - p.vel.x * 0.03f, sy - p.vel.y * 0.03f };
+        DrawLineEx({sx, sy}, back, 3.0f, {255,180,40,180});
+    } else if (is_enemy) {
+        Color ec = (p.element == 1) ? Color{255,80,30,255}
+                 : (p.element == 2) ? Color{80,180,255,255}
+                 : Color{255,60,40,220};
+        DrawCircle(sx, sy, 6.0f, ec);
+        DrawCircle(sx, sy, 3.0f, {255,255,200,200});
+    } else {
+        DrawCircle(sx, sy, 6.0f, {0, 0, 0, 150});
+        DrawCircle(sx, sy, 4.0f, {200,160,100,255});
+        DrawCircle(sx, sy, 2.0f, {255,255,220,180});
+    }
+}
+
+void GameScene::_render_range_indicator() {
     // G9: ranged weapon range indicator
     if (player->weapon.range_indicator_timer > 0.0f && player->weapon.current_def()) {
         WeaponType wt = player->weapon.weapon_type();
@@ -2797,14 +2847,6 @@ void GameScene::_render() {
             }
         }
     }
-
-    // C1: 伤害数字 (世界坐标→屏幕; M6-v2b 提取共用)
-    _render_damage_floats_2d();
-
-    _cam_x = saved_cx; _cam_y = saved_cy;  // 恢复
-
-    // M6-v2a: UI tail extracted to shared method (2D/3D common)
-    _render_ui_tail(sw, sh);
 }
 
 // M6-v2a: _render UI tail (2D/3D common) - hitflash/fade/panels/HUD/minimap/dialogue/event/freeze/cinematic

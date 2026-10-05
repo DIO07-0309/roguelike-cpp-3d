@@ -526,6 +526,21 @@ private:
     int   _mirror_banner_phase = 0;
     float _mirror_banner_timer = 0.0f;
 
+    // G30-G: _render 子步骤 (169->13 行, 纯结构搬运, 绘制顺序零改动)
+    // 两个 bool 子步骤返回 true = 全屏接管, 调度骨架据此短路 (等价原 early return)
+    bool _render_fullscreen_states(int sw, int sh);
+    void _render_setup(int sw, int sh);
+    void _apply_camera_offsets(float& ox, float& oy);
+    bool _render_hd2d_frame(int sw, int sh, float ox, float oy);
+    void _render_world_layers(int sw, int sh);
+    void _render_world_avatars();
+    void _render_challenge_portals();
+    void _render_projectiles();
+    void _draw_projectile(const Projectile& p);
+    void _draw_projectile_warning(float sx, float sy, const Projectile& p);
+    void _draw_projectile_active(float sx, float sy, const Projectile& p, bool is_enemy);
+    void _render_range_indicator();
+
     // M6-v2a: _render UI 尾段共用 (红屏/HUD/小地图/对话/冻结/演出; 2D/3D 同 UI)
     void _render_ui_tail(int sw, int sh);
     // G30-C: _render_ui_tail 子步骤 (391->21 行, 纯结构搬运, 绘制顺序零改动)
