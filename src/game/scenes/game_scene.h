@@ -256,6 +256,19 @@ public:
     void _tick_tw_speed_boost(float dt);
     bool _handle_player_death(float dt);
 
+    // G30-K: _process 子步骤 (头部守卫/时间/sim 注入/构筑, 纯结构搬运, 执行顺序零改动)
+    // 三个 bool 子步骤返回 true = 已强制结算或门控拦截, 调度骨架据此短路 (等价原 return)
+    bool _sim_wall_timeout_check();
+    bool _sim_stuck_gate();
+    bool _tick_hit_stop_gates(float dt);
+    void _advance_game_time(float dt);
+    void _inject_sim_perception();
+    void _account_sim_damage();
+    void _log_unmarked_damage();
+    void _detect_build_fusion();
+    void _tick_portal_pulse(float dt);
+    void _tick_presentation_tail(float dt);
+
     // 场景间通信
     void enter_floor(int floor, uint32_t seed = 0);
     // Batch 3I: 挑战竞技场往返 (场景级转换; G9.2 移至 public 以支持回归测试驱动)

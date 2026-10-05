@@ -693,7 +693,45 @@ void GameScene::_announce_floor_enter(int floor, const FloorConfig* fcfg) {
 void GameScene::_process(double delta) {
     if (!player) return;
     float dt = (float)delta;
+    if (_sim_wall_timeout_check()) return;
+    if (_sim_stuck_gate()) return;
+    _tick_boss_cinematic(dt);
+    if (state != GameState::PLAYING) return;
+    if (_tick_hit_stop_gates(dt)) return;
 
+    _advance_game_time(dt);
+    _inject_sim_perception();
+    _account_sim_damage();
+    _log_unmarked_damage();
+    // B15/D5: Boss 系统 — Phase2 提示、LastStand、Memory/Behavior tick
+    _tick_boss_system(dt);
+    _detect_build_fusion();
+
+    _tick_buffs(dt);
+    _tick_arena_environment(dt);
+    _play_pending_bgm();
+    _tick_time_stop(dt);
+    _tick_tw_speed_boost(dt);
+    // Q3.2: sim 单局时间上限 — 防止罕见卡死拖死整个批量 (正常对局 ~50s, 上限 900s)
+    if (_sim_timeout_forced(game_time)) return;
+    if (_handle_player_death(dt)) return;
+
+    _tick_challenge_dungeon(dt);
+    _tick_portal_pulse(dt);
+    _tick_teleport_fade(dt);
+    if (_tick_challenge_arena(dt)) return;
+
+    _tick_world_entities(dt);
+    _tick_player_fov();
+    _tick_ambient_view(dt);
+    _tick_boss_fov();
+    _tick_player_autonomy(dt);
+    _tick_player_combat(dt);
+    _tick_enemy_projectiles(dt);
+    _tick_presentation_tail(dt);
+}
+
+bool GameScene::_sim_wall_timeout_check() {
     // Q3.10: 兜底超时置顶 — 任何状态(BOSS_CINEMATIC/事件/对话/非PLAYING)都可能卡死
     // 原置尾 870 行: state!=PLAYING 提前 return → 10min 墙钟永不触发 (v11 r8 进F14后静默150min)
     // M2-E: GetTime()(真实墙钟, 慢机改变结果) → 帧计数 (600s×60fps=36000帧, 确定性)
@@ -727,9 +765,12 @@ void GameScene::_process(double delta) {
         }
         _sim_wall_timeout = true;
         _collect_sim_stats();
-        return;
+        return true;
     }
+    return false;
+}
 
+bool GameScene::_sim_stuck_gate() {
     // G27: 场景切换是延后的 — change_scene 之后、真正 swap 之前, 那一轮的
     // process_input 仍把 is_action_just_pressed 派发给旧场景 agent, 可能再置位
     // 全局 sim_stuck_watchdog; 新局首帧便误判结算 (实测批次 run1 首帧 STUCK,
@@ -744,28 +785,31 @@ void GameScene::_process(double delta) {
         LOG_INFO("[SIM] 卡死看门狗触发 — 强制结算 STUCK_RECOVERED 第%d层", current_floor);
         sim_stuck_watchdog = 0;
         _collect_sim_stats();
-        return;
+        return true;
     }
+    return false;
+}
 
-    // B15: Boss 登场运镜状态机
-    _tick_boss_cinematic(dt);
-
-    if (state != GameState::PLAYING) return;
-
+bool GameScene::_tick_hit_stop_gates(float dt) {
     // A6-T2: HitStop — 击杀顿帧 (wall clock, 独立于 PresentationSystem)
     // sim 模式跳过: 顿帧使 game_time 变慢, 影响 sim 确定性
-    if (_hit_stop_gate(dt)) return;
+    if (_hit_stop_gate(dt)) return true;
 
     _tick_camera_director(dt);
 
     // Q4.1: HitStop — 冻结期间只推表现层, 世界模拟暂停 (打击感)
     // Q3.10: sim 模式跳过 — 表现层冻结使 game_time 变慢, 900s 超时被稀释成数十分钟
-    if (_presentation_frozen_gate(dt)) return;
+    if (_presentation_frozen_gate(dt)) return true;
+    return false;
+}
 
+void GameScene::_advance_game_time(float dt) {
     game_time += dt;
     if (_sim_ai) _sim_ai->set_time(game_time); // Q3.2: AI 技能冷却判定需要当前时间
     if (_sim_bt) _sim_bt->set_time(game_time); // Q3.15: BT agent 同样需要真实时间 (P0-2 fix)
+}
 
+void GameScene::_inject_sim_perception() {
     // P1-A2: 地面物品只读注入 — SimAI 感知掉落物 (归属仍在本场景, AI 不修改)
     if (_sim_ai) {
         std::vector<DecisionAgent::GroundSpot> spots;
@@ -786,7 +830,9 @@ void GameScene::_process(double delta) {
         _sim_ai->set_stairs_pos(stairs_active ? stairs_pos.first : -1,
                                 stairs_active ? stairs_pos.second : -1);
     }
+}
 
+void GameScene::_account_sim_damage() {
     // Q3.2: sim 真实伤害统计 — 玩家 HP 下降累计 (含毒池等环境伤害)
     if (_sim_mode && player) {
         int hp = player->combat.current_hp;
@@ -816,7 +862,9 @@ void GameScene::_process(double delta) {
             }
         }
     }
+}
 
+void GameScene::_log_unmarked_damage() {
     // M4a-fix: 兜底受击日志 — 只报未记账来源的玩家掉血 (标签源已调 mark_damage_logged)
     {
         int hp_now = player->combat.current_hp;
@@ -826,10 +874,9 @@ void GameScene::_process(double delta) {
                      logged - hp_now, hp_now, player->combat.max_hp);
         player->combat.logged_hp = hp_now;
     }
+}
 
-    // B15/D5: Boss 系统 — Phase2 提示、LastStand、Memory/Behavior tick
-    _tick_boss_system(dt);
-
+void GameScene::_detect_build_fusion() {
     // D3 Step4: Build Fusion 检测 — 构筑成型/切换
     {
         BuildScore bs = calculate_build(player.get());
@@ -848,47 +895,17 @@ void GameScene::_process(double delta) {
             _presentation.trigger_freeze(CombatFeelSystem::BUILD_COMPLETE);
         }
     }
+}
 
-    _tick_buffs(dt);
-
-    _tick_arena_environment(dt);
-
-    _play_pending_bgm();
-
-    _tick_time_stop(dt);
-
-    _tick_tw_speed_boost(dt);
-
-    // Q3.2: sim 单局时间上限 — 防止罕见卡死拖死整个批量 (正常对局 ~50s, 上限 900s)
-    if (_sim_timeout_forced(game_time)) return;
-
-    if (_handle_player_death(dt)) return;
-
-    _tick_challenge_dungeon(dt);
-
+void GameScene::_tick_portal_pulse(float dt) {
     if (_challenge.phase() == ChallengePhase::PORTAL_ACTIVE ||
         _challenge.phase() == ChallengePhase::CLEARED ||
         _world_mode == WorldMode::CHALLENGE_ARENA) {
         _portal_pulse_timer += dt;
     }
-    _tick_teleport_fade(dt);
+}
 
-    if (_tick_challenge_arena(dt)) return;
-
-    _tick_world_entities(dt);
-
-    _tick_player_fov();
-
-    _tick_ambient_view(dt);
-
-    _tick_boss_fov();
-
-    _tick_player_autonomy(dt);
-
-    _tick_player_combat(dt);
-
-    _tick_enemy_projectiles(dt);
-
+void GameScene::_tick_presentation_tail(float dt) {
     // G25-A: 尾段纯计时器衰减 (FlowDirector/房间消息/横幅/gamble/事件/对话/Quest/入场)
     _tick_decay_timers(dt);
 
