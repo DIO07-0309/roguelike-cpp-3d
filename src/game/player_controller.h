@@ -9,6 +9,9 @@ class Monster;
 class Inventory;
 class PresentationSystemDirector;
 struct WeaponAttackResult;  // G9: defined in weapon_types.h
+struct WeaponDef;           // G31-D: defined in weapon_types.h
+struct AttackGeometry;      // G31-D: defined in weapon_types.h
+struct WeaponVFXContext;    // G31-D: defined in player_controller.cpp
 
 // ============================================================
 // D6 Step7: PlayerController — 玩家输入/攻击/技能/移动/交互
@@ -93,4 +96,14 @@ private:
     bool _try_arena_return_portal(int ptx, int pty);
     void _handle_interact_result();
     void _handle_inventory_open();
+
+    // G31-D: _weapon_attack 子步骤 (纯结构搬运, ctx 参数束零逻辑改动)
+    void _compute_stage_geometry(Player& p, const WeaponDef* def, AttackGeometry& geo);
+    void _vfx_fist(const WeaponVFXContext& ctx);
+    void _vfx_dagger(const WeaponVFXContext& ctx);
+    void _vfx_sword(const WeaponVFXContext& ctx);
+    void _vfx_nunchaku(const WeaponVFXContext& ctx);
+    void _vfx_spear(const WeaponVFXContext& ctx);
+    void _vfx_crossbow(const WeaponVFXContext& ctx);
+    void _apply_post_hit(const WeaponVFXContext& ctx);
 };
