@@ -66,6 +66,7 @@ namespace hd2d { struct SceneView; }   // G12-4: 3D 只读视图 (定义在 rend
 #include "scene/game_scene_interaction.h"
 #include "scene/game_scene_render_pass.h"   // G12-2: 全屏状态绘制 (元素选择/Boss介绍)
 #include "world/ambient_layer.h"   // G11.2: 氛围层 (粒子+情绪 vignette)
+#include "types/weapon_types.h"   // G30-H: _emit_*_vfx 参数 std::vector<WeaponAttackResult>
 
 // ── G4.5: Replay ──
 #include "core/replay/recorder.h"
@@ -221,6 +222,17 @@ public:
     void _ready() override;
     void _process(double delta) override;
     void _render() override;
+
+    // G30-H: _process 子步骤 (尾段 G12-G14, 纯结构搬运, 执行顺序零改动)
+    void _tick_player_autonomy(float dt);
+    void _tick_player_combat(float dt);
+    void _tick_weapon_specials(float dt);
+    void _emit_spear_vfx(const std::vector<WeaponAttackResult>& spec_results);
+    void _emit_nunchaku_vfx(const std::vector<WeaponAttackResult>& spec_results);
+    void _spawn_weapon_damage(const std::vector<WeaponAttackResult>& spec_results,
+                              const std::vector<WeaponAttackResult>& proj_results);
+    void _tick_enemy_projectiles(float dt);
+    void _tick_world_ambience(float dt);
 
     // 场景间通信
     void enter_floor(int floor, uint32_t seed = 0);

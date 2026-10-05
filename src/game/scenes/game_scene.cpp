@@ -1180,6 +1180,25 @@ void GameScene::_process(double delta) {
         }
     }
 
+    _tick_player_autonomy(dt);
+
+    _tick_player_combat(dt);
+
+    _tick_enemy_projectiles(dt);
+
+    // G25-A: 尾段纯计时器衰减 (FlowDirector/房间消息/横幅/gamble/事件/对话/Quest/入场)
+    _tick_decay_timers(dt);
+
+    _tick_world_ambience(dt);
+
+    // D2: Combo 窗口衰减 — 超过 WINDOW 未命中则重置
+    player->combo.tick(dt);
+
+    // D6 Step5: Presentation tick (shake/freeze/damage/message/intro)
+    _presentation.tick(dt);
+}
+
+void GameScene::_tick_player_autonomy(float dt) {
     // Phase 3: M 键 — 小地图开关
     if (IsKeyPressed(KEY_M)) _show_minimap = !_show_minimap;
 
@@ -1211,7 +1230,9 @@ void GameScene::_process(double delta) {
             }
         }
     }
+}
 
+void GameScene::_tick_player_combat(float dt) {
     // VFX 更新
     for (auto& fx : active_effects) fx.elapsed += dt;
     active_effects.erase(std::remove_if(active_effects.begin(), active_effects.end(),
@@ -1222,58 +1243,72 @@ void GameScene::_process(double delta) {
     player->weapon.tick(dt);
     if (player->weapon.range_indicator_timer > 0.0f)
         player->weapon.range_indicator_timer -= dt;
-    {
-        std::vector<Monster*> mlist;
-        for (auto& m : monsters) mlist.push_back(m.get());
-        auto spec_results = WeaponExecutor::tick_specials(player.get(), mlist, dt);
-        auto proj_results = WeaponExecutor::tick_projectiles(projectiles, mlist, dt, game_map.get());
+    _tick_weapon_specials(dt);
+}
 
-        // G9: spear stage-3 lightning VFX on each rapid hit
-        if (player->weapon.runtime().special.active
-            && player->weapon.weapon_type() == WeaponType::SPEAR) {
-            float px = player->entity.rect.x + player->entity.rect.width/2;
-            float py = player->entity.rect.y + player->entity.rect.height/2;
-            VFXServer svfx;
-            for (auto& r : spec_results) {
-                // Heavy zigzag lightning (5 branches, thicker, brighter)
-                svfx.lightning(px, py, r.hit_point.x, r.hit_point.y, 5,
-                    {80,160,255,255}, 0.30f);
-                svfx.beam(px, py, r.hit_point.x, r.hit_point.y, {100,180,255,200}, 0.28f);
-                svfx.ring(r.hit_point.x, r.hit_point.y, 20.0f,
-                    {80,180,255,220}, 2, 0.25f);
-                svfx.spark_burst(r.hit_point.x, r.hit_point.y, 5,
-                    {100,200,255,220}, 0.22f);
-                // G9: electrified debuff on spear rapid hits
-                apply_buff(r.target, "electrified", 1);
-            }
-            for (auto& e : svfx.effects) active_effects.push_back(e);
-        }
+void GameScene::_tick_weapon_specials(float dt) {
+    std::vector<Monster*> mlist;
+    for (auto& m : monsters) mlist.push_back(m.get());
+    auto spec_results = WeaponExecutor::tick_specials(player.get(), mlist, dt);
+    auto proj_results = WeaponExecutor::tick_projectiles(projectiles, mlist, dt, game_map.get());
+    _emit_spear_vfx(spec_results);
+    _emit_nunchaku_vfx(spec_results);
+    _spawn_weapon_damage(spec_results, proj_results);
+}
 
-        // G10.5-B B4: 非长矛特殊段 (双节棍 5 连击) 每击命中 VFX
-        if (player->weapon.runtime().special.active
-            && player->weapon.weapon_type() == WeaponType::NUNCHAKU) {
-            VFXServer nvfx;
-            for (auto& r : spec_results) {
-                nvfx.hit_flash(r.hit_point.x, r.hit_point.y, 12.0f);
-                nvfx.spark_burst(r.hit_point.x, r.hit_point.y, 4, {255,200,80,220}, 0.20f);
-            }
-            for (auto& e : nvfx.effects) active_effects.push_back(e);
-        }
-
+void GameScene::_emit_spear_vfx(const std::vector<WeaponAttackResult>& spec_results) {
+    // G9: spear stage-3 lightning VFX on each rapid hit
+    if (player->weapon.runtime().special.active
+        && player->weapon.weapon_type() == WeaponType::SPEAR) {
+        float px = player->entity.rect.x + player->entity.rect.width/2;
+        float py = player->entity.rect.y + player->entity.rect.height/2;
+        VFXServer svfx;
         for (auto& r : spec_results) {
-            _boss.dmg_done += r.damage;
-            _presentation.spawn_damage(r.hit_point.x, r.hit_point.y, r.damage,
-                r.is_crit ? Color{255,220,30,255} : Color{100,200,255,255}, 0.5f);
-            // P0-A: 不在此处调用 on_monster_killed，委托下帧 cleanup_dead_monsters 统一处理
+            // Heavy zigzag lightning (5 branches, thicker, brighter)
+            svfx.lightning(px, py, r.hit_point.x, r.hit_point.y, 5,
+                {80,160,255,255}, 0.30f);
+            svfx.beam(px, py, r.hit_point.x, r.hit_point.y, {100,180,255,200}, 0.28f);
+            svfx.ring(r.hit_point.x, r.hit_point.y, 20.0f,
+                {80,180,255,220}, 2, 0.25f);
+            svfx.spark_burst(r.hit_point.x, r.hit_point.y, 5,
+                {100,200,255,220}, 0.22f);
+            // G9: electrified debuff on spear rapid hits
+            apply_buff(r.target, "electrified", 1);
         }
-        for (auto& r : proj_results) {
-            _boss.dmg_done += r.damage;
-            _presentation.spawn_damage(r.hit_point.x, r.hit_point.y, r.damage,
-                Color{255,180,50,255}, 0.5f);
-            // P0-A: 同上
-        }
+        for (auto& e : svfx.effects) active_effects.push_back(e);
     }
+}
 
+void GameScene::_emit_nunchaku_vfx(const std::vector<WeaponAttackResult>& spec_results) {
+    // G10.5-B B4: 非长矛特殊段 (双节棍 5 连击) 每击命中 VFX
+    if (player->weapon.runtime().special.active
+        && player->weapon.weapon_type() == WeaponType::NUNCHAKU) {
+        VFXServer nvfx;
+        for (auto& r : spec_results) {
+            nvfx.hit_flash(r.hit_point.x, r.hit_point.y, 12.0f);
+            nvfx.spark_burst(r.hit_point.x, r.hit_point.y, 4, {255,200,80,220}, 0.20f);
+        }
+        for (auto& e : nvfx.effects) active_effects.push_back(e);
+    }
+}
+
+void GameScene::_spawn_weapon_damage(const std::vector<WeaponAttackResult>& spec_results,
+                                  const std::vector<WeaponAttackResult>& proj_results) {
+    for (auto& r : spec_results) {
+        _boss.dmg_done += r.damage;
+        _presentation.spawn_damage(r.hit_point.x, r.hit_point.y, r.damage,
+            r.is_crit ? Color{255,220,30,255} : Color{100,200,255,255}, 0.5f);
+        // P0-A: 不在此处调用 on_monster_killed，委托下帧 cleanup_dead_monsters 统一处理
+    }
+    for (auto& r : proj_results) {
+        _boss.dmg_done += r.damage;
+        _presentation.spawn_damage(r.hit_point.x, r.hit_point.y, r.damage,
+            Color{255,180,50,255}, 0.5f);
+        // P0-A: 同上
+    }
+}
+
+void GameScene::_tick_enemy_projectiles(float dt) {
     // D2: tick enemy projectiles (MONSTER/ENVIRONMENT owner → hit player)
     // 时停期间世界冻结 — 敌方弹体不飞行不结算
     projectiles.for_each([&](Projectile& p, int) {
@@ -1281,10 +1316,9 @@ void GameScene::_process(double delta) {
     });
     // G11: 池回收取代 erase-remove, 免每帧 O(n) 搬移
     projectiles.release_if([](const Projectile& p) { return !p.alive; });
+}
 
-    // G25-A: 尾段纯计时器衰减 (FlowDirector/房间消息/横幅/gamble/事件/对话/Quest/入场)
-    _tick_decay_timers(dt);
-
+void GameScene::_tick_world_ambience(float dt) {
     // D4 Step3: 随机旁白 (25-40秒间隔, 不在事件中)
     if (!_presentation.floor_intro_active && !_presentation.chapter_intro_active && !_is_event_running()
         && !inventory_open && state == GameState::PLAYING && !is_boss_floor(current_floor)) {
@@ -1292,12 +1326,6 @@ void GameScene::_process(double delta) {
         _tick_story_world_event(dt);
         _tick_flow_auto_spawn();
     }
-
-    // D2: Combo 窗口衰减 — 超过 WINDOW 未命中则重置
-    player->combo.tick(dt);
-
-    // D6 Step5: Presentation tick (shake/freeze/damage/message/intro)
-    _presentation.tick(dt);
 }
 
 void GameScene::_tick_decay_timers(float dt) {
