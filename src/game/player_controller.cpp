@@ -310,121 +310,13 @@ void PlayerController::handle_input(const InputMap& input) {
     auto& gs = *_scene;
 
     if (gs.inventory_open) {
-        const int kPage = Inventory::kPageSize;
-        int item_count = (int)gs.player->inventory.items.size();
-        int max_page = std::max(0, (item_count + kPage - 1) / kPage - 1);
-        int page = gs.inventory_cursor / kPage;
-        int rel = gs.inventory_cursor % kPage;
-        if (gs._is_action_just_pressed(input,"inventory") || gs._is_action_just_pressed(input,"cancel"))
-            gs.inventory_open = false;
-        else if (IsKeyPressed(KEY_X))
-            { gs.player->inventory.equip(gs.inventory_cursor, gs.player.get()); gs.inventory_cursor = std::min(gs.inventory_cursor, std::max(0, (int)gs.player->inventory.items.size() - 1)); }
-        else if (IsKeyPressed(KEY_U))
-            { gs.player->inventory.use_item(gs.inventory_cursor, gs.player.get()); gs.inventory_cursor = std::min(gs.inventory_cursor, std::max(0, (int)gs.player->inventory.items.size() - 1)); }
-        else if (IsKeyPressed(KEY_D))
-            { gs.player->inventory.remove(gs.inventory_cursor); gs.inventory_cursor = std::min(gs.inventory_cursor, std::max(0, (int)gs.player->inventory.items.size() - 1)); }
-        else if (IsKeyPressed(KEY_T))
-            sell_selected_item(gs.player->inventory, gs.player.get(),
-                               gs.inventory_cursor, gs._presentation);
-        else if (IsKeyPressed(KEY_W) || IsKeyPressed(KEY_UP))
-            gs.inventory_cursor = std::max(0, gs.inventory_cursor - 1);
-        else if (IsKeyPressed(KEY_S) || IsKeyPressed(KEY_DOWN))
-            gs.inventory_cursor = std::min(std::max(0, item_count - 1), gs.inventory_cursor + 1);
-        else if (IsKeyPressed(KEY_LEFT) && page > 0)
-            gs.inventory_cursor = (page - 1) * kPage + rel;
-        else if (IsKeyPressed(KEY_RIGHT) && page < max_page)
-            gs.inventory_cursor = std::min((page + 1) * kPage + rel, item_count - 1);
-        return;
+        _handle_inventory_ui(input); return;
     }
 
-    // Batch 3H: Gamble Room UI — E to spin, B/ESC to close
-    if (gs.gamble_open) {
-        if (gs._is_action_just_pressed(input,"inventory") || gs._is_action_just_pressed(input,"cancel")) {
-            gs.gamble_open = false;
-            gs.get_tree()->get_audio()->play_sfx("ui_click", 0.35f);
-        } else if (gs._is_action_just_pressed(input,"pickup")) {
-            // E key: spin
-            constexpr int kGambleCost = 20;
-            if (gs.player->gold < kGambleCost) {
-                gs.gamble_result_msg = "金币不足！需要 " + std::to_string(kGambleCost) + " 金币。";
-                gs.gamble_result_timer = 2.0f;
-                gs.get_tree()->get_audio()->play_sfx("ui_click", 0.35f);
-            } else {
-                gs.player->spend_gold(kGambleCost);
-                int roll = rng() % 100;
-                if (roll < 65) {
-                    // 65% Equipment
-                    auto item = generate_random_item();
-                    if (item && RewardManager::grant_item(*gs.player, item))
-                        gs.gamble_result_msg = "运气不错！获得了 " + item->get_description();
-                    else
-                        gs.gamble_result_msg = "赌徒摊手：今天没货了。";
-                } else if (roll < 85) {
-                    // 20% Key
-                    RewardManager::grant_key(*gs.player, 1);
-                    gs.gamble_result_msg = "获得了一把钥匙！";
-                } else if (roll < 95) {
-                    // 10% Gold return
-                    RewardManager::grant_gold(*gs.player, 10);
-                    gs.gamble_result_msg = "获得 10 金币！";
-                } else {
-                    // 5% RUN Relic
-                    auto all_ids = get_all_relic_ids();
-                    std::vector<std::string> candidates;
-                    for (auto& id : all_ids)
-                        if (!player_has_relic(gs.player.get(), id))
-                            candidates.push_back(id);
-                    if (!candidates.empty()) {
-                        std::string chosen = candidates[rng() % candidates.size()];
-                        if (RewardManager::grant_relic(*gs.player, chosen, PersistenceScope::RUN)) {
-                            const RelicDef* def = get_relic_def(chosen);
-                            gs.gamble_result_msg = def ? ("RELIC:" + def->name) : "获得了一件圣物！";
-                        } else {
-                            RewardManager::grant_key(*gs.player, 1);
-                            gs.gamble_result_msg = "圣物库已满，获得钥匙作为替代。";
-                        }
-                    } else {
-                        RewardManager::grant_key(*gs.player, 1);
-                        gs.gamble_result_msg = "圣物库已满，获得钥匙作为替代。";
-                    }
-                }
-                gs.gamble_result_timer = 2.5f;
-                gs.get_tree()->get_audio()->play_sfx("pickup", 0.55f);
-            }
-        }
-        return;
-    }
+    if (gs.gamble_open) { _handle_gamble_ui(input); return; }
 
     // Batch 3I: Challenge choice UI
-    if (gs.challenge_choice_active) {
-        if (gs._is_action_just_pressed(input, "ui_up")) {
-            gs.challenge_choice_cursor = (gs.challenge_choice_cursor + 1) % 2;
-            gs.get_tree()->get_audio()->play_sfx("ui_click", 0.35f);
-        }
-        if (gs._is_action_just_pressed(input, "ui_down")) {
-            gs.challenge_choice_cursor = (gs.challenge_choice_cursor + 1) % 2;
-            gs.get_tree()->get_audio()->play_sfx("ui_click", 0.35f);
-        }
-        if (gs._is_action_just_pressed(input, "confirm") || gs._is_action_just_pressed(input, "interact")) {
-            if (gs.challenge_choice_cursor == 0) {
-                // Start challenge
-                if (gs._challenge.consume_key_for_challenge(*gs.player)) {
-                    gs.enter_challenge_arena();
-                    gs.get_tree()->get_audio()->play_sfx("door_open", 0.6f);
-                } else {
-                    gs._presentation.room_msg = "需要钥匙才能开启挑战。";
-                    gs._presentation.room_msg_timer = 2.0f;
-                }
-            }
-            gs.challenge_choice_active = false;
-            gs.get_tree()->get_audio()->play_sfx("ui_click", 0.35f);
-        }
-        if (gs._is_action_just_pressed(input, "cancel")) {
-            gs.challenge_choice_active = false;
-            gs.get_tree()->get_audio()->play_sfx("ui_click", 0.35f);
-        }
-        return;
-    }
+    if (gs.challenge_choice_active) { _handle_challenge_choice_ui(input); return; }
 
     // M4.2: 镜像冻结期间禁攻击/技能/拾取/交互
     if (gs.player_frozen_by_mirror()) return;
@@ -577,6 +469,133 @@ void PlayerController::handle_input(const InputMap& input) {
     else if (gs._is_action_just_pressed(input,"skill_3")) use_skill(2);
     else if (gs._is_action_just_pressed(input,"skill_4")) use_skill(3);
 }
+
+void PlayerController::_handle_inventory_ui(const InputMap& input) {
+    auto& gs = *_scene;
+        const int kPage = Inventory::kPageSize;
+        int item_count = (int)gs.player->inventory.items.size();
+        int max_page = std::max(0, (item_count + kPage - 1) / kPage - 1);
+        int page = gs.inventory_cursor / kPage;
+        int rel = gs.inventory_cursor % kPage;
+        if (gs._is_action_just_pressed(input,"inventory") || gs._is_action_just_pressed(input,"cancel"))
+            gs.inventory_open = false;
+        else if (IsKeyPressed(KEY_X))
+            { gs.player->inventory.equip(gs.inventory_cursor, gs.player.get()); gs.inventory_cursor = std::min(gs.inventory_cursor, std::max(0, (int)gs.player->inventory.items.size() - 1)); }
+        else if (IsKeyPressed(KEY_U))
+            { gs.player->inventory.use_item(gs.inventory_cursor, gs.player.get()); gs.inventory_cursor = std::min(gs.inventory_cursor, std::max(0, (int)gs.player->inventory.items.size() - 1)); }
+        else if (IsKeyPressed(KEY_D))
+            { gs.player->inventory.remove(gs.inventory_cursor); gs.inventory_cursor = std::min(gs.inventory_cursor, std::max(0, (int)gs.player->inventory.items.size() - 1)); }
+        else if (IsKeyPressed(KEY_T))
+            sell_selected_item(gs.player->inventory, gs.player.get(),
+                               gs.inventory_cursor, gs._presentation);
+        else if (IsKeyPressed(KEY_W) || IsKeyPressed(KEY_UP))
+            gs.inventory_cursor = std::max(0, gs.inventory_cursor - 1);
+        else if (IsKeyPressed(KEY_S) || IsKeyPressed(KEY_DOWN))
+            gs.inventory_cursor = std::min(std::max(0, item_count - 1), gs.inventory_cursor + 1);
+        else if (IsKeyPressed(KEY_LEFT) && page > 0)
+            gs.inventory_cursor = (page - 1) * kPage + rel;
+        else if (IsKeyPressed(KEY_RIGHT) && page < max_page)
+            gs.inventory_cursor = std::min((page + 1) * kPage + rel, item_count - 1);
+        return;
+}
+
+void PlayerController::_handle_gamble_ui(const InputMap& input) {
+    auto& gs = *_scene;
+    if (gs._is_action_just_pressed(input,"inventory") || gs._is_action_just_pressed(input,"cancel")) {
+        gs.gamble_open = false;
+        gs.get_tree()->get_audio()->play_sfx("ui_click", 0.35f);
+    } else if (gs._is_action_just_pressed(input,"pickup")) {
+        _gamble_spin();
+    }
+    return;
+}
+
+void PlayerController::_gamble_spin() {
+    auto& gs = *_scene;
+    // E key: spin
+    constexpr int kGambleCost = 20;
+    if (gs.player->gold < kGambleCost) {
+        gs.gamble_result_msg = "金币不足！需要 " + std::to_string(kGambleCost) + " 金币。";
+        gs.gamble_result_timer = 2.0f;
+        gs.get_tree()->get_audio()->play_sfx("ui_click", 0.35f);
+    } else {
+        gs.player->spend_gold(kGambleCost);
+        int roll = rng() % 100;
+        if (roll < 65) {
+            // 65% Equipment
+            auto item = generate_random_item();
+            if (item && RewardManager::grant_item(*gs.player, item))
+                gs.gamble_result_msg = "运气不错！获得了 " + item->get_description();
+            else
+                gs.gamble_result_msg = "赌徒摊手：今天没货了。";
+        } else if (roll < 85) {
+            // 20% Key
+            RewardManager::grant_key(*gs.player, 1);
+            gs.gamble_result_msg = "获得了一把钥匙！";
+        } else if (roll < 95) {
+            // 10% Gold return
+            RewardManager::grant_gold(*gs.player, 10);
+            gs.gamble_result_msg = "获得 10 金币！";
+        } else _gamble_relic_reward();
+        gs.gamble_result_timer = 2.5f;
+        gs.get_tree()->get_audio()->play_sfx("pickup", 0.55f);
+    }
+}
+
+void PlayerController::_gamble_relic_reward() {
+    auto& gs = *_scene;
+    // 5% RUN Relic
+    auto all_ids = get_all_relic_ids();
+    std::vector<std::string> candidates;
+    for (auto& id : all_ids)
+        if (!player_has_relic(gs.player.get(), id))
+            candidates.push_back(id);
+    if (!candidates.empty()) {
+        std::string chosen = candidates[rng() % candidates.size()];
+        if (RewardManager::grant_relic(*gs.player, chosen, PersistenceScope::RUN)) {
+            const RelicDef* def = get_relic_def(chosen);
+            gs.gamble_result_msg = def ? ("RELIC:" + def->name) : "获得了一件圣物！";
+        } else {
+            RewardManager::grant_key(*gs.player, 1);
+            gs.gamble_result_msg = "圣物库已满，获得钥匙作为替代。";
+        }
+    } else {
+        RewardManager::grant_key(*gs.player, 1);
+        gs.gamble_result_msg = "圣物库已满，获得钥匙作为替代。";
+    }
+}
+
+void PlayerController::_handle_challenge_choice_ui(const InputMap& input) {
+    auto& gs = *_scene;
+        if (gs._is_action_just_pressed(input, "ui_up")) {
+            gs.challenge_choice_cursor = (gs.challenge_choice_cursor + 1) % 2;
+            gs.get_tree()->get_audio()->play_sfx("ui_click", 0.35f);
+        }
+        if (gs._is_action_just_pressed(input, "ui_down")) {
+            gs.challenge_choice_cursor = (gs.challenge_choice_cursor + 1) % 2;
+            gs.get_tree()->get_audio()->play_sfx("ui_click", 0.35f);
+        }
+        if (gs._is_action_just_pressed(input, "confirm") || gs._is_action_just_pressed(input, "interact")) {
+            if (gs.challenge_choice_cursor == 0) {
+                // Start challenge
+                if (gs._challenge.consume_key_for_challenge(*gs.player)) {
+                    gs.enter_challenge_arena();
+                    gs.get_tree()->get_audio()->play_sfx("door_open", 0.6f);
+                } else {
+                    gs._presentation.room_msg = "需要钥匙才能开启挑战。";
+                    gs._presentation.room_msg_timer = 2.0f;
+                }
+            }
+            gs.challenge_choice_active = false;
+            gs.get_tree()->get_audio()->play_sfx("ui_click", 0.35f);
+        }
+        if (gs._is_action_just_pressed(input, "cancel")) {
+            gs.challenge_choice_active = false;
+            gs.get_tree()->get_audio()->play_sfx("ui_click", 0.35f);
+        }
+        return;
+}
+
 
 void PlayerController::player_attack() {
     if (!_scene) return;

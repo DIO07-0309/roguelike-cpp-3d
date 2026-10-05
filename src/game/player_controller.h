@@ -73,4 +73,11 @@ private:
     void _discover_rooms(GameScene& gs);
     void _update_monster_ai(float dt);
     void _self_heal_regen(float dt);
+
+    // G31-B: handle_input 互斥 UI 面板 (纯结构搬运, 早退语义由调用方 return 保持)
+    void _handle_inventory_ui(const InputMap& input);
+    void _handle_gamble_ui(const InputMap& input);
+    void _gamble_spin();
+    void _gamble_relic_reward();
+    void _handle_challenge_choice_ui(const InputMap& input);
 };
