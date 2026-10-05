@@ -712,398 +712,452 @@ void BossAI::_tick_boss_state(Monster* self, Player* player, GameMap* map,
                                double dt, double gt,
                                std::vector<Monster*>* all, std::vector<Effect>* effects) {
     // Q3.13: static→局部 — SummonMinions push 的裸指针跨帧累积成悬垂 (泄漏+定时炸弹)
-    std::vector<Monster*> empty_slots;
     switch (boss_state) {
-    case BossState::IDLE: {
-        // 基础 AI (追逐/巡逻)
-        MonsterAI::update(self, player, map, dt, gt, all, effects, _monster_room, _player_room, _room_mgr);
-        // M4a-fix: 视野内即进入战斗姿态 (原 attack_range 48px —
-        // 玩家拉扯>48px 时连招/召唤/瞬移永不触发, BOSS 只会追)
-        float dist = _dist_to(self, player);
-        if (dist <= sight_range * 32.0f) {
-            boss_state = BossState::ATTACK;
-            normal_attack_count = 0;
-            skill_cycle_index = 0;
-        }
-        break;
+    case BossState::IDLE:          _tick_idle(self, player, map, dt, gt, all, effects); break;
+    case BossState::ATTACK:        _tick_attack(self, player, map, dt, gt, all, effects); break;
+    case BossState::CHARGE:        _tick_charge(self, player, map, dt, gt, all, effects); break;
+    case BossState::SHOCKWAVE:     _tick_shockwave(self, player, map, dt, gt, all, effects); break;
+    case BossState::SUMMON:        _tick_summon(self, player, map, dt, gt, all, effects); break;
+    case BossState::DEFEND:        _tick_defend(self, player, map, dt, gt, all, effects); break;
+    // G5.4: Signature Phase2 skill states
+    case BossState::WHIRLWIND:     _tick_whirlwind(self, player, map, dt, gt, all, effects); break;
+    case BossState::LASER_BARRAGE: _tick_laser_barrage(self, player, map, dt, gt, all, effects); break;
+    // M4a: combo skill states
+    case BossState::RANGED_BARRAGE:_tick_ranged_barrage(self, player, map, dt, gt, all, effects); break;
+    case BossState::CONE_ATTACK:   _tick_cone_attack(self, player, map, dt, gt, all, effects); break;
+    case BossState::BLINK:         _tick_blink(self, player, map, dt, gt, all, effects); break;
+    case BossState::GRAVITY_PULL:  _tick_gravity_pull(self, player, map, dt, gt, all, effects); break;
+    default: break;
     }
-    case BossState::ATTACK: {
-        float dist = _dist_to(self, player);
-        // M4a-fix: 脱战距离 384px (原 192px — 拉扯进出视野导致连招反复中断)
-        if (dist > sight_range * 64.0f) {
-            boss_state = BossState::IDLE;
-            break;
-        }
-        // M4a: 连招驱动 (优先于普攻/旧循环; 返回 true = 连招占用本帧)
-        if (_combos && !_combos->empty()) {
-            if (_tick_combo_attack(self, player, map, dt, gt, effects)) break;
-        }
-        // F15 Mirror: 战斗委托给 MirrorCombatDirector, BossAI 只做移动
-        if (_is_mirror) {
-            normal_attack_count = 0;  // 不让旧循环触发
-        } else {
-            // 标准普攻
-            if (self->can_attack(gt)) {
-                self->attack_target(player, gt);
-                _spawn_boss_vfx(self, "charge", effects);
-                normal_attack_count++;
-            }
-        }
-        // 普攻2次后 → 使用下个技能 (镜像跳过)
-        if (!_is_mirror && normal_attack_count >= 2) {
-            int sk = _next_cycle_skill();
-            // 收官: 冷却判定 — 冷却中的技能退回普攻
-            if (sk == 0 && !_charge->can_use(gt)) sk = -1;
-            else if (sk == 1 && !_shockwave->can_use(gt)) sk = -1;
-            else if (sk == 2 && !_summon->can_use(gt)) sk = -1;
-            else if (sk == 4 && !_whirlwind->can_use(gt)) sk = -1;
-            else if (sk == 5 && !_barrage->can_use(gt)) sk = -1;
-            else if (sk == 6 && !_shockwave->can_use(gt)) sk = -1;
-            // ── G5.4: Phase2 signature skill injection ──
-            if (phase2 && _boss_id) {
-                // Shadow Knight: every 3rd cycle → Whirlwind
-                if (strcmp(_boss_id,"shadow_knight")==0 && (skill_cycle_index%9)<3) sk=4;
-                // Fire Demon: every 3rd cycle → Laser Barrage
-                else if (strcmp(_boss_id,"fire_demon")==0 && (skill_cycle_index%9)<3) sk=5;
-                // Demon Lord: every 4th cycle → Gravity Pull (shockwave with 2x range)
-                else if (strcmp(_boss_id,"demon_lord")==0 && (skill_cycle_index%12)<3) sk=6;
-                // Vampire: every cycle → faster charge+shockwave (lifesteal on hit)
-                else if (strcmp(_boss_id,"vampire")==0) {
-                    self->attack_cooldown *= 0.85f;
-                    if (sk==0) _charge->windup_left *= 0.7f;
-                }
-                // Necromancer: summoned adds get Guardian buff in Phase2
-                else if (strcmp(_boss_id,"necromancer")==0 && sk==2 && all) {
-                    for (auto* m : *all) if (m && !m->is_boss && m->combat.is_alive)
-                        apply_buff(m,"defense_up",1);
-                }
-                // Golem: Phase2 → consecutive shockwaves (3 waves)
-                else if (strcmp(_boss_id,"golem")==0 && sk==1) {
-                    _shockwave->windup_left = _shockwave->windup_time;
-                    // spawn 2 more on next cycle via state
-                }
-            }
-            // D8: Golem — every other cycle, use DEFEND instead of Shockwave
-            if (golem_shield_pct > 0 && sk == 1 && (skill_cycle_index % 12) < 6) {
-                sk = 3; // override: DEFEND instead of Shockwave
-            }
-            if (sk == 0) {
-                boss_state = BossState::CHARGE;
-                _charge->windup_left = _charge->windup_time;
-                _charge->dash_duration = 0.0f;
-                _spawn_boss_vfx(self, "charge", effects);
-            } else if (sk == 1) {
-                boss_state = BossState::SHOCKWAVE;
-                _shockwave->windup_left = _shockwave->windup_time;
-                _spawn_boss_vfx(self, "shockwave", effects);
-            } else if (sk == 2) {
-                boss_state = BossState::SUMMON;
-                _spawn_boss_vfx(self, "summon", effects);
-            } else if (sk == 3) {
-                boss_state = BossState::DEFEND;
-                _spawn_boss_vfx(self, "shockwave", effects); // reuse VFX
-            } else if (sk == 4) {
-                boss_state = BossState::WHIRLWIND;
-                _spawn_boss_vfx(self, "charge", effects);
-            } else if (sk == 5) {
-                boss_state = BossState::LASER_BARRAGE;
-                _laser->windup_left = 0.8f;
-                _spawn_boss_vfx(self, "shockwave", effects);
-            } else if (sk == 6) {
-                boss_state = BossState::GRAVITY_PULL;
-                _spawn_boss_vfx(self, "charge", effects);
-            }
-            normal_attack_count = 0;
-        }
-        // 仍然追向玩家
-        if (dist > attack_range * 32.0f) {
-            float dx = player->entity.rect.x + player->entity.rect.width/2
-                     - self->entity.rect.x - self->entity.rect.width/2;
-            float dy = player->entity.rect.y + player->entity.rect.height/2
-                     - self->entity.rect.y - self->entity.rect.height/2;
-            float len = sqrtf(dx*dx + dy*dy);
-            if (len > 1) _apply_movement(self, map, dx/len, dy/len, dt);
-        }
-        break;
+}
+void BossAI::_tick_idle(Monster* self, Player* player, GameMap* map, double dt, double gt, std::vector<Monster*>* all, std::vector<Effect>* effects) {
+// 基础 AI (追逐/巡逻)
+MonsterAI::update(self, player, map, dt, gt, all, effects, _monster_room, _player_room, _room_mgr);
+// M4a-fix: 视野内即进入战斗姿态 (原 attack_range 48px —
+// 玩家拉扯>48px 时连招/召唤/瞬移永不触发, BOSS 只会追)
+float dist = _dist_to(self, player);
+if (dist <= sight_range * 32.0f) {
+    boss_state = BossState::ATTACK;
+    normal_attack_count = 0;
+    skill_cycle_index = 0;
+}
+return;
+}
+
+void BossAI::_tick_attack(Monster* self, Player* player, GameMap* map, double dt, double gt, std::vector<Monster*>* all, std::vector<Effect>* effects) {
+float dist = _dist_to(self, player);
+// M4a-fix: 脱战距离 384px (原 192px — 拉扯进出视野导致连招反复中断)
+if (dist > sight_range * 64.0f) {
+    boss_state = BossState::IDLE;
+    return;
+}
+// M4a: 连招驱动 (优先于普攻/旧循环; 返回 true = 连招占用本帧)
+if (_combos && !_combos->empty()) {
+    if (_tick_combo_attack(self, player, map, dt, gt, effects)) return;
+}
+// F15 Mirror: 战斗委托给 MirrorCombatDirector, BossAI 只做移动
+if (_is_mirror) {
+    normal_attack_count = 0;  // 不让旧循环触发
+} else {
+    // 标准普攻
+    if (self->can_attack(gt)) {
+        self->attack_target(player, gt);
+        _spawn_boss_vfx(self, "charge", effects);
+        normal_attack_count++;
     }
-    case BossState::CHARGE: {
-        // 蓄力阶段 (C1: 红色预警圈)
-        if (_charge->windup_left > 0) {
-            _charge->windup_left -= (float)dt;
-            if (effects) {
-                // Pulsing ring at boss position
-                Effect warn;
-                warn.kind = "pulse"; warn.world_x = self->entity.rect.x + self->entity.rect.width/2;
-                warn.world_y = self->entity.rect.y + self->entity.rect.height/2;
-                warn.radius = 72; warn.duration = 0.35f; warn.elapsed = 0;
-                warn.color = {255, 80, 30, 200};
-                effects->push_back(warn);
-                // M4d: Dash direction indicator line
-                float ctx = self->entity.rect.x + self->entity.rect.width/2;
-                float cty = self->entity.rect.y + self->entity.rect.height/2;
-                float ptx = player->entity.rect.x + player->entity.rect.width/2;
-                float pty = player->entity.rect.y + player->entity.rect.height/2;
-                Effect line;
-                line.kind = "bolt"; line.world_x = ctx; line.world_y = cty;
-                line.target_x = ptx; line.target_y = pty;
-                line.duration = 0.35f; line.elapsed = 0;
-                line.color = {255, 60, 30, 200};
-                effects->push_back(line);
-            }
-            { std::vector<Monster*> dummy; _charge->execute(self, player, dummy, map, gt); }
-            if (_charge->windup_left <= 0) {
-                // 蓄力结束 → 开始冲刺
-                float dx = player->entity.rect.x + player->entity.rect.width/2
-                         - self->entity.rect.x - self->entity.rect.width/2;
-                float dy = player->entity.rect.y + player->entity.rect.height/2
-                         - self->entity.rect.y - self->entity.rect.height/2;
-                float len = sqrtf(dx*dx + dy*dy);
-                if (len > 0) { _charge->dash_dx = dx/len; _charge->dash_dy = dy/len; }
-                _charge->dash_duration = 0.3f;
-            }
-            break;
-        }
-        // 冲刺阶段
-        if (_charge->dash_duration > 0) {
-            _charge->dash_duration -= (float)dt;
-            std::vector<Monster*> dm; (void)dm;
-            std::string result = _charge->execute(self, player, dm, map, gt);
-            if (!result.empty() && result.find("命中") != std::string::npos) {
-                // 命中玩家, 恢复
-                boss_state = BossState::ATTACK;
-                _combo_on_skill_end();
-            }
-            if (_charge->dash_duration <= 0) {
-                self->color = Color{200, 40, 40, 255};
-                _charge->mark_used(gt);
-                boss_state = BossState::ATTACK;
-                _combo_on_skill_end();
-            }
-            break;
-        }
-        boss_state = BossState::ATTACK;
-        _combo_on_skill_end();
-        break;
-    }
-    case BossState::SHOCKWAVE: {
-        // C1: 蓄力阶段显示半透明冲击波范围
-        if (_shockwave->windup_left > 0) {
-            _shockwave->windup_left -= (float)dt;
-            if (effects) {
-                Effect warn;
-                warn.kind = "pulse";
-                warn.world_x = self->entity.rect.x + self->entity.rect.width/2;
-                warn.world_y = self->entity.rect.y + self->entity.rect.height/2;
-                warn.radius = _shockwave->fx_radius; warn.duration = 0.35f; warn.elapsed = 0;
-                warn.color = {255, 180, 40, 210};
-                effects->push_back(warn);
-                Effect flash;
-                flash.kind = "flash"; flash.world_x = warn.world_x; flash.world_y = warn.world_y;
-                flash.radius = _shockwave->fx_radius * 0.5f;
-                flash.duration = 0.35f; flash.elapsed = 0;
-                flash.color = {255, 120, 30, 180};
-                effects->push_back(flash);
-            }
-            std::vector<Monster*> dm2;
-            _shockwave->execute(self, player, dm2, map, gt);
-            if (_shockwave->windup_left <= 0) {
-                // 释放
-                _spawn_boss_vfx(self, "shockwave", effects);
-                { std::vector<Monster*> dm3; _shockwave->execute(self, player, dm3, map, gt); }
-                self->color = Color{200, 40, 40, 255};
-                _shockwave->mark_used(gt);
-                boss_state = BossState::ATTACK;
-                _combo_on_skill_end();
-            }
-            break;
-        }
-        boss_state = BossState::ATTACK;
-        _combo_on_skill_end();
-        break;
-    }
-    case BossState::SUMMON: {
-        auto mlist = all ? *all : std::vector<Monster*>{};
-        // D8: Necromancer Phase2 summons more
-        int extra = (phase2 && skill_cycle_bias == 4) ? 2 : 0;
-        for (int n = 0; n < 1 + extra; n++) {
-            _summon->execute(self, player, mlist, map, gt);
-        }
-        _spawn_boss_vfx(self, "summon", effects);
-        boss_state = BossState::ATTACK;
-        _combo_on_skill_end();
-        break;
-    }
-    case BossState::DEFEND: {
-        // D8: Golem — 举盾减伤 3 秒
-        auto& mod = self->combat.modifiers;
-        float pct = golem_shield_pct > 0 ? golem_shield_pct : 0.70f;
-        mod["def_pct"] = (mod.count("def_pct") ? mod["def_pct"] : 0) + pct;
-        if (effects) {
-            Effect s;
-            s.kind = "pulse";
-            s.world_x = self->entity.rect.x + self->entity.rect.width/2;
-            s.world_y = self->entity.rect.y + self->entity.rect.height/2;
-            s.radius = 56; s.duration = 0.5f; s.elapsed = 0;
-            s.color = {60, 140, 255, 160};
-            effects->push_back(s);
-        }
-        boss_state = BossState::ATTACK;
-        _combo_on_skill_end();
-        break;
-    }
-    // ── G5.4: Signature Phase2 skill states ──
-    case BossState::WHIRLWIND: {
-        if (_whirlwind->spin_duration <= 0) {
-            _whirlwind->spin_duration = 1.2f;
-            _whirlwind->spin_hit_count = 0;
-            _whirlwind->windup_left = 0.4f; // 蓄力预警
-        }
-        if (_whirlwind->windup_left > 0) {
-            _whirlwind->windup_left -= (float)dt;
-            _spawn_boss_vfx(self, "charge", effects); // 预警特效
-            break;
-        }
-        _whirlwind->spin_duration -= (float)dt;
-        _whirlwind->execute(self, player, empty_slots, map, gt);
-        // boss slowly moves toward player while spinning
+}
+// 普攻2次后 → 使用下个技能 (镜像跳过)
+if (!_is_mirror && normal_attack_count >= 2) {
+    int sk = _select_skill(self, gt, all);
+    _execute_skill(sk, self, player, gt, effects);
+    normal_attack_count = 0;
+}
+// 仍然追向玩家
+if (dist > attack_range * 32.0f) {
+    float dx = player->entity.rect.x + player->entity.rect.width/2
+             - self->entity.rect.x - self->entity.rect.width/2;
+    float dy = player->entity.rect.y + player->entity.rect.height/2
+             - self->entity.rect.y - self->entity.rect.height/2;
+    float len = sqrtf(dx*dx + dy*dy);
+    if (len > 1) _apply_movement(self, map, dx/len, dy/len, dt);
+}
+return;
+}
+
+void BossAI::_tick_charge(Monster* self, Player* player, GameMap* map, double dt, double gt, std::vector<Monster*>* all, std::vector<Effect>* effects) {
+// 蓄力阶段 (C1: 红色预警圈)
+if (_charge->windup_left > 0) {
+    _charge->windup_left -= (float)dt;
+    _charge_windup_fx(self, player, effects);
+    { std::vector<Monster*> dummy; _charge->execute(self, player, dummy, map, gt); }
+    if (_charge->windup_left <= 0) {
+        // 蓄力结束 → 开始冲刺
         float dx = player->entity.rect.x + player->entity.rect.width/2
                  - self->entity.rect.x - self->entity.rect.width/2;
         float dy = player->entity.rect.y + player->entity.rect.height/2
                  - self->entity.rect.y - self->entity.rect.height/2;
-        float len = sqrtf(dx*dx+dy*dy);
-        if (len > 1) _apply_movement(self, map, dx/len, dy/len, dt * 0.6);
-        if (_whirlwind->spin_duration <= 0) {
-            boss_state = BossState::ATTACK;
-            _combo_on_skill_end();
-        }
-        break;
+        float len = sqrtf(dx*dx + dy*dy);
+        if (len > 0) { _charge->dash_dx = dx/len; _charge->dash_dy = dy/len; }
+        _charge->dash_duration = 0.3f;
     }
-    case BossState::LASER_BARRAGE: {
-        if (_laser->windup_left > 0) {
-            _laser->windup_left -= (float)dt;
-            _spawn_boss_vfx(self, "shockwave", effects); // 蓄力预警
-            if (_laser->windup_left <= 0) {
-                _laser->execute(self, player, empty_slots, map, gt);
-                _spawn_boss_vfx(self, "shockwave", effects);
-                boss_state = BossState::ATTACK;
-                _combo_on_skill_end();
-            }
-        } else {
-            _laser->windup_left = 0.8f;
-        }
-        break;
-    }
-    // ── M4a: 连招技能状态 ──
-    case BossState::RANGED_BARRAGE: {
-        if (_barrage->windup_left > 0) {
-            _barrage->windup_left -= (float)dt;
-            if (effects) {
-                Effect warn;
-                warn.kind = "pulse";
-                warn.world_x = self->entity.rect.x + self->entity.rect.width/2;
-                warn.world_y = self->entity.rect.y + self->entity.rect.height/2;
-                warn.radius = 70; warn.duration = 0.25f; warn.elapsed = 0;
-                warn.color = {150, 80, 255, 200};
-                effects->push_back(warn);
-            }
-            break;
-        }
-        std::string msg = _barrage->execute(self, player, empty_slots, map, gt);
-        if (!msg.empty() && effects) {
-            // M4a-fx: 发射爆点 (紫色波纹 + 火花)
-            VFXServer v;
-            float bx = self->entity.rect.x + self->entity.rect.width/2;
-            float by = self->entity.rect.y + self->entity.rect.height/2;
-            v.ring(bx, by, 42, {170, 100, 255, 255}, 2, 0.30f);
-            v.spark_burst(bx, by, 10, {220, 170, 255, 255}, 0.35f);
-            for (auto& e : v.effects) effects->push_back(e);
-        }
-        if (effects && !_barrage->hit_fx.empty()) {
-            // M4a-fx: 命中爆炸反馈 (爆炸 + 冲击波 + 闪光)
-            VFXServer v;
-            for (auto& [hx, hy] : _barrage->hit_fx) {
-                v.explosion(hx, hy, 18, {210, 130, 255, 255}, 8, 0.35f);
-                v.shockwave(hx, hy, 26, {170, 90, 255, 255}, 2, 0.40f);
-                v.flash(hx, hy, 30, {230, 190, 255, 210}, 0.12f);
-            }
-            for (auto& e : v.effects) effects->push_back(e);
-            _barrage->hit_fx.clear();
-        }
-        if (_barrage->finished) {
-            boss_state = BossState::ATTACK;
-            _combo_on_skill_end();
-        }
-        break;
-    }
-    case BossState::CONE_ATTACK: {
-        if (_cone->windup_left > 0) {
-            _cone->windup_left -= (float)dt;
-            if (effects) {
-                Effect warn;
-                warn.kind = "pulse";
-                warn.world_x = self->entity.rect.x + self->entity.rect.width/2;
-                warn.world_y = self->entity.rect.y + self->entity.rect.height/2;
-                warn.radius = _cone->reach; warn.duration = 0.14f; warn.elapsed = 0;
-                warn.color = {140, 240, 80, 140};
-                effects->push_back(warn);
-            }
-            break;
-        }
-        _cone->execute(self, player, empty_slots, map, gt);
+    return;
+}
+// 冲刺阶段
+if (_charge->dash_duration > 0) {
+    _charge->dash_duration -= (float)dt;
+    std::vector<Monster*> dm; (void)dm;
+    std::string result = _charge->execute(self, player, dm, map, gt);
+    if (!result.empty() && result.find("命中") != std::string::npos) {
+        // 命中玩家, 恢复
         boss_state = BossState::ATTACK;
         _combo_on_skill_end();
-        break;
     }
-    case BossState::BLINK: {
-        if (_blink->windup_left > 0) {
-            _blink->windup_left -= (float)dt;
-            if (effects) {
-                Effect warn;
-                warn.kind = "pulse";
-                warn.world_x = _blink->pending_x;
-                warn.world_y = _blink->pending_y;
-                warn.radius = 26; warn.duration = 0.12f; warn.elapsed = 0;
-                warn.color = {150, 100, 255, 180};
-                effects->push_back(warn);
-            }
-            break;
-        }
-        _blink->execute(self, player, empty_slots, map, gt);
-        if (_blink->blinked) {
-            boss_state = BossState::ATTACK;
-            _combo_on_skill_end();
-        }
-        break;
+    if (_charge->dash_duration <= 0) {
+        self->color = Color{200, 40, 40, 255};
+        _charge->mark_used(gt);
+        boss_state = BossState::ATTACK;
+        _combo_on_skill_end();
     }
-    case BossState::GRAVITY_PULL: {
-        // Demon Lord: pull player closer + delayed shockwave
-        float bx = self->entity.rect.x + self->entity.rect.width/2;
-        float by = self->entity.rect.y + self->entity.rect.height/2;
-        float px = player->entity.rect.x + player->entity.rect.width/2;
-        float py = player->entity.rect.y + player->entity.rect.height/2;
-        float dx = bx - px, dy = by - py;
-        float len = sqrtf(dx*dx+dy*dy);
-        if (len > 1 && len < 300.0f) {
-            clamp_displacement(player->entity, dx/len * 120.0f * (float)dt,
-                               dy/len * 120.0f * (float)dt, map);
-        }
-        // 0.8s pull → shockwave with 1.5x range
-        _gravity_timer += (float)dt;
-        if (_gravity_timer > 0.8f) {
-            _gravity_timer = 0;
-            _shockwave->fx_radius *= 1.5f;
-            _shockwave->execute(self, player, empty_slots, map, gt);
-            _shockwave->fx_radius /= 1.5f;
-            _shockwave->mark_used(gt);
-            _spawn_boss_vfx(self, "shockwave", effects);
-            boss_state = BossState::ATTACK;
-            _combo_on_skill_end();
-        }
-        break;
+    return;
+}
+boss_state = BossState::ATTACK;
+_combo_on_skill_end();
+return;
+}
+
+void BossAI::_tick_shockwave(Monster* self, Player* player, GameMap* map, double dt, double gt, std::vector<Monster*>* all, std::vector<Effect>* effects) {
+// C1: 蓄力阶段显示半透明冲击波范围
+if (_shockwave->windup_left > 0) {
+    _shockwave->windup_left -= (float)dt;
+    if (effects) {
+        Effect warn;
+        warn.kind = "pulse";
+        warn.world_x = self->entity.rect.x + self->entity.rect.width/2;
+        warn.world_y = self->entity.rect.y + self->entity.rect.height/2;
+        warn.radius = _shockwave->fx_radius; warn.duration = 0.35f; warn.elapsed = 0;
+        warn.color = {255, 180, 40, 210};
+        effects->push_back(warn);
+        Effect flash;
+        flash.kind = "flash"; flash.world_x = warn.world_x; flash.world_y = warn.world_y;
+        flash.radius = _shockwave->fx_radius * 0.5f;
+        flash.duration = 0.35f; flash.elapsed = 0;
+        flash.color = {255, 120, 30, 180};
+        effects->push_back(flash);
     }
-    default: break;
+    std::vector<Monster*> dm2;
+    _shockwave->execute(self, player, dm2, map, gt);
+    if (_shockwave->windup_left <= 0) {
+        // 释放
+        _spawn_boss_vfx(self, "shockwave", effects);
+        { std::vector<Monster*> dm3; _shockwave->execute(self, player, dm3, map, gt); }
+        self->color = Color{200, 40, 40, 255};
+        _shockwave->mark_used(gt);
+        boss_state = BossState::ATTACK;
+        _combo_on_skill_end();
+    }
+    return;
+}
+boss_state = BossState::ATTACK;
+_combo_on_skill_end();
+return;
+}
+
+void BossAI::_tick_summon(Monster* self, Player* player, GameMap* map, double dt, double gt, std::vector<Monster*>* all, std::vector<Effect>* effects) {
+auto mlist = all ? *all : std::vector<Monster*>{};
+// D8: Necromancer Phase2 summons more
+int extra = (phase2 && skill_cycle_bias == 4) ? 2 : 0;
+for (int n = 0; n < 1 + extra; n++) {
+    _summon->execute(self, player, mlist, map, gt);
+}
+_spawn_boss_vfx(self, "summon", effects);
+boss_state = BossState::ATTACK;
+_combo_on_skill_end();
+return;
+}
+
+void BossAI::_tick_defend(Monster* self, Player* player, GameMap* map, double dt, double gt, std::vector<Monster*>* all, std::vector<Effect>* effects) {
+// D8: Golem — 举盾减伤 3 秒
+auto& mod = self->combat.modifiers;
+float pct = golem_shield_pct > 0 ? golem_shield_pct : 0.70f;
+mod["def_pct"] = (mod.count("def_pct") ? mod["def_pct"] : 0) + pct;
+if (effects) {
+    Effect s;
+    s.kind = "pulse";
+    s.world_x = self->entity.rect.x + self->entity.rect.width/2;
+    s.world_y = self->entity.rect.y + self->entity.rect.height/2;
+    s.radius = 56; s.duration = 0.5f; s.elapsed = 0;
+    s.color = {60, 140, 255, 160};
+    effects->push_back(s);
+}
+boss_state = BossState::ATTACK;
+_combo_on_skill_end();
+return;
+}
+
+void BossAI::_tick_whirlwind(Monster* self, Player* player, GameMap* map, double dt, double gt, std::vector<Monster*>* all, std::vector<Effect>* effects) {
+    std::vector<Monster*> empty_slots;
+if (_whirlwind->spin_duration <= 0) {
+    _whirlwind->spin_duration = 1.2f;
+    _whirlwind->spin_hit_count = 0;
+    _whirlwind->windup_left = 0.4f; // 蓄力预警
+}
+if (_whirlwind->windup_left > 0) {
+    _whirlwind->windup_left -= (float)dt;
+    _spawn_boss_vfx(self, "charge", effects); // 预警特效
+    return;
+}
+_whirlwind->spin_duration -= (float)dt;
+_whirlwind->execute(self, player, empty_slots, map, gt);
+// boss slowly moves toward player while spinning
+float dx = player->entity.rect.x + player->entity.rect.width/2
+         - self->entity.rect.x - self->entity.rect.width/2;
+float dy = player->entity.rect.y + player->entity.rect.height/2
+         - self->entity.rect.y - self->entity.rect.height/2;
+float len = sqrtf(dx*dx+dy*dy);
+if (len > 1) _apply_movement(self, map, dx/len, dy/len, dt * 0.6);
+if (_whirlwind->spin_duration <= 0) {
+    boss_state = BossState::ATTACK;
+    _combo_on_skill_end();
+}
+return;
+}
+
+void BossAI::_tick_laser_barrage(Monster* self, Player* player, GameMap* map, double dt, double gt, std::vector<Monster*>* all, std::vector<Effect>* effects) {
+    std::vector<Monster*> empty_slots;
+if (_laser->windup_left > 0) {
+    _laser->windup_left -= (float)dt;
+    _spawn_boss_vfx(self, "shockwave", effects); // 蓄力预警
+    if (_laser->windup_left <= 0) {
+        _laser->execute(self, player, empty_slots, map, gt);
+        _spawn_boss_vfx(self, "shockwave", effects);
+        boss_state = BossState::ATTACK;
+        _combo_on_skill_end();
+    }
+} else {
+    _laser->windup_left = 0.8f;
+}
+return;
+}
+
+void BossAI::_tick_ranged_barrage(Monster* self, Player* player, GameMap* map, double dt, double gt, std::vector<Monster*>* all, std::vector<Effect>* effects) {
+    std::vector<Monster*> empty_slots;
+if (_barrage->windup_left > 0) {
+    _barrage->windup_left -= (float)dt;
+    _barrage_windup_fx(self, effects);
+    return;
+}
+std::string msg = _barrage->execute(self, player, empty_slots, map, gt);
+    _barrage_fire_fx(msg, self, effects);
+    _barrage_hit_fx(self, effects);
+if (_barrage->finished) {
+    boss_state = BossState::ATTACK;
+    _combo_on_skill_end();
+}
+return;
+}
+
+void BossAI::_tick_cone_attack(Monster* self, Player* player, GameMap* map, double dt, double gt, std::vector<Monster*>* all, std::vector<Effect>* effects) {
+    std::vector<Monster*> empty_slots;
+if (_cone->windup_left > 0) {
+    _cone->windup_left -= (float)dt;
+    if (effects) {
+        Effect warn;
+        warn.kind = "pulse";
+        warn.world_x = self->entity.rect.x + self->entity.rect.width/2;
+        warn.world_y = self->entity.rect.y + self->entity.rect.height/2;
+        warn.radius = _cone->reach; warn.duration = 0.14f; warn.elapsed = 0;
+        warn.color = {140, 240, 80, 140};
+        effects->push_back(warn);
+    }
+    return;
+}
+_cone->execute(self, player, empty_slots, map, gt);
+boss_state = BossState::ATTACK;
+_combo_on_skill_end();
+return;
+}
+
+void BossAI::_tick_blink(Monster* self, Player* player, GameMap* map, double dt, double gt, std::vector<Monster*>* all, std::vector<Effect>* effects) {
+    std::vector<Monster*> empty_slots;
+if (_blink->windup_left > 0) {
+    _blink->windup_left -= (float)dt;
+    if (effects) {
+        Effect warn;
+        warn.kind = "pulse";
+        warn.world_x = _blink->pending_x;
+        warn.world_y = _blink->pending_y;
+        warn.radius = 26; warn.duration = 0.12f; warn.elapsed = 0;
+        warn.color = {150, 100, 255, 180};
+        effects->push_back(warn);
+    }
+    return;
+}
+_blink->execute(self, player, empty_slots, map, gt);
+if (_blink->blinked) {
+    boss_state = BossState::ATTACK;
+    _combo_on_skill_end();
+}
+return;
+}
+
+void BossAI::_tick_gravity_pull(Monster* self, Player* player, GameMap* map, double dt, double gt, std::vector<Monster*>* all, std::vector<Effect>* effects) {
+    std::vector<Monster*> empty_slots;
+// Demon Lord: pull player closer + delayed shockwave
+float bx = self->entity.rect.x + self->entity.rect.width/2;
+float by = self->entity.rect.y + self->entity.rect.height/2;
+float px = player->entity.rect.x + player->entity.rect.width/2;
+float py = player->entity.rect.y + player->entity.rect.height/2;
+float dx = bx - px, dy = by - py;
+float len = sqrtf(dx*dx+dy*dy);
+if (len > 1 && len < 300.0f) {
+    clamp_displacement(player->entity, dx/len * 120.0f * (float)dt,
+                       dy/len * 120.0f * (float)dt, map);
+}
+// 0.8s pull → shockwave with 1.5x range
+_gravity_timer += (float)dt;
+if (_gravity_timer > 0.8f) {
+    _gravity_timer = 0;
+    _shockwave->fx_radius *= 1.5f;
+    _shockwave->execute(self, player, empty_slots, map, gt);
+    _shockwave->fx_radius /= 1.5f;
+    _shockwave->mark_used(gt);
+    _spawn_boss_vfx(self, "shockwave", effects);
+    boss_state = BossState::ATTACK;
+    _combo_on_skill_end();
+}
+return;
+}
+
+int BossAI::_select_skill(Monster* self, double gt, std::vector<Monster*>* all) {
+int sk = _next_cycle_skill();
+// 收官: 冷却判定 — 冷却中的技能退回普攻
+if (sk == 0 && !_charge->can_use(gt)) sk = -1;
+else if (sk == 1 && !_shockwave->can_use(gt)) sk = -1;
+else if (sk == 2 && !_summon->can_use(gt)) sk = -1;
+else if (sk == 4 && !_whirlwind->can_use(gt)) sk = -1;
+else if (sk == 5 && !_barrage->can_use(gt)) sk = -1;
+else if (sk == 6 && !_shockwave->can_use(gt)) sk = -1;
+// ── G5.4: Phase2 signature skill injection ──
+if (phase2 && _boss_id) {
+    // Shadow Knight: every 3rd cycle → Whirlwind
+    if (strcmp(_boss_id,"shadow_knight")==0 && (skill_cycle_index%9)<3) sk=4;
+    // Fire Demon: every 3rd cycle → Laser Barrage
+    else if (strcmp(_boss_id,"fire_demon")==0 && (skill_cycle_index%9)<3) sk=5;
+    // Demon Lord: every 4th cycle → Gravity Pull (shockwave with 2x range)
+    else if (strcmp(_boss_id,"demon_lord")==0 && (skill_cycle_index%12)<3) sk=6;
+    // Vampire: every cycle → faster charge+shockwave (lifesteal on hit)
+    else if (strcmp(_boss_id,"vampire")==0) {
+        self->attack_cooldown *= 0.85f;
+        if (sk==0) _charge->windup_left *= 0.7f;
+    }
+    // Necromancer: summoned adds get Guardian buff in Phase2
+    else if (strcmp(_boss_id,"necromancer")==0 && sk==2 && all) {
+        for (auto* m : *all) if (m && !m->is_boss && m->combat.is_alive)
+            apply_buff(m,"defense_up",1);
+    }
+    // Golem: Phase2 → consecutive shockwaves (3 waves)
+    else if (strcmp(_boss_id,"golem")==0 && sk==1) {
+        _shockwave->windup_left = _shockwave->windup_time;
+        // spawn 2 more on next cycle via state
     }
 }
+// D8: Golem — every other cycle, use DEFEND instead of Shockwave
+if (golem_shield_pct > 0 && sk == 1 && (skill_cycle_index % 12) < 6) {
+    sk = 3; // override: DEFEND instead of Shockwave
+}
+    return sk;
+}
+
+void BossAI::_execute_skill(int sk, Monster* self, Player* player, double gt, std::vector<Effect>* effects) {
+if (sk == 0) {
+    boss_state = BossState::CHARGE;
+    _charge->windup_left = _charge->windup_time;
+    _charge->dash_duration = 0.0f;
+    _spawn_boss_vfx(self, "charge", effects);
+} else if (sk == 1) {
+    boss_state = BossState::SHOCKWAVE;
+    _shockwave->windup_left = _shockwave->windup_time;
+    _spawn_boss_vfx(self, "shockwave", effects);
+} else if (sk == 2) {
+    boss_state = BossState::SUMMON;
+    _spawn_boss_vfx(self, "summon", effects);
+} else if (sk == 3) {
+    boss_state = BossState::DEFEND;
+    _spawn_boss_vfx(self, "shockwave", effects); // reuse VFX
+} else if (sk == 4) {
+    boss_state = BossState::WHIRLWIND;
+    _spawn_boss_vfx(self, "charge", effects);
+} else if (sk == 5) {
+    boss_state = BossState::LASER_BARRAGE;
+    _laser->windup_left = 0.8f;
+    _spawn_boss_vfx(self, "shockwave", effects);
+} else if (sk == 6) {
+    boss_state = BossState::GRAVITY_PULL;
+    _spawn_boss_vfx(self, "charge", effects);
+}
+}
+
+void BossAI::_charge_windup_fx(Monster* self, Player* player, std::vector<Effect>* effects) {
+if (effects) {
+    // Pulsing ring at boss position
+    Effect warn;
+    warn.kind = "pulse"; warn.world_x = self->entity.rect.x + self->entity.rect.width/2;
+    warn.world_y = self->entity.rect.y + self->entity.rect.height/2;
+    warn.radius = 72; warn.duration = 0.35f; warn.elapsed = 0;
+    warn.color = {255, 80, 30, 200};
+    effects->push_back(warn);
+    // M4d: Dash direction indicator line
+    float ctx = self->entity.rect.x + self->entity.rect.width/2;
+    float cty = self->entity.rect.y + self->entity.rect.height/2;
+    float ptx = player->entity.rect.x + player->entity.rect.width/2;
+    float pty = player->entity.rect.y + player->entity.rect.height/2;
+    Effect line;
+    line.kind = "bolt"; line.world_x = ctx; line.world_y = cty;
+    line.target_x = ptx; line.target_y = pty;
+    line.duration = 0.35f; line.elapsed = 0;
+    line.color = {255, 60, 30, 200};
+    effects->push_back(line);
+}
+}
+
+void BossAI::_barrage_windup_fx(Monster* self, std::vector<Effect>* effects) {
+if (effects) {
+    Effect warn;
+    warn.kind = "pulse";
+    warn.world_x = self->entity.rect.x + self->entity.rect.width/2;
+    warn.world_y = self->entity.rect.y + self->entity.rect.height/2;
+    warn.radius = 70; warn.duration = 0.25f; warn.elapsed = 0;
+    warn.color = {150, 80, 255, 200};
+    effects->push_back(warn);
+}
+}
+
+void BossAI::_barrage_fire_fx(const std::string& msg, Monster* self, std::vector<Effect>* effects) {
+        if (!msg.empty() && effects) {
+// M4a-fx: 发射爆点 (紫色波纹 + 火花)
+VFXServer v;
+float bx = self->entity.rect.x + self->entity.rect.width/2;
+float by = self->entity.rect.y + self->entity.rect.height/2;
+v.ring(bx, by, 42, {170, 100, 255, 255}, 2, 0.30f);
+v.spark_burst(bx, by, 10, {220, 170, 255, 255}, 0.35f);
+for (auto& e : v.effects) effects->push_back(e);
+        }
+}
+
+void BossAI::_barrage_hit_fx(Monster* self, std::vector<Effect>* effects) {
+        if (effects && !_barrage->hit_fx.empty()) {
+// M4a-fx: 命中爆炸反馈 (爆炸 + 冲击波 + 闪光)
+VFXServer v;
+for (auto& [hx, hy] : _barrage->hit_fx) {
+    v.explosion(hx, hy, 18, {210, 130, 255, 255}, 8, 0.35f);
+    v.shockwave(hx, hy, 26, {170, 90, 255, 255}, 2, 0.40f);
+    v.flash(hx, hy, 30, {230, 190, 255, 210}, 0.12f);
+}
+for (auto& e : v.effects) effects->push_back(e);
+_barrage->hit_fx.clear();
+        }
+}
+
 
 float BossAI::_hp_ratio(Monster* self) const {
     return (float)self->combat.current_hp / self->combat.max_hp;

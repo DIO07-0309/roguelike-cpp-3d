@@ -279,6 +279,26 @@ private:
     void _tick_boss_state(Monster* self, Player* player, GameMap* map,
                           double dt, double gt,
                           std::vector<Monster*>* all, std::vector<Effect>* effects);
+// G32-A: BossAI state machine case helpers
+void _tick_idle(Monster* self, Player* player, GameMap* map, double dt, double gt, std::vector<Monster*>* all, std::vector<Effect>* effects);
+void _tick_attack(Monster* self, Player* player, GameMap* map, double dt, double gt, std::vector<Monster*>* all, std::vector<Effect>* effects);
+void _tick_charge(Monster* self, Player* player, GameMap* map, double dt, double gt, std::vector<Monster*>* all, std::vector<Effect>* effects);
+void _tick_shockwave(Monster* self, Player* player, GameMap* map, double dt, double gt, std::vector<Monster*>* all, std::vector<Effect>* effects);
+void _tick_summon(Monster* self, Player* player, GameMap* map, double dt, double gt, std::vector<Monster*>* all, std::vector<Effect>* effects);
+void _tick_defend(Monster* self, Player* player, GameMap* map, double dt, double gt, std::vector<Monster*>* all, std::vector<Effect>* effects);
+void _tick_whirlwind(Monster* self, Player* player, GameMap* map, double dt, double gt, std::vector<Monster*>* all, std::vector<Effect>* effects);
+void _tick_laser_barrage(Monster* self, Player* player, GameMap* map, double dt, double gt, std::vector<Monster*>* all, std::vector<Effect>* effects);
+void _tick_ranged_barrage(Monster* self, Player* player, GameMap* map, double dt, double gt, std::vector<Monster*>* all, std::vector<Effect>* effects);
+void _tick_cone_attack(Monster* self, Player* player, GameMap* map, double dt, double gt, std::vector<Monster*>* all, std::vector<Effect>* effects);
+void _tick_blink(Monster* self, Player* player, GameMap* map, double dt, double gt, std::vector<Monster*>* all, std::vector<Effect>* effects);
+void _tick_gravity_pull(Monster* self, Player* player, GameMap* map, double dt, double gt, std::vector<Monster*>* all, std::vector<Effect>* effects);
+int _select_skill(Monster* self, double gt, std::vector<Monster*>* all);
+void _execute_skill(int sk, Monster* self, Player* player, double gt, std::vector<Effect>* effects);
+void _charge_windup_fx(Monster* self, Player* player, std::vector<Effect>* effects);
+void _barrage_windup_fx(Monster* self, std::vector<Effect>* effects);
+void _barrage_fire_fx(const std::string& msg, Monster* self, std::vector<Effect>* effects);
+void _barrage_hit_fx(Monster* self, std::vector<Effect>* effects);
+
     float _hp_ratio(Monster* self) const;
     int   _next_cycle_skill();  // 返回 -1=普攻, 0=Charge, 1=Shockwave, 2=Summon
 
