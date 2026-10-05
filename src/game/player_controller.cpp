@@ -57,221 +57,251 @@ void PlayerController::reset_floor_state() {
 
 void PlayerController::tick(float dt) {
     if (!_scene || !_scene->player || !_scene->player->combat.is_alive) return;
-
-    // M1: 每帧刷新行为克隆上下文 (HP 比例/最近敌人距离/技能就绪位)
-    {
-        auto& c = *_scene;
-        float hp = c.player->combat.max_hp > 0
-            ? (float)c.player->combat.current_hp / c.player->combat.max_hp : 0;
-        float nearest = 999.0f;
-        for (auto& m : c.monsters) {
-            if (!m->combat.is_alive) continue;
-            float d = hypotf(m->entity.rect.x - c.player->entity.rect.x,
-                             m->entity.rect.y - c.player->entity.rect.y) / 32.0f;
-            if (d < nearest) nearest = d;
-        }
-        int mask = 0;
-        for (size_t i = 0; i < c.player->skills.active_skills.size() && i < 4; i++)
-            if (c.player->skills.active_skills[i]->remaining_cooldown(c.game_time) <= 0.0f)
-                mask |= 1 << (int)i;
-        g_behavior.set_context(hp, nearest > 900.0f ? -1.0f : nearest, mask);
-        // M5: 条件维度 — 朝向 (Direction 枚举) + 近1s受击窗口 (供受压反击学习)
-        int hp_now = c.player->combat.current_hp;
-        if (_last_seen_hp >= 0 && hp_now < _last_seen_hp) _hit_window = 1.0f;
-        _last_seen_hp = hp_now;
-        if (_hit_window > 0) _hit_window -= dt;
-        if (_hit_window < 0.0f) _hit_window = 0.0f;
-        int facing = (int)c.player->direction;
-        g_behavior.set_battle_context(facing, _hit_window > 0 ? 1 : 0);
-    }
+    _init_behavior_context(dt);
 
     // ── 移动 ──
     auto& gs = *_scene;
-    // F15.2: movement state-change detection
-    auto _record_move = [&](float mx, float my) {
-        float dx = mx - _last_mx, dy = my - _last_my;
-        _last_mx = mx; _last_my = my;
-        if (fabsf(dx) > 200.0f || fabsf(dy) > 200.0f)
-            g_behavior.on_dodge((float)gs.game_time, gs.current_floor,
-                gs.player->entity.rect.x + gs.player->entity.rect.width/2,
-                gs.player->entity.rect.y + gs.player->entity.rect.height/2);
-        if (mx == 0 && my == 0) return; // idle
-        int dir = (fabsf(mx) > fabsf(my)) ? (mx > 0 ? 1 : 0) : (my > 0 ? 3 : 2);
-        if (dir != _last_move_dir) {
-            _last_move_dir = dir;
-            g_behavior.on_move_state_change((float)gs.game_time, gs.current_floor,
-                gs.player->entity.rect.x + gs.player->entity.rect.width/2,
-                gs.player->entity.rect.y + gs.player->entity.rect.height/2, dir);
-        }
-    };
 
     // M4.2: 镜像冻结期间玩家禁移动 (仍 tick 怪物AI与玩家buff)
-    if (gs.player_frozen_by_mirror()) {
-        if (gs.time_stop_remaining <= 0) {
-            int hp_before = gs.player->combat.current_hp;
-            gs._update_monsters(dt);
-            int dmg_taken = hp_before - gs.player->combat.current_hp;
-            if (dmg_taken > 0) {
-                gs._boss.dmg_taken += dmg_taken;
-                // F15.2: record damage taken
-                PlayerAction a;
-                a.type = PlayerActionType::TAKE_DAMAGE;
-                a.timestamp = (float)gs.game_time; a.floor = gs.current_floor;
-                a.pos_x = gs.player->entity.rect.x + gs.player->entity.rect.width/2;
-                a.pos_y = gs.player->entity.rect.y + gs.player->entity.rect.height/2;
-                a.value = dmg_taken;
-                g_behavior.record(a);
-            } else if (int heal_amt = gs.player->combat.current_hp - hp_before; heal_amt > 0) {
-                g_behavior.on_heal((float)gs.game_time, gs.current_floor, heal_amt);
-            }
-            if (dmg_taken > 0 && gs.player->combat.is_alive) {
-                gs._presentation.damage_floats.push_back({
-                    gs.player->entity.rect.x + gs.player->entity.rect.width/2,
-                    gs.player->entity.rect.y - 12, 0.6f, 0.6f, dmg_taken,
-                    dmg_taken >= 30 ? Color{255, 60, 30, 255} : Color{255, 80, 80, 255}
-                });
-                float shake = dmg_taken >= 30 ? 12.0f : dmg_taken > 15 ? 5.0f : 2.0f;
-                gs._presentation.trigger_shake(shake);
-                if (dmg_taken >= 20) gs._presentation.trigger_freeze(0.05f);
-                gs.get_tree()->get_audio()->play_sfx("hurt", 0.6f);  // Q4.4
-                gs._presentation.trigger_hit_flash();  // Q4.7: 受击红屏
-            }
-        }
-        return;
-    }
+    if (gs.player_frozen_by_mirror()) { _tick_mirror_frozen(dt); return; }
 
     if (!gs.inventory_open && !gs.gamble_open && !gs._is_event_running() && !gs._dialogue.active && !gs._quest_log_open) {
-        Vector2 move = gs.player->handle_input(gs.get_tree()->get_input());
-        if (gs._sim_mode) {
-            // Q3.1: headless 无真实键盘 — SimAI 决定移动方向与朝向
-            InputMap& sm = gs.get_tree()->get_input();
-            move.x = gs._is_action_just_pressed(sm, "move_left") ? -1.0f
-                   : gs._is_action_just_pressed(sm, "move_right") ? 1.0f : 0.0f;
-            move.y = gs._is_action_just_pressed(sm, "move_up") ? -1.0f
-                   : gs._is_action_just_pressed(sm, "move_down") ? 1.0f : 0.0f;
-            if (move.y < 0) gs.player->direction = Direction::UP;
-            else if (move.y > 0) gs.player->direction = Direction::DOWN;
-            else if (move.x < 0) gs.player->direction = Direction::LEFT;
-            else if (move.x > 0) gs.player->direction = Direction::RIGHT;
-            gs.player->is_moving = (move.x != 0 || move.y != 0);
-            if (++_loot_dbg % 240 == 0)
-                LOG_INFO("[SIM-LOOT] items=%d best=%s inv=%zu",
-                    (int)gs.ground_items.size(),
-                    gs._sim_ai ? gs._sim_ai->last_best_action().c_str() : "?",
-                    gs.player->inventory.items.size());
-        }
+        Vector2 move = _resolve_move_input();
         auto& e = gs.player->entity;
-        _record_move(move.x, move.y);
-        // G10.6-B C2: 停靠贴合 — 整步失败改为二分逼近最大合法位移
-        // 边界: 判定函数 is_rect_walkable 不变, 仅提升移动 resolution 精度
-        // (原实现停靠间隙 [0,s) 帧间抖动 -> 二分 6 次后 <s/64 稳定贴边)
-        auto _try_move_axis = [&](bool is_x, float delta) {
-            float start = is_x ? e.position.x : e.position.y;
-            if (is_x) e.position.x += delta; else e.position.y += delta;
-            e.sync_rect();
-            if (gs.game_map->is_rect_walkable(e.rect)) return;
-            float lo = 0.0f, hi = delta;
-            for (int i = 0; i < 6; i++) {
-                float mid = (lo + hi) * 0.5f;
-                if (is_x) e.position.x = start + mid; else e.position.y = start + mid;
-                e.sync_rect();
-                if (gs.game_map->is_rect_walkable(e.rect)) lo = mid;
-                else hi = mid;
-            }
-            if (is_x) e.position.x = start + lo; else e.position.y = start + lo;
-            e.sync_rect();
-        };
-        // B3: 翻滚位移接管 — was_dodging 覆盖全程含结束帧(余量补足+落地尘), 否则常规移动
+        _record_move_state(gs, move.x, move.y);
+
         bool was_dodging = gs.player->dodge.active();
         gs.player->dodge.tick(dt);
         if (was_dodging) {
             Vector2 d = gs.player->dodge.delta_this_frame();
-            _try_move_axis(true,  d.x);
-            _try_move_axis(false, d.y);                      // 撞墙=既有二分贴墙, 计时照跑
+            _apply_move_delta(gs, true,  d.x);
+            _apply_move_delta(gs, false, d.y);                      // 撞墙=既有二分贴墙, 计时照跑
             if (gs.player->dodge.active() && gs.player->dodge.ghost_due())
                 gs.player->dodge.push_ghost({e.position.x, e.position.y});
             if (!gs.player->dodge.active())
                 _roll_dust(gs, e.rect.x + e.rect.width / 2, e.rect.y + e.rect.height / 2);
         } else {
-            float speed_mul = (gs._tw_speed_boost > 0) ? 1.25f : 1.0f;
-            float s = get_effective_speed(gs.player.get()) * speed_mul * dt;
-            // G14: R1 接触开门 — try_open_door_toward 此前从未被调用(死代码),
-            //       CLOSED 门 is_walkable=false 令移动被拒 → AI BFS(CLOSED可走)
-            //       与执行层 rect 判定脱节 → 玩家卡死于 CLOSED 门旁 (door=1 stuck#)
-            if ((move.x != 0.0f || move.y != 0.0f))
-                gs.game_map->try_open_door_toward(e.rect, move.x, move.y);
-            if (gs._sim_mode) {
-                // G14b: sim 整格步进 — 半格位置(px=112)使 rect 跨 2 tile,
-                //       连续移动(is_rect_walkable 全tile)与 BFS(中心tile)分裂,
-                    // 玩家永远"走不动". 整格步进后位置恒对齐格点, rect 28px
-                    //       落单 tile → 决策/执行完全一致. 0.14s/格≈228px/s 同步速.
-                if ((move.x != 0.0f || move.y != 0.0f) &&
-                    gs.game_time - _sim_last_step >= 0.14f) {
-                    _sim_last_step = gs.game_time;
-                    float dx = move.x * 32.0f, dy = move.y * 32.0f;
-                    e.position.x += dx; e.position.y += dy; e.sync_rect();
-                    if (!gs.game_map->is_rect_walkable(e.rect)) {
-                        e.position.x -= dx; e.position.y -= dy; e.sync_rect();
-                    }
-                }
-            } else {
-                _try_move_axis(true,  move.x * s);
-                _try_move_axis(false, move.y * s);
-            }
+            _move_normal(gs, move, dt);
         }
 
         // ── 房间发现 ──
-        std::string disc = gs._interact.check_special_discovery(gs.player.get(), gs.game_map.get());
-        if (!disc.empty()) { gs._presentation.room_msg = disc; gs._presentation.room_msg_timer = 2.5f; }
-        if (gs.game_map && gs.game_map->event_room_index >= 0) {
-            auto [tx, ty] = gs.game_map->pixel_to_tile(e.rect.x + e.rect.width/2, e.rect.y + e.rect.height/2);
-            if (tx == gs.game_map->event_tile_x && ty == gs.game_map->event_tile_y) {
-                if (!gs.game_map->event_triggered) {
-                    auto ename = event_type_name(gs.game_map->event_type);
-                    gs._presentation.room_msg = "EVENT: " + std::string(ename);
-                    gs._presentation.room_msg_timer = 1.8f;
-                }
-            }
-        }
+        _discover_rooms(gs);
 
         // ── 怪物AI ──
-        if (gs.time_stop_remaining <= 0) {
-            int hp_before = gs.player->combat.current_hp;
-            gs._update_monsters(dt);
-            int dmg_taken = hp_before - gs.player->combat.current_hp;
-            if (dmg_taken > 0) {
-                gs._boss.dmg_taken += dmg_taken;
-                // F15.2: record damage taken
-                PlayerAction a;
-                a.type = PlayerActionType::TAKE_DAMAGE;
-                a.timestamp = (float)gs.game_time; a.floor = gs.current_floor;
-                a.pos_x = gs.player->entity.rect.x + gs.player->entity.rect.width/2;
-                a.pos_y = gs.player->entity.rect.y + gs.player->entity.rect.height/2;
-                a.value = dmg_taken;
-                g_behavior.record(a);
-            } else if (int heal_amt = gs.player->combat.current_hp - hp_before; heal_amt > 0) {
-                g_behavior.on_heal((float)gs.game_time, gs.current_floor, heal_amt);
-            }
-            if (dmg_taken > 0 && gs.player->combat.is_alive) {
-                gs._presentation.damage_floats.push_back({
-                    gs.player->entity.rect.x + gs.player->entity.rect.width/2,
-                    gs.player->entity.rect.y - 12, 0.6f, 0.6f, dmg_taken,
-                    dmg_taken >= 30 ? Color{255, 60, 30, 255} : Color{255, 80, 80, 255}
-                });
-                float shake = dmg_taken >= 30 ? 12.0f : dmg_taken > 15 ? 5.0f : 2.0f;
-                gs._presentation.trigger_shake(shake);
-                if (dmg_taken >= 20) gs._presentation.trigger_freeze(0.05f);
-                gs.get_tree()->get_audio()->play_sfx("hurt", 0.6f);  // Q4.4
-                gs._presentation.trigger_hit_flash();  // Q4.7: 受击红屏
-            }
-            gs._check_floor_transition();
-        }
+        if (gs.time_stop_remaining <= 0) _update_monster_ai(dt);
 
         // ── 自愈 Lv3 持续回复 ──
-        for (auto& sk : gs.player->skills.active_skills) {
-            if (auto* h = dynamic_cast<SelfHealSkill*>(sk.get()))
-                h->tick_regen(gs.player.get(), dt);
+        _self_heal_regen(dt);
+    }
+}
+
+// M1: 每帧刷新行为克隆上下文 (HP 比例/最近敌人距离/技能就绪位)
+void PlayerController::_init_behavior_context(float dt) {
+    auto& c = *_scene;
+    float hp = c.player->combat.max_hp > 0
+        ? (float)c.player->combat.current_hp / c.player->combat.max_hp : 0;
+    float nearest = 999.0f;
+    for (auto& m : c.monsters) {
+        if (!m->combat.is_alive) continue;
+        float d = hypotf(m->entity.rect.x - c.player->entity.rect.x,
+                         m->entity.rect.y - c.player->entity.rect.y) / 32.0f;
+        if (d < nearest) nearest = d;
+    }
+    int mask = 0;
+    for (size_t i = 0; i < c.player->skills.active_skills.size() && i < 4; i++)
+        if (c.player->skills.active_skills[i]->remaining_cooldown(c.game_time) <= 0.0f)
+            mask |= 1 << (int)i;
+    g_behavior.set_context(hp, nearest > 900.0f ? -1.0f : nearest, mask);
+    // M5: 条件维度 — 朝向 (Direction 枚举) + 近1s受击窗口 (供受压反击学习)
+    int hp_now = c.player->combat.current_hp;
+    if (_last_seen_hp >= 0 && hp_now < _last_seen_hp) _hit_window = 1.0f;
+    _last_seen_hp = hp_now;
+    if (_hit_window > 0) _hit_window -= dt;
+    if (_hit_window < 0.0f) _hit_window = 0.0f;
+    int facing = (int)c.player->direction;
+    g_behavior.set_battle_context(facing, _hit_window > 0 ? 1 : 0);
+}
+
+void PlayerController::_tick_mirror_frozen(float dt) {
+    auto& gs = *_scene;
+    if (gs.time_stop_remaining <= 0) {
+        int hp_before = gs.player->combat.current_hp;
+        gs._update_monsters(dt);
+        int dmg_taken = hp_before - gs.player->combat.current_hp;
+        if (dmg_taken > 0) {
+            gs._boss.dmg_taken += dmg_taken;
+            // F15.2: record damage taken
+            PlayerAction a;
+            a.type = PlayerActionType::TAKE_DAMAGE;
+            a.timestamp = (float)gs.game_time; a.floor = gs.current_floor;
+            a.pos_x = gs.player->entity.rect.x + gs.player->entity.rect.width/2;
+            a.pos_y = gs.player->entity.rect.y + gs.player->entity.rect.height/2;
+            a.value = dmg_taken;
+            g_behavior.record(a);
+        } else if (int heal_amt = gs.player->combat.current_hp - hp_before; heal_amt > 0) {
+            g_behavior.on_heal((float)gs.game_time, gs.current_floor, heal_amt);
         }
+        if (dmg_taken > 0 && gs.player->combat.is_alive) {
+            gs._presentation.damage_floats.push_back({
+                gs.player->entity.rect.x + gs.player->entity.rect.width/2,
+                gs.player->entity.rect.y - 12, 0.6f, 0.6f, dmg_taken,
+                dmg_taken >= 30 ? Color{255, 60, 30, 255} : Color{255, 80, 80, 255}
+            });
+            float shake = dmg_taken >= 30 ? 12.0f : dmg_taken > 15 ? 5.0f : 2.0f;
+            gs._presentation.trigger_shake(shake);
+            if (dmg_taken >= 20) gs._presentation.trigger_freeze(0.05f);
+            gs.get_tree()->get_audio()->play_sfx("hurt", 0.6f);  // Q4.4
+            gs._presentation.trigger_hit_flash();  // Q4.7: 受击红屏
+        }
+    }
+}
+
+Vector2 PlayerController::_resolve_move_input() {
+    auto& gs = *_scene;
+    Vector2 move = gs.player->handle_input(gs.get_tree()->get_input());
+    if (gs._sim_mode) {
+        // Q3.1: headless 无真实键盘 — SimAI 决定移动方向与朝向
+        InputMap& sm = gs.get_tree()->get_input();
+        move.x = gs._is_action_just_pressed(sm, "move_left") ? -1.0f
+               : gs._is_action_just_pressed(sm, "move_right") ? 1.0f : 0.0f;
+        move.y = gs._is_action_just_pressed(sm, "move_up") ? -1.0f
+               : gs._is_action_just_pressed(sm, "move_down") ? 1.0f : 0.0f;
+        if (move.y < 0) gs.player->direction = Direction::UP;
+        else if (move.y > 0) gs.player->direction = Direction::DOWN;
+        else if (move.x < 0) gs.player->direction = Direction::LEFT;
+        else if (move.x > 0) gs.player->direction = Direction::RIGHT;
+        gs.player->is_moving = (move.x != 0 || move.y != 0);
+        if (++_loot_dbg % 240 == 0)
+            LOG_INFO("[SIM-LOOT] items=%d best=%s inv=%zu",
+                (int)gs.ground_items.size(),
+                gs._sim_ai ? gs._sim_ai->last_best_action().c_str() : "?",
+                gs.player->inventory.items.size());
+    }
+    return move;
+}
+
+// F15.2: movement state-change detection
+void PlayerController::_record_move_state(GameScene& gs, float mx, float my) {
+    float dx = mx - _last_mx, dy = my - _last_my;
+    _last_mx = mx; _last_my = my;
+    if (fabsf(dx) > 200.0f || fabsf(dy) > 200.0f)
+        g_behavior.on_dodge((float)gs.game_time, gs.current_floor,
+            gs.player->entity.rect.x + gs.player->entity.rect.width/2,
+            gs.player->entity.rect.y + gs.player->entity.rect.height/2);
+    if (mx == 0 && my == 0) return; // idle
+    int dir = (fabsf(mx) > fabsf(my)) ? (mx > 0 ? 1 : 0) : (my > 0 ? 3 : 2);
+    if (dir != _last_move_dir) {
+        _last_move_dir = dir;
+        g_behavior.on_move_state_change((float)gs.game_time, gs.current_floor,
+            gs.player->entity.rect.x + gs.player->entity.rect.width/2,
+            gs.player->entity.rect.y + gs.player->entity.rect.height/2, dir);
+    }
+}
+
+// G10.6-B C2: 停靠贴合 — 整步失败改为二分逼近最大合法位移
+// 边界: 判定函数 is_rect_walkable 不变, 仅提升移动 resolution 精度
+// (原实现停靠间隙 [0,s) 帧间抖动 -> 二分 6 次后 <s/64 稳定贴边)
+void PlayerController::_apply_move_delta(GameScene& gs, bool is_x, float delta) {
+    auto& e = gs.player->entity;
+    float start = is_x ? e.position.x : e.position.y;
+    if (is_x) e.position.x += delta; else e.position.y += delta;
+    e.sync_rect();
+    if (gs.game_map->is_rect_walkable(e.rect)) return;
+    float lo = 0.0f, hi = delta;
+    for (int i = 0; i < 6; i++) {
+        float mid = (lo + hi) * 0.5f;
+        if (is_x) e.position.x = start + mid; else e.position.y = start + mid;
+        e.sync_rect();
+        if (gs.game_map->is_rect_walkable(e.rect)) lo = mid;
+        else hi = mid;
+    }
+    if (is_x) e.position.x = start + lo; else e.position.y = start + lo;
+    e.sync_rect();
+}
+
+void PlayerController::_move_normal(GameScene& gs, const Vector2& move, float dt) {
+    auto& e = gs.player->entity;
+    float speed_mul = (gs._tw_speed_boost > 0) ? 1.25f : 1.0f;
+    float s = get_effective_speed(gs.player.get()) * speed_mul * dt;
+    // G14: R1 接触开门 — try_open_door_toward 此前从未被调用(死代码),
+    //       CLOSED 门 is_walkable=false 令移动被拒 → AI BFS(CLOSED可走)
+    //       与执行层 rect 判定脱节 → 玩家卡死于 CLOSED 门旁 (door=1 stuck#)
+    if ((move.x != 0.0f || move.y != 0.0f))
+        gs.game_map->try_open_door_toward(e.rect, move.x, move.y);
+    if (gs._sim_mode) {
+        // G14b: sim 整格步进 — 半格位置(px=112)使 rect 跨 2 tile,
+        //       连续移动(is_rect_walkable 全tile)与 BFS(中心tile)分裂,
+            // 玩家永远"走不动". 整格步进后位置恒对齐格点, rect 28px
+            //       落单 tile → 决策/执行完全一致. 0.14s/格≈228px/s 同步速.
+        if ((move.x != 0.0f || move.y != 0.0f) &&
+            gs.game_time - _sim_last_step >= 0.14f) {
+            _sim_last_step = gs.game_time;
+            float dx = move.x * 32.0f, dy = move.y * 32.0f;
+            e.position.x += dx; e.position.y += dy; e.sync_rect();
+            if (!gs.game_map->is_rect_walkable(e.rect)) {
+                e.position.x -= dx; e.position.y -= dy; e.sync_rect();
+            }
+        }
+    } else {
+        _apply_move_delta(gs, true,  move.x * s);
+        _apply_move_delta(gs, false, move.y * s);
+    }
+}
+
+void PlayerController::_discover_rooms(GameScene& gs) {
+    auto& e = gs.player->entity;
+    std::string disc = gs._interact.check_special_discovery(gs.player.get(), gs.game_map.get());
+    if (!disc.empty()) { gs._presentation.room_msg = disc; gs._presentation.room_msg_timer = 2.5f; }
+    if (gs.game_map && gs.game_map->event_room_index >= 0) {
+        auto [tx, ty] = gs.game_map->pixel_to_tile(e.rect.x + e.rect.width/2, e.rect.y + e.rect.height/2);
+        if (tx == gs.game_map->event_tile_x && ty == gs.game_map->event_tile_y) {
+            if (!gs.game_map->event_triggered) {
+                auto ename = event_type_name(gs.game_map->event_type);
+                gs._presentation.room_msg = "EVENT: " + std::string(ename);
+                gs._presentation.room_msg_timer = 1.8f;
+            }
+        }
+    }
+}
+
+void PlayerController::_update_monster_ai(float dt) {
+    auto& gs = *_scene;
+    int hp_before = gs.player->combat.current_hp;
+    gs._update_monsters(dt);
+    int dmg_taken = hp_before - gs.player->combat.current_hp;
+    if (dmg_taken > 0) {
+        gs._boss.dmg_taken += dmg_taken;
+        // F15.2: record damage taken
+        PlayerAction a;
+        a.type = PlayerActionType::TAKE_DAMAGE;
+        a.timestamp = (float)gs.game_time; a.floor = gs.current_floor;
+        a.pos_x = gs.player->entity.rect.x + gs.player->entity.rect.width/2;
+        a.pos_y = gs.player->entity.rect.y + gs.player->entity.rect.height/2;
+        a.value = dmg_taken;
+        g_behavior.record(a);
+    } else if (int heal_amt = gs.player->combat.current_hp - hp_before; heal_amt > 0) {
+        g_behavior.on_heal((float)gs.game_time, gs.current_floor, heal_amt);
+    }
+    if (dmg_taken > 0 && gs.player->combat.is_alive) {
+        gs._presentation.damage_floats.push_back({
+            gs.player->entity.rect.x + gs.player->entity.rect.width/2,
+            gs.player->entity.rect.y - 12, 0.6f, 0.6f, dmg_taken,
+            dmg_taken >= 30 ? Color{255, 60, 30, 255} : Color{255, 80, 80, 255}
+        });
+        float shake = dmg_taken >= 30 ? 12.0f : dmg_taken > 15 ? 5.0f : 2.0f;
+        gs._presentation.trigger_shake(shake);
+        if (dmg_taken >= 20) gs._presentation.trigger_freeze(0.05f);
+        gs.get_tree()->get_audio()->play_sfx("hurt", 0.6f);  // Q4.4
+        gs._presentation.trigger_hit_flash();  // Q4.7: 受击红屏
+    }
+    gs._check_floor_transition();
+}
+
+void PlayerController::_self_heal_regen(float dt) {
+    auto& gs = *_scene;
+    for (auto& sk : gs.player->skills.active_skills) {
+        if (auto* h = dynamic_cast<SelfHealSkill*>(sk.get()))
+            h->tick_regen(gs.player.get(), dt);
     }
 }
 

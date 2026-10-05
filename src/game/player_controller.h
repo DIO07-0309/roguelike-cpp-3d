@@ -1,5 +1,7 @@
 #pragma once
 
+#include "raylib.h"       // Vector2 (G31-A: _resolve_move_input 按值返回)
+
 class GameScene;
 class InputMap;
 class Player;
@@ -60,4 +62,15 @@ private:
     // B3: 翻滚 helper — 起翻(方向解析+采集) / 尘土 (T2 空壳, T3 实装)
     void _try_start_dodge(GameScene& gs, const InputMap& input);
     void _roll_dust(GameScene& gs, float cx, float cy);
+
+    // G31-A: tick 子步骤 (纯结构搬运, 执行顺序零改动)
+    void _init_behavior_context(float dt);
+    void _tick_mirror_frozen(float dt);
+    Vector2 _resolve_move_input();
+    void _record_move_state(GameScene& gs, float mx, float my);
+    void _apply_move_delta(GameScene& gs, bool is_x, float delta);
+    void _move_normal(GameScene& gs, const Vector2& move, float dt);
+    void _discover_rooms(GameScene& gs);
+    void _update_monster_ai(float dt);
+    void _self_heal_regen(float dt);
 };
