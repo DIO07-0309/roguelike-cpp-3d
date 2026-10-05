@@ -849,6 +849,59 @@ void GameScene::_process(double delta) {
         }
     }
 
+    _tick_buffs(dt);
+
+    _tick_arena_environment(dt);
+
+    _play_pending_bgm();
+
+    _tick_time_stop(dt);
+
+    _tick_tw_speed_boost(dt);
+
+    // Q3.2: sim 单局时间上限 — 防止罕见卡死拖死整个批量 (正常对局 ~50s, 上限 900s)
+    if (_sim_timeout_forced(game_time)) return;
+
+    if (_handle_player_death(dt)) return;
+
+    _tick_challenge_dungeon(dt);
+
+    if (_challenge.phase() == ChallengePhase::PORTAL_ACTIVE ||
+        _challenge.phase() == ChallengePhase::CLEARED ||
+        _world_mode == WorldMode::CHALLENGE_ARENA) {
+        _portal_pulse_timer += dt;
+    }
+    _tick_teleport_fade(dt);
+
+    if (_tick_challenge_arena(dt)) return;
+
+    _tick_world_entities(dt);
+
+    _tick_player_fov();
+
+    _tick_ambient_view(dt);
+
+    _tick_boss_fov();
+
+    _tick_player_autonomy(dt);
+
+    _tick_player_combat(dt);
+
+    _tick_enemy_projectiles(dt);
+
+    // G25-A: 尾段纯计时器衰减 (FlowDirector/房间消息/横幅/gamble/事件/对话/Quest/入场)
+    _tick_decay_timers(dt);
+
+    _tick_world_ambience(dt);
+
+    // D2: Combo 窗口衰减 — 超过 WINDOW 未命中则重置
+    player->combo.tick(dt);
+
+    // D6 Step5: Presentation tick (shake/freeze/damage/message/intro)
+    _presentation.tick(dt);
+}
+
+void GameScene::_tick_buffs(float dt) {
     // ── Buff 逐帧结算 ──
     std::vector<BuffEvent> buf_events;
     tick_buffs(player.get(), dt, &buf_events);
@@ -881,7 +934,9 @@ void GameScene::_process(double delta) {
         else if (ev.type == BuffEventType::EXPIRED)
             LOG_INFO("[BUF] %s expired from %s", ev.buff_id.c_str(), ev.target.c_str());
     }
+}
 
+void GameScene::_tick_arena_environment(float dt) {
     // 清理被毒死的怪物
     _cleanup_dead_monsters();
 
@@ -918,14 +973,18 @@ void GameScene::_process(double delta) {
             }
         }
     }
+}
 
+void GameScene::_play_pending_bgm() {
     // 延迟播放 BGM（此时 get_tree() 已可用）
     if (!_pending_bgm.empty() && get_tree()) {
         LOG_DEBUG("BGM延迟播放: %s", _pending_bgm.c_str());
         get_tree()->get_audio()->play_bgm(_pending_bgm, 0.38f);
         _pending_bgm.clear();
     }
+}
 
+void GameScene::_tick_time_stop(float dt) {
     // 时停倒计时
     if (time_stop_remaining > 0) {
         time_stop_remaining -= dt;
@@ -963,18 +1022,19 @@ void GameScene::_process(double delta) {
             _tw_evo_level = 0;
         }
     }
+}
 
+void GameScene::_tick_tw_speed_boost(float dt) {
     // D3 Step3: TW E3 speed boost tick
     if (_tw_speed_boost > 0) _tw_speed_boost -= dt;
+}
 
-    // Q3.2: sim 单局时间上限 — 防止罕见卡死拖死整个批量 (正常对局 ~50s, 上限 900s)
-    if (_sim_timeout_forced(game_time)) return;
-
+bool GameScene::_handle_player_death(float dt) {
     if (!player->combat.is_alive) {
         // G5.6: sim 模式短路死亡流程 — _collect_sim_stats 内部已处理重启/退出
         if (_sim_mode) {
             _collect_sim_stats();
-            return;
+            return true;
         }
         LOG_INFO("玩家死亡! 第%d层 Lv%d - 存档已保留", current_floor, player->level);
         // M1-D1: 死亡也保存镜像学习 — "你怎么死的, 它都会记住"
@@ -1002,44 +1062,9 @@ void GameScene::_process(double delta) {
         // (旧代码这里再直接调 g_meta.end_run → runs 双计数/奖励双发)
         _gameplay.on_player_dead(current_floor, player->level, player.get());
         _flow.on_player_dead();
-        return;
+        return true;
     }
-
-    _tick_challenge_dungeon(dt);
-
-    if (_challenge.phase() == ChallengePhase::PORTAL_ACTIVE ||
-        _challenge.phase() == ChallengePhase::CLEARED ||
-        _world_mode == WorldMode::CHALLENGE_ARENA) {
-        _portal_pulse_timer += dt;
-    }
-    _tick_teleport_fade(dt);
-
-    if (_tick_challenge_arena(dt)) return;
-
-    _tick_world_entities(dt);
-
-    _tick_player_fov();
-
-    _tick_ambient_view(dt);
-
-    _tick_boss_fov();
-
-    _tick_player_autonomy(dt);
-
-    _tick_player_combat(dt);
-
-    _tick_enemy_projectiles(dt);
-
-    // G25-A: 尾段纯计时器衰减 (FlowDirector/房间消息/横幅/gamble/事件/对话/Quest/入场)
-    _tick_decay_timers(dt);
-
-    _tick_world_ambience(dt);
-
-    // D2: Combo 窗口衰减 — 超过 WINDOW 未命中则重置
-    player->combo.tick(dt);
-
-    // D6 Step5: Presentation tick (shake/freeze/damage/message/intro)
-    _presentation.tick(dt);
+    return false;
 }
 
 void GameScene::_tick_challenge_dungeon(float dt) {

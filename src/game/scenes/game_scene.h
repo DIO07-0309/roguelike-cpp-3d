@@ -247,6 +247,15 @@ public:
     void _tick_ambient_view(float dt);
     void _tick_boss_fov();
 
+    // G30-J: _process 子步骤 (Buff/场地/时停/死亡, 纯结构搬运, 执行顺序零改动)
+    // _handle_player_death 返回 true = 玩家已死亡, 调度骨架据此短路 (等价原 return)
+    void _tick_buffs(float dt);
+    void _tick_arena_environment(float dt);
+    void _play_pending_bgm();
+    void _tick_time_stop(float dt);
+    void _tick_tw_speed_boost(float dt);
+    bool _handle_player_death(float dt);
+
     // 场景间通信
     void enter_floor(int floor, uint32_t seed = 0);
     // Batch 3I: 挑战竞技场往返 (场景级转换; G9.2 移至 public 以支持回归测试驱动)
