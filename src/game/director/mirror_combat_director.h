@@ -4,6 +4,7 @@
 #include <functional>
 #include "types/weapon_types.h"
 #include "ai/player_behavior/player_action.h"
+#include "ai/mirror/mirror_agent.h"
 
 class Player;
 class Monster;
@@ -92,6 +93,11 @@ private:
                        int skill_idx, std::vector<Effect>* effects);
     void _ai_decide(Monster* boss, Player* player, double gt,
                     MirrorAgent* agent);
+
+    // G36-A: _ai_decide helpers
+    MirrorBattleState _build_battle_state(Monster* boss, Player* player, double gt);
+    void _apply_pressure_close(MirrorAgent* agent, const MirrorBattleState& st, float tactic_dist);
+    void _apply_prediction_adjustment(MirrorAgent* agent, PlayerActionType pred, const MirrorBattleState& st);
     // M4e: 在线决策动作映射 — act<0 返回false (观察期走规则)
     bool _apply_online_action(int act);
     void _chase_player(Monster* boss, Player* player, float dt);

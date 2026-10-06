@@ -512,27 +512,15 @@ void MirrorCombatDirector::_mirror_skill(Monster* boss, Player* player,
 void MirrorCombatDirector::_ai_decide(Monster* boss, Player* player,
                                        double gt, MirrorAgent* agent) {
     if (!agent) return;
-    MirrorBattleState st;
-    st.boss_hp_pct = boss->combat.max_hp > 0
-        ? (float)boss->combat.current_hp / boss->combat.max_hp : 1.0f;
-    st.player_hp_pct = player->combat.max_hp > 0
-        ? (float)player->combat.current_hp / player->combat.max_hp : 1.0f;
-    float dx = player->entity.rect.x - boss->entity.rect.x;
-    float dy = player->entity.rect.y - boss->entity.rect.y;
-    st.dist_tiles = hypotf(dx, dy) / 32.0f;
-    st.player_attacking = (gt - player->_last_attack_time < 1.0);
-    st.player_using_skill = (gt - player->_last_skill_time < 1.0);
+    MirrorBattleState st = _build_battle_state(boss, player, gt);
 
-    // M4e: 在线自适应决策 — Phase>=2 时 Thompson 完全接管行为选择
     if (_apply_online_action(agent->recommend_action(st))) return;
 
-    // 预测玩家下一步
     PlayerActionType pred = agent->predict_next_action(st);
     agent->on_prediction(pred, st.dist_tiles, st.player_hp_pct,
-                         st.player_skills_ready);   // M2: 上报预测上下文
-    agent->cache_pred_time((float)gt);              // v1.6-B1.1: HUD 只读时间戳
+                         st.player_skills_ready);   // M2
+    agent->cache_pred_time((float)gt);              // v1.6-B1.1
 
-    // M4.1: 战术驱动首选距离 — 远程消耗保持距, 压进近战贴近, 拉扯中距
     float tactic_dist = _preferred_dist;
     switch (_tactic) {
     case MirrorTactic::OPEN_RANGED: tactic_dist = 260.0f; break;
@@ -541,32 +529,52 @@ void MirrorCombatDirector::_ai_decide(Monster* boss, Player* player,
     default:                         tactic_dist = 200.0f; break;
     }
 
-    // 压力追击 (M4.1: 压进战术时探测到压力同样贴近)
-    if (agent->should_pressure_close(st)) {
-        _preferred_dist = 80.0f;
-        _aggression_bonus = 1.3f;
-    } else {
-        _preferred_dist = tactic_dist;
-        _aggression_bonus = 1.0f;
-    }
+    _apply_pressure_close(agent, st, tactic_dist);
 
-    // 打断技能 (M4e: 观察期也响应玩家技能窗口)
     if (agent->should_interrupt_skill(st)) {
-        _skill_cd_timer = 0.0f;  // 立即可用技能
-        _behavior_state = 2;     // 切换到技能状态
-        agent->report_interrupt(false);   // 验收: 打断尝试计数 (成功在时停命中时计)
+        _skill_cd_timer = 0.0f;
+        _behavior_state = 2;
+        agent->report_interrupt(false);
     }
 
-    // 验收: 行为状态分布采样 (每决策帧) — 证明 Phase 改变行为而非文字
     agent->debug_behavior_state(_behavior_state);
 
-    // 根据预测调整
-    if (pred == PlayerActionType::HEAL) {
-        _skill_cd_timer *= 0.6f;  // 预测喝药→技能加速
-    } else if (pred == PlayerActionType::ATTACK && agent->should_pressure_close(st)) {
-        _behavior_state = 3;  // 预测攻击+可压制→战略后撤
+    _apply_prediction_adjustment(agent, pred, st);
+}
+MirrorBattleState MirrorCombatDirector::_build_battle_state(Monster* boss, Player* player, double gt) {
+    MirrorBattleState st;
+    st.boss_hp_pct = boss->combat.max_hp > 0
+? (float)boss->combat.current_hp / boss->combat.max_hp : 1.0f;
+    st.player_hp_pct = player->combat.max_hp > 0
+? (float)player->combat.current_hp / player->combat.max_hp : 1.0f;
+    float dx = player->entity.rect.x - boss->entity.rect.x;
+    float dy = player->entity.rect.y - boss->entity.rect.y;
+    st.dist_tiles = hypotf(dx, dy) / 32.0f;
+    st.player_attacking = (gt - player->_last_attack_time < 1.0);
+    st.player_using_skill = (gt - player->_last_skill_time < 1.0);
+    return st;
+}
+
+void MirrorCombatDirector::_apply_pressure_close(MirrorAgent* agent, const MirrorBattleState& st, float tactic_dist) {
+    // 压力追击 (M4.1: 压进战术时探测到压力同样贴近)
+    if (agent->should_pressure_close(st)) {
+_preferred_dist = 80.0f;
+_aggression_bonus = 1.3f;
+    } else {
+_preferred_dist = tactic_dist;
+_aggression_bonus = 1.0f;
     }
 }
+
+void MirrorCombatDirector::_apply_prediction_adjustment(MirrorAgent* agent, PlayerActionType pred, const MirrorBattleState& st) {
+    // 根据预测调整
+    if (pred == PlayerActionType::HEAL) {
+_skill_cd_timer *= 0.6f;  // 预测喝药→技能加速
+    } else if (pred == PlayerActionType::ATTACK && agent->should_pressure_close(st)) {
+_behavior_state = 3;  // 预测攻击+可压制→战略后撤
+    }
+}
+
 
 // M2: 识别玩家本帧实际动作 — 优先级: 攻击/技能(0.5s内) > 闪避(位移>200px) > 喝药(HP上升)
 PlayerActionType MirrorCombatDirector::_detect_player_action(Player* player,
