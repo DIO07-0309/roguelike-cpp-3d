@@ -337,6 +337,13 @@ struct BossDef;
 Monster* boss_factory_create(BossType type, int tile_x, int tile_y, int floor,
                               std::vector<Monster*>* out_monsters = nullptr,
                               GameMap* map = nullptr);
+
+// G32-B: Boss factory helpers
+Monster* _factory_fallback(int tile_x, int tile_y);
+Monster* _factory_create_monster(const BossDef* def, BossAI* ai, int tile_x, int tile_y, int floor);
+void _factory_setup_ai(BossAI* ai, const BossDef* def);
+void _factory_apply_skill_overrides(BossAI* ai, const BossDef* def);
+void _factory_apply_special_flags(BossAI* ai, const BossDef* def);
 BossType boss_type_for_floor(int floor, uint32_t seed);
 
 // G1 Step6: visual_id → Color 映射 (表现层, 未来替换为 texture)

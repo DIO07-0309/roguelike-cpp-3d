@@ -1237,26 +1237,34 @@ Monster* boss_factory_create(BossType type, int tile_x, int tile_y, int floor,
                               std::vector<Monster*>* out_monsters, GameMap* map) {
     const BossDef* def = get_boss_def(_boss_type_to_id(type));
     if (!def) {
-        // 安全降级: 配置缺失时使用默认 Shadow Knight
         def = get_boss_def("shadow_knight");
-        if (!def) {
-            auto* boss = new Monster((float)tile_x * TILE_SIZE, (float)tile_y * TILE_SIZE,
-                "暗影骑士", 250, 15, 10, 4, get_boss_visual_color("shadow_knight"), new BossAI());
-            boss->is_boss = true;
-            boss->entity.size = {48, 48};
-            boss->entity.rect = {boss->entity.position.x, boss->entity.position.y, 48, 48};
-            boss->sprite_override = "boss_f5";   // M4f.5: 降级默认 F5 形象
-            return boss;
-        }
+        if (!def) return _factory_fallback(tile_x, tile_y);
     }
-
     BossAI* ai = new BossAI();
+    Monster* boss = _factory_create_monster(def, ai, tile_x, tile_y, floor);
+    _factory_setup_ai(ai, def);
+    _factory_apply_skill_overrides(ai, def);
+    _factory_apply_special_flags(ai, def);
+    (void)out_monsters; (void)map;
+    return boss;
+}
+Monster* _factory_fallback(int tile_x, int tile_y) {
+auto* boss = new Monster((float)tile_x * TILE_SIZE, (float)tile_y * TILE_SIZE,
+    "暗影骑士", 250, 15, 10, 4, get_boss_visual_color("shadow_knight"), new BossAI());
+boss->is_boss = true;
+boss->entity.size = {48, 48};
+boss->entity.rect = {boss->entity.position.x, boss->entity.position.y, 48, 48};
+boss->sprite_override = "boss_f5";   // M4f.5: 降级默认 F5 形象
+return boss;
+}
+
+Monster* _factory_create_monster(const BossDef* def, BossAI* ai, int tile_x, int tile_y, int floor) {
     int scaled_hp  = (int)(def->hp  * g_growth.boss_hp_scale(floor));
     int scaled_atk = (int)(def->atk * g_growth.boss_atk_scale(floor));
     Monster* boss = new Monster(
-        (float)tile_x * TILE_SIZE, (float)tile_y * TILE_SIZE,
-        def->name, scaled_hp, scaled_atk, def->pdef, def->mdef,
-        get_boss_visual_color(def->visual_id), ai);
+(float)tile_x * TILE_SIZE, (float)tile_y * TILE_SIZE,
+def->name, scaled_hp, scaled_atk, def->pdef, def->mdef,
+get_boss_visual_color(def->visual_id), ai);
     boss->is_boss = true;
     boss->entity.size = {48, 48};
     boss->entity.rect = {boss->entity.position.x, boss->entity.position.y, 48, 48};
@@ -1264,16 +1272,19 @@ Monster* boss_factory_create(BossType type, int tile_x, int tile_y, int floor,
     // ── M5-C: Boss 素材精灵数据驱动 (visual_id → boss_<id>, 缺失回退旧按层链) ──
     // 旧链保留兜底: F15 镜像有意用玩家形象 boss_self; F5/F10 未注册新图时落回旧 key
     {
-        std::string vkey = "boss_" + def->visual_id;
-        SpriteDef probe;
-        if (ResourceManager::inst().sprite_by_key(vkey.c_str(), probe).id > 0) {
-            boss->sprite_override = vkey;
-        } else {
-            boss->sprite_override = floor <= 5 ? "boss_f5"
-                                  : floor <= 10 ? "boss_f10" : "boss_self";
-        }
+std::string vkey = "boss_" + def->visual_id;
+SpriteDef probe;
+if (ResourceManager::inst().sprite_by_key(vkey.c_str(), probe).id > 0) {
+    boss->sprite_override = vkey;
+} else {
+    boss->sprite_override = floor <= 5 ? "boss_f5"
+                          : floor <= 10 ? "boss_f10" : "boss_self";
+}
     }
+    return boss;
+}
 
+void _factory_setup_ai(BossAI* ai, const BossDef* def) {
     // ── G1 Step6: Phase2 参数 (替代硬编码) ──
     ai->_phase2_hp_threshold = def->phase2_hp_threshold;
     ai->_phase2_pause        = def->phase2_pause;
@@ -1289,53 +1300,55 @@ Monster* boss_factory_create(BossType type, int tile_x, int tile_y, int floor,
 
     // ── 技能循环 bias ──
     ai->skill_cycle_bias = def->skill_cycle_bias;
+}
 
+void _factory_apply_skill_overrides(BossAI* ai, const BossDef* def) {
     // ── 技能覆盖 (BossDef → BossSkill: 冷却/伤害倍率/蓄力/范围 全数据驱动) ──
     for (auto& sk : def->skill_overrides) {
-        if (sk.id == "charge" || sk.id == "冲锋") {
-            ai->_charge->cooldown    = sk.cooldown;
-            ai->_charge->damage_mult = sk.damage_mult;
-            ai->_charge->windup_time = sk.windup;
-            ai->_charge->fx_radius   = sk.range;
-        } else if (sk.id == "shockwave" || sk.id == "冲击波") {
-            ai->_shockwave->cooldown    = sk.cooldown;
-            ai->_shockwave->damage_mult = sk.damage_mult;
-            ai->_shockwave->windup_time = sk.windup;
-            ai->_shockwave->fx_radius   = sk.range;
-        } else if (sk.id == "summon" || sk.id == "召唤") {
-            ai->_summon->cooldown = sk.cooldown;
-        } else if (sk.id == "barrage") {
-            ai->_barrage->cooldown    = sk.cooldown;
-            ai->_barrage->damage_mult = sk.damage_mult;
-            ai->_barrage->windup_time = sk.windup;
-            ai->_barrage->spread_deg  = sk.range;
-            ai->_barrage->shot_count  = sk.shot_count;
-            ai->_barrage->pattern     = sk.pattern;
-            ai->_barrage->waves       = sk.waves;
-            ai->_barrage->wave_interval = sk.wave_interval;
-            ai->_barrage->spiral_turn_deg = sk.spiral_turn_deg;
-        } else if (sk.id == "cone") {
-            ai->_cone->cooldown    = sk.cooldown;
-            ai->_cone->damage_mult = sk.damage_mult;
-            ai->_cone->windup_time = sk.windup;
-            ai->_cone->reach       = sk.range;
-        } else if (sk.id == "blink") {
-            ai->_blink->cooldown   = sk.cooldown;
-            ai->_blink->blink_dist = sk.range;
-        }
+if (sk.id == "charge" || sk.id == "冲锋") {
+    ai->_charge->cooldown    = sk.cooldown;
+    ai->_charge->damage_mult = sk.damage_mult;
+    ai->_charge->windup_time = sk.windup;
+    ai->_charge->fx_radius   = sk.range;
+} else if (sk.id == "shockwave" || sk.id == "冲击波") {
+    ai->_shockwave->cooldown    = sk.cooldown;
+    ai->_shockwave->damage_mult = sk.damage_mult;
+    ai->_shockwave->windup_time = sk.windup;
+    ai->_shockwave->fx_radius   = sk.range;
+} else if (sk.id == "summon" || sk.id == "召唤") {
+    ai->_summon->cooldown = sk.cooldown;
+} else if (sk.id == "barrage") {
+    ai->_barrage->cooldown    = sk.cooldown;
+    ai->_barrage->damage_mult = sk.damage_mult;
+    ai->_barrage->windup_time = sk.windup;
+    ai->_barrage->spread_deg  = sk.range;
+    ai->_barrage->shot_count  = sk.shot_count;
+    ai->_barrage->pattern     = sk.pattern;
+    ai->_barrage->waves       = sk.waves;
+    ai->_barrage->wave_interval = sk.wave_interval;
+    ai->_barrage->spiral_turn_deg = sk.spiral_turn_deg;
+} else if (sk.id == "cone") {
+    ai->_cone->cooldown    = sk.cooldown;
+    ai->_cone->damage_mult = sk.damage_mult;
+    ai->_cone->windup_time = sk.windup;
+    ai->_cone->reach       = sk.range;
+} else if (sk.id == "blink") {
+    ai->_blink->cooldown   = sk.cooldown;
+    ai->_blink->blink_dist = sk.range;
+}
     }
+}
 
+void _factory_apply_special_flags(BossAI* ai, const BossDef* def) {
     // ── M4a: 连招模板 (无配置则走旧循环) ──
     ai->_combos = &def->combos;
 
     // ── 特殊行为标志 ──
     if (def->is_summoner) {
-        ai->skill_cycle_bias = 4;  // Necromancer 召唤特化
+ai->skill_cycle_bias = 4;  // Necromancer 召唤特化
     }
     if (def->is_defender) {
-        ai->golem_shield_pct = def->shield_pct;
+ai->golem_shield_pct = def->shield_pct;
     }
-
-    (void)out_monsters; (void)map;
-    return boss;
 }
+
