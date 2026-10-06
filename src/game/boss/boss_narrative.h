@@ -20,6 +20,11 @@ public:
     const BossDialogue* find_death(int boss_floor, const WorldState& ws, BuildType bt) const;
     static BossModifierHook calc_modifier(int boss_floor, const WorldState& ws,
                                            BuildType bt, const RelationshipSystem& rels);
+
+// G35-A: Boss floor modifier helpers (static)
+    static void _modifier_f5(const WorldState& ws, BuildType bt, const RelationshipSystem& rels, BossModifierHook& m);
+    static void _modifier_f10(const WorldState& ws, BuildType bt, const RelationshipSystem& rels, BossModifierHook& m);
+    static void _modifier_f15(const WorldState& ws, BuildType bt, const RelationshipSystem& rels, BossModifierHook& m);
 private:
     std::vector<BossDialogue> _dialogues;
     // G2.1: string storage — 避免 registry c_str() 悬挂

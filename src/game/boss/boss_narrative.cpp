@@ -118,101 +118,98 @@ BossModifierHook BossNarrative::calc_modifier(int boss_floor, const WorldState& 
                                                 BuildType bt,
                                                 const RelationshipSystem& rels) {
     BossModifierHook m;
-
-    // ── Boss1 (F5): 暗影骑士 ──
-    if (boss_floor == 5) {
-        // Saved_Prisoner → HP-20%
-        if (ws.has(WorldFlag::Saved_Prisoner)) {
-            m.hp_scale = 0.80f;
-            m.modifier_text = "HP -20% (囚犯的祝福)";
-        }
-        // Blood_Ritual → HP+25%, 伤害+15%
-        if (ws.has(WorldFlag::Blood_Ritual)) {
-            m.hp_scale = 1.25f; m.damage_scale = 1.15f;
-            m.modifier_text = "HP+25%% ATK+15%% (血祭)";
-        }
-        // BuildType: BERSERKER → Boss 格挡意识提升 (disable_skill逻辑)
-        if (bt == BuildType::BERSERKER) {
-            // 不影响 modifier (仅透传到AI), 标记为"对Boss近战格挡+"
-        }
-        // POISON → Boss中毒减半
-        if (bt == BuildType::POISON_MASTER) {
-            m.hp_scale += 0.10f;  // slight HP boost
-            if (!m.modifier_text) m.modifier_text = "毒抗+ (毒术大师)";
-        }
-    }
-
-    // ── Boss2 (F10): 地狱火魔 ──
-    else if (boss_floor == 10) {
-        // Saved_Priest → 禁用一次AOE技能
-        if (ws.has(WorldFlag::Saved_Priest)) {
-            m.disable_skill = true;
-            m.modifier_text = "AOE禁用 (神官祝福)";
-        }
-        // Blood_Ritual → HP+20%
-        if (ws.has(WorldFlag::Blood_Ritual)) {
-            m.hp_scale = 1.20f;
-            m.modifier_text = m.modifier_text ? " " : "";
-            m.modifier_text = "HP+20%% (血祭)";
-        }
-        // Accepted_Curse → Boss获得新Debuff技能 (e.g. 上curse)
-        if (ws.has(WorldFlag::Accepted_Curse)) {
-            m.damage_scale += 0.10f;
-        }
-        // BuildType: FIRE_MAGE → Boss火抗+ (HP+)
-        if (bt == BuildType::FIRE_MAGE) {
-            m.hp_scale += 0.15f;
-        }
-        // Priest trust≥3 → 禁用一次技能
-        if (rels.check_relation(70, RelationType::TRUST, 3)) {
-            m.disable_skill = true;
-        }
-    }
-
-    // ── Boss3 (F15): 深渊之主 ──
-    else if (boss_floor == 15) {
-        // Blood_Ritual → HP+30%, 伤害+20%
-        if (ws.has(WorldFlag::Blood_Ritual)) {
-            m.hp_scale = 1.30f; m.damage_scale = 1.20f;
-            m.modifier_text = "HP+30%% ATK+20%% (血祭融合)";
-        }
-        // Saved_Priest → Phase2延迟 (降低HP间接影响)
-        if (ws.has(WorldFlag::Saved_Priest)) {
-            m.hp_scale = 0.85f;
-            m.modifier_text = !m.modifier_text ? "HP-15%% (神官祈祷)" : m.modifier_text;
-        }
-        // Watcher respect≥3 → Phase2时间减少
-        if (rels.check_relation(140, RelationType::RESPECT, 3)) {
-            m.damage_scale -= 0.10f;
-        }
-        // Merchant_Killed → 额外精英
-        if (ws.has(WorldFlag::Merchant_Killed)) {
-            m.add_minions = true;
-            if (!m.modifier_text) m.modifier_text = "额外精英 (商人咒骂)";
-        }
-        // Build: POISON → Boss腐化免疫++
-        if (bt == BuildType::POISON_MASTER) {
-            m.hp_scale += 0.15f;
-        }
-        // Build: TIME → Boss Phase切换加速
-        if (bt == BuildType::TIME_MASTER) {
-            m.damage_scale += 0.10f;
-        }
-        // Priest trust≥5 → Boss禁用一次技能
-        if (rels.check_relation(70, RelationType::TRUST, 5)) {
-            m.disable_skill = true;
-        }
-        // Fear高 (任意NPC fear≥5)
-        for (auto& r : rels.all()) {
-            if (r.fear >= 5) { m.damage_scale += 0.08f; break; }
-        }
-    }
-
-    // Clamp for sanity
+    if (boss_floor == 5) _modifier_f5(ws, bt, rels, m);
+    else if (boss_floor == 10) _modifier_f10(ws, bt, rels, m);
+    else if (boss_floor == 15) _modifier_f15(ws, bt, rels, m);
     if (m.hp_scale < 0.50f) m.hp_scale = 0.50f;
     if (m.hp_scale > 1.80f) m.hp_scale = 1.80f;
     if (m.damage_scale < 0.70f) m.damage_scale = 0.70f;
     if (m.damage_scale > 1.50f) m.damage_scale = 1.50f;
-
     return m;
 }
+void BossNarrative::_modifier_f5(const WorldState& ws, BuildType bt, const RelationshipSystem& rels, BossModifierHook& m) {
+// Saved_Prisoner → HP-20%
+if (ws.has(WorldFlag::Saved_Prisoner)) {
+    m.hp_scale = 0.80f;
+    m.modifier_text = "HP -20% (囚犯的祝福)";
+}
+// Blood_Ritual → HP+25%, 伤害+15%
+if (ws.has(WorldFlag::Blood_Ritual)) {
+    m.hp_scale = 1.25f; m.damage_scale = 1.15f;
+    m.modifier_text = "HP+25%% ATK+15%% (血祭)";
+}
+// BuildType: BERSERKER → Boss 格挡意识提升 (disable_skill逻辑)
+if (bt == BuildType::BERSERKER) {
+    // 不影响 modifier (仅透传到AI), 标记为"对Boss近战格挡+"
+}
+// POISON → Boss中毒减半
+if (bt == BuildType::POISON_MASTER) {
+    m.hp_scale += 0.10f;  // slight HP boost
+    if (!m.modifier_text) m.modifier_text = "毒抗+ (毒术大师)";
+}
+}
+
+void BossNarrative::_modifier_f10(const WorldState& ws, BuildType bt, const RelationshipSystem& rels, BossModifierHook& m) {
+// Saved_Priest → 禁用一次AOE技能
+if (ws.has(WorldFlag::Saved_Priest)) {
+    m.disable_skill = true;
+    m.modifier_text = "AOE禁用 (神官祝福)";
+}
+// Blood_Ritual → HP+20%
+if (ws.has(WorldFlag::Blood_Ritual)) {
+    m.hp_scale = 1.20f;
+    m.modifier_text = m.modifier_text ? " " : "";
+    m.modifier_text = "HP+20%% (血祭)";
+}
+// Accepted_Curse → Boss获得新Debuff技能 (e.g. 上curse)
+if (ws.has(WorldFlag::Accepted_Curse)) {
+    m.damage_scale += 0.10f;
+}
+// BuildType: FIRE_MAGE → Boss火抗+ (HP+)
+if (bt == BuildType::FIRE_MAGE) {
+    m.hp_scale += 0.15f;
+}
+// Priest trust≥3 → 禁用一次技能
+if (rels.check_relation(70, RelationType::TRUST, 3)) {
+    m.disable_skill = true;
+}
+}
+
+void BossNarrative::_modifier_f15(const WorldState& ws, BuildType bt, const RelationshipSystem& rels, BossModifierHook& m) {
+// Blood_Ritual → HP+30%, 伤害+20%
+if (ws.has(WorldFlag::Blood_Ritual)) {
+    m.hp_scale = 1.30f; m.damage_scale = 1.20f;
+    m.modifier_text = "HP+30%% ATK+20%% (血祭融合)";
+}
+// Saved_Priest → Phase2延迟 (降低HP间接影响)
+if (ws.has(WorldFlag::Saved_Priest)) {
+    m.hp_scale = 0.85f;
+    m.modifier_text = !m.modifier_text ? "HP-15%% (神官祈祷)" : m.modifier_text;
+}
+// Watcher respect≥3 → Phase2时间减少
+if (rels.check_relation(140, RelationType::RESPECT, 3)) {
+    m.damage_scale -= 0.10f;
+}
+// Merchant_Killed → 额外精英
+if (ws.has(WorldFlag::Merchant_Killed)) {
+    m.add_minions = true;
+    if (!m.modifier_text) m.modifier_text = "额外精英 (商人咒骂)";
+}
+// Build: POISON → Boss腐化免疫++
+if (bt == BuildType::POISON_MASTER) {
+    m.hp_scale += 0.15f;
+}
+// Build: TIME → Boss Phase切换加速
+if (bt == BuildType::TIME_MASTER) {
+    m.damage_scale += 0.10f;
+}
+// Priest trust≥5 → Boss禁用一次技能
+if (rels.check_relation(70, RelationType::TRUST, 5)) {
+    m.disable_skill = true;
+}
+// Fear高 (任意NPC fear≥5)
+for (auto& r : rels.all()) {
+    if (r.fear >= 5) { m.damage_scale += 0.08f; break; }
+}
+}
+
