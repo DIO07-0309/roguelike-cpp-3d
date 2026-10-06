@@ -64,23 +64,13 @@ void MonsterAI::update(Monster* self, Player* player, GameMap* map,
                         int monster_room, int player_room,
                         const RoomManager* room_mgr) {
     if (!self->combat.is_alive) return;
-
-    _monster_room = monster_room;
-    _player_room = player_room;
-    _room_mgr = room_mgr;
-
-    // Q3.16: 房间守卫 — 首次 update 记录出生锚点; 掉血即视为被挑衅 (解除束缚)。
-    // Boss 不受束缚 (Boss 房有独立机制与领域地形)。
+    _monster_room = monster_room; _player_room = player_room; _room_mgr = room_mgr;
     if (home_x < 0.0f && home_y < 0.0f) {
         home_x = self->entity.rect.x + self->entity.rect.width/2;
         home_y = self->entity.rect.y + self->entity.rect.height/2;
     }
-    if (!provoked && self->combat.current_hp < self->combat.max_hp)
-        provoked = true;
+    if (!provoked && self->combat.current_hp < self->combat.max_hp) provoked = true;
     if (self->is_boss) provoked = true;
-
-    // G5.3: Archetype-driven behaviors (替代旧的 monster_type 检查)
-    // ── 向后兼容: DEFAULT → 从 monster_type 推断 ──
     if (archetype == AIArchetype::DEFAULT) {
         switch (self->monster_type) {
         case MonsterType::BOMBER:   archetype = AIArchetype::BOMBER; break;
@@ -90,169 +80,171 @@ void MonsterAI::update(Monster* self, Player* player, GameMap* map,
         default: break;
         }
     }
-    switch (archetype) {
-    case AIArchetype::BOMBER: {
-        float dist = _dist_to(self, player);
-        if (dist <= attack_range * 32.0f) {
-            if (self->explode_timer <= 0) self->explode_timer = 2.0f;
-            self->explode_timer -= (float)dt;
-            if (self->explode_timer <= 0) {
-                int dmg = (int)(self->combat.max_hp * 0.4f);
-                self->combat.take_damage(self->combat.max_hp);
-                if (effects) { VFXServer vfx;
-                    vfx.boss_circle(self->entity.rect.x+self->entity.rect.width/2,self->entity.rect.y+self->entity.rect.height/2);
-                    for(auto&e:vfx.effects) effects->push_back(e); }
-                if (dist <= 3.0f*32.0f){
-                    int aoe=calculate_damage(dmg,player->combat.get_effective_defense(AttackType::TRUE),AttackType::TRUE);
-                    player->combat.take_damage(aoe);}
-                return;
-            }
-            return;
-        } else self->explode_timer=0.0f;
-    } break;
-
-    case AIArchetype::SHAMAN:
-        if(all){self->support_cooldown-=(float)dt;
-            if(self->support_cooldown<=0){Monster* ally=nullptr;float bd=5.0f*32.0f;
-                for(auto*o:*all){if(!o||o==self||!o->combat.is_alive)continue;
-                    if(o->ai && o->ai->archetype==AIArchetype::BOMBER)continue;
-                    float d=hypotf(o->entity.rect.x-self->entity.rect.x,o->entity.rect.y-self->entity.rect.y);
-                    if(d<bd){bd=d;ally=o;}}
-                if(ally){if(rng()%2==0)apply_buff(ally,"attack_up",1);else ally->combat.heal((int)(ally->combat.max_hp*0.15f));
-                    self->support_cooldown=4.0f;return;}}}
-        break;
-
-    case AIArchetype::SNIPER: {
-        float dist=_dist_to(self,player);
-        // SNIPER: 跨房间不攻击
-        if (_monster_room >= 0 && _player_room >= 0 && _monster_room != _player_room)
-            break;
-        // 后退保持 6-9 格距离
-        if(dist<6.0f*32.0f){
-            float dx=self->entity.rect.x-player->entity.rect.x,dy=self->entity.rect.y-player->entity.rect.y;
-            float len=sqrtf(dx*dx+dy*dy);if(len>1)_apply_movement(self,map,dx/len,dy/len,dt);
-            self->color={255,200,180,255};
-        }
-        // 蓄力狙击
-        if(dist>4.0f*32.0f&&dist<12.0f*32.0f){
-            _archetype_timer+=(float)dt;
-            if(_archetype_timer>2.5f){ // 每2.5s一发贯穿弹
-                _archetype_timer=0.0f;
-                int dmg=calculate_damage(self->combat.get_effective_attack()*2,
-                    player->combat.get_effective_defense(AttackType::PHYSICAL)); // 无视50%防御的效果
-                player->combat.take_damage(dmg);
-                if(effects){Effect e;e.kind="bolt";e.world_x=self->entity.rect.x+self->entity.rect.width/2;
-                    e.world_y=self->entity.rect.y+self->entity.rect.height/2;e.target_x=player->entity.rect.x;
-                    e.target_y=player->entity.rect.y;e.radius=4;e.duration=0.3f;e.color={255,255,255,200};effects->push_back(e);}
-                return;
-            }
-        }
-        // normal move-chase
-        break;
-    }
-
-    case AIArchetype::CONTROLLER: {
-        _archetype_timer+=(float)dt;
-        // CONTROLLER: 跨房间不攻击
-        if (_monster_room >= 0 && _player_room >= 0 && _monster_room != _player_room)
-            break;
-        if(_archetype_timer>5.0f){
-            _archetype_timer=0.0f;
-            // 在玩家脚下放置危险区 (scatter 锥形弹)
-            float px=player->entity.rect.x+player->entity.rect.width/2,py=player->entity.rect.y+player->entity.rect.height/2;
-            for(int i=0;i<4;i++){
-                float angle=(float)i*1.5708f+(float)(rng()%30)*0.01745f;
-                float tx=px+cosf(angle)*80.0f,ty=py+sinf(angle)*80.0f;
-                if(effects){Effect e;e.kind="pulse";e.world_x=tx;e.world_y=ty;e.radius=32;e.duration=0.5f;e.color={200,60,200,150};effects->push_back(e);}
-                // damage check via actual zone placement would need ArenaManager integration
-                // For now: direct hit check
-                float dp2=hypotf(player->entity.rect.x+player->entity.rect.width/2-tx,player->entity.rect.y+player->entity.rect.height/2-ty);
-                if(dp2<48.0f){int dmg=calculate_damage(self->combat.get_effective_attack(),player->combat.get_effective_defense(AttackType::MAGICAL),AttackType::MAGICAL);player->combat.take_damage(dmg);}
-            }
-            // also slow the player
-            apply_buff(player,"slow",1);
-            return;
-        }
-        // keep medium distance
-        float dist=_dist_to(self,player);
-        if(dist<4.0f*32.0f){float dx=self->entity.rect.x-player->entity.rect.x,dy=self->entity.rect.y-player->entity.rect.y;float len=sqrtf(dx*dx+dy*dy);if(len>1)_apply_movement(self,map,dx/len,dy/len,dt);return;}
-        if(dist>8.0f*32.0f){float dx=player->entity.rect.x-self->entity.rect.x,dy=player->entity.rect.y-self->entity.rect.y;float len=sqrtf(dx*dx+dy*dy);if(len>1)_apply_movement(self,map,dx/len,dy/len,dt);return;}
-        break;
-    }
-
-    case AIArchetype::AMBUSH: {
-        _archetype_timer+=(float)dt;
-        // AMBUSH: 跨房间不攻击
-        if (_monster_room >= 0 && _player_room >= 0 && _monster_room != _player_room)
-            break;
-        if(!_archetype_active&&_archetype_timer>8.0f){
-            _archetype_active=true;_archetype_timer=0.0f;self->color.a=80; // 隐身
-        }
-        if(_archetype_active){
-            self->color.a=80;
-            // move towards player silently
-            float dx=player->entity.rect.x+player->entity.rect.width/2-self->entity.rect.x-self->entity.rect.width/2;
-            float dy=player->entity.rect.y+player->entity.rect.height/2-self->entity.rect.y-self->entity.rect.height/2;
-            float len=sqrtf(dx*dx+dy*dy);if(len>1)_apply_movement(self,map,dx/len,dy/len,(float)dt*1.3f);
-            // strike when close
-            if(len<2.0f*32.0f){
-                self->color.a=255;_archetype_active=false;
-                int dmg=calculate_damage(self->combat.get_effective_attack()*3,player->combat.get_effective_defense(AttackType::PHYSICAL));
-                player->combat.take_damage(dmg);apply_buff(player,"stun",1);
-                return;
-            }
-            return; // 隐身中不进入普通状态机
-        }
-        break;
-    }
-
-    case AIArchetype::GUARDIAN: {
-        _archetype_timer+=(float)dt;
-        if(_archetype_timer>6.0f){
-            _archetype_timer=0.0f;
-            // 给附近盟友上防御buff
-            if(all)for(auto*o:*all){
-                if(!o||o==self||!o->combat.is_alive)continue;
-                float d=hypotf(o->entity.rect.x-self->entity.rect.x,o->entity.rect.y-self->entity.rect.y);
-                if(d<6.0f*32.0f){apply_buff(o,"defense_up",1);apply_buff(o,"shield",1);}
-            }
-            return;
-        }
-        // Guard position: stay between player and allies
-        float dist=_dist_to(self,player);
-        if(dist<3.0f*32.0f){
-            float dx=self->entity.rect.x-player->entity.rect.x,dy=self->entity.rect.y-player->entity.rect.y;
-            float len=sqrtf(dx*dx+dy*dy);if(len>1)_apply_movement(self,map,dx/len,dy/len,dt);
-        }
-        break;
-    }
-    default: break;
-    }
-
-    // D2 Step4: Team协同决策 (Boss不参与)
-    if (!self->is_boss && all && (*all).size() > 1) {
-        _team_decision(self, player, map, dt, all);
-    }
-
-    // D2 Step3: Think — 决策技能释放
+    if (_arch_bomber(self, player, map, dt, effects)) return;
+    if (_arch_shaman(self, player, dt, all)) return;
+    if (_arch_sniper(self, player, map, dt, effects)) return;
+    if (_arch_controller(self, player, map, dt, effects)) return;
+    if (_arch_ambush(self, player, map, dt)) return;
+    if (_arch_guardian(self, player, map, dt, all)) return;
+    if (!self->is_boss && all && (*all).size() > 1) _team_decision(self, player, map, dt, all);
     bool use_skills_anyway = (archetype == AIArchetype::BOMBER);
     if (!_skills.empty() && !use_skills_anyway) {
-        if (_think_and_cast(self, player, map, dt, gt, all, effects))
-            return;
+        if (_think_and_cast(self, player, map, dt, gt, all, effects)) return;
     }
-    if (use_skills_anyway && !_skills.empty()) {
-        _think_and_cast(self, player, map, dt, gt, all, effects);
-    }
-
+    if (use_skills_anyway && !_skills.empty()) _think_and_cast(self, player, map, dt, gt, all, effects);
     _decide_state(self, player);
-
-    if (state == AIState::IDLE)
-        _execute_idle(self, map, (float)dt);
-    else if (state == AIState::CHASE)
-        _execute_chase(self, player, map, (float)dt);
-    else if (state == AIState::ATTACK)
-        _execute_attack(self, player, map, dt, gt, effects);
+    if (state == AIState::IDLE) _execute_idle(self, map, (float)dt);
+    else if (state == AIState::CHASE) _execute_chase(self, player, map, (float)dt);
+    else if (state == AIState::ATTACK) _execute_attack(self, player, map, dt, gt, effects);
 }
+bool MonsterAI::_arch_bomber(Monster* self, Player* player, GameMap* map, double dt, std::vector<Effect>* effects) {
+    if (archetype != AIArchetype::BOMBER) return false;
+float dist = _dist_to(self, player);
+if (dist <= attack_range * 32.0f) {
+    if (self->explode_timer <= 0) self->explode_timer = 2.0f;
+    self->explode_timer -= (float)dt;
+    if (self->explode_timer <= 0) {
+        int dmg = (int)(self->combat.max_hp * 0.4f);
+        self->combat.take_damage(self->combat.max_hp);
+        if (effects) { VFXServer vfx;
+            vfx.boss_circle(self->entity.rect.x+self->entity.rect.width/2,self->entity.rect.y+self->entity.rect.height/2);
+            for(auto&e:vfx.effects) effects->push_back(e); }
+        if (dist <= 3.0f*32.0f){
+            int aoe=calculate_damage(dmg,player->combat.get_effective_defense(AttackType::TRUE),AttackType::TRUE);
+            player->combat.take_damage(aoe);}
+        return true;
+    }
+    return true;
+} else self->explode_timer=0.0f;
+    return false;
+}
+
+bool MonsterAI::_arch_shaman(Monster* self, Player* player, double dt, std::vector<Monster*>* all) {
+    if (archetype != AIArchetype::SHAMAN) return false;
+if(all){self->support_cooldown-=(float)dt;
+    if(self->support_cooldown<=0){Monster* ally=nullptr;float bd=5.0f*32.0f;
+        for(auto*o:*all){if(!o||o==self||!o->combat.is_alive)continue;
+            if(o->ai && o->ai->archetype==AIArchetype::BOMBER)continue;
+            float d=hypotf(o->entity.rect.x-self->entity.rect.x,o->entity.rect.y-self->entity.rect.y);
+            if(d<bd){bd=d;ally=o;}}
+        if(ally){if(rng()%2==0)apply_buff(ally,"attack_up",1);else ally->combat.heal((int)(ally->combat.max_hp*0.15f));
+            self->support_cooldown=4.0f;return true;}}}
+    return false;
+}
+
+bool MonsterAI::_arch_sniper(Monster* self, Player* player, GameMap* map, double dt, std::vector<Effect>* effects) {
+    if (archetype != AIArchetype::SNIPER) return false;
+float dist=_dist_to(self,player);
+// SNIPER: 跨房间不攻击
+if (_monster_room >= 0 && _player_room >= 0 && _monster_room != _player_room)
+    return false;
+// 后退保持 6-9 格距离
+if(dist<6.0f*32.0f){
+    float dx=self->entity.rect.x-player->entity.rect.x,dy=self->entity.rect.y-player->entity.rect.y;
+    float len=sqrtf(dx*dx+dy*dy);if(len>1)_apply_movement(self,map,dx/len,dy/len,dt);
+    self->color={255,200,180,255};
+}
+// 蓄力狙击
+if(dist>4.0f*32.0f&&dist<12.0f*32.0f){
+    _archetype_timer+=(float)dt;
+    if(_archetype_timer>2.5f){ // 每2.5s一发贯穿弹
+        _archetype_timer=0.0f;
+        int dmg=calculate_damage(self->combat.get_effective_attack()*2,
+            player->combat.get_effective_defense(AttackType::PHYSICAL)); // 无视50%防御的效果
+        player->combat.take_damage(dmg);
+        if(effects){Effect e;e.kind="bolt";e.world_x=self->entity.rect.x+self->entity.rect.width/2;
+            e.world_y=self->entity.rect.y+self->entity.rect.height/2;e.target_x=player->entity.rect.x;
+            e.target_y=player->entity.rect.y;e.radius=4;e.duration=0.3f;e.color={255,255,255,200};effects->push_back(e);}
+        return true;
+    }
+}
+// normal move-chase
+return false;
+    return false;
+}
+
+bool MonsterAI::_arch_controller(Monster* self, Player* player, GameMap* map, double dt, std::vector<Effect>* effects) {
+    if (archetype != AIArchetype::CONTROLLER) return false;
+_archetype_timer+=(float)dt;
+// CONTROLLER: 跨房间不攻击
+if (_monster_room >= 0 && _player_room >= 0 && _monster_room != _player_room)
+    return false;
+if(_archetype_timer>5.0f){
+    _archetype_timer=0.0f;
+    // 在玩家脚下放置危险区 (scatter 锥形弹)
+    float px=player->entity.rect.x+player->entity.rect.width/2,py=player->entity.rect.y+player->entity.rect.height/2;
+    for(int i=0;i<4;i++){
+        float angle=(float)i*1.5708f+(float)(rng()%30)*0.01745f;
+        float tx=px+cosf(angle)*80.0f,ty=py+sinf(angle)*80.0f;
+        if(effects){Effect e;e.kind="pulse";e.world_x=tx;e.world_y=ty;e.radius=32;e.duration=0.5f;e.color={200,60,200,150};effects->push_back(e);}
+        // damage check via actual zone placement would need ArenaManager integration
+        // For now: direct hit check
+        float dp2=hypotf(player->entity.rect.x+player->entity.rect.width/2-tx,player->entity.rect.y+player->entity.rect.height/2-ty);
+        if(dp2<48.0f){int dmg=calculate_damage(self->combat.get_effective_attack(),player->combat.get_effective_defense(AttackType::MAGICAL),AttackType::MAGICAL);player->combat.take_damage(dmg);}
+    }
+    // also slow the player
+    apply_buff(player,"slow",1);
+    return true;
+}
+// keep medium distance
+float dist=_dist_to(self,player);
+if(dist<4.0f*32.0f){float dx=self->entity.rect.x-player->entity.rect.x,dy=self->entity.rect.y-player->entity.rect.y;float len=sqrtf(dx*dx+dy*dy);if(len>1)_apply_movement(self,map,dx/len,dy/len,dt);return true;}
+if(dist>8.0f*32.0f){float dx=player->entity.rect.x-self->entity.rect.x,dy=player->entity.rect.y-self->entity.rect.y;float len=sqrtf(dx*dx+dy*dy);if(len>1)_apply_movement(self,map,dx/len,dy/len,dt);return true;}
+return false;
+    return false;
+}
+
+bool MonsterAI::_arch_ambush(Monster* self, Player* player, GameMap* map, double dt) {
+    if (archetype != AIArchetype::AMBUSH) return false;
+_archetype_timer+=(float)dt;
+// AMBUSH: 跨房间不攻击
+if (_monster_room >= 0 && _player_room >= 0 && _monster_room != _player_room)
+    return false;
+if(!_archetype_active&&_archetype_timer>8.0f){
+    _archetype_active=true;_archetype_timer=0.0f;self->color.a=80; // 隐身
+}
+if(_archetype_active){
+    self->color.a=80;
+    // move towards player silently
+    float dx=player->entity.rect.x+player->entity.rect.width/2-self->entity.rect.x-self->entity.rect.width/2;
+    float dy=player->entity.rect.y+player->entity.rect.height/2-self->entity.rect.y-self->entity.rect.height/2;
+    float len=sqrtf(dx*dx+dy*dy);if(len>1)_apply_movement(self,map,dx/len,dy/len,(float)dt*1.3f);
+    // strike when close
+    if(len<2.0f*32.0f){
+        self->color.a=255;_archetype_active=false;
+        int dmg=calculate_damage(self->combat.get_effective_attack()*3,player->combat.get_effective_defense(AttackType::PHYSICAL));
+        player->combat.take_damage(dmg);apply_buff(player,"stun",1);
+        return true;
+    }
+    return true; // 隐身中不进入普通状态机
+}
+return false;
+    return false;
+}
+
+bool MonsterAI::_arch_guardian(Monster* self, Player* player, GameMap* map, double dt, std::vector<Monster*>* all) {
+    if (archetype != AIArchetype::GUARDIAN) return false;
+_archetype_timer+=(float)dt;
+if(_archetype_timer>6.0f){
+    _archetype_timer=0.0f;
+    // 给附近盟友上防御buff
+    if(all)for(auto*o:*all){
+        if(!o||o==self||!o->combat.is_alive)continue;
+        float d=hypotf(o->entity.rect.x-self->entity.rect.x,o->entity.rect.y-self->entity.rect.y);
+        if(d<6.0f*32.0f){apply_buff(o,"defense_up",1);apply_buff(o,"shield",1);}
+    }
+    return true;
+}
+// Guard position: stay between player and allies
+float dist=_dist_to(self,player);
+if(dist<3.0f*32.0f){
+    float dx=self->entity.rect.x-player->entity.rect.x,dy=self->entity.rect.y-player->entity.rect.y;
+    float len=sqrtf(dx*dx+dy*dy);if(len>1)_apply_movement(self,map,dx/len,dy/len,dt);
+}
+return false;
+    return false;
+}
+
 
 void MonsterAI::_decide_state(Monster* self, Player* player) {
     float dist = _dist_to(self, player);

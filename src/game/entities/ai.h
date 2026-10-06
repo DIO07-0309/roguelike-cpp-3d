@@ -94,6 +94,14 @@ public:
                         int monster_room = -1, int player_room = -1,
                         const RoomManager* room_mgr = nullptr);
 
+// G34-A: Archetype behavior helpers
+    bool _arch_bomber(Monster* self, Player* player, GameMap* map, double dt, std::vector<Effect>* effects);
+    bool _arch_shaman(Monster* self, Player* player, double dt, std::vector<Monster*>* all);
+    bool _arch_sniper(Monster* self, Player* player, GameMap* map, double dt, std::vector<Effect>* effects);
+    bool _arch_controller(Monster* self, Player* player, GameMap* map, double dt, std::vector<Effect>* effects);
+    bool _arch_ambush(Monster* self, Player* player, GameMap* map, double dt);
+    bool _arch_guardian(Monster* self, Player* player, GameMap* map, double dt, std::vector<Monster*>* all);
+
     // D2 Step3: 怪物技能池 (在 spawn_monster 中分配)
     std::vector<MonsterSkillState> _skills;
 
