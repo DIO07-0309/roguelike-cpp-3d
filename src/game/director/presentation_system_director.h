@@ -59,6 +59,11 @@ struct BuildTheme {
     AudioModifier  audio;
 
     static BuildTheme from_build_type(BuildType bt);
+
+    // G37-A: from_build_type helpers
+    static void _fill_mage_themes(BuildTheme& t, BuildType bt);
+    static void _fill_melee_themes(BuildTheme& t, BuildType bt);
+    static void _fill_support_themes(BuildTheme& t, BuildType bt);
 };
 
 // ============================================================

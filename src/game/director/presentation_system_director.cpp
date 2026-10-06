@@ -90,60 +90,14 @@ static void _fill_theme(BuildTheme& t,
 
 BuildTheme BuildTheme::from_build_type(BuildType bt) {
     BuildTheme t;
-    switch (bt) {
-    case BuildType::ICE_MAGE:
-        _fill_theme(t,{100,200,255,255},{160,230,255,220},{80,180,240,200},"ice","ice",
-            0.70f,1.15f,1.0f,1.0f,1.0f,1.05f, 0.80f,0.02f,-0.03f,0.0f,
-            {100,180,240,40},{180,220,255,200},0.12f, "slash","bolt",0.05f,0.0f); break;
-    case BuildType::FIRE_MAGE:
-        _fill_theme(t,{255,140,30,255},{255,100,20,220},{240,80,15,200},"fire","fire",
-            1.30f,1.25f,1.1f,0.9f,1.0f,0.90f, 1.30f,0.0f,0.03f,8.0f,
-            {255,100,20,30},{255,200,100,200},0.0f, "melee","bolt",-0.10f,0.0f); break;
-    case BuildType::POISON_MASTER:
-        _fill_theme(t,{80,220,80,255},{40,200,60,220},{30,180,50,200},"nature","nature",
-            1.00f,1.00f,1.0f,1.0f,1.0f,1.05f, 1.00f,0.0f,0.0f,0.0f,
-            {30,180,50,30},{40,220,80,180},0.0f, "slash","bolt",0.0f,0.0f); break;
-    case BuildType::LIGHTNING_MAGE:
-        _fill_theme(t,{220,220,80,255},{240,240,120,220},{200,200,60,200},"lightning","lightning",
-            1.40f,1.10f,1.2f,0.85f,1.1f,0.85f, 1.15f,0.0f,0.0f,12.0f,
-            {200,200,60,20},{255,240,120,180},0.0f, "bolt","bolt",0.10f,0.10f); break;
-    case BuildType::BERSERKER:
-        _fill_theme(t,{255,80,50,255},{240,60,30,220},{220,40,20,200},"blood","blood",
-            1.10f,1.05f,1.0f,0.95f,1.0f,0.90f, 1.20f,0.0f,0.02f,6.0f,
-            {220,40,20,20},{255,100,60,180},0.0f, "melee","melee",-0.05f,0.0f); break;
-    case BuildType::BLEED_BLADE:
-        _fill_theme(t,{200,30,60,255},{180,20,40,220},{160,15,30,200},"blood","blood",
-            1.05f,1.10f,1.0f,1.0f,1.05f,0.95f, 1.10f,0.0f,0.01f,4.0f,
-            {160,15,30,25},{200,30,60,180},0.08f, "melee","slash",-0.05f,0.0f); break;
-    case BuildType::SHADOW_STRIKER:
-        _fill_theme(t,{140,40,220,255},{120,30,200,220},{100,20,180,200},"shadow","shadow",
-            0.85f,0.90f,0.9f,1.1f,0.85f,1.15f, 0.70f,0.04f,-0.05f,14.0f,
-            {80,20,140,50},{120,40,200,160},0.25f, "slash","bolt",-0.15f,0.30f); break;
-    case BuildType::TIME_MASTER:
-        _fill_theme(t,{180,200,240,255},{160,190,230,220},{140,180,220,200},"ice","ice",
-            0.90f,1.00f,1.0f,1.05f,1.0f,1.10f, 0.90f,0.06f,0.0f,0.0f,
-            {140,180,220,30},{180,200,240,160},0.10f, "slash","bolt",0.08f,0.15f); break;
-    case BuildType::SUPPORT:
-        _fill_theme(t,{100,240,120,255},{80,220,100,220},{60,200,80,200},"nature","nature",
-            1.00f,0.95f,1.0f,1.0f,1.0f,1.05f, 0.85f,0.0f,0.0f,0.0f,
-            {60,200,80,20},{100,240,120,160},0.0f, "slash","bolt",0.0f,0.0f); break;
-    case BuildType::JUGGERNAUT:
-        _fill_theme(t,{180,180,200,255},{160,160,190,220},{140,140,180,200},"white","white",
-            0.85f,0.90f,1.1f,0.90f,0.90f,1.10f, 0.75f,0.0f,0.0f,0.0f,
-            {140,140,180,30},{180,180,200,160},0.05f, "melee","melee",-0.10f,0.0f); break;
-    case BuildType::SUMMON_LORD:
-        _fill_theme(t,{100,200,200,255},{80,180,180,220},{60,160,160,200},"ice","ice",
-            0.95f,1.00f,1.0f,1.0f,1.05f,1.05f, 1.00f,0.0f,0.0f,0.0f,
-            {60,160,160,25},{100,200,200,170},0.05f, "bolt","bolt",0.0f,0.10f); break;
-    case BuildType::PROJECTILE:
-        _fill_theme(t,{255,200,80,255},{240,180,60,220},{220,160,50,200},"gold","gold",
-            1.15f,1.05f,1.0f,0.95f,1.0f,0.95f, 1.05f,0.0f,0.0f,5.0f,
-            {220,160,50,20},{255,200,80,180},0.0f, "bolt","bolt",0.0f,0.0f); break;
-    default:
-        _fill_theme(t,{255,200,50,255},{240,180,40,220},{220,160,30,200},"gold","",
-            1.0f,1.0f,1.0f,1.0f,1.0f,1.0f, 1.0f,0.0f,0.0f,0.0f,
-            {0,0,0,0},{255,255,255,200},0.0f, "melee","bolt",0.0f,0.0f); break;
-    }
+    if (bt == BuildType::ICE_MAGE || bt == BuildType::FIRE_MAGE || bt == BuildType::POISON_MASTER ||
+        bt == BuildType::LIGHTNING_MAGE || bt == BuildType::TIME_MASTER)
+        _fill_mage_themes(t, bt);
+    else if (bt == BuildType::BERSERKER || bt == BuildType::BLEED_BLADE ||
+        bt == BuildType::SHADOW_STRIKER || bt == BuildType::JUGGERNAUT)
+        _fill_melee_themes(t, bt);
+    else
+        _fill_support_themes(t, bt);
     return t;
 }
 
@@ -257,4 +211,95 @@ void PresentationSystemDirector::unregister_events() {
     EventBus::inst().unsubscribe(GameEventType::SKILL_EVOLVED, this);
     EventBus::inst().unsubscribe(GameEventType::BOSS_RULE_ACTIVATED, this);
     EventBus::inst().unsubscribe(GameEventType::QUEST_COMPLETE, this);
+}
+
+void BuildTheme::_fill_mage_themes(BuildTheme& t, BuildType bt) {
+    switch (bt) {
+    case BuildType::ICE_MAGE:
+_fill_theme(t,{100,200,255,255},{160,230,255,220},{80,180,240,200},"ice","ice",
+    0.70f,1.15f,1.0f,1.0f,1.0f,1.05f, 0.80f,0.02f,-0.03f,0.0f,
+    {100,180,240,40},{180,220,255,200},0.12f, "slash","bolt",0.05f,0.0f); break;
+    case BuildType::FIRE_MAGE:
+_fill_theme(t,{255,140,30,255},{255,100,20,220},{240,80,15,200},"fire","fire",
+    1.30f,1.25f,1.1f,0.9f,1.0f,0.90f, 1.30f,0.0f,0.03f,8.0f,
+    {255,100,20,30},{255,200,100,200},0.0f, "melee","bolt",-0.10f,0.0f); break;
+    case BuildType::POISON_MASTER:
+_fill_theme(t,{80,220,80,255},{40,200,60,220},{30,180,50,200},"nature","nature",
+    1.00f,1.00f,1.0f,1.0f,1.0f,1.05f, 1.00f,0.0f,0.0f,0.0f,
+    {30,180,50,30},{40,220,80,180},0.0f, "slash","bolt",0.0f,0.0f); break;
+    case BuildType::LIGHTNING_MAGE:
+_fill_theme(t,{220,220,80,255},{240,240,120,220},{200,200,60,200},"lightning","lightning",
+    1.40f,1.10f,1.2f,0.85f,1.1f,0.85f, 1.15f,0.0f,0.0f,12.0f,
+    {200,200,60,20},{255,240,120,180},0.0f, "bolt","bolt",0.10f,0.10f); break;
+    case BuildType::BERSERKER:
+_fill_theme(t,{255,80,50,255},{240,60,30,220},{220,40,20,200},"blood","blood",
+    1.10f,1.05f,1.0f,0.95f,1.0f,0.90f, 1.20f,0.0f,0.02f,6.0f,
+    {220,40,20,20},{255,100,60,180},0.0f, "melee","melee",-0.05f,0.0f); break;
+    case BuildType::BLEED_BLADE:
+_fill_theme(t,{200,30,60,255},{180,20,40,220},{160,15,30,200},"blood","blood",
+    1.05f,1.10f,1.0f,1.0f,1.05f,0.95f, 1.10f,0.0f,0.01f,4.0f,
+    {160,15,30,25},{200,30,60,180},0.08f, "melee","slash",-0.05f,0.0f); break;
+    case BuildType::SHADOW_STRIKER:
+_fill_theme(t,{140,40,220,255},{120,30,200,220},{100,20,180,200},"shadow","shadow",
+    0.85f,0.90f,0.9f,1.1f,0.85f,1.15f, 0.70f,0.04f,-0.05f,14.0f,
+    {80,20,140,50},{120,40,200,160},0.25f, "slash","bolt",-0.15f,0.30f); break;
+    case BuildType::TIME_MASTER:
+_fill_theme(t,{180,200,240,255},{160,190,230,220},{140,180,220,200},"ice","ice",
+    0.90f,1.00f,1.0f,1.05f,1.0f,1.10f, 0.90f,0.06f,0.0f,0.0f,
+    {140,180,220,30},{180,200,240,160},0.10f, "slash","bolt",0.08f,0.15f); break;
+    }
+}
+
+void BuildTheme::_fill_melee_themes(BuildTheme& t, BuildType bt) {
+    switch (bt) {
+    case BuildType::BERSERKER:
+_fill_theme(t,{255,80,50,255},{240,60,30,220},{220,40,20,200},"blood","blood",
+    1.10f,1.05f,1.0f,0.95f,1.0f,0.90f, 1.20f,0.0f,0.02f,6.0f,
+    {220,40,20,20},{255,100,60,180},0.0f, "melee","melee",-0.05f,0.0f); break;
+    case BuildType::BLEED_BLADE:
+_fill_theme(t,{200,30,60,255},{180,20,40,220},{160,15,30,200},"blood","blood",
+    1.05f,1.10f,1.0f,1.0f,1.05f,0.95f, 1.10f,0.0f,0.01f,4.0f,
+    {160,15,30,25},{200,30,60,180},0.08f, "melee","slash",-0.05f,0.0f); break;
+    case BuildType::SHADOW_STRIKER:
+_fill_theme(t,{140,40,220,255},{120,30,200,220},{100,20,180,200},"shadow","shadow",
+    0.85f,0.90f,0.9f,1.1f,0.85f,1.15f, 0.70f,0.04f,-0.05f,14.0f,
+    {80,20,140,50},{120,40,200,160},0.25f, "slash","bolt",-0.15f,0.30f); break;
+    case BuildType::TIME_MASTER:
+_fill_theme(t,{180,200,240,255},{160,190,230,220},{140,180,220,200},"ice","ice",
+    0.90f,1.00f,1.0f,1.05f,1.0f,1.10f, 0.90f,0.06f,0.0f,0.0f,
+    {140,180,220,30},{180,200,240,160},0.10f, "slash","bolt",0.08f,0.15f); break;
+    case BuildType::SUPPORT:
+_fill_theme(t,{100,240,120,255},{80,220,100,220},{60,200,80,200},"nature","nature",
+    1.00f,0.95f,1.0f,1.0f,1.0f,1.05f, 0.85f,0.0f,0.0f,0.0f,
+    {60,200,80,20},{100,240,120,160},0.0f, "slash","bolt",0.0f,0.0f); break;
+    case BuildType::JUGGERNAUT:
+_fill_theme(t,{180,180,200,255},{160,160,190,220},{140,140,180,200},"white","white",
+    0.85f,0.90f,1.1f,0.90f,0.90f,1.10f, 0.75f,0.0f,0.0f,0.0f,
+    {140,140,180,30},{180,180,200,160},0.05f, "melee","melee",-0.10f,0.0f); break;
+    }
+}
+
+void BuildTheme::_fill_support_themes(BuildTheme& t, BuildType bt) {
+    switch (bt) {
+    case BuildType::SUPPORT:
+_fill_theme(t,{100,240,120,255},{80,220,100,220},{60,200,80,200},"nature","nature",
+    1.00f,0.95f,1.0f,1.0f,1.0f,1.05f, 0.85f,0.0f,0.0f,0.0f,
+    {60,200,80,20},{100,240,120,160},0.0f, "slash","bolt",0.0f,0.0f); break;
+    case BuildType::JUGGERNAUT:
+_fill_theme(t,{180,180,200,255},{160,160,190,220},{140,140,180,200},"white","white",
+    0.85f,0.90f,1.1f,0.90f,0.90f,1.10f, 0.75f,0.0f,0.0f,0.0f,
+    {140,140,180,30},{180,180,200,160},0.05f, "melee","melee",-0.10f,0.0f); break;
+    case BuildType::SUMMON_LORD:
+_fill_theme(t,{100,200,200,255},{80,180,180,220},{60,160,160,200},"ice","ice",
+    0.95f,1.00f,1.0f,1.0f,1.05f,1.05f, 1.00f,0.0f,0.0f,0.0f,
+    {60,160,160,25},{100,200,200,170},0.05f, "bolt","bolt",0.0f,0.10f); break;
+    case BuildType::PROJECTILE:
+_fill_theme(t,{255,200,80,255},{240,180,60,220},{220,160,50,200},"gold","gold",
+    1.15f,1.05f,1.0f,0.95f,1.0f,0.95f, 1.05f,0.0f,0.0f,5.0f,
+    {220,160,50,20},{255,200,80,180},0.0f, "bolt","bolt",0.0f,0.0f); break;
+    default:
+_fill_theme(t,{255,200,50,255},{240,180,40,220},{220,160,30,200},"gold","",
+    1.0f,1.0f,1.0f,1.0f,1.0f,1.0f, 1.0f,0.0f,0.0f,0.0f,
+    {0,0,0,0},{255,255,255,200},0.0f, "melee","bolt",0.0f,0.0f); break;
+    }
 }
