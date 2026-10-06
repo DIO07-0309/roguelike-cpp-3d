@@ -136,61 +136,16 @@ void DecisionAgent::start(const Player* player) {
 void DecisionAgent::_resolve_profile(const Player* player) {
     if (!player) return;
     _build_type = calculate_build(player).identify();
-
-    // Default: balanced
     _prefer_range = 0.3f; _prefer_aoe = 0.2f;
     _prefer_skill = 0.4f; _aggro_bias = 0.5f;
     _prefer_heal = 0.35f;
     _skill_priority[0]=0; _skill_priority[1]=1;
     _skill_priority[2]=2; _skill_priority[3]=3;
-
-    switch (_build_type) {
-    case BuildType::ICE_MAGE:
-        _prefer_range = 0.9f; _prefer_aoe = 0.8f;
-        _prefer_skill = 0.7f; _aggro_bias = 0.2f; // kite
-        break;
-    case BuildType::FIRE_MAGE:
-        _prefer_range = 0.7f; _prefer_aoe = 0.7f;
-        _prefer_skill = 0.8f; _aggro_bias = 0.3f;
-        break;
-    case BuildType::LIGHTNING_MAGE:
-        _prefer_range = 0.6f; _prefer_aoe = 0.6f;
-        _prefer_skill = 0.7f; _aggro_bias = 0.4f;
-        break;
-    case BuildType::BERSERKER:
-        _prefer_range = 0.0f; _prefer_aoe = 0.3f;
-        _prefer_skill = 0.3f; _aggro_bias = 0.9f; // rush in
-        break;
-    case BuildType::BLEED_BLADE:
-        _prefer_range = 0.1f; _prefer_aoe = 0.3f;
-        _prefer_skill = 0.5f; _aggro_bias = 0.7f;
-        break;
-    case BuildType::SHADOW_STRIKER:
-        _prefer_range = 0.0f; _prefer_aoe = 0.0f;
-        _prefer_skill = 0.6f; _aggro_bias = 0.6f; // single target burst
-        break;
-    case BuildType::SUPPORT:
-        _prefer_range = 0.4f; _aggro_bias = 0.3f;
-        _prefer_heal = 0.50f; // heal early
-        break;
-    case BuildType::JUGGERNAUT:
-        _prefer_range = 0.0f; _prefer_aoe = 0.4f;
-        _prefer_skill = 0.2f; _aggro_bias = 0.8f; // tank
-        break;
-    case BuildType::SUMMON_LORD:
-        _prefer_range = 0.6f; _prefer_skill = 0.8f;
-        _aggro_bias = 0.2f; // stay back, let summons fight
-        break;
-    case BuildType::POISON_MASTER:
-        _prefer_range = 0.5f; _prefer_aoe = 0.4f;
-        _prefer_skill = 0.5f; _aggro_bias = 0.4f;
-        break;
-    case BuildType::TIME_MASTER:
-        _prefer_range = 0.5f; _prefer_skill = 0.7f;
-        _aggro_bias = 0.3f;
-        break;
-    default: break; // keep defaults
-    }
+    if (_build_type == BuildType::ICE_MAGE || _build_type == BuildType::FIRE_MAGE ||
+        _build_type == BuildType::LIGHTNING_MAGE)
+        _apply_mage_profile();
+    else
+        _apply_melee_support_profile();
 }
 
 void DecisionAgent::tick() {
@@ -1468,4 +1423,59 @@ int DecisionAgent::_count_in_range(const Player* player,
 float DecisionAgent::_hp_ratio(const Player* p) const {
     if (!p || p->combat.max_hp <= 0) return 0;
     return (float)p->combat.current_hp / (float)p->combat.max_hp;
+}
+
+void DecisionAgent::_apply_mage_profile() {
+    switch (_build_type) {
+    case BuildType::ICE_MAGE:
+_prefer_range = 0.9f; _prefer_aoe = 0.8f;
+_prefer_skill = 0.7f; _aggro_bias = 0.2f; // kite
+break;
+    case BuildType::FIRE_MAGE:
+_prefer_range = 0.7f; _prefer_aoe = 0.7f;
+_prefer_skill = 0.8f; _aggro_bias = 0.3f;
+break;
+    case BuildType::LIGHTNING_MAGE:
+_prefer_range = 0.6f; _prefer_aoe = 0.6f;
+_prefer_skill = 0.7f; _aggro_bias = 0.4f;
+break;
+    }
+}
+
+void DecisionAgent::_apply_melee_support_profile() {
+    switch (_build_type) {
+    case BuildType::BERSERKER:
+_prefer_range = 0.0f; _prefer_aoe = 0.3f;
+_prefer_skill = 0.3f; _aggro_bias = 0.9f; // rush in
+break;
+    case BuildType::BLEED_BLADE:
+_prefer_range = 0.1f; _prefer_aoe = 0.3f;
+_prefer_skill = 0.5f; _aggro_bias = 0.7f;
+break;
+    case BuildType::SHADOW_STRIKER:
+_prefer_range = 0.0f; _prefer_aoe = 0.0f;
+_prefer_skill = 0.6f; _aggro_bias = 0.6f; // single target burst
+break;
+    case BuildType::SUPPORT:
+_prefer_range = 0.4f; _aggro_bias = 0.3f;
+_prefer_heal = 0.50f; // heal early
+break;
+    case BuildType::JUGGERNAUT:
+_prefer_range = 0.0f; _prefer_aoe = 0.4f;
+_prefer_skill = 0.2f; _aggro_bias = 0.8f; // tank
+break;
+    case BuildType::SUMMON_LORD:
+_prefer_range = 0.6f; _prefer_skill = 0.8f;
+_aggro_bias = 0.2f; // stay back, let summons fight
+break;
+    case BuildType::POISON_MASTER:
+_prefer_range = 0.5f; _prefer_aoe = 0.4f;
+_prefer_skill = 0.5f; _aggro_bias = 0.4f;
+break;
+    case BuildType::TIME_MASTER:
+_prefer_range = 0.5f; _prefer_skill = 0.7f;
+_aggro_bias = 0.3f;
+break;
+    default: break; // keep defaults
+    }
 }

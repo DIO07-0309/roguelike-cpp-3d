@@ -131,6 +131,10 @@ private:
                         const std::vector<Monster*>& monsters, float range_px) const;
     float _hp_ratio(const Player* p) const;
     void _resolve_profile(const Player* player);
+
+    // G38-A: _resolve_profile helpers
+    void _apply_mage_profile();
+    void _apply_melee_support_profile();
     // P1-C5: 决策攻击半径 (px) — FIST=48px legacy; 武器=当前段 range×32.
     // _evaluate_attack/_evaluate_move 消费同一份, 与 WeaponExecutor 判定对齐
     float _decision_attack_reach_px(const Player* p) const;
