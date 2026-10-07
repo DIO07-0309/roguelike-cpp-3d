@@ -17,7 +17,7 @@
 
 class Monster;
 class Player;
-namespace rl { class QAgent; }  // v0.9.30: RL 决策层 (前向声明, 避免头文件耦合)
+namespace rl { class QAgent; class DqnMirrorBridge; }  // v0.9.30/v0.9.33: RL 决策层 (前向声明, 避免头文件耦合)
 
 // ============================================================
 // F15.3: MirrorAgent — analysis layer, NOT a control layer
@@ -95,6 +95,9 @@ public:
     void set_rl_policy(std::unique_ptr<rl::QAgent> q);
     bool has_rl_policy() const { return _rl_policy != nullptr; }
 
+    // ── v0.9.33: DQN 决策层 (手写推理, 通过 MlPredictor 接入仲裁链) ──
+    bool set_dqn_policy(const std::string& weights_path, int player_style);
+
     // ── During combat: recommend BossAI adjustments ──
     float recommend_distance() const;
     bool should_interrupt_skill(const MirrorBattleState& st) const;
@@ -170,6 +173,7 @@ private:
     int _last_action = -1;    // 最近一次决策的动作臂
     // v0.9.30: RL Q 表决策层 (观察期不启用, 仲裁链在克隆层之前)
     std::unique_ptr<rl::QAgent> _rl_policy;
+    std::shared_ptr<rl::DqnMirrorBridge> _dqn_bridge;  // v0.9.33: DQN 桥接, 默认关闭
     int _rl_arm(const MirrorBattleState& st) const;   // 返回 MirrorAction 或 -1 (不接管)
     std::unique_ptr<BehaviorCloneTable> _clone;   // M1: 行为克隆层
     static float _rand01();   // [0,1) 均匀采样 (技能窗口探索用)

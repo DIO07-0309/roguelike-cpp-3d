@@ -193,103 +193,118 @@ void SimRunner::finalize() {
 #define MKDIR(p) mkdir(p, 0755)
 #endif
 
-std::string BalanceReport::to_json() const {
-    using json = nlohmann::json;
-    json j;
-    j["summary"]["total_runs"]  = total_runs;
-    j["summary"]["total_wins"]  = total_wins;
-    j["summary"]["win_rate"]    = win_rate;
-    j["summary"]["avg_floor"]   = avg_floor;
-    j["summary"]["avg_turns"]   = avg_turns;
-    j["summary"]["avg_damage_dealt"] = avg_damage_dealt;
-    j["summary"]["avg_damage_taken"] = avg_damage_taken;
-    j["summary"]["avg_heal"]   = avg_heal;   // P1-B-fix(D): 原漏序列化, JSON 一直缺失
-    j["summary"]["avg_relics"]  = avg_relics;
-    j["summary"]["avg_equipment"] = avg_equipment;
-    json bk = json::array(); for (int i=0;i<3;i++) bk.push_back(boss_kill_count[i]);
+namespace {
+using json = nlohmann::json;
+
+void append_report_summary(const BalanceReport& r, json& j) {
+    j["summary"]["total_runs"]  = r.total_runs;
+    j["summary"]["total_wins"]  = r.total_wins;
+    j["summary"]["win_rate"]    = r.win_rate;
+    j["summary"]["avg_floor"]   = r.avg_floor;
+    j["summary"]["avg_turns"]   = r.avg_turns;
+    j["summary"]["avg_damage_dealt"] = r.avg_damage_dealt;
+    j["summary"]["avg_damage_taken"] = r.avg_damage_taken;
+    j["summary"]["avg_heal"]   = r.avg_heal;   // P1-B-fix(D): 原漏序列化, JSON 一直缺失
+    j["summary"]["avg_relics"]  = r.avg_relics;
+    j["summary"]["avg_equipment"] = r.avg_equipment;
+    json bk = json::array();
+    for (int i = 0; i < 3; i++) bk.push_back(r.boss_kill_count[i]);
     j["summary"]["boss_kill_counts"] = bk;
-    json dd = json::array(); for (int i=0;i<15;i++) dd.push_back(death_floor_dist[i]);
+    json dd = json::array();
+    for (int i = 0; i < 15; i++) dd.push_back(r.death_floor_dist[i]);
     j["summary"]["death_floor_distribution"] = dd;
+}
 
-    // ── M2 仪表盘: 结果分类 / 死因 Top10 / 武器表现 ──
-    {
-        json od = json::object();
-        const char* names[] = {"VICTORY","DEATH_MONSTER","DEATH_BOSS","DEATH_DOT",
-                               "DEATH_ENVIRONMENT","TIMEOUT_GAME","TIMEOUT_WALL","STUCK_RECOVERED"};
-        for (int i = 0; i < 8; i++) od[names[i]] = outcome_dist.counts[i];
-        j["summary"]["outcome_dist"] = od;
-        // cause_top10: 按死亡数排序
-        std::vector<std::pair<std::string,int>> cs;
-        for (auto& [k, v] : causes) cs.push_back({k, v.deaths});
-        std::sort(cs.begin(), cs.end(),
-                  [](auto& a, auto& b){ return a.second > b.second; });
-        json ct = json::array();
-        for (size_t i = 0; i < cs.size() && i < 10; i++) {
-            json c; c["cause"]=cs[i].first; c["deaths"]=cs[i].second;
-            ct.push_back(c);
-        }
-        j["summary"]["cause_top10"] = ct;
-        // weapon_perf
-        json wa = json::array();
-        for (auto& [id, w] : weapons) {
-            json wj; wj["id"]=w.weapon_id; wj["games"]=w.games; wj["wins"]=w.wins;
-            wj["win_rate"]=w.win_rate(); wj["avg_floor"]=w.avg_floor;
-            wa.push_back(wj);
-        }
-        j["weapons"] = wa;
-    }
+void append_report_dashboard(const BalanceReport& r, json& j) {
+    json od = json::object();
+    const char* names[] = {"VICTORY","DEATH_MONSTER","DEATH_BOSS","DEATH_DOT",
+                           "DEATH_ENVIRONMENT","TIMEOUT_GAME","TIMEOUT_WALL","STUCK_RECOVERED"};
+    for (int i = 0; i < 8; i++) od[names[i]] = r.outcome_dist.counts[i];
+    j["summary"]["outcome_dist"] = od;
 
-    json barr = json::array();
-    for (auto& [id, bs] : builds) {
-        json bj; bj["id"]=bs.build_id; bj["games"]=bs.games; bj["wins"]=bs.wins;
-        bj["win_rate"]=bs.win_rate(); bj["avg_floor"]=bs.avg_floor;
-        barr.push_back(bj);
+    std::vector<std::pair<std::string, int>> cs;
+    for (auto& [k, v] : r.causes) cs.push_back({k, v.deaths});
+    std::sort(cs.begin(), cs.end(),
+              [](auto& a, auto& b) { return a.second > b.second; });
+    json ct = json::array();
+    for (size_t i = 0; i < cs.size() && i < 10; i++) {
+        json c; c["cause"] = cs[i].first; c["deaths"] = cs[i].second;
+        ct.push_back(c);
     }
-    j["builds"] = barr;
+    j["summary"]["cause_top10"] = ct;
+
+    json wa = json::array();
+    for (auto& [id, w] : r.weapons) {
+        json wj; wj["id"] = w.weapon_id; wj["games"] = w.games; wj["wins"] = w.wins;
+        wj["win_rate"] = w.win_rate(); wj["avg_floor"] = w.avg_floor;
+        wa.push_back(wj);
+    }
+    j["weapons"] = wa;
+}
+
+void append_report_groups(const BalanceReport& r, json& j) {
+    json rearr = json::array();
+    for (auto& [id, bs] : r.builds) {
+        json bj; bj["id"] = bs.build_id; bj["games"] = bs.games; bj["wins"] = bs.wins;
+        bj["win_rate"] = bs.win_rate(); bj["avg_floor"] = bs.avg_floor;
+        rearr.push_back(bj);
+    }
+    j["builds"] = rearr;
 
     json rarr = json::array();
-    for (auto& [id, rs] : relics) {
-        json rj; rj["id"]=rs.relic_id; rj["picked"]=rs.picked; rj["wins"]=rs.wins;
-        rj["pick_rate"] = total_runs>0 ? (float)rs.picked/total_runs : 0;
+    for (auto& [id, rs] : r.relics) {
+        json rj; rj["id"] = rs.relic_id; rj["picked"] = rs.picked; rj["wins"] = rs.wins;
+        rj["pick_rate"] = r.total_runs > 0 ? (float)rs.picked / r.total_runs : 0;
         rj["win_rate"] = rs.win_rate();
         rarr.push_back(rj);
     }
     j["relics"] = rarr;
 
     json earr = json::array();
-    for (auto& [id, es] : enemies) {
-        json ej; ej["id"]=es.enemy_id; ej["appearances"]=es.appearances;
-        ej["kills"]=es.kills; ej["player_deaths"]=es.player_deaths;
-        ej["threat"] = es.appearances>0 ? (float)es.kills/es.appearances : 0;
+    for (auto& [id, es] : r.enemies) {
+        json ej; ej["id"] = es.enemy_id; ej["appearances"] = es.appearances;
+        ej["kills"] = es.kills; ej["player_deaths"] = es.player_deaths;
+        ej["threat"] = es.appearances > 0 ? (float)es.kills / es.appearances : 0;
         earr.push_back(ej);
     }
     j["enemies"] = earr;
+}
 
+void append_report_runs(const BalanceReport& r, json& j) {
     json runarr = json::array();
-    for (const auto& r : runs) {
-        json rj; rj["floor"]=r.floor_reached; rj["turns"]=r.turns; rj["victory"]=r.victory;
-        rj["damage_dealt"]=r.damage_dealt; rj["damage_taken"]=r.damage_taken;
-        rj["heal_total"]=r.heal_total; rj["kills"]=r.enemies_killed;
-        rj["bosses"]=r.bosses_killed; rj["equip"]=r.equipment_count;
-        rj["relics"]=r.relics_collected; rj["build"]=r.build_name;
+    for (const auto& rr : r.runs) {
+        json rj; rj["floor"] = rr.floor_reached; rj["turns"] = rr.turns; rj["victory"] = rr.victory;
+        rj["damage_dealt"] = rr.damage_dealt; rj["damage_taken"] = rr.damage_taken;
+        rj["heal_total"] = rr.heal_total; rj["kills"] = rr.enemies_killed;
+        rj["bosses"] = rr.bosses_killed; rj["equip"] = rr.equipment_count;
+        rj["relics"] = rr.relics_collected; rj["build"] = rr.build_name;
         // ── M2 仪表盘明细 ──
-        rj["outcome"] = run_outcome_name(r.outcome);
-        rj["cause"]   = r.death_cause;
-        rj["death_floor"] = r.death_floor;
-        rj["weapon"]  = r.weapon_id_final;
-        rj["element"] = r.element_type;
-        rj["level"]   = r.level_final;
-        rj["combat_pct"] = r.turns > 0 ? (float)r.combat_frames / r.turns : 0;
-        rj["rooms"]   = r.rooms_discovered;
-        rj["picks"]   = r.items_picked;
-        rj["gold"]    = r.gold_earned;
-        rj["stuck_tp"]= r.stuck_teleports;
-        rj["stuck_rot"] = r.stuck_rotations;
-        rj["loot_wd"] = r.loot_watchdog_descends;
+        rj["outcome"] = run_outcome_name(rr.outcome);
+        rj["cause"]   = rr.death_cause;
+        rj["death_floor"] = rr.death_floor;
+        rj["weapon"]  = rr.weapon_id_final;
+        rj["element"] = rr.element_type;
+        rj["level"]   = rr.level_final;
+        rj["combat_pct"] = rr.turns > 0 ? (float)rr.combat_frames / rr.turns : 0;
+        rj["rooms"]   = rr.rooms_discovered;
+        rj["picks"]   = rr.items_picked;
+        rj["gold"]    = rr.gold_earned;
+        rj["stuck_tp"] = rr.stuck_teleports;
+        rj["stuck_rot"] = rr.stuck_rotations;
+        rj["loot_wd"] = rr.loot_watchdog_descends;
         runarr.push_back(rj);
     }
     j["runs"] = runarr;
+}
 
+}  // namespace
+
+std::string BalanceReport::to_json() const {
+    json j;
+    append_report_summary(*this, j);
+    append_report_dashboard(*this, j);
+    append_report_groups(*this, j);
+    append_report_runs(*this, j);
     return j.dump(2);
 }
 

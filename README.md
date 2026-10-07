@@ -120,6 +120,67 @@ F15 镜像 Boss 读你的行为画像（攻防倾向/走位偏好/技能习惯�
 
 ## CHANGELOG
 
+- G32-B（开发版，未发布）：DQN 接入管道（**默认关闭**）+ REAL_MODE 训练模式 —— 打通到 `MirrorAgent` 的最后一段，零侵入。
+
+  - **★ 零侵入接入是刻意设计，不是偷懒**。第一版写成 `MirrorAgent::set_dqn_policy()`，结果 `mirror_agent.{h,cpp}` 被并行开发的 `git checkout` 还原（实测 5 次，本轮刚加的 `set_dqn_policy` 与 G31-B5 修复一并被冲掉）。改为 `rl::install_dqn_predictor(agent, weights, style)` —— 本模块**不改 `MirrorAgent` 任何一行**，只产出一个 `MlPredictor` 由调用方自己传进已有的 `set_ml_predictor()`。加载失败返回 `nullptr` 且不碰 agent，仲裁链保持原状。**教训：并行分支上不要改对方也在动的文件。**
+  - **补齐 G31 遗留的语义鸿沟**：`MlPredictor` 签名是 `MirrorBattleState → PlayerActionType`（玩家**意图类型**），DQN 输出 `CombatAction`（玩家**按键级战斗动作**，含 4 技能槽 + 4 移动方向）。桥接层做两件事：`mirror_state_to_obs()` 复用 `mirror_agent.cpp:13` 的同字段映射；`combat_action_to_player_action()` 把 10 个 `CombatAction` 折叠成 5 个 `PlayerActionType`（4 技能→SKILL、4 移动→MOVE、WAIT→NONE 不算决策动作）。
+  - **`WAIT → PlayerActionType::NONE` 是有意的**：NONE 不进 `is_decision_action()`，让 Boss 走常规应对而非被"玩家在发呆"误导。
+  - **测试 9/9 通过**（`dqn_bridge_test`），含三项关键保证：默认关闭时仲裁链不变、安装失败零副作用、极端输入（距离 0 / 血量 0 / Boss 死亡）不崩。日志可见默认路径确实落在 `[MIRROR] 在线决策`（Thompson 兜底）而非 ML 层。
+  - **REAL_MODE：按 `resources/skills.json` 的真实冷却/射程训练**。玩具环境里 4 个技能冷却全是 3.0（=12 步）且射程 3，而真实是 `slash 2.0s / fireball 5.0s / self_heal 8.0s / the_world 20.0s`——差 10 倍，导致 DQN 学出"48.5% 放技能、1% 普攻"。
+  - **REAL_MODE 调试中踩到的三个坑**（都是自己引入的）：① **冷却换算方向写反**——`sec * COOLDOWN_STEP` 应为 `sec / SECONDS_PER_STEP`，写反后 slash 2 秒只给 2 步冷却，技能近乎无冷却，DQN 必然锁死单一技能；② **普攻射程未同步放大**——技能射程 5.0 而普攻仍 2.0 时场景里怪常在 `d>2`，ATTACK 从不出现在合法集里，占比恒为 0%；③ **奖励缺空闲惩罚**——冷却中只能 WAIT 且无代价，于是"放技能然后等"成为最优解，加 `IDLE_PENALTY` 后策略才分散。
+  - **⚠️ 策略体检仍未通过，DQN 不可用于生产路径**。`policy_audit.py` 实测：REAL_MODE 下 Boss 域动作分布已分散（单一动作 48.7% < 50%、wait 0.5%），但 **attack 占比仍为 0%**。诊断结论是 ATTACK 在 47% 的状态里合法、却只被选中 14.6% —— **不是 mask 问题也不是网络缺陷，而是技能（1.5x 伤害 + AoE + 射程 5）客观上优于普攻**。已连续三轮调参（技能冷却 / 普攻射程 / 伤害系数 / 空闲惩罚）未能让 attack 上榜，故停止盲调。
+  - **体检脚本本身是有价值的产物**：`policy_audit.py` 在单一动作 >50% / wait >30% / attack <5% 时返回非零退出码。训练时打印的胜率（86%）完全掩盖了策略失衡（skill_1 占 74%）——**胜率高不等于策略可用**，这是本轮最该记住的教训。
+  - ⚠️ 遗留：① **attack 占比 0% 未解决**，根因是玩具战斗模型里技能强度不合理；正解是把真实战斗公式（武器伤害系数、命中判定、Buff 触发）搬进 Python env，而非继续调参；② `MirrorBattleState` 仍缺技能冷却与坐标，桥接层只能用 `boss_can_attack` 单一门控近似，已在代码注释里标明；③ 权重文件需随游戏分发（当前仅在 `tools/rl/`），接入时应放到 `assets/` 或 `saves/`。
+
+- G32（开发版，未发布）：DQN 训练链路 + C++ 手写推理 —— 路线 A 全线落地。**Python 侧 DQN 贪心 81.5% vs 随机基线 59.8%（+21.7pp）；C++ 手写前向与 PyTorch 差 1.03e-06；四道跨语言闸门全通过。**
+
+  - **推理不用 ONNX Runtime，改手写前向**（决策依据：网络只有 3 层全连接 18→64→64→10、**138 个参数**，手写约 80 行；ONNX Runtime 要往 `vendor/` 加约 15MB dll，违反项目约束「vendor/ 仅允许 raylib + nlohmann/json」）。新增 `src/ai/rl/dqn_net.{h,cpp}`（权重文件解析 + 逐层前向）与 `src/ai/rl/dqn_policy.{h,cpp}`（18 维输入构造 + masked argmax）。**零第三方依赖、零运行时开销。**
+  - **权重格式自定义**（`tools/rl/export_weights.py` 生成）：`"RLDQ" | version | n_layers | pad`，每层 `in_dim | out_dim | bias[out] | weight[out*in]`，权重索引 `o*in_dim + i` 与 `torch.nn.Linear` 的 `[out_dim, in_dim]` 行优先一致。加载时校验 magic / version / 层间维度首尾相接 / 维度上限，坏文件一律拒绝而非静默读脏。
+  - **四道跨语言闸门**（`tools/rl/check_all.py` 串起来，依次跑）：
+    | 闸门 | 防的错误 |
+    |---|---|
+    | `parity_test.py` | C++ `CombatEnvironment` ≡ Python 移植的数值漂移 |
+    | `verify_weights.py` | C++ 前向 ≡ PyTorch（权重布局倒置 / 漏 ReLU） |
+    | `verify_policy.py` | C++ 输入缩放 + masked argmax ≡ Python（**Q 值对但动作选错**这类静默错误） |
+    | `dqn_net_test` | 结构校验 / 坏权重拒绝 |
+    全部 PASS。当前数据：parity 12 局 615 步 bit-exact；前向最大绝对差 1.03e-06；`build_input` 最大绝对差 4.98e-08、选中动作 **0 处不一致**。
+  - **`DqnPolicy` 把 mask 规则集中在一处**，理由：网络只输出 Q 值、**不做动作选择**，而 mask + argmax 必须与 Python `action_mask.py` 完全一致。这套规则散落到调用方就会出现「Q 算对了但动作选错」的静默 bug。
+  - **★ 闸门有效性用变异测试反证过**（不是"跑通了"就算数）：缩放系数 `50→40` → `build_input` 差 1.95e-01、12 条动作不一致；权重索引漏乘 `in_dim` → Q 值整体错位。两次都被当场抓住。
+  - **★ 本轮踩到的最深的一个坑：MinGW 依赖追踪只比时间戳**。用脚本改 `.cpp` 内容做变异测试、再用 `Copy-Item` 恢复备份时，文件 mtime 保持"备份时刻"而非"内容变化时刻"，`cmake --build` 便认为目标最新、**根本不重编**，于是拿着变异版 exe 跑校验得到**假失败**。实际踩中两次（权重索引倒置、缩放系数 50→40），两次都误判成"实现有 bug"，浪费一轮排查。正解是删 `<target>.dir` 对象目录后再 configure + build，已固化进 `check_all.py` 并注释原因。
+  - **`find_cmake()` 回退**：anaconda 的 cmake 在 `<prefix>/Library/bin`，只有 PowerShell 会话 PATH 里有，`subprocess.run(["cmake", ...])` 会抛 `FileNotFoundError`。脚本内显式回退到 `C:\mingw64\bin` 等已知位置。
+  - **`tests/dqn/` 独立 CMake 目录**（`add_subdirectory(tests/dqn)` 引入）：`tests/CMakeLists.txt` 在并行开发中被反复还原（实测 4 次），DQN 验证目标改在那里会被冲掉，故拆到独立子目录；exe 输出随之改到 `build/tests/dqn/`。**教训**：并行改同一个文件时，改动会被对方的 `git checkout` 静默冲掉，且 `git status` 只显示"未修改"——容易误判成"改动丢了"，实际是自己看错了行数。遇到反复丢失应换文件而不是反复重试。
+  - ⚠️ 遗留：① **`DqnPolicy` 尚未接入 `MirrorAgent`**——`mirror_agent.h:112` 的 `MlPredictor` 插槽签名是 `MirrorBattleState → PlayerActionType`（**玩家意图**），而 DQN 输出的是 `CombatAction`（**玩家最优战斗动作**），两者语义不同，**不能直接对接**，需先定义中间的观测适配与动作映射；② 学习到的策略 `wait` 占 43.6%，说明仍有冗余动作；③ 权重文件需随游戏分发（当前仅在 `tools/rl/`）。
+
+  - **训练侧五个模块**（`tools/rl/`）：`action_mask.py`（合法性 mask + 18 维输入构造）、`dqn_model.py`（网络 18→64→64→10 + 经验回放）、`train_dqn.py`（训练 + 导出）、`eval_dqn.py`（贪心 vs 随机基线，独立 seed 集）、`export_weights.py`（权重转 C++ 二进制）。
+  - **网络结构照 `AI_LEARNING_GUIDE.md:602`，但 `state_dim` 8 → 18**（8 观测 + 10 mask）。mask 既是输入又是 argmax 约束，**两处来自同一次 `get_possible_actions` 计算**，不会出现"喂进去的合法性"与"实际约束的合法性"不一致。
+  - **bootstrap 过 mask —— G31-B1 同一个 bug 必须在 DQN 侧再堵一次**：`max_a' Q(s',a')` 若不限合法动作，会把"当前不可选的动作"当未来价值上界。`compute_loss` 用 `next_mask` 把非法动作置 -1e9，全非法行（理论上不会发生，WAIT 恒合法）用 0 兜底。
+  - **★ 第一版场景设计是必输的，DQN 12.7% 远低于随机 58.3%**。根因：`make_scenario` 把 orc 放在 `p.x+2` / `(7,5)`，技能范围 d<3 勉强够到但普攻 d<2 永远够不到，"走向 orc"既无收益又有代价；而 `victory` 要求**全员**死亡 → 场景不可赢。症状迷惑性极强：loss 单调上升（67→124），看起来像网络/超参问题。**是环境问题，不是学习问题**——与 G31-B4 同类错误的放大版。修法：`place_monsters` 保证两怪都在可交战距离（slime d=1 可普攻、orc d=2 仅技能），5 种变体覆盖贴身/交换角色/双怪同侧/三个角落。
+  - **★ reward 缩放是必需项而非调参偏好**。C++ reward 量级：击杀 +50、胜利 ±200、受击 -(1..12)，Q 目标量级 ≈ 296。实测未缩放时 loss=572 且下降极慢，网络输出层要从 0 学到几百，小初始化下梯度被巨大 target 淹没。`REWARD_SCALE=0.01` 后 loss 降到 ~0.1，同样时间可学有效步数提升一个数量级。正仿射变换不改变最优策略。
+  - **★ 「一局只更新一次梯度」是隐蔽的训练 bug**：60 局仅 20 次梯度更新，网络基本还是随机初始化，而 epsilon 已退火到 0.05 → 确定性策略立刻塌缩到单一动作（通常是 WAIT，因为未训练网络对所有动作输出近似常数，argmax 恒取第一个）。改为**每个 env step 更新一次**（标准 DQN），并加 `GRAD_CLIP=10.0`。
+  - **训练脚本打印的胜率不能当验收标准** —— 它混了 epsilon 探索。新增 `eval_dqn.py` 用**未参与训练的 seed 集**（base=900000，与训练 `42+ep*7919` 不重叠）跑纯贪心，并强制与随机基线对比。第一版环境正是靠这个基线才暴露了"随机 58.3% 就能赢"——若只看 DQN 自己的 66%，完全看不出环境有问题。脚本在 `delta < 2.0pp` 时返回非零退出码。
+  - **ONNX 路线已验证但最终不采用**：`onnx.checker` 通过（opset 13），onnxruntime 1.28.0 与 PyTorch 最大绝对差 3.6e-07。改用手写前向的理由见上方「推理不用 ONNX Runtime」。
+  - 学到的策略特征（300 局动作分布）：`wait` 43.6% + `move_right` 18.9% 占多数——网络学会了**先拉开距离再放技能**，而非贴身对砍。这与 reward 结构一致（胜利 +200 > 击杀 2×50），是有意义的发现：**当前 reward 让"稳赢"优于"速通"**。若想要速通风格，需重调 reward 配比，属独立议题。
+
+- G31（开发版，未发布）：RL 层合法性约束修复 + Python 移植 parity 闸门 —— 为「Q 表 → DQN」升级路线铺路。共修 5 个 C++ 缺陷 + 建立跨语言一致性验证。
+
+  - **G31-P Python `CombatEnvironment` 移植 + parity 测试**：`combat_env_py.py` / `observation_py.py` 逐行移植 C++ 的 `CombatEnvironment` 与 `Observation`，作为 DQN 训练环境。黄金轨迹由 `tools/rl/parity_dump.cpp`（独立 CMake 目标 `parity_dump`，只依赖 RL 三源文件）生成，`parity_test.py` 用**同 seed 双跑逐位比对**（float32 比 `0x` 位模式，不容许容差）。当前 **12 episodes / 615 steps bit-exact**，另用 seed 1 / 2026 / 999983 各 8 局交叉复验通过。
+  - **parity 抓到的三类真实移植陷阱**（都是自己踩的）：① **Python `abs()` 是 float64 语义**，`abs(m.x-p.x) + abs(m.y-p.y)` 表达式里只裹一个 `F32()` 会被整体提升回 float64，导致曼哈顿距离错 1 格（症状：`nearest_enemy_dist` 恒偏小 1，轨迹迅速分叉）。修法是逐项 `F32(abs(F32(m.x) - F32(p.x))) + F32(abs(F32(m.y) - F32(p.y)))`，已抽成 `CombatEnvironment._dist` 供 4 处复用。② **动作枚举索引必须与 `action.h:10-16` 逐位对齐**（`MOVE_UP=5, WAIT=9`），最初把 `WAIT` 编成 6 导致 `legal` 列表整体错位。③ **parity_dump 的动作选择 LCG 需显式区分于 `action.h` 的 RNG**，两套常数相同但语义独立，已用具名常量 `DUMP_LCG_MUL/ADD` 标注。
+  - **parity 闸门有效性用变异测试证明**（不是"跑通了"就算数）。故意植入 12 处语义偏差，全部被捕获：伤害系数 `0.4→0.45`、技能范围 `3.0→3.5`、`GRID_W 40→39`、`GRID_H 30→29`、`ATTACK_RANGE 2.0→2.5`、冷却步进 `0.25→0.3`、普攻冷却 `0.5→0.7`、技能冷却 `3.0→3.5`、击杀奖励 `50→40`、胜利奖励 `200→300`、反击概率 `0.4→0.5`。
+  - ⚠️ **第一轮轨迹设计不合格，已重做**：初版每步用同一个 `seed+ep*7331+step*104729` 选动作，前几步轨迹高度雷同，**`GRID_W 40→39` 变异漏网**——因为玩家从未走到 x 边界。现改为① 每步推进 LCG 的 `ActionPicker`（25% 强制 ATTACK / 25% 强制技能 / 20% 强制移动，其余均匀）；② 6 种场景变体覆盖**网格全部 4 条边**（左上角、右下角、右边缘、上边缘）+ 贴身 + 中距。重做后 `GRID_W`/`GRID_H` 变异均被抓（各 1589 mismatches）。**教训：parity 通过不等于闸门有效，必须用变异测试反证覆盖面。**
+  - 轨迹覆盖现状（12 局 615 步）：10 类动作全部出现（attack 11 / skill 53+52+52+37 / move 80+102+88+95 / wait 55），584 次击杀，reward 取值域 `{-6, -2, 0, 50, 250, 300}`，冷却峰值 2.75。
+
+  - **G31-A~E 五个 C++ 缺陷修复**：
+  - **G31-B1 `update()` bootstrap 越界**：`q_agent.cpp` 的 `max_next` 遍历**全部 10 个动作**，把非法动作（冷却中的技能、越界移动）的价值也算进 target，系统性高估。表格 Q 下是轻微高估，DQN 会把它直接拟合进去。改为只遍历 `next_legal`；新参数 `next_legal` **必传**，`update()` 与 `exploit_action()` 的正确性从此不可能被静默绕过。
+  - **G31-B2 `exploit_action()` 游戏内路径无 mask**：该函数（`q_agent.cpp:37`，全仓库唯一调用点 `mirror_agent.cpp:320`）`_best_action` 遍历全部动作，**会选中冷却中的技能**。新增 `mirror_legal_actions()` 从 `MirrorBattleState` 构造合法集——只 gate `boss_can_attack`（该结构唯一可判定的合法性），SKILL/MOVE 一律视为可用并**在代码里显式注释这是信息量不足下的近似**，待 `MirrorBattleState` 补齐冷却/坐标后收紧。空集 → 返回 -1 不接管。
+  - **G31-B5 `-1` 哨兵失效（连带修）**：`exploit_action` 返回 -1 后，`combat_action_to_arm(-1, ...)` 会落进 `default:` 返回 `RETREAT`（=1，**非负**），使调用方 `arm >= 0` 恒真 → **RL 层对 Q 表从未见过的状态也强行接管，且固定后撤**。`docs/AI_LEARNING_GUIDE.md:304` 描述的「置信度感知降级」形同虚设。
+  - **G31-B4 训练场景打不到近战（致命）**：`rl_runner.cpp` 两处 `make_scenario` 的怪物距玩家 7 / 5 格，而 `get_possible_actions` 要求 `d<2`、`step()` 的技能伤害要求 `d<3` → **近战与技能伤害永远触发不了**，训出的策略只会绕圈和发呆（技能放出去 0 伤害还锁 11 步冷却）。改为 slime `d=1`（可近战）/ orc `d=2`（仅技能），mirror Boss `d=1`（双方可真实交战）。
+  - **G31-B3 `to_key()` 丢字段 + 存档版本门**：`to_key()` 只编码 6 个字段，**`strongest_hp_ratio` 与 `buff_count` 未参与**，仅在这两项上不同的状态会撞进同一 Q 表条目。补齐为 8 字段（buff 上限截断 9 防键长失控）；因键格式变化，`save()` 写入 `"v": 2`，`load()` 对旧版存档**明确拒绝**而非静默错位读取。**副作用**：既有 `saves/rl_qtable.json` 与 `rl_mirror_q_*.json` 失效，`load()` 返回 false → `exploit_action` 全返 -1 → 优雅降级到克隆层/Thompson 层，不崩。**注意**：DQN 走 `to_vector()`（8 维全量），在这一点上严格优于现有表格 Q——这是升级路线的实打实收益。
+  - 附带修 `action.h:33` 错注释（原写 "All 9 possible actions"，实际返回 8 且漏 WAIT；`CombatAction::COUNT` 为 10）。`all_actions()` 全仓库零调用。
+  - **两个动作空间的发现**：RL 策略被用在**两个不同动作空间**——`rl_runner.cpp` 在 `CombatAction` 空间（合法性来自 `get_possible_actions(state)`），`mirror_agent.cpp:316` 在 `MirrorAction` 空间（经 `combat_action_to_arm` 折叠：4 技能→1 臂、4 移动→2 臂）。因此 mask **不能硬编码进 `QAgent`**，必须由调用方传入——两侧规则不同，这是把 mask 设计成参数而非内部逻辑的原因。
+  - **`Observation` 对合法性是 POMDP**：8 个字段里**没有任何一个能推出动作是否合法**（缺 `attack_cooldown`、`skill_cooldowns[]`、`player.x/y`）。表格 Q 不在乎（它在 C++ 里枚举合法动作），DQN 拿到固定向量则物理上不可能知道。**结论：DQN 的 action mask 是必要条件而非可选优化**。这是下一阶段 DQN 设计（18 维输入 = 8 观测 + 10 mask）的前提。
+  - 验证：Release **0 error** · ctest **78/78** · 新增 9 个回归测试（`q_test` 5 + `obs_test` 3 + 既有 6 全过）。新增测试逐条对旧实现**反向验证会失败**：`ExploitStaysInsideLegalSet`（旧实现无视 legal 返回 ATTACK）、`BootstrapIgnoresActionsOutsideNextLegal`（旧实现 WAIT 的 Q 会变成 4.5 而非 0）、`LoadRejectsLegacyVersion`、`KeySeparatesStrongestHpRatio`。
+  - ⚠️ 遗留：① `run_rl_mode` 95 行 / `run_rl_mirror_mode` 89 行仍超 40 行（本轮各 +1 行参数，**未改善也未恶化**，属既有负债，留待专项拆分）；② `mirror_legal_actions` 的 SKILL/MOVE 无合法性判定，需先给 `MirrorBattleState` 加冷却/坐标字段才能收紧；③ 旧 Q 表存档需删除或改名，避免下次训练 load 时报"继续训练"误导。
+
 - G30（开发版，未发布）：`game_scene.cpp` 超规清零 —— G29 账本里落在该文件的 12 个超 40 行函数全拆完，全仓 108→96。
 
   - 11 个提交分 11 批，全部纯结构搬运：`调度骨架 + ≤40 行子步骤`，执行/绘制顺序零改动。累计新增 **87 个 helper** 全部 ≤40 行。最大单体：`_render_ui_tail` 391→21（20 个子步骤）、`_process` 609→40（分 G30-H/I/J/K 四批）、`_collect_sim_stats` 218→28（12 个）、`_draw_entities` 128→13（11 个，含二级拆分 `_draw_monster` 再拆 5 个）、`_render` 169→13（12 个）、`_draw_mirror_analysis_panel` 102→11（8 个）、`new_game` 99→10（8 个）。

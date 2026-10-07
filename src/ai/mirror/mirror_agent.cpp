@@ -1,6 +1,7 @@
 #include "ai/mirror/mirror_agent.h"
 #include "ai/rl/q_agent.h"        // v0.9.30: RL 决策层
 #include "ai/rl/observation.h"
+#include "ai/rl/dqn_mirror_bridge.h"
 #include "core/logger.h"
 #include "combat_system.h"   // rng()
 #include <algorithm>
@@ -323,6 +324,19 @@ int MirrorAgent::_rl_arm(const MirrorBattleState& st) const {
 
 void MirrorAgent::set_rl_policy(std::unique_ptr<rl::QAgent> q) {
     _rl_policy = std::move(q);
+}
+
+// v0.9.33 G32-B: 注册 DQN 决策层 — 加载失败保持关闭, 返回 false
+bool MirrorAgent::set_dqn_policy(const std::string& weights_path,
+                                 int player_style) {
+    auto bridge = std::make_shared<rl::DqnMirrorBridge>();
+    if (!bridge->load(weights_path)) return false;   // 未就绪 → 不注册
+    _dqn_bridge = bridge;
+    int style = player_style;
+    set_ml_predictor([bridge, style](const MirrorBattleState& st) {
+        return bridge->predict(st, style);
+    });
+    return true;
 }
 
 void MirrorAgent::report_outcome(bool hit, float damage) {
