@@ -18,6 +18,7 @@
 #include "ai/player_behavior/player_behavior_analyzer.h"  // F15.3
 #include "ai/mirror/mirror_agent.h"                       // F15.3
 #include "ai/rl/q_agent.h"                                // v0.9.30: RL 镜像决策层
+#include "ai/mirror/tactical_policy.h"   // v0.9.36 G32-E: 战术规则策略层
 #include "core/logger.h"   // M4: [MIRROR-ACC] 战斗统计进 game.log
 
 // ============================================================
@@ -211,6 +212,15 @@ void BossSystemDirector::_init_mirror_boss(Monster* boss, const Player* player) 
                  rl_path.c_str(), rl_entries);
     } else {
         LOG_INFO("[MIRROR] RL policy missing (skip): %s", rl_path.c_str());
+    }
+
+    // v0.9.36 G32-E: 战术规则策略层 — 默认关闭 (命令行 --tactical-mirror 开启)
+    // 接入位置放在 RL 层之后: 仲裁链优先级是 ML → 战术链 → RL → 克隆 → Thompson,
+    // 而 set_ml_predictor 填的是**最高优先级**的 ML 槽, 故装上后会盖过
+    // 下面所有层。这是刻意的 — 规则策略比学习型策略可靠(G32-D 实测 60% vs
+    // 37%), 故让它作为 ML 槽的替代实现而非叠加层。
+    if (mirror::install_tactical_predictor_if_enabled(*_mirror_agent)) {
+        LOG_INFO("[MIRROR] TacticalPolicy active (--tactical-mirror)");
     }
 
     // ── 数值: HP=玩家×2.5, ATK=玩家×0.85 (Q3.10: 原 ×5/×1.2 → ×3/×1.0 仍不可胜,

@@ -120,6 +120,14 @@ F15 镜像 Boss 读你的行为画像（攻防倾向/走位偏好/技能习惯�
 
 ## CHANGELOG
 
+- G32-F（开发版，未发布）：`TacticalPolicy` 接入镜像 Boss，**默认关闭**（命令行 `--tactical-mirror` 开启）。
+
+  - **接入位置**：`boss_system_director.cpp:_init_mirror_boss()`，在 RL 层注入之后调用 `mirror::install_tactical_predictor_if_enabled(*_mirror_agent)`。装入的是 **`MlPredictor` 槽（仲裁链最高优先级）**，故会盖过战术链 / RL / 克隆 / Thompson 所有层——这是刻意的：G32-D 实测规则策略 60% 优于学习型策略（DQN 36.7% / PPO 18.9%），故让它是 ML 槽的替代实现而非叠加层。
+  - **全局开关** `mirror::tactical_mirror_enabled()`，由命令行 `--tactical-mirror` 置位。**默认 false**，此时镜像 Boss 行为与接入前**逐位一致**——保证这不是一次未经验收的行为变更。新增测试 `GlobalSwitchDefaultsOff` / `GlobalSwitchEnables` 锁定该契约。
+  - ⚠️ **自动化无法验证**：sim 模式只打到 2 层（`summary.avg_floor = 2.0`，`boss_kill_counts` 全 0），**从未触发 F15 镜像 Boss**，故 `game.log` 里没有任何 `[MIRROR]` 记录。这是 sim 的既有局限（G30 CHANGELOG 已记录「BOSS_CINEMATIC 路径未被确定性校验覆盖」）。**需人工打一场 F15 镜像 Boss 验收**：`roguelike_cpp.exe --tactical-mirror`，进 F15 后确认 `game.log` 出现 `[MIRROR] TacticalPolicy active`。
+  - **回退方式**：去掉 `--tactical-mirror` 参数即可，零残留（该开关不写存档、不改任何持久化数据）。
+  - 测试 14/14，ctest **81/81**。
+
 - G32-E（开发版，未发布）：RL 合法性约束修复重做 —— 上一批修复曾被 `git checkout` 回退（并行开发所致），本批重做并加版本门。
 
   - **背景**：检查发现 G31-B1~B5 五个修复只剩 1 个（`exploit_action` 的 mask），其余 4 个被回退。其中 **G31-B3（`to_key` 补字段）被回退的后果最直接** —— 键格式从 8 字段变回 6 字段，旧 Q 表存档再次失效，`load()` 无版本检查会静默读到错位的值。

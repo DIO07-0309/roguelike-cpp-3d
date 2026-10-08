@@ -91,4 +91,10 @@ bool install_tactical_predictor(MirrorAgent& agent,
     });
     return true;
 }
+
+bool install_tactical_predictor_if_enabled(
+    MirrorAgent& agent, const TacticalPolicy::Config& cfg) {
+    if (!tactical_mirror_enabled()) return false;
+    return install_tactical_predictor(agent, cfg);
+}
 }  // namespace mirror

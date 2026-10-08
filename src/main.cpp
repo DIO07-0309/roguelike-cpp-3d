@@ -13,6 +13,7 @@
 #include "scenes/title_scene.h"
 #include "save/save_manager.h"
 #include "meta_progression.h"   // Q3.1: --sim 只读保护
+#include "ai/mirror/tactical_policy.h"   // v0.9.36 G32-E: --tactical-mirror
 #include "systems/combat_system.h"
 #include "resources/resource_manager.h"
 #include "core/service_locator.h"
@@ -163,6 +164,10 @@ int main(int argc, char** argv) {
             GameScene::g_rl_train_episodes = atoi(__argv[++i]);
         } else if (arg == "--rl-mirror" && i + 1 < __argc) {
             GameScene::g_rl_mirror_episodes = atoi(__argv[++i]);
+        } else if (arg == "--tactical-mirror") {
+            // v0.9.36 G32-E: 开启镜像 Boss 的战术规则策略层 (默认关)
+            // 该层占用 ML 仲裁槽, 优先级高于战术链/RL/克隆/Thompson
+            mirror::tactical_mirror_enabled() = true;
         } else if (arg == "--hd2d") {
             // M6-HD2D: 3D 表现层切片开关 (逻辑层不变; 默认 2D)
             g_hd2d_mode = true;

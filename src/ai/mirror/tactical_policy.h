@@ -26,6 +26,16 @@
 
 namespace mirror {
 
+// ── 全局开关 (命令行 --tactical-mirror) ──
+// 默认 false: TacticalPolicy 不参与仲裁, 镜像 Boss 行为与接入前完全一致。
+// 置 true 才在 _init_mirror_boss 里调用 install_tactical_predictor()。
+// 为什么默认关: RL 路线实测结论是"规则策略优于学习算法", 但它终究是新
+// 逻辑, 需人工打一场 Boss 验收后才敢常开。
+inline bool& tactical_mirror_enabled() {
+    static bool enabled = false;
+    return enabled;
+}
+
 // 意图预测结果 — 附带置信与依据, 便于 HUD/调试展示
 struct TacticalIntent {
     PlayerActionType action = PlayerActionType::NONE;
@@ -75,4 +85,10 @@ namespace mirror {
 bool install_tactical_predictor(MirrorAgent& agent,
                                 const TacticalPolicy::Config& cfg
                                     = TacticalPolicy::Config());
+
+// 仅在 tactical_mirror_enabled() 为 true 时才装配 —— 供 BossSystemDirector
+// 调用, 避免调用点散落 if 判断。
+bool install_tactical_predictor_if_enabled(
+    MirrorAgent& agent, const TacticalPolicy::Config& cfg
+        = TacticalPolicy::Config());
 }  // namespace mirror

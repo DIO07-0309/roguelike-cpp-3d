@@ -132,3 +132,24 @@ TEST(TacticalPolicyIntegrate, InstallTakesOver) {
     auto st = mk(1.0f, 0.8f);
     EXPECT_GE(agent.recommend_action(st), 0);
 }
+
+// ── v0.9.36 G32-E: 全局开关默认关闭, 且可切换 ──
+TEST(TacticalPolicyIntegrate, GlobalSwitchDefaultsOff) {
+    // 契约: 未显式开启时不得装配 —— 保证镜像 Boss 行为与接入前一致
+    tactical_mirror_enabled() = false;
+    MirrorAgent agent;
+    PlayerHabitProfile profile;
+    agent.init(profile);
+    EXPECT_FALSE(install_tactical_predictor_if_enabled(agent));
+    agent.set_phase(3);
+    EXPECT_GE(agent.recommend_action(mk(5.0f, 0.8f)), 0);
+}
+
+TEST(TacticalPolicyIntegrate, GlobalSwitchEnables) {
+    tactical_mirror_enabled() = true;
+    MirrorAgent agent;
+    PlayerHabitProfile profile;
+    agent.init(profile);
+    EXPECT_TRUE(install_tactical_predictor_if_enabled(agent));
+    tactical_mirror_enabled() = false;   // 复位, 避免污染其他测试
+}
