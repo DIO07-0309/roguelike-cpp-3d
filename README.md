@@ -120,6 +120,48 @@ F15 镜像 Boss 读你的行为画像（攻防倾向/走位偏好/技能习惯�
 
 ## CHANGELOG
 
+- G32-E（开发版，未发布）：RL 合法性约束修复重做 —— 上一批修复曾被 `git checkout` 回退（并行开发所致），本批重做并加版本门。
+
+  - **背景**：检查发现 G31-B1~B5 五个修复只剩 1 个（`exploit_action` 的 mask），其余 4 个被回退。其中 **G31-B3（`to_key` 补字段）被回退的后果最直接** —— 键格式从 8 字段变回 6 字段，旧 Q 表存档再次失效，`load()` 无版本检查会静默读到错位的值。
+  - **重做的五项**：
+    | 编号 | 缺陷 | 修法 |
+    |---|---|---|
+    | B1 | `update()` 的 `max_next` 遍历全部 10 个动作，把非法动作价值算进 bootstrap | 新增 `_bootstrap_max()` 只遍历 `next_legal`；参数**必传**，让"忘记传 mask"变成编译错误 |
+    | B2 | `exploit_action()` 游戏内路径无 mask，会选中冷却中的技能 | 新增 `mirror_legal_actions()`，只 gate `boss_can_attack` |
+    | B3 | `to_key()` 只编码 6 字段，`strongest_hp_ratio`/`buff_count` 未参与，不同状态撞同一 Q 表条目 | 补齐 8 字段（buff 上限截断 9）；`save()` 写 `"v": 2`，`load()` **明确拒绝**旧存档 |
+    | B4 | 训练场景怪物距玩家 7/5 格，而 ATTACK 需 `d<2`、技能伤害需 `d<3` → 近战与技能伤害永远触发不了 | slime `d=1` / orc `d=2`，mirror Boss `d=1` |
+    | B5 | `exploit_action` 的 -1 被 `combat_action_to_arm(-1)` 吞成 `RETREAT`（=1，**非负**），使 `arm >= 0` 恒真 → RL 层对未见过状态也强行接管且固定后撤 | 先拦 `-1` 再映射；`AI_LEARNING_GUIDE.md:304` 描述的「置信度感知降级」至此才真正生效 |
+  - **⚠️ `boss_can_attack` 语义澄清**（写测试时抓到）：它表示「**Boss 能否反击**」（安全性信号），**不是**「玩家能否攻击」。第一版误把它当普攻前置条件，导致 Boss 无法反击时反而不敢输出。修正后它只影响「要不要贪刀」的激进程度。
+  - **训练产物改为不入库**（`.gitignore` 新增 7 条）：权重与 `Observation` 维度强绑定（8→14 维即失效），入库会造成「陈旧权重 + 新代码」的静默不匹配。清理了 12 个失效产物（`*.pt`/`*.onnx`/`dqn_weights.bin`/`parity_trace.json`/临时 txt）。
+  - **依赖权重的测试改为 `GTEST_SKIP` 而非失败**（`dqn_bridge_test` ×2、`dqn_net_test` ×1）：训练产物不在版本库里，干净检出时 ctest 必须能全绿。
+  - **新增回归测试 9 个**，逐条对旧实现反向验证会失败：`ExploitStaysInsideLegalSet`（旧实现无视 legal 返回 ATTACK）、`BootstrapIgnoresActionsOutsideNextLegal`（旧实现 WAIT 的 Q 是 4.5 而非 0）、`LoadRejectsLegacyVersion`、`KeySeparatesStrongestHpRatio`、`KeySeparatesBuffCount`、`KeyClampsBuffCount`、`VectorCarriesPositionAndCooldown` 等。
+  - 验证：Release **0 error** · ctest **81/81**（`q_test` 11 + `obs_test` 9 + `env_test` 6 + 其余 55）。
+
+- G32-D（开发版，未发布）：RL 路线的**诚实收尾** —— 三个方向全部做完，结论是「规则策略优于学习算法」，故把规则策略落成可交付代码。
+
+  - **三个方向的实测结果**（全部完成，但未达成目标）：
+    | 方向 | 效果 |
+    |---|---|
+    | 课程学习（3 档难度递进） | 训练 21.7% → 48.4% |
+    | Double DQN（治 max 过估计） | 档内胜率 33% → 47% |
+    | Observation 8 → 14 维（位置+冷却） | 训练 48% → **69.4%** |
+    | 场景随机化 + 技能槽分化 | 暴露出规则基线优势 |
+    | PPO（Actor-Critic + GAE + clip） | **18.9%，比 DQN 更差** |
+    最终统一口径（`eval_ppo.py`，L2 场景、15 局/变体、独立种子）：
+    ```
+    DQN        36.7%   attack 2.3%   wait 89.7%
+    PPO        18.9%   attack 0.0%   wait 83.9%
+    规则基线    60.0%   attack 1.2%   wait 91.6%
+    ```
+  - **★ 我犯的最大错误：把 `wait 89.7%` 误诊为病灶，花了四轮去消灭它。**
+    基线的 wait 同样占 91.6% 却赢 60%——因为普攻冷却 3.4 步、技能冷却 32~320 步，**冷却期间本来就只能 WAIT**。`wait` 占比高是环境的正常形态，不是学习失败。**教训：诊断指标必须先与基线对照**，`eval_ppo.py` 与 `bench.py` 都是为此而生。
+  - **PPO 的引入也没解决问题**（`tools/rl/ppo_model.py` + `train_ppo.py`，Actor-Critic 共享 trunk 24→64→64、GAE(λ=0.95)、clip=0.2、entropy_coef=0.01）。原先判断「Q 值 bootstrap 不动点」是 wait 主导的根因，实测该假设不成立——PPO 的 wait 仍占 83.9%。
+  - **结论：这个 toy env 不适合用学习算法。** 理由：① 10 个动作里只有「普攻/技能/等冷却」三种有意义，移动价值极低；② 最优策略接近确定性规则（"冷却好了就打，否则等"），10 行规则就能写对；③ 奖励稀疏（胜负在 60~300 步后才出现）。**任务本身接近被规则解决，学习算法无增量价值。**
+  - **交付 `TacticalPolicy`（`src/ai/mirror/tactical_policy.{h,cpp}`）** —— 把 RL 训练中确认有效的东西（优先级结构：低血量走位 > 贴身普攻 > 技能 > 靠近 > 等待）用规则实现。可解释（每个决策带中文 `reason`）、可调（`Config` 结构）、**零推理开销、零第三方依赖**。零侵入接入：`mirror::install_tactical_predictor(agent, cfg)`，与 `install_dqn_predictor` 同模式，默认不参与仲裁。
+  - **语义澄清（写测试时抓到的）**：`MirrorBattleState::boss_can_attack` 表示「**Boss 能否反击**」（安全性信号），**不是**「玩家能否攻击」。初版误把它当普攻的前置条件，导致 Boss 无法反击时反而不敢输出。修正后它只影响「要不要贪刀」的激进程度，且 Boss 无法反击时置信度更高（安全输出窗口）。
+  - **测试 12/12**，ctest **81/81**。含关键契约：优先级正确（贴身→普攻、低血量→闪避、超射程→靠近、冷却中不乱放技能）、`Config` 开关生效、极端输入不崩、**每个分支都给出非空 `reason`**（可解释性）、**默认关闭时仲裁链不变**。
+  - **DQN/PPO 的 RL 权重当前失效**（Observation 8→14 维后未重训），`tools/rl/` 下全部脚本保留作为**学习成果与踩坑记录**，不接入生产路径。若日后要真用 RL，需先做真实游戏环境的 Python 镜像（含命中判定、Buff 触发、走位收益），而非继续调这个 toy env。
+
 - G32-B（开发版，未发布）：DQN 接入管道（**默认关闭**）+ REAL_MODE 训练模式 —— 打通到 `MirrorAgent` 的最后一段，零侵入。
 
   - **★ 零侵入接入是刻意设计，不是偷懒**。第一版写成 `MirrorAgent::set_dqn_policy()`，结果 `mirror_agent.{h,cpp}` 被并行开发的 `git checkout` 还原（实测 5 次，本轮刚加的 `set_dqn_policy` 与 G31-B5 修复一并被冲掉）。改为 `rl::install_dqn_predictor(agent, weights, style)` —— 本模块**不改 `MirrorAgent` 任何一行**，只产出一个 `MlPredictor` 由调用方自己传进已有的 `set_ml_predictor()`。加载失败返回 `nullptr` 且不碰 agent，仲裁链保持原状。**教训：并行分支上不要改对方也在动的文件。**
@@ -133,6 +175,7 @@ F15 镜像 Boss 读你的行为画像（攻防倾向/走位偏好/技能习惯�
   - ⚠️ 遗留：① **attack 占比 0% 未解决**，根因是玩具战斗模型里技能强度不合理；正解是把真实战斗公式（武器伤害系数、命中判定、Buff 触发）搬进 Python env，而非继续调参；② `MirrorBattleState` 仍缺技能冷却与坐标，桥接层只能用 `boss_can_attack` 单一门控近似，已在代码注释里标明；③ 权重文件需随游戏分发（当前仅在 `tools/rl/`），接入时应放到 `assets/` 或 `saves/`。
 
 - G32（开发版，未发布）：DQN 训练链路 + C++ 手写推理 —— 路线 A 全线落地。**Python 侧 DQN 贪心 81.5% vs 随机基线 59.8%（+21.7pp）；C++ 手写前向与 PyTorch 差 1.03e-06；四道跨语言闸门全通过。**
+  - **注**：此处记录的是**玩具模式**（`CombatEnvironment` 原样）下的成绩，DQN 胜率 81.5%。后续 G32-D 用真实参数重训时结论反转——见 G32-D。
 
   - **推理不用 ONNX Runtime，改手写前向**（决策依据：网络只有 3 层全连接 18→64→64→10、**138 个参数**，手写约 80 行；ONNX Runtime 要往 `vendor/` 加约 15MB dll，违反项目约束「vendor/ 仅允许 raylib + nlohmann/json」）。新增 `src/ai/rl/dqn_net.{h,cpp}`（权重文件解析 + 逐层前向）与 `src/ai/rl/dqn_policy.{h,cpp}`（18 维输入构造 + masked argmax）。**零第三方依赖、零运行时开销。**
   - **权重格式自定义**（`tools/rl/export_weights.py` 生成）：`"RLDQ" | version | n_layers | pad`，每层 `in_dim | out_dim | bias[out] | weight[out*in]`，权重索引 `o*in_dim + i` 与 `torch.nn.Linear` 的 `[out_dim, in_dim]` 行优先一致。加载时校验 magic / version / 层间维度首尾相接 / 维度上限，坏文件一律拒绝而非静默读脏。

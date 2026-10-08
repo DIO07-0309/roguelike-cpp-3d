@@ -28,8 +28,13 @@ void run_rl_mode(int test_episodes, int train_episodes) {
         s.player.attack = 10; s.player.pdef = 3; s.player.mdef = 1;
         s.player.alive = true;
         s.player.skill_cooldowns[0] = 0; s.player.skill_cooldowns[1] = 0;
-        s.monsters.push_back(MonsterSnapshot{"slime", 20, 20, 3, 0, 3, 1, 0, {}, true});
-        s.monsters.push_back(MonsterSnapshot{"orc", 30, 30, 5, 0, 7, 3, 1, {}, true});
+// v0.9.36 G32-E: 怪物改为可交战距离 (G32-E-B4)
+    // 旧坐标 (3,0)/(5,0) 距玩家 (5,5) 是 7/5 格, 而 ATTACK 要求 d<2
+    // (action.h)、技能伤害要求 d<3 (environment.cpp) → 近战与技能伤害
+    // 永远触发不了, 训出的策略只会绕圈和发呆(技能放出去 0 伤害还锁 11 步冷却)。
+    // 现取 slime d=1(可近战) / orc d=2(仅技能)。
+    s.monsters.push_back(MonsterSnapshot{"slime", 20, 20, 5, 6, 3, 1, 0, {}, true});
+    s.monsters.push_back(MonsterSnapshot{"orc", 30, 30, 7, 5, 7, 3, 1, {}, true});
         return s;
     };
 
@@ -82,7 +87,10 @@ void run_rl_mode(int test_episodes, int train_episodes) {
                 uint32_t local_seed = seed + i * 7331u + env.state().depth;
                 auto a = q_agent.select(env.state(), local_seed);
                 auto sr = env.step(a);
-                q_agent.update(obs, a, sr.reward, sr.observation, env.is_done());
+                // v0.9.36 G32-E: bootstrap 只在下一状态合法动作里取 max (G32-E-B1)
+                q_agent.update(obs, a, sr.reward, sr.observation,
+                               mcts::get_possible_actions(env.state()),
+                               env.is_done());
                 obs = sr.observation;
             }
             if (env.state().victory) { wins++; if (i >= tail_start) tail_wins++; }
@@ -137,7 +145,9 @@ void run_rl_mirror_mode(int episodes) {
         s.player.x = 5; s.player.y = 5;
         s.player.attack = 10; s.player.pdef = 3; s.player.mdef = 1;
         s.player.alive = true;
-        s.monsters.push_back(MonsterSnapshot{"mirror_boss", 200, 200, 3, 0, 15, 5, 5, {}, true, true});
+        // v0.9.36 G32-E: 同上 — Boss 原坐标 (3,0) 距玩家 (5,5) 为 7 格,
+    // 近战与技能伤害均无法触发, 镜像训练学不到真实交战。改到 (5,6) 即 d=1
+    s.monsters.push_back(MonsterSnapshot{"mirror_boss", 200, 200, 5, 6, 15, 5, 5, {}, true, true});
         s.player_style = style_id + 1; // 1-4
         return s;
     };
@@ -174,7 +184,10 @@ void run_rl_mirror_mode(int episodes) {
                             || a == CombatAction::MOVE_UP || a == CombatAction::MOVE_DOWN);
                 double mirror_bonus = MirrorAgent::mirror_reward(
                     profile, (int)a, base, 0, dodged, false);
-                q_agent.update(obs, a, base + mirror_bonus, sr.observation, env.is_done());
+                // v0.9.36 G32-E: bootstrap 只在下一状态合法动作里取 max (G32-E-B1)
+                q_agent.update(obs, a, base + mirror_bonus, sr.observation,
+                               mcts::get_possible_actions(env.state()),
+                               env.is_done());
                 obs = sr.observation;
                 total_r += base + mirror_bonus;
             }

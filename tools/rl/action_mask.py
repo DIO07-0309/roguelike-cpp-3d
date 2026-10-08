@@ -37,9 +37,12 @@ def masked_random(rng: np.random.Generator, mask: np.ndarray) -> int:
 
 
 def build_input(obs8: np.ndarray, mask10: np.ndarray) -> np.ndarray:
-    """网络输入 = 18 维 = [8 维观测] + [10 维合法性 mask]
+    """网络输入 = 24 维 = [14 维观测] + [10 维合法性 mask]
+
+    ★ v0.9.34 G32-C: 观测从 8 扩到 14(位置 + 冷却), 故输入 18 → 24。
 
     归一化在此集中处理 — C++ 推理侧必须做完全相同的缩放, 否则 serve skew。
+    注意: 位置维度在 C++ 侧已归一化到 [0,1], 此处不再二次缩放。
     """
     hp = np.float32(obs8[0])
     atk = np.float32(obs8[1]) / 50.0
@@ -49,14 +52,17 @@ def build_input(obs8: np.ndarray, mask10: np.ndarray) -> np.ndarray:
     boss = np.float32(obs8[5])
     buffs = np.float32(obs8[6]) / 10.0
     style = np.float32(obs8[7]) / 4.0
+    # 位置与冷却维度: C++ 已归一化, 直接透传
+    rest = np.array([np.float32(v) for v in obs8[8:14]], dtype=np.float32)
     return np.concatenate([
         np.array([hp, atk, cnt, dist, strongest, boss, buffs, style],
                  dtype=np.float32),
+        rest,
         mask10.astype(np.float32),
     ])
 
 
-INPUT_DIM = 18
+INPUT_DIM = 24
 OUTPUT_DIM = ACTION_COUNT
 
 __all__ = ["legal_mask", "masked_argmax", "masked_random", "build_input",

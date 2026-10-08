@@ -313,12 +313,38 @@ int MirrorAgent::recommend_action(const MirrorBattleState& st) {
     return _last_action;
 }
 
+// v0.9.36 G32-E: 从 MirrorBattleState 构造 CombatAction 合法集 (G32-E-B2)
+// MirrorBattleState 只有 boss_can_attack 能判定 ATTACK 是否可用; 技能冷却
+// 与 Boss 坐标不在此结构中, 故 SKILL/MOVE/WAIT 一律视为可用 —— 这是当前
+// 信息量下的最优近似, 待 MirrorBattleState 补齐冷却/坐标后应收紧此处。
+// ★ boss_can_attack 语义是"Boss 能否反击"(安全性), 不是"玩家能否攻击",
+//   故只 gate ATTACK 而非反转判断。
+static std::vector<mcts::CombatAction> mirror_legal_actions(
+    const MirrorBattleState& st) {
+    std::vector<mcts::CombatAction> legal;
+    if (st.boss_can_attack) legal.push_back(mcts::CombatAction::ATTACK);
+    for (int i = 0; i < 4; i++)
+        legal.push_back((mcts::CombatAction)((int)mcts::CombatAction::SKILL_1 + i));
+    legal.push_back(mcts::CombatAction::MOVE_UP);
+    legal.push_back(mcts::CombatAction::MOVE_DOWN);
+    legal.push_back(mcts::CombatAction::MOVE_LEFT);
+    legal.push_back(mcts::CombatAction::MOVE_RIGHT);
+    legal.push_back(mcts::CombatAction::WAIT);
+    return legal;
+}
+
 // v0.9.30: RL 决策 — 观测适配 → exploit → 反制臂映射; 无 Q 值条目返回 -1 (落下级链)
 int MirrorAgent::_rl_arm(const MirrorBattleState& st) const {
     if (!_rl_policy) return -1;
     int style = MirrorAgent::style_to_int(_profile.style);
     rl::Observation obs = mirror_state_to_obs(st, style);
-    int act = _rl_policy->exploit_action(obs);
+    int act = _rl_policy->exploit_action(obs, mirror_legal_actions(st));
+    // v0.9.36 G32-E: -1 哨兵必须先拦下 (G32-E-B5)
+    // combat_action_to_arm(-1) 会落进 default 返回 RETREAT(=1, **非负**),
+    // 使调用方的 `arm >= 0` 判断恒真 → RL 层对 Q 表从未见过的状态也强行
+    // 接管, 且固定后撤。原实现在此直接透传 -1, "置信度感知降级"
+    // (AI_LEARNING_GUIDE.md:304) 形同虚设。
+    if (act < 0) return -1;      // Q 表未见过该状态 → 不接管, 落下级链
     return combat_action_to_arm(act, st.dist_tiles);
 }
 

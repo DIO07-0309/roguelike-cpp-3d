@@ -76,7 +76,7 @@ REAL_ATTACK_DAMAGE_MULT = 1.0
 REAL_SKILL_COOLDOWNS = (2.0, 5.0, 8.0, 20.0)
 # ★ 技能伤害不再有 1.5x 加成 —— 真实数据里同伤害下技能 DPS 远低于普攻,
 #   加成只会让 DQN 彻底锁死技能。技能的价值在 AoE(命中多目标) 与 Buff。
-REAL_SKILL_DAMAGE_MULT = 1.0
+REAL_SKILL_DAMAGE_MULT = (2.2, 1.6, 0.5, 4.0)   # 见 _skill_damage_mult 注释
 REAL_SKILL_RANGE = 5.0# 火球等远程技能的真实射程量级
 
 
@@ -106,8 +106,21 @@ def _skill_cooldown_set(si: int) -> np.float32:
     return F32(sec / SECONDS_PER_STEP)
 
 
-def _skill_damage_mult() -> np.float32:
-    return F32(REAL_SKILL_DAMAGE_MULT) if REAL_MODE else F32(1.5)
+def _skill_damage_mult(si: int = 0) -> np.float32:
+    """★ 4 个技能槽必须真正可区分, 否则网络无法学习。
+
+    诊断: 原本 4 槽同质(同伤害/同 AoE/同射程), 只有冷却不同。实测
+    无论 boss 在哪个方向, argmax **恒为 SK3** —— SK3(8 秒=128 步冷却)
+    在一个 episode 内只会用 1 次, 梯度信号极稀疏, 网络学不到冷却代价。
+    现按真实定位分化(对应 skills.json 的 slash/fireball/self_heal/the_world):
+      slot0 斩击: 2.2x近战主力, 冷却 2 秒
+      slot1 火球: 1.6x 远程 AoE, 冷却 5 秒
+      slot2 治疗: 0.5x (env 无治疗机制, 按低伤处理 = 不值得用)
+      slot3 时停: 4.0x 终极技, 冷却 20 秒
+    """
+    if not REAL_MODE:
+        return F32(1.5)
+    return F32(REAL_SKILL_DAMAGE_MULT[si % len(REAL_SKILL_DAMAGE_MULT)])
 
 
 def _skill_range() -> np.float32:
@@ -226,7 +239,7 @@ class CombatEnvironment:
                 continue
             d = self._dist(m, p)
             if d < _skill_range():
-                base = int(F32(p.attack) * _skill_damage_mult()) - int(F32(m.pdef) * F32(0.5))
+                base = int(F32(p.attack) * _skill_damage_mult(si)) - int(F32(m.pdef) * F32(0.5))
                 dmg = max(1, int(F32(base) * (F32(0.8) + F32(0.4) * F32(self._lcg()))))
                 m.hp -= float(F32(dmg))
                 if m.hp <= 0:
@@ -346,8 +359,8 @@ class CombatEnvironment:
 
     def observation(self) -> np.ndarray:
         """Observation::from_state + to_vector 的 8 维 float32"""
-        from observation_py import to_vector8
-        return to_vector8(self._state)
+        from observation_py import to_vector14
+        return to_vector14(self._state)
 
 
 def run_episode(env: CombatEnvironment, initial: SimulationState,

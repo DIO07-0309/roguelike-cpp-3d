@@ -11,14 +11,17 @@ bool DqnPolicy::load(const std::string& weights_path) {
 
 std::vector<float> DqnPolicy::build_input(const std::vector<float>& obs8,
                                           const std::vector<float>& legal_mask) {
-    // 观测 8 维 (Observation::to_vector 顺序):
+    // 观测 14 维 (Observation::to_vector 顺序, v0.9.34 G32-C 起):
     //   0 hp_ratio 1 attack 2 enemy_count 3 nearest_dist
     //   4 strongest 5 boss 6 buff_count 7 style
-    // 缩放系数与 Python 侧 build_input 相同 — C++ 推理必须做一样的缩放,
-    // 否则 serve skew(训练时看到 [0,1] 附近的值, 推理时喂进去原始量级)
+    //   8 player_x 9 player_y 10 enemy_x 11 enemy_y
+    //  12 atk_cd_ratio 13 skill_ready_ratio
+    // 前 8 维在此缩放, 后 6 维在 C++ Observation::from_state 里已归一化,
+    // 直接透传。
+    // 缩放系数必须与 Python build_input 完全相同, 否则 serve skew。
     std::vector<float> x;
-    x.reserve(18);
-    if (obs8.size() >= 8) {
+    x.reserve(24);
+    if (obs8.size() >= 14) {
         x.push_back(obs8[0]);                      // hp_ratio 已在 [0,1]
         x.push_back(obs8[1] / 50.0f);              // attack
         x.push_back(obs8[2] / 10.0f);              // enemy_count
@@ -27,8 +30,9 @@ std::vector<float> DqnPolicy::build_input(const std::vector<float>& obs8,
         x.push_back(obs8[5]);                      // boss_present
         x.push_back(obs8[6] / 10.0f);              // buff_count
         x.push_back(obs8[7] / 4.0f);               // player_style
+        for (int i = 8; i < 14; i++) x.push_back(obs8[i]);  // 位置 + 冷却
     } else {
-        x.assign(8, 0.0f);
+        x.assign(14, 0.0f);
     }
     for (int i = 0; i < (int)mcts::CombatAction::COUNT; i++)
         x.push_back(i < (int)legal_mask.size() ? legal_mask[i] : 0.0f);

@@ -41,3 +41,13 @@ ersHPanaconda3shellcondabinconda-hook.ps1*
 # symlink 安装的 skill (指向 ~/.opencode/skills, 不入库)
 .claude/skills/anysearch/
 saves/screenshot.png
+
+# ── RL 训练产物 (G32: 二进制权重不入库) ──
+# 理由: 权重与 Observation 维度强绑定(8→14 维改动即失效), 且每次重训
+# 都产生差异。入库会造成"陈旧权重 + 新代码"的静默不匹配。
+tools/rl/*.pt
+tools/rl/*.onnx
+tools/rl/dqn_weights.bin
+tools/rl/parity_trace.json
+tools/rl/_policy_*.txt
+tools/rl/_probe_*.txt

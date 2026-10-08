@@ -68,9 +68,13 @@ TEST(DqnMirrorBridge, RejectsCorruptWeights) {
 }
 
 // ── 就绪时输出必须是合法 PlayerActionType, 且不崩 ──
+// 权重是训练产物, 不随源码入库(每次改 Observation 维度即失效)。
+// 缺失时跳过而非失败 —— 让 ctest 在没有权重的干净检出上也能全绿。
 TEST(DqnMirrorBridge, ReadyProducesValidAction) {
     DqnMirrorBridge bridge;
-    ASSERT_TRUE(bridge.load(WEIGHTS)) << "先跑 tools/rl/export_weights.py";
+    if (!bridge.load(WEIGHTS))
+        GTEST_SKIP() << "缺少 " << WEIGHTS
+                     << " — 跑 train_dqn.py + export_weights.py 生成";
     ASSERT_TRUE(bridge.ready());
     for (int style = 0; style <= 4; style++) {
         PlayerActionType t = bridge.predict(make_state(), style);
@@ -82,7 +86,7 @@ TEST(DqnMirrorBridge, ReadyProducesValidAction) {
 // 极端输入不得崩 (距离 0 / 血量 0 / Boss 已死)
 TEST(DqnMirrorBridge, ExtremeStatesDoNotCrash) {
     DqnMirrorBridge bridge;
-    ASSERT_TRUE(bridge.load(WEIGHTS));
+    if (!bridge.load(WEIGHTS)) GTEST_SKIP() << "缺少 " << WEIGHTS;
     EXPECT_NO_THROW(bridge.predict(make_state(0.0f, 0.0f, 0.0f), 0));
     EXPECT_NO_THROW(bridge.predict(make_state(999.0f, 1.0f, 1.0f), 4));
     EXPECT_NO_THROW(bridge.predict(make_state(5.0f, 0.0f, 1.0f, false), 2));

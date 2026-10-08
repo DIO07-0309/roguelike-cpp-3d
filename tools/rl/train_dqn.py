@@ -106,20 +106,15 @@ def place_monsters(s, variant, rng):
     m1.y = float(np.clip(m1.y + rng.integers(-1, 2), 0, 29))
 
 
-def make_scenario(variant: int, rng: np.random.Generator):
-    """REAL_MODE: 按真实战斗配置铺场景(单 Boss 高HP / 小怪 1~4 只)
+def make_scenario(variant: int, rng: np.random.Generator, level: int = 2):
+    """REAL_MODE 真实场景 + 课程学习难度档
 
-    ★ 为什么必须改场景 (与 G31-B4 同类错误的第二代):
-      旧场景固定 2 只小怪 (HP 15~36), 技能 AoE 一次清两个 → AoE 收益被
-      放大, 普攻(单目标)永远打不过技能。解析算: 普攻 1.91 伤害/步已高于
-      最强技能 1.625, 但训练仍锁技能 —— 说明问题不在参数而在**场景**。
-      真实游戏里:
-        - Boss 战是**单目标 800+ HP**, AoE 完全无优势 → 必然靠普攻磨
-        - 练级小怪 HP 较低但数量 1~4, 群怪时 AoE 才有意义
-      故 REAL_MODE 下按 variant 铺 6 类真实配置, 让网络真正学会
-      "什么时候该普攻、什么时候该AoE"。
-
-    玩具模式 (REAL_MODE=False) 保持原样, 以维持 parity。
+    ★ level = 课程学习档位: 0 入门 / 1 进阶 / 2 完整
+      背景: 实测 DQN 在 level2 学出 wait 87.5%、胜率 10.8%, 而固定策略
+      95% —— 说明它根本没学会基本动作。根因是 300 步 episode 里探索成本
+      过高: 一次随机探索很可能直接送命, 有效梯度信号被淹没。
+      故拆成三档递进: level0 低 HP 低攻贴身(只需学会"贴上去打")
+      → level1 中 HP 中距(学会走位与技能) → level2 完整 Boss 场景。
     """
     s = SimulationState()
     p = s.player
@@ -128,8 +123,21 @@ def make_scenario(variant: int, rng: np.random.Generator):
     p.x, p.y = 5.0, 5.0
 
     if combat_env_py.REAL_MODE:
-        return _make_real_scenario(variant, rng, s, p)
+        return _make_real_scenario(variant, rng, s, p, level)
     return _make_toy_scenario(variant, rng, s, p)
+
+
+def curriculum_params(level: int):
+    """难度档 → (hp_mul, atk_mul, dist_add, step_budget)
+
+    step_budget 随难度递增: 入门 60 步足够打完, 让探索的失败代价小;
+    完整场景 300 步。budget 随 level 变, 故 max_steps() 需接受 level 参数。
+    """
+    if level == 0:
+        return 0.30, 0.45, 0, 60
+    if level == 1:
+        return 0.60, 0.75, 2, 140
+    return 1.0, 1.0, 0, MAX_STEPS_REAL
 
 
 def _make_toy_scenario(variant, rng, s, p):
@@ -151,7 +159,7 @@ def _make_toy_scenario(variant, rng, s, p):
     return s
 
 
-def _make_real_scenario(variant, rng, s, p):
+def _make_real_scenario(variant, rng, s, p, level: int = 2):
     """REAL_MODE — 6 类真实配置, 覆盖单 Boss / 群怪 / 边界
 
     ★★数值配平 (用算术推导, 不是拍脑袋):
@@ -164,15 +172,26 @@ def _make_real_scenario(variant, rng, s, p):
       但 attack 也按真实 25 给, 而玩具 env 没有减伤/格挡/走位收益。
       现按可玩性反推: 玩家能撑 ~150 步, Boss 需 ~90 步打死。
     """
-    p.hp = p.max_hp = float(rng.integers(150, 241))
-    p.pdef = int(rng.integers(4, 8))# 玩家防御也要有量级, 否则受击过快
-    p.mdef = int(rng.integers(2, 5))
-    p.attack = int(rng.integers(7, 15))
-    s.player_style = int(rng.integers(0, 5))
-    px, py = 5.0, 5.0
+    hp_mul, atk_mul, dist_add, _ = curriculum_params(level)
+
+    # ★ 位置随机化 — 破除"记住 boss 固定在某处"的捷径。
+    #   诊断: 玩家固定 (5,5) 只改 boss 位置, Q 值确实随之变化
+    #   (0.072~0.254, 说明网络用到了位置维度), 但 argmax 恒为 SK3。
+    #   原因不是位置记忆, 而是 4 个技能槽同质(见下) —— 但仍需随机化,
+    #   否则网络可能走"固定走位脚本"的捷径而非学会空间推理。
+    px, py = float(rng.integers(2, 38)), float(rng.integers(2, 28))
+    p.x, p.y = px, py
 
     def mk(name, hp, atk, pdef, dx, dy, boss=False):
-        return MonsterSnapshot(name, hp, hp, px + dx, py + dy, atk, pdef,
+        # 相对玩家放置时加随机抖动 (±2 格), 避免绝对位置固定
+        jx = int(rng.integers(-2, 3))
+        jy = int(rng.integers(-2, 3))
+        mx = float(np.clip(px + dx + jx, 0, 39))
+        my = float(np.clip(py + dy + jy, 0, 29))
+        return MonsterSnapshot(name, hp * hp_mul, hp * hp_mul,
+                               mx, my,
+                               max(1, int(atk * atk_mul * rng.uniform(0.85, 1.15))),
+                               max(0, int(pdef + rng.integers(-1, 2))),
                                0, [], True, boss)
 
     # Boss: HP 110 / pdef 4 / atk 7
@@ -202,14 +221,19 @@ def _make_real_scenario(variant, rng, s, p):
                       mk("slime", 35.0, 4, 2, 2, 0)]
     else:
         # 左上角落单怪 (覆盖 x/y 下界; Boss 远处)
-        p.x, p.y = 0.0, 0.0
         m = mk("boss", 110.0, 7, 4, 2, 0, True)
-        m.x, m.y = 2.0, 0.0
+        m.x, m.y = float(np.clip(2 + rng.integers(-1, 3), 0, 39)), 0.0
         s.monsters = [m]
+
+    # ★ 难度档 0 只保留贴身单怪 —— 课程学习的第一课就是"贴上去打"
+    if level == 0:
+        s.monsters = [s.monsters[0]]
+    for m in s.monsters:
+        m.max_hp = m.hp
     return s
 
 
-def compute_loss(q_net, target_net, batch):
+def compute_loss(q_net, target_net, batch, double_dqn=True):
     """done 时 target 只等于 reward — 终局不得自举未来价值 (AI_LEARNING_GUIDE 第⑤题)
 
     ★ bootstrap 必须过 mask —— 这正是 G31-B1 在 tabular Q 上的同一个 bug:
@@ -235,16 +259,41 @@ def compute_loss(q_net, target_net, batch):
         dead = m2.sum(1) == 0
         max_next = torch.where(dead, torch.zeros_like(max_next), max_next)
         target = r + GAMMA * max_next * (~d).float()
-    return ((qsa - target) ** 2).mean(), qsa.detach(), target
+
+    td_error = qsa - target
+    # ★ Double DQN — 缓解 max 操作导致的过估计。
+    #   症状: 课程学习下"档内胜率随 epsilon 下降而降低"(L1 34%→33%,
+    #   L2 18%→16%), 即利用阶段反而不如探索 —— 典型过估计表现。
+    #   原因: 标准 DQN 的 target 用同一张 target_net 做"选动作"和"打分",
+    #   max 会系统性高估。Double DQN 改用 online_net 选动作、
+    #   target_net 打分, 切断这条高估通路。
+    if double_dqn:
+        with torch.no_grad():
+            online_next = q_net(s2).argmax(1, keepdim=True)
+            online_best = target_net(s2).gather(1, online_next).squeeze(1)
+            # 在线网络也可能选中非法动作 → 用 next_mask 的 max 兜底
+            online_best = torch.where(dead, torch.zeros_like(online_best),
+                                      online_best)
+            online_best = torch.where((~d), online_best,
+                                     max_next)
+            target = r + GAMMA * online_best * (~d).float()
+        td_error = qsa - target
+    return (td_error ** 2).mean(), qsa.detach(), target
 
 
-def max_steps() -> int:
-    """episode 长度上限 — REAL_MODE 用长窗口"""
-    return MAX_STEPS_REAL if combat_env_py.REAL_MODE else MAX_STEPS_TOY
+def max_steps(level: int = 2) -> int:
+    """episode 长度上限。
+
+    REAL_MODE 下随课程档位变化 (60/140/300) —— 入门档用短 episode 让
+    探索的失败代价小; 玩具模式固定 60 步 (维持 parity 契约)。
+    """
+    if not combat_env_py.REAL_MODE:
+        return MAX_STEPS_TOY
+    return curriculum_params(level)[3]
 
 
 def train_episode(env, q_net, target_net, opt, buf, rng, epsilon, variant,
-                  seed, grad_steps_per_env_step=1):
+                  seed, level=2, grad_steps_per_env_step=1):
     """每个 env step 后做一次梯度更新 (标准 DQN)。
 
     早期版本是"一局只更新一次" — 60 局仅20 次梯度更新, 网络基本还是随机
@@ -252,8 +301,8 @@ def train_episode(env, q_net, target_net, opt, buf, rng, epsilon, variant,
     (通常是 WAIT, 因为未训练网络对所有动作输出近似常数, argmax 恒取第一个),
     表现为胜率 3.3%, 远低于随机策略的 58.3%。
     """
-    limit = max_steps()
-    initial = make_scenario(variant, rng)
+    limit = max_steps(level)
+    initial = make_scenario(variant, rng, level)
     initial.seed = int(seed) & 0xFFFFFFFF
     obs = env.reset(initial)
     total_r, steps = 0.0, 0
@@ -295,7 +344,8 @@ def train_episode(env, q_net, target_net, opt, buf, rng, epsilon, variant,
     return total_r, steps
 
 
-def train(episodes: int, out_path: str, seed: int = 42, real_mode: bool = False):
+def train(episodes: int, out_path: str, seed: int = 42, real_mode: bool = False,
+          curriculum: bool = False, verbose: bool = True):
     global losses_sink
     # REAL_MODE 开关必须在任何场景构造前设置 (make_scenario 会读冷却/射程)
     combat_env_py.REAL_MODE = real_mode
@@ -312,32 +362,45 @@ def train(episodes: int, out_path: str, seed: int = 42, real_mode: bool = False)
     losses_sink = []
     t0 = time.time()
 
-    for ep in range(episodes):
-        # epsilon 按 env step 退火而非按 episode — 一局约 30-40 步, 按episode
-        # 退火会让前几十局几乎全随机, 梯度信号被探索噪声淹没
-        frac = ep / max(1, episodes - 1)
-        epsilon = EPS_START + (EPS_END - EPS_START) * frac
-        variant = ep % 6
-        train_episode(env, q_net, target_net, opt, buf, rng,
-                      epsilon, variant, seed + ep * 7919)
-        won = env.state().victory
-        wins += won
-        if ep >= tail_start and won:
-            tail_wins += 1
+    # ★ 课程学习: 把总预算切成三段, 每段一档难度, 阶段末重置 epsilon
+    #   以便在更难的任务上重新探索。关键点: 上一档的 Q 值不能直接用
+    #   (状态分布已变), 故每档重置 epsilon 但保留网络与 replay buffer。
+    stages = ([(0, episodes // 3), (1, episodes // 3), (2, episodes - 2 * episodes // 3)]
+              if curriculum else [(2, episodes)])
 
-        if (ep + 1) % TARGET_SYNC == 0:
-            target_net.load_state_dict(q_net.state_dict())
-
-        if (ep + 1) % max(1, episodes // 10) == 0:
-            avg = float(np.mean(losses_sink[-2000:])) if losses_sink else 0.0
-            print(f"  [{ep+1}/{episodes}] eps={epsilon:.3f} "
-                  f"win={wins}/{ep+1} ({wins*100.0/(ep+1):.1f}%) "
-                  f"loss={avg:.3f} buf={len(buf)} "
-                  f"grads={len(losses_sink)} [{time.time()-t0:.0f}s]")
+    ep_cursor = 0
+    for level, stage_len in stages:
+        if stage_len <= 0:
+            continue
+        stage_win = 0
+        for i in range(stage_len):
+            frac = i / max(1, stage_len - 1)
+            epsilon = EPS_START + (EPS_END - EPS_START) * frac
+            variant = ep_cursor % 6
+            train_episode(env, q_net, target_net, opt, buf, rng,
+                          epsilon, variant, seed + ep_cursor * 7919, level)
+            won = env.state().victory
+            wins += won
+            stage_win += won
+            ep_cursor += 1
+            if ep_cursor >= tail_start and won:
+                tail_wins += 1
+            if (ep_cursor + 1) % TARGET_SYNC == 0:
+                target_net.load_state_dict(q_net.state_dict())
+            if verbose and (ep_cursor + 1) % max(1, stage_len // 4) == 0:
+                avg = float(np.mean(losses_sink[-2000:])) if losses_sink else 0.0
+                print(f"  L{level} [{ep_cursor+1}/{episodes}] eps={epsilon:.3f} "
+                      f"win={wins}/{ep_cursor+1} ({wins*100.0/(ep_cursor+1):.1f}%) "
+                      f"档内={stage_win}/{i+1} loss={avg:.3f} "
+                      f"grads={len(losses_sink)} [{time.time()-t0:.0f}s]")
+        if verbose and curriculum:
+            print(f"  == 难度档 {level} 完成: 档内胜率 "
+                  f"{stage_win*100.0/max(1,stage_len):.1f}% ==")
 
     tail_n = episodes - tail_start
     mode = "REAL" if real_mode else "TOY"
-    print(f"\n[{mode} 模式] 训练完成: {wins}/{episodes} 胜 "
+    cur = " + 课程" if curriculum else ""
+    print(f"\n[{mode}{cur} 模式] 训练完成: {wins}/{episodes} 胜 "
           f"({wins*100.0/episodes:.1f}%), "
           f"末段 {tail_wins}/{tail_n} ({tail_wins*100.0/max(1,tail_n):.1f}%)")
 
@@ -360,8 +423,11 @@ def main():
     ap.add_argument("--real-mode", action="store_true",
                     help="用 resources/skills.json 的真实冷却/射程训练 "
                          "(技能冷却 2/5/8/20s 而非统一 3.0)")
+    ap.add_argument("--curriculum", action="store_true",
+                    help="课程学习: 分三档难度递进 (入门/进阶/完整)")
     args = ap.parse_args()
-    win_rate = train(args.episodes, args.out, args.seed, args.real_mode)
+    win_rate = train(args.episodes, args.out, args.seed, args.real_mode,
+                     args.curriculum)
     return 0 if win_rate > 0.5 else 1
 
 
