@@ -120,6 +120,13 @@ F15 镜像 Boss 读你的行为画像（攻防倾向/走位偏好/技能习惯�
 
 ## CHANGELOG
 
+- G32-G（开发版，未发布）：**AI 路线结项** —— 文档与代码状态对齐，RL/神经网络路线正式封板。
+
+  - **新增** `docs/AI_RL_ROUTE_CLOSEOUT.md`：G32 系列结项报告。记录最终胜率对比、6 项有效改进（课程学习 / Double DQN / Observation 8→14 维 / bootstrap 过 mask / parity 闸门 / 手写推理替代 ONNX Runtime）、**3 个被证伪的假设**、关键 bug 与工具链陷阱、以及重开此线的前置条件。
+  - **修订** `docs/AI_LEARNING_GUIDE.md`：第 14 章原写「Q 表 → DQN」是待办升级方向，现已实测证明为**负收益**，故在文首、目录、第 13 章路线图 17/18 项、第 14 章开头四处加警示，标注**保留为教学材料但勿照此改造项目**。
+  - **修正了一个误诊的教训**：「`wait` 占比高 = 策略退化」是错的——基线策略 `wait` 占 91.6% 却赢 60%（普攻冷却 3.4 步、技能冷却 32~320 步，冷却期本来就只能等）。这个误诊导致四轮迭代方向完全错误。**教训：诊断指标必须先与基线对照。**
+  - 本批仅改文档，**零代码改动**，不影响任何运行时行为。
+
 - G32-F（开发版，未发布）：`TacticalPolicy` 接入镜像 Boss，**默认关闭**（命令行 `--tactical-mirror` 开启）。
 
   - **接入位置**：`boss_system_director.cpp:_init_mirror_boss()`，在 RL 层注入之后调用 `mirror::install_tactical_predictor_if_enabled(*_mirror_agent)`。装入的是 **`MlPredictor` 槽（仲裁链最高优先级）**，故会盖过战术链 / RL / 克隆 / Thompson 所有层——这是刻意的：G32-D 实测规则策略 60% 优于学习型策略（DQN 36.7% / PPO 18.9%），故让它是 ML 槽的替代实现而非叠加层。
