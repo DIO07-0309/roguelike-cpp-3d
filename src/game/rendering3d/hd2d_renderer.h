@@ -90,13 +90,17 @@ public:
     // 相机每帧 render_frame 后有效; 投影失败返回 {-1,-1})
     Vector2 world_to_screen(Vector3 world_pos, float y_offset = 0.0f) const;
 
-    // M6-v2e: 3D 相机 shake (2D shake_offset 同源值; x/y 世界偏移,
-    // render_frame 消费后自动清零)
+    // M6-v2e: 3D 相机 shake (2D shake_offset 同源值; x/y 世界偏移)
+    // 使用当前值渲染，目标值每帧 lerp 接近，避免硬切抖动
     void set_camera_shake(float offset_x, float offset_y) {
-        _shake_offset = {offset_x, 0.0f, offset_y};
+        _shake_target = {offset_x, 0.0f, offset_y};
     }
 
 private:
+    static Vector3 lerp_vec3(Vector3 a, Vector3 b, float t) {
+        return {a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t};
+    }
+
     HD2DRenderer() = default;
     bool _ready = false;
     int _target_w = 960;
@@ -104,7 +108,8 @@ private:
 
     Camera3D _camera = {};
     Vector3 _camera_focus = {0, 0, 0};
-    Vector3 _shake_offset = {0, 0, 0};  // M6-v2e: 3D 相机 shake (帧内消费)
+    Vector3 _shake_target = {0, 0, 0};
+    Vector3 _shake_offset = {0, 0, 0};  // M6-v2e: 3D 相机 shake (帧内渲染值)
     float _camera_yaw = 0.0f;       // 观察朝向 (切片固定 45° 俯角)
 
     // 场景数据缓存

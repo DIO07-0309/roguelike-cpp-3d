@@ -204,6 +204,8 @@ add_roguelike_test(mirror_arb_test    mirror/mirror_arbitration_test.cpp)
 add_roguelike_test(mirror_acc_test    mirror/mirror_acc_test.cpp)
 add_roguelike_test(analyzer_test      mirror/player_behavior_analyzer_test.cpp)
 add_roguelike_test(mirror_tactic_test mirror/mirror_tactic_test.cpp)
+# v0.9.35 G32-D: TacticalPolicy 规则策略测试 (默认关闭保证 + 优先级)
+add_roguelike_test(tactical_policy_test mirror/tactical_policy_test.cpp)
 add_roguelike_test(tactical_chain_test mirror/tactical_chain_test.cpp)
 add_roguelike_test(sequence_e2e_test mirror/sequence_e2e_test.cpp)
 # B3-M: CloneTable 跨局持久化闭环

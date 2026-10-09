@@ -5,6 +5,7 @@
 #include "entity.h"
 #include "raylib.h"
 #include "special_room.h"
+#include "game/rendering/sprite_renderer.h"
 #include "biome.h"   // M4f: TilePalette
 
 // 前向声明 (避免循环依赖)
@@ -130,6 +131,47 @@ public:
     bool open_room_doors(const std::vector<std::pair<int,int>>& door_tiles);   // → OPEN
 
     void draw(float cam_x, float cam_y, int screen_w, int screen_h) const;
+
+    // G11.2: 探索足迹 — 玩家踏过地板留下渐隐脚印 (纯渲染, 不影响逻辑)
+    struct TileCtx {
+        const GameMap* map = nullptr;
+        Texture2D wall_tex;
+        Texture2D floor_tex;
+        Texture2D wall_data;
+        Texture2D floor_data;
+        SpriteDef wall_def;
+        SpriteDef floor_def;
+        SpriteDef tile_def;
+        Color wall_c;
+        Color floor_c;
+    };
+    TileCtx setupTileTextures() const;
+    void drawTileLayer(float cam_x, float cam_y, int sw, int sh, const TileCtx& ctx) const;
+    void drawTileRects(float cam_x, float cam_y, int sw, int sh, const TileCtx& ctx) const;
+    void drawWallTile(float dx, float dy, const Tile& t, float bright,
+                      const TileCtx& ctx) const;
+    void drawFloorTile(int x, int y, float dx, float dy, const Tile& t, float bright,
+                       const TileCtx& ctx) const;
+    void drawFloorDecorations(int x, int y, float dx, float dy, const Tile& t,
+                              float bright) const;
+    void drawFloorContactShadow(int x, int y, float dx, float dy) const;
+    void drawSpecialRoomFloor(int x, int y, float dx, float dy, const SpecialRoom* sr, float bright,
+                              const TileCtx& ctx) const;
+    void drawSpecialRoomIcon(int x, int y, float dx, float dy, const SpecialRoom* sr,
+                             float bright, const TileCtx& ctx) const;
+    void drawStairsDown(float dx, float dy, float bright) const;
+    void drawLava(float dx, float dy, float bright) const;
+    void drawDoorTile(int x, int y, DoorState door_state, float bright,
+                      float cam_x, float cam_y) const;
+    void drawEventMarker(int x, int y, float dx, float dy, float bright) const;
+    void drawArenaElement(int x, int y, float dx, float dy, float bright) const;
+    void drawArenaBarrel(const ArenaObject* arena, float dx, float dy, float bright) const;
+    void drawArenaTotem(float dx, float dy, float bright) const;
+    void drawArenaPoisonPool(float dx, float dy, float bright) const;
+    void drawArenaRock(float dx, float dy, float bright) const;
+    void drawArenaSpike(float dx, float dy, float bright) const;
+    void drawBossFOVOverlay(float dx, float dy, const Tile& t) const;
+    void drawFootstepOverlay(float fx, float fy, float life, int idx) const;
 
     // G11.2: 探索足迹 — 玩家踏过地板留下渐隐脚印 (纯渲染, 不影响逻辑)
     void mark_footstep(int tx, int ty);

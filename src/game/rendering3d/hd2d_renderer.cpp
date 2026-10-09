@@ -319,14 +319,17 @@ void HD2DRenderer::render_frame(const hd2d::SceneView& view) {
     weather.update(GetFrameTime());
     
     // 2. 相机聚焦玩家世界坐标 (+ M6-v2e: shake 偏移, 帧内消费)
-    _camera_focus = {0, 0, 0};
+    Vector3 desired_focus = {0, 0, 0};
     if (view.player) {
-        _camera_focus.x = view.player->entity.rect.x + view.player->entity.rect.width / 2;
-        _camera_focus.z = view.player->entity.rect.y + view.player->entity.rect.height / 2;
+        desired_focus.x = view.player->entity.rect.x + view.player->entity.rect.width / 2;
+        desired_focus.z = view.player->entity.rect.y + view.player->entity.rect.height / 2;
     }
+    float focus_blend = std::min(1.0f, GetFrameTime() * 22.0f);
+    _camera_focus = lerp_vec3(_camera_focus, desired_focus, focus_blend);
+    float shake_blend = std::min(1.0f, GetFrameTime() * 28.0f);
+    _shake_offset = lerp_vec3(_shake_offset, _shake_target, shake_blend);
     _camera_focus.x += _shake_offset.x;
     _camera_focus.z += _shake_offset.z;
-    _shake_offset = {0, 0, 0};
     
     // A6-T4: CameraDirector 焦点偏移 + FOV 缩放 (3D 渲染)
     if (view.camera_def_loaded && !view.sim_mode && view.camera_director) {

@@ -13,10 +13,10 @@ TEST(CameraDefs, ParsesValidJson) {
     EXPECT_NEAR(def->boss_war.zoom_in.duration, 1.5f, 1e-4f);
     EXPECT_NEAR(def->boss_war.zoom_out.fov_scale, 1.0f, 1e-4f);
     EXPECT_NEAR(def->boss_war.zoom_out.duration, 0.8f, 1e-4f);
-    EXPECT_NEAR(def->boss_war.lerp_speed, 2.0f, 1e-4f);
-    EXPECT_NEAR(def->kill_stun.duration, 0.08f, 1e-4f);
-    EXPECT_NEAR(def->kill_stun.shake_amplitude, 3.0f, 1e-4f);
-    EXPECT_NEAR(def->kill_stun.shake_frequency, 20.0f, 1e-4f);
+    EXPECT_NEAR(def->boss_war.lerp_speed, 2.6f, 1e-4f);
+    EXPECT_NEAR(def->kill_stun.duration, 0.1f, 1e-4f);
+    EXPECT_NEAR(def->kill_stun.shake_amplitude, 3.6f, 1e-4f);
+    EXPECT_NEAR(def->kill_stun.shake_frequency, 22.0f, 1e-4f);
 }
 
 TEST(CameraDefs, RejectsMissingFile) {

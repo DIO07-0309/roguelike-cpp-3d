@@ -8,12 +8,12 @@
       "fov_scale": 1.0,
       "duration": 0.8
     },
-    "lerp_speed": 2.0,
-    "focus_duration": 2.0
+    "lerp_speed": 2.6,
+    "focus_duration": 1.6
   },
   "kill_stun": {
-    "duration": 0.08,
-    "shake_amplitude": 3.0,
-    "shake_frequency": 20.0
+    "duration": 0.1,
+    "shake_amplitude": 3.6,
+    "shake_frequency": 22.0
   }
 }

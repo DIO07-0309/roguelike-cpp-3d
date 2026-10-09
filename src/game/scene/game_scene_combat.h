@@ -15,6 +15,13 @@ public:
     RelicEffectProcessor& relic_fx() { return _relic_fx; }
 
 private:
+    void applyKillFeedback(Monster* m);
+    void grantKillXp(Monster* m);
+    void applyBossReward(Monster* m);
+    void applyNormalLoot(Monster* m);
+    void applyKillRelics(Monster* m);
+    void applyNewRelicEffects(Monster* m);
+    void refreshStairsIfCleared();
     GameScene& _s;
     RelicEffectProcessor _relic_fx;
 };
