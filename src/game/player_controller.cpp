@@ -928,18 +928,18 @@ void PlayerController::_vfx_crossbow(const WeaponVFXContext& ctx) {
     }
 }
 
-// 聚合命中结果取最高等级 (KILL > CRITICAL > HEAVY > LIGHT), 单次触发不叠加
+// 聚合命中结果取最高等级 (KILL > CRITICAL > HEAVY > LIGHT), 单次触发不叠加。
+// 等级表本体在 CombatFeelSystem::hit_feel_for (公共头, 可被单元测试直接钉住),
+// 这里只负责把 ctx 里的多个命中结果折叠成 3 个布尔/段位输入。
 float PlayerController::_hit_feel_seconds(const WeaponVFXContext& ctx, float& shake) const {
     bool has_kill = false, has_crit = false;
     for (auto& r : ctx.results) {
         if (r.is_killing_blow) has_kill = true;
         if (r.is_crit)         has_crit = true;
     }
-    if (has_kill)       { shake = CombatFeelSystem::SHAKE_MEDIUM; return CombatFeelSystem::KILL_SLOWMO; }
-    if (has_crit)       { shake = CombatFeelSystem::SHAKE_CRIT;   return CombatFeelSystem::CRITICAL_HIT; }
-    if (ctx.stage == 2) { shake = CombatFeelSystem::SHAKE_COMBO;  return CombatFeelSystem::HEAVY_HIT; }
-    shake = CombatFeelSystem::SHAKE_LIGHT;
-    return CombatFeelSystem::LIGHT_HIT;
+    float freeze_seconds = 0.0f;
+    CombatFeelSystem::hit_feel_for(has_kill, has_crit, ctx.stage, freeze_seconds, shake);
+    return freeze_seconds;
 }
 
 void PlayerController::_apply_post_hit(const WeaponVFXContext& ctx) {
