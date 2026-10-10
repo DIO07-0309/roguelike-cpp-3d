@@ -96,6 +96,12 @@ public:
         _shake_target = {offset_x, 0.0f, offset_y};
     }
 
+    // G39: 翻滚 FOV 拉伸 (速度感) — 传本次要叠加的 FOV 角度 (调用方已映射+clamp)
+    // 由调用方每帧刷新: 非翻滚状态传 0, 渲染器自行平滑起落
+    void set_camera_dash(float fov_degrees) {
+        _dash_fov_deg = fov_degrees;
+    }
+
 private:
     static Vector3 lerp_vec3(Vector3 a, Vector3 b, float t) {
         return {a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t};
@@ -110,6 +116,9 @@ private:
     Vector3 _camera_focus = {0, 0, 0};
     Vector3 _shake_target = {0, 0, 0};
     Vector3 _shake_offset = {0, 0, 0};  // M6-v2e: 3D 相机 shake (帧内渲染值)
+    float _fov_pulse = 0.0f;       // 3D 手感: 震幅驱动的 FOV 冲击量 (0=无, 0.06=最怼脸)
+    float _dash_fov_deg = 0.0f;        // 翻滚 FOV 拉伸目标 (角度; 0=无)
+    float _dash_fov_current = 0.0f;    // 翻滚 FOV 拉伸当前值 (平滑后)
     float _camera_yaw = 0.0f;       // 观察朝向 (切片固定 45° 俯角)
 
     // 场景数据缓存
@@ -158,6 +167,9 @@ private:
     static void _apply_bloom_biome_preset(const GameMap* map);
 
     void _setup_camera();
+    void _update_camera_focus(const hd2d::SceneView& view);  // 聚焦/屏震/Boss 运镜
+    void _position_camera();                       // 由焦点推出相机位姿
+    void _apply_camera_fov(float fov_scale);  // 打击冲击 + 翻滚拉伸 → 本帧 FOV
     void _load_terrain_shaders();   // v2c: 雾/岩浆 shader 懒加载+缓存 loc
     void _load_outline_shader();    // A1.1: billboard 真轮廓 shader
     void _update_px_per_world();    // A1.1: 每帧世界单位→屏幕像素比例换算

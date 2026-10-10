@@ -29,6 +29,15 @@ constexpr float kOutlineBaseWorldW = 2.0f;   // 基准描边宽 (世界单位)
 constexpr float kOutlineMinScreenPx = 1.0f;  // 远距最小可辨识保护
 constexpr float kOutlineMaxScreenPx = 4.0f;  // 近距 Boss 过粗保护
 constexpr float kOutlineAlphaCutoff = 0.5f;  // 剪影阈值 (与 depth pass 同源)
+// ── 3D 手感: 震幅 → FOV 冲击 (打击越重镜头越"怼脸") ──
+constexpr float kFovPulsePerShake = 0.0022f;   // 每单位世界偏移的收拢比例
+constexpr float kFovPulseMax = 0.06f;          // 最大收拢 6% (不进眩晕区)
+constexpr float kFovPulseResponsiveness = 18.0f;  // 跟随/回落速度 (越大越硬)
+// ── 3D 相机跟随: 位移超过此距离直接吸附 (首帧/换层/传送), 不拖飞影 ──
+constexpr float kFocusSnapDistance = 512.0f;   // 16 tile
+constexpr float kFocusResponsiveness = 22.0f;  // 跟随速度 (越大越贴手)
+// ── 3D 手感: 翻滚 FOV 拉伸 (速度感) ──
+constexpr float kDashResponsiveness = 30.0f;   // 起落速度 (大 = 起得快, 回落也快)
 // ── G5.5: 视锥体裁剪 — 绘制项中心超相机 ±kFxCullMargin 跳过 (屏外高多边形纯浪费) ──
 constexpr float kFxCullMargin = 220.0f;      // 相机焦点边际 (世界单位, 同屏可见范围)
 inline bool _fx_in_view(const HD2DDrawItem& item, Vector3 focus) {
@@ -277,6 +286,72 @@ void HD2DRenderer::_setup_camera() {
     _camera_yaw = 0.0f;
 }
 
+// 3D 相机: 聚焦玩家 (平滑跟随) + 屏震偏移 + Boss 运镜 + 打击 FOV 冲击。
+// 从 render_frame 抽出 — render_frame 已超 40 行, 且相机是独立关注点。
+void HD2DRenderer::_update_camera_focus(const hd2d::SceneView& view) {
+    // 2. 相机聚焦玩家世界坐标 (+ M6-v2e: shake 偏移, 帧内消费)
+    Vector3 desired_focus = {0, 0, 0};
+    if (view.player) {
+        desired_focus.x = view.player->entity.rect.x + view.player->entity.rect.width / 2;
+        desired_focus.z = view.player->entity.rect.y + view.player->entity.rect.height / 2;
+    }
+    // 位移过大 (首帧 / 换层 / 传送) 直接吸附: 否则会从上一处或世界原点
+    // 拉一条长拖影飞过来, 看起来像画面故障
+    float focus_gap = sqrtf((desired_focus.x - _camera_focus.x) * (desired_focus.x - _camera_focus.x)
+                          + (desired_focus.z - _camera_focus.z) * (desired_focus.z - _camera_focus.z));
+    if (focus_gap > kFocusSnapDistance) {
+        _camera_focus = desired_focus;
+    } else {
+        float focus_blend = std::min(1.0f, GetFrameTime() * kFocusResponsiveness);
+        _camera_focus = lerp_vec3(_camera_focus, desired_focus, focus_blend);
+    }
+    float shake_blend = std::min(1.0f, GetFrameTime() * 28.0f);
+    _shake_offset = lerp_vec3(_shake_offset, _shake_target, shake_blend);
+    _camera_focus.x += _shake_offset.x;
+    _camera_focus.z += _shake_offset.z;
+
+    // A6-T4: CameraDirector 焦点偏移 + FOV 缩放 (3D 渲染)
+    float fov_scale = 1.0f;
+    if (view.camera_def_loaded && !view.sim_mode && view.camera_director) {
+        Vector2 cam_offset = view.camera_director->focus_offset();
+        _camera_focus.x += cam_offset.x;
+        _camera_focus.z += cam_offset.y;
+        // FOV 缩放: 0.75 = 拉近 (Boss 战), 1.0 = 原始
+        fov_scale = view.camera_director->fov_scale();
+    }
+    _apply_camera_fov(fov_scale);
+    _position_camera();
+}
+
+// 相机定位 (v2f: 提前到深度 pass 前 — billboard 深度几何朝向需当帧相机,
+// 不吃上一帧残值; _draw_scene 内复用不再重算)
+// M6-i.1: 640→440 拉近相机 (可见 ~12x19 tile), 房间/材质占屏更大
+void HD2DRenderer::_position_camera() {
+    float cam_dist = 440.0f;
+    _camera.position = {
+        _camera_focus.x,
+        _camera_focus.y + cam_dist * 0.7071f,
+        _camera_focus.z + cam_dist * 0.7071f
+    };
+    _camera.target = _camera_focus;
+    _update_px_per_world();    // A1.1: outline 世界→屏幕换算 (每帧一次)
+}
+
+// 本帧 FOV = 基准 × Boss 缩放 × (1 - 打击冲击) + 翻滚拉伸。
+// 两项都是"收/扩视野"的位移量, 各自平滑起落, 归零即回基准视野;
+// 打击冲击只吃本帧已算好的 shake, 翻滚拉伸只吃调用方给的 dash_offset。
+void HD2DRenderer::_apply_camera_fov(float fov_scale) {
+    float shake_mag = sqrtf(_shake_offset.x * _shake_offset.x
+                          + _shake_offset.z * _shake_offset.z);
+    float pulse_target = std::min(shake_mag * kFovPulsePerShake, kFovPulseMax);
+    float blend = std::min(1.0f, GetFrameTime() * kFovPulseResponsiveness);
+    _fov_pulse += (pulse_target - _fov_pulse) * blend;
+    // 翻滚 FOV 拉伸 (速度感) — 与 FOV 冲击叠加, 都是"扩视野/收视野"的位移量
+    _dash_fov_current += (_dash_fov_deg - _dash_fov_current)
+                       * std::min(1.0f, GetFrameTime() * kDashResponsiveness);
+    _camera.fovy = 50.0f * fov_scale * (1.0f - _fov_pulse) + _dash_fov_current;
+}
+
 void HD2DRenderer::render_frame(const hd2d::SceneView& view) {
     if (!_ready) return;
  
@@ -318,39 +393,8 @@ void HD2DRenderer::render_frame(const hd2d::SceneView& view) {
     }
     weather.update(GetFrameTime());
     
-    // 2. 相机聚焦玩家世界坐标 (+ M6-v2e: shake 偏移, 帧内消费)
-    Vector3 desired_focus = {0, 0, 0};
-    if (view.player) {
-        desired_focus.x = view.player->entity.rect.x + view.player->entity.rect.width / 2;
-        desired_focus.z = view.player->entity.rect.y + view.player->entity.rect.height / 2;
-    }
-    float focus_blend = std::min(1.0f, GetFrameTime() * 22.0f);
-    _camera_focus = lerp_vec3(_camera_focus, desired_focus, focus_blend);
-    float shake_blend = std::min(1.0f, GetFrameTime() * 28.0f);
-    _shake_offset = lerp_vec3(_shake_offset, _shake_target, shake_blend);
-    _camera_focus.x += _shake_offset.x;
-    _camera_focus.z += _shake_offset.z;
-    
-    // A6-T4: CameraDirector 焦点偏移 + FOV 缩放 (3D 渲染)
-    if (view.camera_def_loaded && !view.sim_mode && view.camera_director) {
-        Vector2 cam_offset = view.camera_director->focus_offset();
-        _camera_focus.x += cam_offset.x;
-        _camera_focus.z += cam_offset.y;
-        // FOV 缩放: 0.75 = 拉近 (Boss 战), 1.0 = 原始
-        float fov_scale = view.camera_director->fov_scale();
-        _camera.fovy = 50.0f * fov_scale;
-    }
-    // 3. 相机定位 (v2f: 提前到深度 pass 前 — billboard 深度几何朝向
-    // 需当帧相机, 不吃上一帧残值; _draw_scene 内复用不再重算)
-    // M6-i.1: 640→440 拉近相机 (可见 ~12x19 tile), 房间/材质占屏更大
-    float cam_dist = 440.0f;
-    _camera.position = {
-        _camera_focus.x,
-        _camera_focus.y + cam_dist * 0.7071f,
-        _camera_focus.z + cam_dist * 0.7071f
-    };
-    _camera.target = _camera_focus;
-    _update_px_per_world();    // A1.1: outline 世界→屏幕换算 (每帧一次)
+    _update_camera_focus(view);
+
     // M6-v2e/v2f: 光空间深度 pass (墙 + billboard 剪影; 失败时主 pass 走 blob 回退)
     // outer_fbo = scene_tree 主 RT (EndTextureMode 盲绑 FBO 0 的同源坑:
     // 深度 pass 后必须恢复主 RT 绑定, 否则主场景画到屏幕 FBO 上丢失)

@@ -579,6 +579,7 @@ private:
     void _render_setup(int sw, int sh);
     void _apply_camera_offsets(float& ox, float& oy);
     bool _render_hd2d_frame(int sw, int sh, float ox, float oy);
+    float _dash_fov_degrees() const;   // G39: 翻滚 FOV 拉伸量 (3D 速度感)
     void _render_world_layers(int sw, int sh);
     void _render_world_avatars();
     void _render_challenge_portals();

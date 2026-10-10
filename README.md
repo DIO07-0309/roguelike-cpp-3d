@@ -120,6 +120,20 @@ F15 镜像 Boss 读你的行为画像（攻防倾向/走位偏好/技能习惯�
 
 ## CHANGELOG
 
+- G39（开发版，未发布）：**3D 手感打磨第一批** —— 相机跟随/屏震/FOV 冲击三件套，并把打击感接上流派主题。
+
+  - **3D 相机改为平滑跟随**（`HD2DRenderer::_update_camera_focus`，从 97 行的 `render_frame` 抽出）：原先 `_camera_focus` 每帧**直接赋玩家坐标**，玩家像素级抖动会 1:1 传进镜头。现在按 `dt` 插值跟随，手感从"用钉子固定"变成"有阻尼地跟"。
+  - **★ 位移过大必须吸附，不能一律插值**（`kFocusSnapDistance = 512` = 16 tile）：首帧 `_camera_focus` 是 `{0,0,0}`、换层/传送时玩家坐标跳变几十格，无脑插值会从世界原点或上一处**拉一条长拖影飞过来**，看起来像画面故障。阈值内才插值，这是第一版实机截图时识别的（`--hd2d --hidwin --autoshot 250 --autocontinue` 取证）。
+  - **3D 屏震从"帧内消费即清零"改为目标值平滑逼近**：`set_camera_shake` 原先直接覆盖 `_shake_offset`，每帧幅度随机跳变 → 画面像信号干扰；现在写 `_shake_target`，渲染值每帧 lerp 靠近，震动有起有落而非高频闪烁。
+  - **3D FOV 冲击**（`_apply_fov_pulse`）：震幅 → FOV 短暂收拢（每单位偏移 0.0022，上限 6%），打击越重镜头越"怼脸"，震动结束自动归位。**刻意只吃本帧已算好的 shake，不新增 gameplay 输入**——表现层不需要知道"为什么震"，只需要知道"震多大"。
+  - **★ 普攻此前只有顿帧、没有屏震**（`PlayerController::_apply_post_hit`）：命中分级只调 `trigger_freeze`，`CombatFeelSystem` 里成对的 `SHAKE_LIGHT/COMBO/CRIT/MEDIUM` 四个常量**从未被调用**（死数据）。本批按 轻→重→暴击→击杀 四级补上，并让 `BuildTheme::camera.shake_scale` 首次真正生效（火 1.3 / 雷 1.15 / 冰 0.8 / 影 0.7），**Build 之间终于有手感差异**——此前该字段同样是死数据。
+  - **★ 翻滚 FOV 拉伸接上 `BuildTheme::camera.dash_offset`**（`GameScene::_dash_fov_degrees` → `HD2DRenderer::set_camera_dash`）：该字段自 G5.8.2 起**只写不读**，是第三块死数据。翻滚只有 0.16s，故 FOV 冲击也设计成快起快落的短促拉伸（响应 30/s，全程约 0.26s），读起来是一次"视野弹开"而非持续广角。
+  - **dash_offset 原值不能直接当角度用**：4~14 直接映射最大 = 28% 视野变化，会晕。乘 `kDashFovPerTheme = 0.35` 再 clamp 到 6°：火 2.8° / 雷 4.2° / 影 4.9° / 狂 2.1° / 血 1.4° / 冰·辅助·召唤 0°。**映射后流派差异完整保留**，且"稳"流恒为 0 是合理的——它们本来就没有冲刺感。原值从未校准过，此处按安全区间重新标定并注释了依据。
+  - 分级聚合抽成 `_hit_feel_seconds(ctx, shake)`（输出参数约定与 `ElementResolver::resolve` 一致），`_apply_post_hit` 31→28 行。
+  - Boss 运镜数据微调（`resources/camera/boss_camera.json`，`camera_test` 断言同步）：`lerp_speed` 2.0→2.6（运镜更跟手）、`focus_duration` 2.0→1.6（聚焦 Boss 不抢玩家太多时间）、`kill_stun.duration` 0.08→0.10 / `amplitude` 3.0→3.6 / `frequency` 20→22（击杀更响）。
+  - 门禁：Release 0 error · ctest **81/81** · 函数长度扫描违规 **91→91**（未新增；`render_frame` 97→58 行，新增四个 helper 均 ≤40 行）· 3D 实机截图确认渲染正常、相机无飞影。
+  - ⚠️ **三项手感均未经实机主观验收**：平滑跟随/FOV 冲击/翻滚拉伸都能用自动化证明"不崩、不改变逻辑"，但"跟手还是拖沓""怼脸还是过头"只能人玩。建议实机重点感受：普攻连段（三段震幅递增）、不同 Build 的翻滚弹开幅度、Boss 战运镜是否还抢时间。
+
 - G32-G（开发版，未发布）：**AI 路线结项** —— 文档与代码状态对齐，RL/神经网络路线正式封板。
 
   - **新增** `docs/AI_RL_ROUTE_CLOSEOUT.md`：G32 系列结项报告。记录最终胜率对比、6 项有效改进（课程学习 / Double DQN / Observation 8→14 维 / bootstrap 过 mask / parity 闸门 / 手写推理替代 ONNX Runtime）、**3 个被证伪的假设**、关键 bug 与工具链陷阱、以及重开此线的前置条件。

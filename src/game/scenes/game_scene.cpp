@@ -100,6 +100,12 @@ constexpr float kProjectileHitRadius = 16.0f;
 constexpr float kBarrelFuse = 0.6f;
 constexpr float kBarrelRadius = 2.0f * TILE_SIZE;
 
+// G39: 翻滚 FOV 拉伸 — BuildTheme::camera.dash_offset 的原始值 (4~14) 从未被校准过,
+// 直接当角度用最大会到 28% 视野 (晕)。故乘 kDashFovPerTheme 映射进安全区间后 clamp:
+// 火 8→2.8° / 雷 12→4.2° / 影 14→4.9° / 狂 6→2.1° / 血 4→1.4° / 冰辅助召唤 0→0°
+constexpr float kDashFovPerTheme = 0.35f;
+constexpr float kDashFovMaxDeg = 6.0f;
+
 // D2: 弹道预警预览线 — 沿飞行方向绘制, 遇墙截断
 static void _draw_projectile_preview(float sx, float sy, const Projectile& p,
                                      Color wc, float fade, float pulse,
@@ -2800,6 +2806,16 @@ void GameScene::_apply_camera_offsets(float& ox, float& oy) {
     _cam_x += shake_ox; _cam_y += shake_oy;
 }
 
+// G39: 翻滚 FOV 拉伸 (3D 速度感) — 读流派 BuildTheme::camera.dash_offset。
+// 该字段自 G5.8.2 起就是死数据 (只写不读), 本批让它首次生效:
+// 火/雷/影等"快"流拉伸视野, 冰/辅助/召唤等"稳"流为 0 (本来就没有冲刺感)。
+float GameScene::_dash_fov_degrees() const {
+    if (_sim_mode || !player) return 0.0f;
+    if (!player->dodge.active()) return 0.0f;
+    return std::min(_presentation.get_theme().camera.dash_offset * kDashFovPerTheme,
+                    kDashFovMaxDeg);
+}
+
 bool GameScene::_render_hd2d_frame(int sw, int sh, float shake_ox, float shake_oy) {
     // M6-HD2D: 3D 表现层分支 (--hd2d) — 世界层走 3D 渲染器, HUD/overlay 走 2D 桥
     // (方案一: 3D 世界 + 屏幕空间 UI)。逻辑层零改动; 初始化失败自动回退 2D
@@ -2811,6 +2827,7 @@ bool GameScene::_render_hd2d_frame(int sw, int sh, float shake_ox, float shake_o
             _avatars.tick_monsters(monsters);
             _npc_avatars_tick();
             hd2d.set_camera_shake(shake_ox, shake_oy);
+            hd2d.set_camera_dash(_dash_fov_degrees());
             hd2d.render_frame(hd2d_view());
             _render_hd2d_ui_bridge(sw, sh);   // M6-v2a: HUD + 全 overlay 桥
             return true;

@@ -928,6 +928,20 @@ void PlayerController::_vfx_crossbow(const WeaponVFXContext& ctx) {
     }
 }
 
+// 聚合命中结果取最高等级 (KILL > CRITICAL > HEAVY > LIGHT), 单次触发不叠加
+float PlayerController::_hit_feel_seconds(const WeaponVFXContext& ctx, float& shake) const {
+    bool has_kill = false, has_crit = false;
+    for (auto& r : ctx.results) {
+        if (r.is_killing_blow) has_kill = true;
+        if (r.is_crit)         has_crit = true;
+    }
+    if (has_kill)       { shake = CombatFeelSystem::SHAKE_MEDIUM; return CombatFeelSystem::KILL_SLOWMO; }
+    if (has_crit)       { shake = CombatFeelSystem::SHAKE_CRIT;   return CombatFeelSystem::CRITICAL_HIT; }
+    if (ctx.stage == 2) { shake = CombatFeelSystem::SHAKE_COMBO;  return CombatFeelSystem::HEAVY_HIT; }
+    shake = CombatFeelSystem::SHAKE_LIGHT;
+    return CombatFeelSystem::LIGHT_HIT;
+}
+
 void PlayerController::_apply_post_hit(const WeaponVFXContext& ctx) {
     // G10.8-B4: 首次三段重击教学 (stage2 命中时; 跨 run 一次)
     if (ctx.stage == 2) {
@@ -940,18 +954,13 @@ void PlayerController::_apply_post_hit(const WeaponVFXContext& ctx) {
     ctx.gs._boss.replay_mem.melee_hits++;
 
     // G10.4-B Fix1: 命中结果驱动的分级 HitStop + 命中音
-    // 聚合取最高等级 (KILL > CRITICAL > HEAVY > LIGHT), 单次触发不叠加
-    float freeze_t = 0.0f;
-    bool has_kill = false, has_crit = false;
-    for (auto& r : ctx.results) {
-        if (r.is_killing_blow) has_kill = true;
-        if (r.is_crit)         has_crit = true;
-    }
-    if (has_kill)                    freeze_t = CombatFeelSystem::KILL_SLOWMO;
-    else if (has_crit)               freeze_t = CombatFeelSystem::CRITICAL_HIT;
-    else if (ctx.stage == 2)             freeze_t = CombatFeelSystem::HEAVY_HIT;
-    else                             freeze_t = CombatFeelSystem::LIGHT_HIT;
+    float shake = 0.0f;
+    float freeze_t = _hit_feel_seconds(ctx, shake);
     if (freeze_t > 0.0f) ctx.gs._presentation.trigger_freeze(freeze_t);
+    // 屏震按流派主题缩放 (火 1.3 / 冰 0.8 / 影 0.7…), 让 Build 手感有区分度
+    if (shake > 0.0f)
+        ctx.gs._presentation.trigger_shake(
+            shake * ctx.gs._presentation.get_theme().camera.shake_scale);
     if (auto* audio = ctx.gs.get_tree()->get_audio()) audio->play_sfx("hit");
 
     for (auto& r : ctx.results) {

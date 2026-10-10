@@ -46,6 +46,20 @@ struct CombatFeelSystem {
 
     static int crit_multiplier() { return 2; }  // crit = ×2
 
+    // ── G39: 命中分级 → (顿帧秒数, 屏震幅度) ──
+    // 聚合取最高等级 (KILL > CRITICAL > HEAVY > LIGHT), 单次命中只触发一档不叠加。
+    // ★ G39 之前屏震恒为 0 — SHAKE_LIGHT/COMBO/CRIT/MEDIUM 四个常量从未被读取,
+    // 普攻只有顿帧没有震。本函数是这两个值的唯一真源, 故放这里而非 PlayerController:
+    // 手感等级表属于"打击感设计", 与谁调用无关; 放公共头也让它可以被单元测试钉住。
+    static void hit_feel_for(bool has_kill, bool has_crit, int combo_stage,
+                             float& freeze_seconds, float& shake_amount) {
+        if (has_kill)       { shake_amount = SHAKE_MEDIUM; freeze_seconds = KILL_SLOWMO;  return; }
+        if (has_crit)       { shake_amount = SHAKE_CRIT;   freeze_seconds = CRITICAL_HIT; return; }
+        if (combo_stage == 2){ shake_amount = SHAKE_COMBO; freeze_seconds = HEAVY_HIT;   return; }
+        shake_amount = SHAKE_LIGHT;
+        freeze_seconds = LIGHT_HIT;
+    }
+
     // Combo消息
     static const char* combo_message(int count) {
         if (count >= 30) return "PERFECT COMBO!";

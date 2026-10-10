@@ -106,4 +106,6 @@ private:
     void _vfx_spear(const WeaponVFXContext& ctx);
     void _vfx_crossbow(const WeaponVFXContext& ctx);
     void _apply_post_hit(const WeaponVFXContext& ctx);
+    // 聚合命中结果 → 顿帧秒数 + 屏震幅度 (输出参数, 与 ElementResolver 同款约定)
+    float _hit_feel_seconds(const WeaponVFXContext& ctx, float& shake) const;
 };
