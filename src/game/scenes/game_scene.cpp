@@ -2828,6 +2828,8 @@ bool GameScene::_render_hd2d_frame(int sw, int sh, float shake_ox, float shake_o
             _npc_avatars_tick();
             hd2d.set_camera_shake(shake_ox, shake_oy);
             hd2d.set_camera_dash(_dash_fov_degrees());
+            // G40: 流派视野偏移 (BuildTheme::camera.zoom_offset, 此前死数据)
+            hd2d.set_camera_zoom(_presentation.get_theme().camera.zoom_offset);
             hd2d.render_frame(hd2d_view());
             _render_hd2d_ui_bridge(sw, sh);   // M6-v2a: HUD + 全 overlay 桥
             return true;

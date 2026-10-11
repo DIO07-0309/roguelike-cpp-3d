@@ -349,7 +349,9 @@ void HD2DRenderer::_apply_camera_fov(float fov_scale) {
     // 翻滚 FOV 拉伸 (速度感) — 与 FOV 冲击叠加, 都是"扩视野/收视野"的位移量
     _dash_fov_current += (_dash_fov_deg - _dash_fov_current)
                        * std::min(1.0f, GetFrameTime() * kDashResponsiveness);
-    _camera.fovy = 50.0f * fov_scale * (1.0f - _fov_pulse) + _dash_fov_current;
+    // 本帧 FOV = 基准 × (1+流派视野) × Boss缩放 × (1-打击冲击) + 翻滚拉伸
+    _camera.fovy = 50.0f * (1.0f + _zoom_offset) * fov_scale * (1.0f - _fov_pulse)
+                 + _dash_fov_current;
 }
 
 void HD2DRenderer::render_frame(const hd2d::SceneView& view) {

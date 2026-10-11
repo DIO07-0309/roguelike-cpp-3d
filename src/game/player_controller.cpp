@@ -961,7 +961,11 @@ void PlayerController::_apply_post_hit(const WeaponVFXContext& ctx) {
     if (shake > 0.0f)
         ctx.gs._presentation.trigger_shake(
             shake * ctx.gs._presentation.get_theme().camera.shake_scale);
-    if (auto* audio = ctx.gs.get_tree()->get_audio()) audio->play_sfx("hit");
+    // G40: 流派签名命中音 (BuildTheme::audio.hit_sfx, 此前死数据)
+    // 原硬编码 "hit" — 近战系 signature 本就是 melee/slash, 法师系 bolt,
+    // 换成"跟着 Build 走"后每个流派的普攻听感可辨
+    if (auto* audio = ctx.gs.get_tree()->get_audio())
+        audio->play_sfx(ctx.gs._presentation.get_theme().audio.hit_sfx);
 
     for (auto& r : ctx.results) {
         ctx.gs._boss.dmg_done += r.damage;

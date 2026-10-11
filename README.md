@@ -120,6 +120,19 @@ F15 镜像 Boss 读你的行为画像（攻防倾向/走位偏好/技能习惯�
 
 ## CHANGELOG
 
+- G40（开发版，未发布）：**BuildTheme 打击感接线第一批** —— `freeze_bonus` / `zoom_offset` / `hit_sfx` / `skill_sfx` 四个字段首次生效，12 个流派的手感/听感差异落到位。
+
+  - **这四个字段自 G5.8.2 起就是死数据**（`_fill_theme` 里只写，全仓零读取）。G39 已救活 `shake_scale` 与 `dash_offset`，本批救活剩下四个，BuildTheme 的 17 个字段至此从"设计好了但没接"收敛到 11 个已活。
+  - `freeze_bonus` → `PresentationSystemDirector::trigger_freeze()` 内部统一加成。**刻意放在这一个点而不是各调用方**：字段语义是"该流派额外顿帧时长"，与触发原因无关；单点接入也让 14 个 `trigger_freeze` 调用点自动全部生效（时停系 +0.06s / 暗影 +0.04s / 冰系 +0.02s / 其余 0）。
+  - `zoom_offset` → `HD2DRenderer::set_camera_zoom()`，在 `_apply_camera_fov` 里乘进基准 FOV（暗影 −0.05 拉远 / 狂战 +0.03 拉近）。沿用 `set_camera_dash` 的同款"调用方每帧刷新"模式，未给 SceneView 增加字段。
+  - `hit_sfx` → `PlayerController::_apply_post_hit` 的普攻命中音。原硬编码 `"hit"`；四个音效名（melee/hit/slash/bolt）都在 `AudioServer::init` 里程序化注册过，不会静默回默认。
+  - `skill_sfx` → `CombatCoordinator::use_skill` 的技能音。**这是一次有意的语义重定义**：原来按 `_skill_id` 硬编码 slash/bolt 两类（近战技→slash、法师技→bolt），现改为"跟着 Build 走"，`self_heal` 保留治疗专属音不随流派漂移。原分类的意图（近战/法师区别）恰好与流派 signature 一致，但现在是**同一技能在不同流派下听感不同**。
+  - **测试 8→12 个**（`combat_feel_test`）。新增 `FreezeBonusDifferentiatesBuilds` / `ZoomOffsetDifferentiatesBuilds` / `AudioSignaturesAreValidAndDistinct` / `AudioSignaturesDifferAcrossBuilds`。
+  - **★ 变异测试逼出一次测试设计缺陷（值得记住）**：初版 `AudioSignaturesDifferAcrossBuilds` 只断言"存在 2 种以上 signature"，注入"把 2/6 个流派的音效抹平成常量"的变异后**测试依然通过**——断言太弱，等于没锁。已改为**显式真值表**（12 流派逐一钉死 `hit_sfx`/`skill_sfx`），并要求三类 signature 各出现一次。改后同一变异立即被抓。**教训：只验证"有多种取值"的断言锁不住退化，要锁真值表。**
+  - 真值表之外另做了两个变异的反证：抹平 `zoom_offset`（全改 0）→ 被抓；`combat_feel.h` 的 shake 分级（G39）也复验过两次。
+  - 运行时取证：临时探针导出 12 流派全部 `freeze_bonus`/`zoom_offset`/`hit_sfx`/`skill_sfx` 实际取值，与真值表逐项吻合；探针已移除且确认不在 HEAD。
+  - 门禁：Release 0 error · ctest **82/82** · 函数长度扫描违规 **91→91**（未新增）。
+
 - G39（开发版，未发布）：**3D 手感打磨第一批** —— 相机跟随/屏震/FOV 冲击三件套，并把打击感接上流派主题。
 
   - **3D 相机改为平滑跟随**（`HD2DRenderer::_update_camera_focus`，从 97 行的 `render_frame` 抽出）：原先 `_camera_focus` 每帧**直接赋玩家坐标**，玩家像素级抖动会 1:1 传进镜头。现在按 `dt` 插值跟随，手感从"用钉子固定"变成"有阻尼地跟"。

@@ -1,4 +1,7 @@
 #include <gtest/gtest.h>
+#include <cstring>
+#include <set>
+#include <string>
 #include "game/combat_feel.h"
 #include "game/build_score.h"                    // BuildType
 #include "game/director/presentation_system_director.h"  // BuildTheme
@@ -113,8 +116,87 @@ TEST(BuildTheme, EveryBuildHasUsableFeelData) {
     };
     for (BuildType bt : all) {
         BuildTheme t = BuildTheme::from_build_type(bt);
-        EXPECT_GT(t.camera.shake_scale, 0.0f) << "流派 shak_scale 非法: " << t.name;
+        EXPECT_GT(t.camera.shake_scale, 0.0f) << "流派 shake_scale 非法: " << t.name;
         EXPECT_GT(t.camera.zoom_offset, -1.0f) << "流派 zoom_offset 非法: " << t.name;
         EXPECT_GE(t.camera.dash_offset, 0.0f) << "流派 dash_offset 不应为负: " << t.name;
     }
+}
+
+// ------------------------------------------------------------
+// G40: 打击感/听感四个新字段 — 必须有差异且取值合法,
+// 否则说明设计数据没被认真填 (那就调不出流派手感)
+// ------------------------------------------------------------
+
+TEST(BuildTheme, FreezeBonusDifferentiatesBuilds) {
+    // 时停系应当顿帧更长, 大多数流派无加成
+    EXPECT_GT(BuildTheme::from_build_type(BuildType::TIME_MASTER).camera.freeze_bonus,
+              BuildTheme::from_build_type(BuildType::BERSERKER).camera.freeze_bonus);
+    EXPECT_GT(BuildTheme::from_build_type(BuildType::TIME_MASTER).camera.freeze_bonus, 0.0f);
+    EXPECT_FLOAT_EQ(BuildTheme::from_build_type(BuildType::BERSERKER).camera.freeze_bonus, 0.0f);
+}
+
+TEST(BuildTheme, ZoomOffsetDifferentiatesBuilds) {
+    // 暗影拉远视野 / 狂战拉近; 必须不同, 否则 zoom_offset 无意义
+    float shadow = BuildTheme::from_build_type(BuildType::SHADOW_STRIKER).camera.zoom_offset;
+    float berserk = BuildTheme::from_build_type(BuildType::BERSERKER).camera.zoom_offset;
+    EXPECT_LT(shadow, berserk) << "暗影应比狂战视野更远";
+    EXPECT_LT(shadow, 0.0f) << "暗影 zoom_offset 应为负(拉远)";
+    EXPECT_GT(berserk, 0.0f) << "狂战 zoom_offset 应为正(拉近)";
+}
+
+TEST(BuildTheme, AudioSignaturesAreValidAndDistinct) {
+    // hit_sfx / skill_sfx 必须是已注册的音效名 (未注册会静默回默认, 等于没接)
+    const BuildType all[] = {
+        BuildType::ICE_MAGE, BuildType::FIRE_MAGE, BuildType::POISON_MASTER,
+        BuildType::LIGHTNING_MAGE, BuildType::TIME_MASTER, BuildType::BERSERKER,
+        BuildType::BLEED_BLADE, BuildType::SHADOW_STRIKER, BuildType::JUGGERNAUT,
+        BuildType::SUPPORT, BuildType::SUMMON_LORD, BuildType::PROJECTILE,
+    };
+    const char* kValidSfx[] = {"melee", "hit", "slash", "bolt"};
+    for (BuildType bt : all) {
+        const BuildTheme t = BuildTheme::from_build_type(bt);
+        ASSERT_NE(t.audio.hit_sfx, nullptr) << "hit_sfx 为空: " << t.name;
+        ASSERT_NE(t.audio.skill_sfx, nullptr) << "skill_sfx 为空: " << t.name;
+        bool hit_ok = false, skill_ok = false;
+        for (const char* v : kValidSfx) {
+            if (std::strcmp(t.audio.hit_sfx, v) == 0) hit_ok = true;
+            if (std::strcmp(t.audio.skill_sfx, v) == 0) skill_ok = true;
+        }
+        EXPECT_TRUE(hit_ok) << "hit_sfx 未注册: " << t.audio.hit_sfx << " (" << t.name << ")";
+        EXPECT_TRUE(skill_ok) << "skill_sfx 未注册: " << t.audio.skill_sfx << " (" << t.name << ")";
+    }
+}
+
+TEST(BuildTheme, AudioSignaturesDifferAcrossBuilds) {
+    // 真值表: 每个流派的 (hit_sfx, skill_sfx) 逐一钉死。
+    // ★ 早期版本只断言"存在 2 种以上", 变异测试证明其过弱 —
+    //   把 2/6 个流派的 signature 抹平成常量后测试依然通过。
+    //   故改成显式真值表: 要改流派音效必须来这里改, 不可能静默退化。
+    struct Expect { BuildType bt; const char* hit; const char* skill; };
+    const Expect table[] = {
+        {BuildType::ICE_MAGE,        "slash", "bolt"},
+        {BuildType::FIRE_MAGE,       "melee", "bolt"},
+        {BuildType::POISON_MASTER,   "slash", "bolt"},
+        {BuildType::LIGHTNING_MAGE,  "bolt",  "bolt"},
+        {BuildType::TIME_MASTER,     "slash", "bolt"},
+        {BuildType::BERSERKER,       "melee", "melee"},
+        {BuildType::BLEED_BLADE,     "melee", "slash"},
+        {BuildType::SHADOW_STRIKER,  "slash", "bolt"},
+        {BuildType::JUGGERNAUT,      "melee", "melee"},
+        {BuildType::SUPPORT,         "slash", "bolt"},
+        {BuildType::SUMMON_LORD,     "bolt",  "bolt"},
+        {BuildType::PROJECTILE,      "bolt",  "bolt"},
+    };
+    for (const Expect& e : table) {
+        const BuildTheme t = BuildTheme::from_build_type(e.bt);
+        EXPECT_STREQ(t.audio.hit_sfx, e.hit)
+            << "hit_sfx 与真值表不符: " << t.name;
+        EXPECT_STREQ(t.audio.skill_sfx, e.skill)
+            << "skill_sfx 与真值表不符: " << t.name;
+    }
+    // 三类 signature 都必须真的出现, 否则等于有些流派没有自己的听感
+    std::set<std::string> hit_set, skill_set;
+    for (const Expect& e : table) { hit_set.insert(e.hit); skill_set.insert(e.skill); }
+    EXPECT_EQ(hit_set.size(), 3u) << "hit_sfx 只应有三类: melee/slash/bolt";
+    EXPECT_EQ(skill_set.size(), 3u) << "skill_sfx 只应有三类: melee/slash/bolt";
 }

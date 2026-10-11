@@ -9,6 +9,8 @@
 #include "audio_server.h"
 #include "config.h"
 #include "core/logger.h"
+#include "core/service_locator.h"                        // G40: 取 Presentation 读流派主题
+#include "director/presentation_system_director.h"       // G40
 #include "ai/player_behavior/player_behavior_recorder.h" // F15.1
 #include <cmath>
 
@@ -86,12 +88,18 @@ std::string CombatCoordinator::use_skill(int index, Player* player,
     // 技能 SFX (G3.2: _skill_id 替代 dynamic_cast)
     if (audio) {
         const std::string& sid = sk->_skill_id;
-        if (sid == "slash" || sid == "shadow_strike" || sid == "blood_frenzy")
-            audio->play_sfx("slash");
-        else if (sid == "fireball" || sid == "ice_nova" || sid == "chain_lightning")
-            audio->play_sfx("bolt");
-        else if (sid == "self_heal") audio->play_sfx("heal");
-        else if (sid == "summon_spirit") audio->play_sfx("bolt");
+        if (sid == "self_heal") {
+            audio->play_sfx("heal");      // 治疗音保持语义专属, 不随流派漂移
+        } else {
+            // G40: 流派签名技能音 (BuildTheme::audio.skill_sfx, 此前死数据)
+            // 原来按技能 id 硬编码 slash/bolt 两类, 现在改为"跟着 Build 走":
+            // 近战系 signature=melee / 法师系=bolt / 流血系=slash,
+            // 与原分类意图一致, 但同一技能在不同流派下听感不同
+            const char* skill_sfx = "bolt";   // 兜底 = 默认主题的 signature
+            if (auto* pres = ServiceLocator::get<PresentationSystemDirector>())
+                skill_sfx = pres->get_theme().audio.skill_sfx;
+            audio->play_sfx(skill_sfx);
+        }
         if (is_heavy) audio->play_sfx("melee");
     }
 

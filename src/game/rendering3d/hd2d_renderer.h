@@ -102,6 +102,12 @@ public:
         _dash_fov_deg = fov_degrees;
     }
 
+    // G40: 流派视野偏移 (BuildTheme::camera.zoom_offset, 此前死数据)
+    // 小数比例: -0.05=拉远(暗影) / +0.03=拉近(狂战); 每帧刷新
+    void set_camera_zoom(float fractional) {
+        _zoom_offset = fractional;
+    }
+
 private:
     static Vector3 lerp_vec3(Vector3 a, Vector3 b, float t) {
         return {a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t};
@@ -119,6 +125,7 @@ private:
     float _fov_pulse = 0.0f;       // 3D 手感: 震幅驱动的 FOV 冲击量 (0=无, 0.06=最怼脸)
     float _dash_fov_deg = 0.0f;        // 翻滚 FOV 拉伸目标 (角度; 0=无)
     float _dash_fov_current = 0.0f;    // 翻滚 FOV 拉伸当前值 (平滑后)
+    float _zoom_offset = 0.0f;         // G40: 流派视野偏移 (小数比例; 暗影-0.05/狂战+0.03)
     float _camera_yaw = 0.0f;       // 观察朝向 (切片固定 45° 俯角)
 
     // 场景数据缓存
