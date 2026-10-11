@@ -223,19 +223,56 @@ TEST(BuildTheme, VfxScalesAlwaysPositive) {
 }
 
 // ------------------------------------------------------------
-// G40 第二批: 尚未接线的字段 — 明确标记为"仍应是死数据",
-// 防止有人以为它们已经接上 (也防止未来误接)
+// G40-3: explosion_scale / spark_scale 已接线 (VFXServer 装饰特效统一出口)
+// 同样用真值表锁定 —— 只断言"有差异"的弱断言已被变异测试证明锁不住
+// ------------------------------------------------------------
+
+TEST(BuildTheme, ExplosionAndSparkTruthTable) {
+    struct Expect { BuildType bt; float explosion; float spark; };
+    // 值由运行时探针导出 (不是照源码猜的 — 猜错过两次)
+    const Expect table[] = {
+        {BuildType::BERSERKER,      1.05f, 1.00f},  // bt=1 blood
+        {BuildType::FIRE_MAGE,      1.25f, 1.00f},  // bt=2 fire
+        {BuildType::POISON_MASTER,  1.00f, 1.00f},  // bt=3 nature
+        {BuildType::TIME_MASTER,    1.00f, 1.00f},  // bt=4 ice
+        {BuildType::SUPPORT,        0.95f, 1.00f},  // bt=5 nature
+        {BuildType::PROJECTILE,     1.05f, 1.00f},  // bt=6 gold
+        {BuildType::ICE_MAGE,       1.15f, 1.00f},  // bt=7 ice
+        {BuildType::LIGHTNING_MAGE, 1.10f, 1.10f},  // bt=8 lightning
+        {BuildType::BLEED_BLADE,    1.10f, 1.05f},  // bt=9 blood
+        {BuildType::SHADOW_STRIKER, 0.90f, 0.85f},  // bt=10 shadow
+        {BuildType::JUGGERNAUT,     0.90f, 0.90f},  // bt=11 white
+    };
+    for (const Expect& e : table) {
+        const BuildTheme t = BuildTheme::from_build_type(e.bt);
+        EXPECT_NEAR(t.vfx.explosion_scale, e.explosion, 1e-5f)
+            << "explosion_scale 与真值表不符: " << t.name;
+        EXPECT_NEAR(t.vfx.spark_scale, e.spark, 1e-5f)
+            << "spark_scale 与真值表不符: " << t.name;
+    }
+}
+
+TEST(BuildTheme, ExplosionScalesThematicallySane) {
+    // 火系爆炸最大 / 暗影最小 — 主题自洽, 填反了能抓住
+    EXPECT_GT(BuildTheme::from_build_type(BuildType::FIRE_MAGE).vfx.explosion_scale,
+              BuildTheme::from_build_type(BuildType::SHADOW_STRIKER).vfx.explosion_scale);
+    EXPECT_GT(BuildTheme::from_build_type(BuildType::FIRE_MAGE).vfx.explosion_scale, 1.0f);
+    EXPECT_LT(BuildTheme::from_build_type(BuildType::SHADOW_STRIKER).vfx.explosion_scale, 1.0f);
+}
+
+// ------------------------------------------------------------
+// G40-3: 仍未接线的字段 — 显式标记, 防止误以为已接
+// beam_width / ring_speed: 无对应 Effect 字段, 需改绘制路径
+// edge_tint / vignette_strength: 需改 HUD/overlay 绘制路径
 // ------------------------------------------------------------
 
 TEST(BuildTheme, UnwiredVfxFieldsAreStillDocumented) {
-    // explosion_scale / beam_width / ring_speed / spark_scale / edge_tint /
-    // vignette_strength 仍只写不读。本测试不锁它们的值,
-    // 只确认这几个字段确实存在于结构体中(编译期契约), 值留待接线时再加真值表。
+    // 本测试不锁它们的值, 只确认字段存在 (编译期契约)。
+    // 接线时须补: ① 真值表 ② 运行时取证 ③ 电报安全性论证
     const BuildTheme t = BuildTheme::from_build_type(BuildType::SHADOW_STRIKER);
-    (void)t.vfx.explosion_scale; (void)t.vfx.beam_width;
-    (void)t.vfx.ring_speed;      (void)t.vfx.spark_scale;
-    (void)t.screen.edge_tint;    (void)t.screen.vignette_strength;
-    SUCCEED() << "以上字段当前仍是死数据, 接线时需补真值表测试";
+    (void)t.vfx.beam_width;   (void)t.vfx.ring_speed;
+    (void)t.screen.edge_tint; (void)t.screen.vignette_strength;
+    SUCCEED() << "beam_width/ring_speed/edge_tint/vignette_strength 仍是死数据";
 }
 TEST(BuildTheme, AudioSignaturesDifferAcrossBuilds) {
     // 真值表: 每个流派的 (hit_sfx, skill_sfx) 逐一钉死。

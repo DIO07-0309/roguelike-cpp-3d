@@ -120,6 +120,16 @@ F15 镜像 Boss 读你的行为画像（攻防倾向/走位偏好/技能习惯�
 
 ## CHANGELOG
 
+- G40-3（开发版，未发布）：**VFX 尺寸接线 + 找回丢失的 `freeze_bonus`** —— `explosion_scale` / `spark_scale` 首次生效；同时修复第一批一个字段被误回滚的问题。
+
+  - **`explosion_scale` / `spark_scale` 接线**：新增 `Effect::themed` 标记（默认 `false` = 不缩放），仅 5 个纯装饰 primitive 置 `true`：`explosion` 的火花、`spark_burst`、`smoke_puff`、`flash`、`shockwave` 的内层 flash。在 `VFXServer` 的 `_ef()` 统一出口按 `spark_scale`（spark 类）或 `explosion_scale`（其余）缩放半径。
+  - **★ 刻意不动 `ring()`**：它同时服务 Boss 电报（`boss_cone/circle/summon`）和玩家攻击范围环（`ctx.geo.range_px`），缩放假环会让玩家误判危险范围。AI 预警圈、Boss 震波走裸 `push_back`，天然不受影响。
+  - **未接线的剩两个 + 两个 Screen 字段**（`beam_width` / `ring_speed` / `edge_tint` / `vignette_strength`）：前两者无对应 `Effect` 字段，需改绘制路径；后两者需改 HUD/overlay 路径。`UnwiredVfxFieldsAreStillDocumented` 测试显式标记，防止误以为已接。
+  - **★ 本批自查发现 G40 第一批的 `freeze_bonus` 早已丢失**：当时做变异测试后用 `git checkout -- presentation_system_director.cpp` 恢复变异，把**尚未提交**的 `freeze_bonus` 改动一起回滚了。而我此前的"已入 HEAD"校验搜的是 `_fill_theme` 里的**写入行**（`t.camera.freeze_bonus=fb`，G5.8.2 就有），是**假阳性**——搜写入行不能证明已接线。已补回，并把校验改成搜**消费语句**（`freeze_timer = duration + ...`）。**教训与 G40-2 的 `git checkout` 事故同源：未提交的改动 + `git checkout` = 静默丢失；而验证必须搜消费点、不能搜字段名。**
+  - 本批还因 PowerShell 写文件损坏过一次编码（中文注释变乱码致编译失败）和误删过一次 G40-2 CHANGELOG 条目，均已用 git/Edit 工具修复。**教训：批量改文件内容一律用 Edit 工具，不要用 PowerShell `Set-Content` 重写整个 .cpp。**
+  - 真值表 `ExplosionAndSparkTruthTable` 锁 11 个流派的两个字段，值由**运行时探针导出**（照源码猜错过两次：猜的 ICE_MAGE 1.15/1.00 实际是 BERSERKER 的）。变异测试反证：SHADOW 的 `explosion_scale` 0.90→1.00 被抓。
+  - 门禁：Release 0 error · ctest **82/82** · 函数长度扫描违规 **91→91**（未新增）。
+
 - G40-2（开发版，未发布）：**VFX 速率/时长接线 + 特效 tick 重构** —— `particle_speed` / `lifetime_scale` 首次生效，并把逐字复制的特效生命周期循环收敛为单一入口。
 
   - **先做可 Maintenance 重构**：`_tick_arena_tail` 与 `_tick_player_combat` 里各有一份**逐字相同**的 4 行特效 tick（`elapsed += dt` + erase）。两份必须同步改，漏一处就出"竞技场特效永远粘住"。已抽为 `GameScene::_tick_active_effects(dt)` 唯一入口，`fx.elapsed += dt` 全仓仅剩 1 处。

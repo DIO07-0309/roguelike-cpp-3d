@@ -53,6 +53,11 @@ struct Effect {
     float target_x = 0, target_y = 0;
     int level = 1;
     float start_delay = 0;  // G5.8.8: recipe 分镜延迟(秒), 渲染前等待
+    // G40: true = 半径/尺寸可被流派 BuildTheme 缩放 (explosion_scale/spark_scale)
+    // 默认 false = 不缩放。★ 默认必须为 false: AI 预警圈 / Boss 震波半径 /
+    // 弹道轨迹线 / 攻击范围环都是 gameplay 电报, 缩放会让玩家误判危险范围。
+    // 仅"纯装饰"特效才置 true。
+    bool themed = false;
 };
 
 // ── Relic ── (intentionally kept in combat_system.h — field types differ from shared types)

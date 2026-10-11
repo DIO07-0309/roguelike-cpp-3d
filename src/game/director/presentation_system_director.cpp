@@ -57,7 +57,9 @@ void PresentationSystemDirector::trigger_shake(float intensity) {
 }
 
 void PresentationSystemDirector::trigger_freeze(float duration) {
-    freeze_timer = duration;
+    // G40: BuildTheme::camera.freeze_bonus 首次生效 (此前死数据, 只写不读)
+    // 流派顿帧加成: 时间大师 +0.06s / 暗影 +0.04s / 冰系 +0.02s / 其余 0
+    freeze_timer = duration + _theme.camera.freeze_bonus;
 }
 
 void PresentationSystemDirector::trigger_hit_flash(float duration) {

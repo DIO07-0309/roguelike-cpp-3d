@@ -7,9 +7,36 @@
 #include "combat_system.h"             // RNG-002: visual_rng (视觉掷骰独立流)
 #include <cmath>
 #include <algorithm>
+#include <cstring>
 
-static Effect _ef(const char* k, float x, float y, float r, Color c, float d) {
-    return {k, x, y, r, c, d, 0};
+// G40: 装饰特效统一出口 — 按流派 BuildTheme 缩放半径/尺寸。
+// 仅纯装饰特效走这里 (explosion/spark/smoke/flash/shockwave);
+// ring() 系刻意不走: 它同时服务 Boss 电报与攻击范围环, 缩放了会误导玩家。
+static VFXModifier _vfx_theme() {
+    auto* pres = ServiceLocator::get<PresentationSystemDirector>();
+    return pres ? pres->get_theme().vfx : VFXModifier{};
+}
+
+// themed=false 时半径原样返回 (电报/未声明装饰的特效)
+static float _themed_radius(const char* kind, float radius, bool themed) {
+    if (!themed) return radius;
+    VFXModifier m = _vfx_theme();
+    // spark 用小尺寸乘数, 其余用爆炸/光晕半径乘数
+    return radius * (std::strcmp(kind, "spark") == 0 ? m.spark_scale : m.explosion_scale);
+}
+
+static Effect _ef(const char* k, float x, float y, float r, Color c, float d,
+                  bool themed = false) {
+    Effect e;
+    e.kind = k;
+    e.world_x = x;
+    e.world_y = y;
+    e.radius = _themed_radius(k, r, themed);
+    e.color = c;
+    e.duration = d;
+    e.elapsed = 0;
+    e.themed = themed;
+    return e;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -44,20 +71,23 @@ void VFXServer::lightning(float sx, float sy, float tx, float ty, int branches, 
 }
 
 void VFXServer::explosion(float cx, float cy, float radius, Color c, int count, float dur) {
+    // G40: 纯装饰 — 内层火花按 spark_scale 缩放。
+    // 外层 ring() 刻意不缩放: 它的半径常被当作"这波炸多大"的判读依据
     ring(cx, cy, radius * 0.6f, c, 2, dur);
     for (int i = 0; i < count; i++) {
         // RNG-002: 视觉掷骰走 visual_rng 独立流, 不吃 gameplay rng
         float a = (float)(visual_rng() % 360) * DEG2RAD;
         float d = radius * (0.3f + (float)(visual_rng() % 70) / 100.0f);
         effects.push_back(_ef("spark", cx + cosf(a) * d, cy + sinf(a) * d,
-                              2.0f + (float)(visual_rng() % 4), c, dur * 0.8f));
+                              2.0f + (float)(visual_rng() % 4), c, dur * 0.8f, true));
     }
 }
 
 void VFXServer::shockwave(float cx, float cy, float radius, Color c, int layers, float dur) {
+    // 外层 ring 不缩放 (可能被当作冲击判读), 内层 flash 是纯装饰
     ring(cx, cy, radius, c, layers, dur);
     effects.push_back(_ef("flash", cx, cy, radius * 0.4f,
-                          Color{c.r,c.g,c.b,(unsigned char)(c.a / 3)}, dur * 0.5f));
+                          Color{c.r,c.g,c.b,(unsigned char)(c.a / 3)}, dur * 0.5f, true));
 }
 
 void VFXServer::slash_arc(float cx, float cy, Direction dir, float radius, Color c, float dur) {
@@ -68,7 +98,7 @@ void VFXServer::smoke_puff(float cx, float cy, float radius, Color c, int count,
     for (int i = 0; i < count; i++)
         // RNG-002: 视觉掷骰走 visual_rng 独立流, 不吃 gameplay rng
         effects.push_back(_ef("smoke", cx + (float)(visual_rng()%24 - 12), cy + (float)(visual_rng()%24 - 12),
-                              radius * (0.5f + (float)(visual_rng()%50)/100.0f), c, dur));
+                              radius * (0.5f + (float)(visual_rng()%50)/100.0f), c, dur, true));
 }
 
 void VFXServer::spark_burst(float cx, float cy, int count, Color c, float dur) {
@@ -77,7 +107,7 @@ void VFXServer::spark_burst(float cx, float cy, int count, Color c, float dur) {
         float a = (float)(visual_rng() % 360) * DEG2RAD;
         float d = 5.0f + (float)(visual_rng() % 28);
         effects.push_back(_ef("spark", cx + cosf(a) * d, cy + sinf(a) * d,
-                              1.5f + (float)(visual_rng() % 4), c, dur));
+                              1.5f + (float)(visual_rng() % 4), c, dur, true));
     }
 }
 
@@ -87,7 +117,7 @@ void VFXServer::aura_ring(float cx, float cy, float radius, Color c, float dur) 
 }
 
 void VFXServer::flash(float cx, float cy, float radius, Color c, float dur) {
-    effects.push_back(_ef("flash", cx, cy, radius, c, dur));
+    effects.push_back(_ef("flash", cx, cy, radius, c, dur, true));
 }
 
 // ═══════════════════════════════════════════════════════════════
