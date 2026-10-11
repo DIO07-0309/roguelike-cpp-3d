@@ -1303,9 +1303,109 @@ static void _build_range_indicator(const hd2d::SceneView& view, std::vector<HD2D
     out.push_back(item);
 }
 
+// ── M6-v2b: Boss 技能预警子步骤 (G42: 从 86 行拆出, 每技能一个助手) ──
+
+// 朝玩家扇形的公共朝向角。返回 false = 无玩家, 调用方须跳过。
+// ★ 原实现的两个扇形预警都带 `&& view.player` 条件, 抽出来后必须用返回值
+//   保留该语义 — 不能退化成"角度给 0 也照画", 否则玩家丢失时会多出预警。
+static bool _angle_to_player(Vector3 from, const hd2d::SceneView& view,
+                             float& out_angle) {
+    if (!view.player) return false;
+    const auto& pr = view.player->entity.rect;
+    out_angle = atan2f(pr.y + pr.height * 0.5f - from.z,
+                       pr.x + pr.width * 0.5f - from.x);
+    return true;
+}
+
+// 弹幕: 每颗在飞 shot → 轨迹线; 蓄力期 → 风扇形预警
+static void _build_barrage_warning(BossAI* bai, Vector3 bpos,
+                                   const hd2d::SceneView& view,
+                                   std::vector<HD2DDrawItem>& out) {
+    auto* sk = bai->barrage_skill();
+    if (!sk) return;
+    for (const auto& s : sk->shots) {
+        if (s.life <= 0.0f) continue;
+        float speed = sqrtf(s.vx * s.vx + s.vy * s.vy);
+        if (speed < 1.0f) continue;
+        HD2DDrawItem item;
+        item.kind = HD2DDrawItem::Kind::TRAJECTORY_LINE;
+        item.world_pos = {s.x, 10.0f, s.y};
+        item.end_pos = {s.x + s.vx / speed * 60.0f, 10.0f,
+                        s.y + s.vy / speed * 60.0f};
+        item.tint = {255, 120, 60, 130};
+        item.height = 1.0f;
+        out.push_back(item);
+    }
+    // 蓄力期: 风扇形预警 (朝玩家; half=spread/2; 无玩家则跳过)
+    float ang = 0.0f;
+    if (sk->windup_left > 0.0f && _angle_to_player(bpos, view, ang)) {
+        HD2DDrawItem item;
+        item.kind = HD2DDrawItem::Kind::CONE_FAN;
+        item.world_pos = bpos;
+        item.size = 110.0f;
+        item.fan_angle = ang;
+        item.fan_half_deg = sk->spread_deg * 0.5f;
+        item.tint = {255, 160, 40, 150};
+        out.push_back(item);
+    }
+}
+
+// 扇形斩: 蓄力期面预警 (对齐 2D cone_skill().draw windup)
+static void _build_cone_warning(BossAI* bai, Vector3 bpos,
+                                const hd2d::SceneView& view,
+                                std::vector<HD2DDrawItem>& out) {
+    auto* sk = bai->cone_skill();
+    if (!sk || sk->windup_left <= 0.0f) return;
+    float ang = 0.0f;
+    if (!_angle_to_player(bpos, view, ang)) return;
+    HD2DDrawItem item;
+    item.kind = HD2DDrawItem::Kind::CONE_FAN;
+    item.world_pos = bpos;
+    item.size = sk->reach;
+    item.fan_angle = ang;
+    item.fan_half_deg = sk->half_angle;
+    item.tint = {255, 60, 40, 160};
+    out.push_back(item);
+}
+
+// 瞬移: 蓄力期落点圈 (2D BlinkSkill::draw pending 位置)
+static void _build_blink_warning(BossAI* bai,
+                                 std::vector<HD2DDrawItem>& out) {
+    auto* sk = bai->blink_skill();
+    if (!sk || sk->windup_left <= 0.0f) return;
+    HD2DDrawItem item;
+    item.kind = HD2DDrawItem::Kind::WARNING_RING;
+    item.world_pos = {sk->pending_x, 0.1f, sk->pending_y};
+    item.size = 16.0f;
+    item.tint = {180, 120, 255, 170};
+    item.height = 1.0f;             // fade=1
+    item.element = -1.0f;
+    out.push_back(item);
+}
+
+// 旋风: 蓄力白环 / 旋转期紫圈 (半径 = 范围 2.2 tile)
+static void _build_whirlwind_warning(BossAI* bai, Vector3 bpos,
+                                     std::vector<HD2DDrawItem>& out) {
+    auto* sk = bai->whirlwind_skill();
+    if (!sk) return;
+    if (sk->windup_left <= 0.0f && sk->spin_duration <= 0.0f) return;
+    bool spinning = sk->spin_duration > 0.0f;
+    HD2DDrawItem item;
+    item.kind = HD2DDrawItem::Kind::WARNING_RING;
+    item.world_pos = bpos;
+    item.world_pos.y = 0.1f;
+    item.size = spinning ? 80.0f : 70.0f;
+    item.tint = spinning ? Color{170, 90, 255, 170}
+                         : Color{240, 240, 255, 170};
+    item.height = 1.0f;
+    item.element = -1.0f;
+    out.push_back(item);
+}
+
 // ── M6-v2b: Boss 技能预警 — 弹幕弹道/扇形面/瞬移落点/旋风圈 (只读 BossAI) ──
 // 条件对齐 2D 分支 (game_scene._render 2754-2762: is_boss && ai)
-static void _build_boss_skill_warnings(const hd2d::SceneView& view, std::vector<HD2DDrawItem>& out) {
+static void _build_boss_skill_warnings(const hd2d::SceneView& view,
+                                       std::vector<HD2DDrawItem>& out) {
     if (!view.monsters) return;   // G12-4: 无怪物集合的场景跳过
     for (auto& m : *view.monsters) {
         if (!m || !m->is_boss || !m->ai || !m->combat.is_alive) continue;
@@ -1313,82 +1413,10 @@ static void _build_boss_skill_warnings(const hd2d::SceneView& view, std::vector<
         if (!bai) continue;
         const auto& r = m->entity.rect;
         Vector3 bpos = {r.x + r.width * 0.5f, 0, r.y + r.height * 0.5f};
-
-        // 弹幕: 每颗在飞 shot → 轨迹线 (2D BarrageSkill::draw 同源)
-        if (auto* sk = bai->barrage_skill()) {
-            for (const auto& s : sk->shots) {
-                if (s.life <= 0.0f) continue;
-                float speed = sqrtf(s.vx * s.vx + s.vy * s.vy);
-                if (speed < 1.0f) continue;
-                HD2DDrawItem item;
-                item.kind = HD2DDrawItem::Kind::TRAJECTORY_LINE;
-                item.world_pos = {s.x, 10.0f, s.y};
-                item.end_pos = {s.x + s.vx / speed * 60.0f, 10.0f,
-                                s.y + s.vy / speed * 60.0f};
-                item.tint = {255, 120, 60, 130};
-                item.height = 1.0f;
-                out.push_back(item);
-            }
-            // 蓄力期: 风扇形预警 (朝玩家; half=spread/2)
-            if (sk->windup_left > 0.0f && view.player) {
-                const auto& pr = view.player->entity.rect;
-                float ang = atan2f(pr.y + pr.height*0.5f - bpos.z,
-                                   pr.x + pr.width*0.5f - bpos.x);
-                HD2DDrawItem item;
-                item.kind = HD2DDrawItem::Kind::CONE_FAN;
-                item.world_pos = bpos;
-                item.size = 110.0f;
-                item.fan_angle = ang;
-                item.fan_half_deg = sk->spread_deg * 0.5f;
-                item.tint = {255, 160, 40, 150};
-                out.push_back(item);
-            }
-        }
-        // 扇形斩: 蓄力期面预警 (对齐 2D cone_skill().draw windup)
-        if (auto* sk = bai->cone_skill()) {
-            if (sk->windup_left > 0.0f && view.player) {
-                const auto& pr = view.player->entity.rect;
-                float ang = atan2f(pr.y + pr.height*0.5f - bpos.z,
-                                   pr.x + pr.width*0.5f - bpos.x);
-                HD2DDrawItem item;
-                item.kind = HD2DDrawItem::Kind::CONE_FAN;
-                item.world_pos = bpos;
-                item.size = sk->reach;
-                item.fan_angle = ang;
-                item.fan_half_deg = sk->half_angle;
-                item.tint = {255, 60, 40, 160};
-                out.push_back(item);
-            }
-        }
-        // 瞬移: 蓄力期落点圈 (2D BlinkSkill::draw pending 位置)
-        if (auto* sk = bai->blink_skill()) {
-            if (sk->windup_left > 0.0f) {
-                HD2DDrawItem item;
-                item.kind = HD2DDrawItem::Kind::WARNING_RING;
-                item.world_pos = {sk->pending_x, 0.1f, sk->pending_y};
-                item.size = 16.0f;
-                item.tint = {180, 120, 255, 170};
-                item.height = 1.0f;             // fade=1
-                item.element = -1.0f;
-                out.push_back(item);
-            }
-        }
-        // 旋风: 蓄力白环 / 旋转期紫圈 (半径 = 范围 2.2 tile)
-        if (auto* sk = bai->whirlwind_skill()) {
-            if (sk->windup_left > 0.0f || sk->spin_duration > 0.0f) {
-                bool spinning = sk->spin_duration > 0.0f;
-                HD2DDrawItem item;
-                item.kind = HD2DDrawItem::Kind::WARNING_RING;
-                item.world_pos = bpos;
-                item.world_pos.y = 0.1f;
-                item.size = spinning ? 80.0f : 70.0f;
-                item.tint = spinning ? Color{170, 90, 255, 170}
-                                     : Color{240, 240, 255, 170};
-                item.height = 1.0f;
-                item.element = -1.0f;
-                out.push_back(item);
-            }
-        }
+        _build_barrage_warning(bai, bpos, view, out);
+        _build_cone_warning(bai, bpos, view, out);
+        _build_blink_warning(bai, out);
+        _build_whirlwind_warning(bai, bpos, out);
     }
 }
 
