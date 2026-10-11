@@ -354,22 +354,12 @@ void HD2DRenderer::_apply_camera_fov(float fov_scale) {
                  + _dash_fov_current;
 }
 
-void HD2DRenderer::render_frame(const hd2d::SceneView& view) {
-    if (!_ready) return;
- 
-    // 1. 只读提取绘制列表 (scene_builder 无 gameplay 副作用)
-    _draw_items.clear();
-    hd2d::build_scene(view, _draw_items, _part_color.ready());
-    
-    // 1.5. 天气系统更新
-    auto& weather = Game::WeatherSystem::inst();
-    
-    // DEBUG: F8 切换天气类型测试（覆盖 biome 映射）— 仅调试构建; 发布版恒走 biome 映射
-    bool biome_override_active = false;
+// G42: 天气调试切换 (F8) + biome 映射 — 从 render_frame 拆出。
+// 返回 true = 调试覆盖生效, 本帧不要再用 biome 映射盖掉
+static bool _debug_cycle_weather(Game::WeatherSystem& weather) {
 #ifdef _DEBUG
     static Game::WeatherType debug_weather = Game::WeatherType::NONE;
     static bool debug_mode = false;
-    
     if (IsKeyPressed(KEY_F8)) {
         Game::WeatherType next_type;
         switch (debug_weather) {
@@ -386,15 +376,26 @@ void HD2DRenderer::render_frame(const hd2d::SceneView& view) {
         weather.set_weather(debug_weather);
         LOG_INFO("DEBUG: 天气切换为 %d", (int)debug_weather);
     }
-    biome_override_active = debug_mode;
+    return debug_mode;
+#else
+    (void)weather;   // 发布版无调试键, 恒走 biome 映射
+    return false;
 #endif
-    
-    if (view.game_map && !biome_override_active) {
-        // 正常模式：使用 biome 映射
+}
+
+void HD2DRenderer::render_frame(const hd2d::SceneView& view) {
+    if (!_ready) return;
+
+    // 1. 只读提取绘制列表 (scene_builder 无 gameplay 副作用)
+    _draw_items.clear();
+    hd2d::build_scene(view, _draw_items, _part_color.ready());
+
+    // 1.5. 天气系统更新 (F8 调试覆盖优先, 否则按 biome 映射)
+    auto& weather = Game::WeatherSystem::inst();
+    if (!_debug_cycle_weather(weather) && view.game_map)
         weather.set_weather_from_biome(view.game_map->biome_id());
-    }
     weather.update(GetFrameTime());
-    
+
     _update_camera_focus(view);
 
     // M6-v2e/v2f: 光空间深度 pass (墙 + billboard 剪影; 失败时主 pass 走 blob 回退)
@@ -1037,38 +1038,74 @@ void HD2DRenderer::_draw_stair_step(const HD2DDrawItem& item) {
     DrawCube(pos, item.size, 2.5f, depth, face);
 }
 
+// ── M6-v2h 门面子步骤 (G42: 从 65 行的 _draw_door_panel 拆出) ──
+
+// 贴图门板 — 按 door_axis 决定展开方向与法线 (billboard 改 wall-aligned)
+static void _draw_door_textured_quad(const HD2DDrawItem& item, Vector3 pos,
+                                     const Camera3D& cam, float half, float h) {
+    rlSetTexture(item.texture.id);
+    rlBegin(RL_QUADS);
+    rlColor4ub(item.tint.r, item.tint.g, item.tint.b, item.tint.a);
+    if (item.door_axis == 0) {
+        // 贴东西走向墙: 面板沿 X 展开, 法线 ±Z (面朝相机侧)
+        float facing = (cam.position.z >= pos.z) ? 1.0f : -1.0f;
+        rlNormal3f(0, 0, facing);
+        rlTexCoord2f(0, 1); rlVertex3f(pos.x - half, 0, pos.z);
+        rlTexCoord2f(1, 1); rlVertex3f(pos.x + half, 0, pos.z);
+        rlTexCoord2f(1, 0); rlVertex3f(pos.x + half, h, pos.z);
+        rlTexCoord2f(0, 0); rlVertex3f(pos.x - half, h, pos.z);
+    } else {
+        // 贴南北走向墙: 面板沿 Z 展开, 法线 ±X
+        float facing = (cam.position.x >= pos.x) ? 1.0f : -1.0f;
+        rlNormal3f(facing, 0, 0);
+        rlTexCoord2f(0, 1); rlVertex3f(pos.x, 0, pos.z - half);
+        rlTexCoord2f(1, 1); rlVertex3f(pos.x, 0, pos.z + half);
+        rlTexCoord2f(1, 0); rlVertex3f(pos.x, h, pos.z + half);
+        rlTexCoord2f(0, 0); rlVertex3f(pos.x, h, pos.z - half);
+    }
+    rlEnd();
+    rlSetTexture(0);
+}
+
+// 门楣横梁 (提高辨识; 按 axis 取向)
+static void _draw_door_lintel(Vector3 pos, float h, float size, int axis) {
+    DrawCube({pos.x, h + 1.0f, pos.z},
+             axis == 0 ? size + 2.0f : 1.5f, 2.0f,
+             axis == 0 ? 1.5f : size + 2.0f,
+             Color{70, 45, 25, 255});
+}
+
+// LOCKED: 红色半罩 + 小锁徽记 (2D DoorRenderer overlay 语义; 按 axis 取向)
+static void _draw_door_locked(Vector3 pos, float size, int axis, float door_h) {
+    float w = axis == 0 ? size * 0.92f : 2.5f;
+    float d = axis == 0 ? 2.5f : size * 0.92f;
+    DrawCube({pos.x, door_h * 0.5f, pos.z}, w, door_h * 0.98f, d,
+             Color{180, 40, 40, 90});
+}
+
+// SEALED: 紫脉冲十字 (贴门面; 按 axis 取向)
+static void _draw_door_sealed(Vector3 pos, float size, int axis, float door_h) {
+    float pulse = 0.7f + 0.3f * sinf((float)GetTime() * 3.0f);
+    Color seal = {(unsigned char)(160 * pulse), 50,
+                  (unsigned char)(220 * pulse), 200};
+    Vector3 c = {pos.x, door_h * 0.55f, pos.z};
+    if (axis == 0) {
+        DrawCube(c, 2.0f, 12.0f, 2.0f, seal);
+        DrawCube(c, 12.0f, 2.0f, 2.0f, seal);
+    } else {
+        DrawCube(c, 2.0f, 12.0f, 2.0f, seal);
+        DrawCube(c, 2.0f, 2.0f, 12.0f, seal);
+    }
+}
+
 // ── M6-v2h: 门 — 竖立贴图面板 (四态纹理; 锁=红罩 / 封=紫脉冲十字) ──
 // M6-n: billboard → wall-aligned (door_axis 探测两侧墙走向; 面板贴墙不飘)
 void HD2DRenderer::_draw_door_panel(const HD2DDrawItem& item) {
     Vector3 pos = item.world_pos;
     float h = item.height;
     float half = item.size * 0.5f;
-    if (item.texture.id > 0 && item.door_axis == 0) {
-        // 贴东西走向墙: 面板沿 X 展开, 法线 ±Z (面朝相机侧)
-        float facing = (_camera.position.z >= pos.z) ? 1.0f : -1.0f;
-        rlSetTexture(item.texture.id);
-        rlBegin(RL_QUADS);
-        rlColor4ub(item.tint.r, item.tint.g, item.tint.b, item.tint.a);
-        rlNormal3f(0, 0, facing);
-        rlTexCoord2f(0, 1); rlVertex3f(pos.x - half, 0, pos.z);
-        rlTexCoord2f(1, 1); rlVertex3f(pos.x + half, 0, pos.z);
-        rlTexCoord2f(1, 0); rlVertex3f(pos.x + half, h, pos.z);
-        rlTexCoord2f(0, 0); rlVertex3f(pos.x - half, h, pos.z);
-        rlEnd();
-        rlSetTexture(0);
-    } else if (item.texture.id > 0) {
-        // 贴南北走向墙: 面板沿 Z 展开, 法线 ±X
-        float facing = (_camera.position.x >= pos.x) ? 1.0f : -1.0f;
-        rlSetTexture(item.texture.id);
-        rlBegin(RL_QUADS);
-        rlColor4ub(item.tint.r, item.tint.g, item.tint.b, item.tint.a);
-        rlNormal3f(facing, 0, 0);
-        rlTexCoord2f(0, 1); rlVertex3f(pos.x, 0, pos.z - half);
-        rlTexCoord2f(1, 1); rlVertex3f(pos.x, 0, pos.z + half);
-        rlTexCoord2f(1, 0); rlVertex3f(pos.x, h, pos.z + half);
-        rlTexCoord2f(0, 0); rlVertex3f(pos.x, h, pos.z - half);
-        rlEnd();
-        rlSetTexture(0);
+    if (item.texture.id > 0) {
+        _draw_door_textured_quad(item, pos, _camera, half, h);
     } else {
         // 无贴图回退: 棕色立板 (2D DOOR 色 130,90,50), 按 axis 取向
         float depth = 6.0f, width = item.size * 0.9f;
@@ -1076,33 +1113,13 @@ void HD2DRenderer::_draw_door_panel(const HD2DDrawItem& item) {
         DrawCube({pos.x, item.height * 0.5f, pos.z}, width,
                  item.height, depth, Color{130, 90, 50, 255});
     }
-    // 门楣横梁 (提高辨识; 按 axis 取向)
-    DrawCube({pos.x, h + 1.0f, pos.z},
-             item.door_axis == 0 ? item.size + 2.0f : 1.5f, 2.0f,
-             item.door_axis == 0 ? 1.5f : item.size + 2.0f,
-             Color{70, 45, 25, 255});
-    // LOCKED: 红色半罩 + 小锁徽记 (2D DoorRenderer overlay 语义; 按 axis 取向)
+    _draw_door_lintel(pos, h, item.size, item.door_axis);
     if ((DoorState)item.door_state == DoorState::LOCKED) {
-        float w = item.door_axis == 0 ? item.size * 0.92f : 2.5f;
-        float d = item.door_axis == 0 ? 2.5f : item.size * 0.92f;
-        DrawCube({pos.x, item.height * 0.5f, pos.z}, w,
-                 item.height * 0.98f, d, Color{180, 40, 40, 90});
+        _draw_door_locked(pos, item.size, item.door_axis, item.height);
         _draw_lock_badge(pos, item.height);
     }
-    // SEALED: 紫脉冲十字 (贴门面; 按 axis 取向)
-    if ((DoorState)item.door_state == DoorState::SEALED) {
-        float pulse = 0.7f + 0.3f * sinf((float)GetTime() * 3.0f);
-        Color seal = {(unsigned char)(160 * pulse), 50,
-                      (unsigned char)(220 * pulse), 200};
-        Vector3 c = {pos.x, item.height * 0.55f, pos.z};
-        if (item.door_axis == 0) {
-            DrawCube(c, 2.0f, 12.0f, 2.0f, seal);
-            DrawCube(c, 12.0f, 2.0f, 2.0f, seal);
-        } else {
-            DrawCube(c, 2.0f, 12.0f, 2.0f, seal);
-            DrawCube(c, 2.0f, 2.0f, 12.0f, seal);
-        }
-    }
+    if ((DoorState)item.door_state == DoorState::SEALED)
+        _draw_door_sealed(pos, item.size, item.door_axis, item.height);
 }
 
 // ── M6-v2h: 锁徽记 — 门板中央小锁 (2D _draw_lock_icon 3D 对应) ──
