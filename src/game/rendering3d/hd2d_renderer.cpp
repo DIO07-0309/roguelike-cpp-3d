@@ -1,4 +1,4 @@
-// M6-HD2D: HD-2D 渲染器实现 — 垂直切片第一步 (骨架 + 相机 + 地形/billboard)
+﻿// M6-HD2D: HD-2D 渲染器实现 — 垂直切片第一步 (骨架 + 相机 + 地形/billboard)
 // 切片范围: 透视相机 45° 俯视 / 墙体盒子伪光照 / 实体 billboard / 基础后处理
 #include "hd2d_renderer.h"
 #include "hd2d_part_geometry.h"
@@ -410,43 +410,59 @@ void HD2DRenderer::render_frame(const hd2d::SceneView& view) {
         }
     }
     _draw_scene();
+
     _draw_weather_particles(weather);  // 渲染天气粒子
     _apply_post_processing(view);
 }
 
 // ── 场景绘制: 分 kind 绘制 (地形 → 实体 → 特效; 相机已在 render_frame 定位) ──
+// G42: 原实现按 kind 分 13 趟遍历 _draw_items (274 项 × 13 = 3562 次迭代/帧),
+// 而每项只命中一个 kind — 99% 的判断是浪费。改为单趟按 kind 分发到各图层桶,
+// 再按原有绘制顺序逐桶画, 保序不变 (绘制顺序即深度/混合顺序, 不能乱)。
 void HD2DRenderer::_draw_scene() {
     // M6-i.2: {16,13,11}→{40,35,30} — 黑边暖灰化，与监狱地板 [122,112,88] 过渡更自然
     BeginMode3D(_camera);
     ClearBackground({40, 35, 30, 255});
 
     _draw_terrain_pass();                    // M6-v2c: 雾 shader 包裹地形批
-    for (const auto& item : _draw_items)
-        if (item.kind == HD2DDrawItem::Kind::FLOOR_DECAL) _draw_floor_decal(item);
-    // N5: 楼梯立方 — 地形/贴花之后, 实体之前 (3D 立体块, 深度测试正常)
-    for (const auto& item : _draw_items)
-        if (item.kind == HD2DDrawItem::Kind::STAIR_STEP) _draw_stair_step(item);
-    // M6-v2b: 贴地层 (预警圈/射程环/扇形/危险区) — 地形之上, 实体之下
+
+    // 单趟分类: 只分本帧要画的 kind (墙/地板由 terrain_pass 负责)
+    _decal_buf.clear(); _stair_buf.clear(); _telegraph_buf.clear();
+    _link_buf.clear(); _portal_buf.clear(); _door_buf.clear();
+    _icon_buf.clear(); _projectile_buf.clear(); _billboard_buf.clear();
     for (const auto& item : _draw_items) {
-        if (item.kind == HD2DDrawItem::Kind::WARNING_RING) _draw_warning_ring(item);
-        else if (item.kind == HD2DDrawItem::Kind::TRAJECTORY_LINE)
-            _draw_trajectory_line(item);
-        else if (item.kind == HD2DDrawItem::Kind::CONE_FAN)
-            _draw_cone_fan(item);
+        switch (item.kind) {
+            case HD2DDrawItem::Kind::FLOOR_DECAL:     _decal_buf.push_back(&item); break;
+            case HD2DDrawItem::Kind::STAIR_STEP:      _stair_buf.push_back(&item); break;
+            case HD2DDrawItem::Kind::WARNING_RING:
+            case HD2DDrawItem::Kind::TRAJECTORY_LINE:
+            case HD2DDrawItem::Kind::CONE_FAN:        _telegraph_buf.push_back(&item); break;
+            case HD2DDrawItem::Kind::ENTITY_LINK:     _link_buf.push_back(&item); break;
+            case HD2DDrawItem::Kind::PORTAL_RING:     _portal_buf.push_back(&item); break;
+            case HD2DDrawItem::Kind::DOOR_PANEL:      _door_buf.push_back(&item); break;
+            case HD2DDrawItem::Kind::ROOM_ICON:       _icon_buf.push_back(&item); break;
+            case HD2DDrawItem::Kind::PROJECTILE_BODY: _projectile_buf.push_back(&item); break;
+            case HD2DDrawItem::Kind::ENTITY_BILLBOARD:
+                if (!hd2d::isGhostPart(item)) _billboard_buf.push_back(&item);
+                break;
+            default: break;   // 墙/地板/特效已由各自 pass 处理
+        }
     }
-    for (const auto& item : _draw_items)
-        if (item.kind == HD2DDrawItem::Kind::ENTITY_LINK) _draw_entity_link(item);
-    for (const auto& item : _draw_items)
-        if (item.kind == HD2DDrawItem::Kind::PORTAL_RING) _draw_portal_ring(item);
-    for (const auto& item : _draw_items)
-        if (item.kind == HD2DDrawItem::Kind::ENTITY_BILLBOARD && !hd2d::isGhostPart(item))
-            _draw_billboard(item);
-    for (const auto& item : _draw_items)
-        if (item.kind == HD2DDrawItem::Kind::DOOR_PANEL) _draw_door_panel(item);
-    for (const auto& item : _draw_items)
-        if (item.kind == HD2DDrawItem::Kind::ROOM_ICON) _draw_room_icon(item);
-    for (const auto& item : _draw_items)
-        if (item.kind == HD2DDrawItem::Kind::PROJECTILE_BODY) _draw_projectile_body(item);
+
+    // 按原绘制顺序逐桶画 (顺序 = 深度/混合顺序, 与原逐趟等价)
+    for (const auto* it : _decal_buf)      _draw_floor_decal(*it);
+    for (const auto* it : _stair_buf)      _draw_stair_step(*it);
+    for (const auto* it : _telegraph_buf) {
+        if (it->kind == HD2DDrawItem::Kind::WARNING_RING) _draw_warning_ring(*it);
+        else if (it->kind == HD2DDrawItem::Kind::TRAJECTORY_LINE) _draw_trajectory_line(*it);
+        else _draw_cone_fan(*it);
+    }
+    for (const auto* it : _link_buf)       _draw_entity_link(*it);
+    for (const auto* it : _portal_buf)     _draw_portal_ring(*it);
+    for (const auto* it : _billboard_buf)  _draw_billboard(*it);
+    for (const auto* it : _door_buf)       _draw_door_panel(*it);
+    for (const auto* it : _icon_buf)       _draw_room_icon(*it);
+    for (const auto* it : _projectile_buf) _draw_projectile_body(*it);
     for (const auto* ghost : hd2d::orderedGhostParts(_draw_items, _camera))
         _draw_billboard(*ghost);
     // G5.5: FX 特效层 (粒子单批 + 逐项视锥体裁剪)

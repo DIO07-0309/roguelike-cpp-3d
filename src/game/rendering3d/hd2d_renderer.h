@@ -131,6 +131,20 @@ private:
     // 场景数据缓存
     std::vector<HD2DDrawItem> _draw_items;
 
+    // G42: _draw_scene 单趟分类桶 — 原实现按 kind 分 13 趟遍历 _draw_items
+    // (实测 274 项 × 13 = 3562 次迭代/帧, 而每项只命中一个 kind)。
+    // 改为单趟分类后按原顺序逐桶画, 保序不变; 指针桶避免拷贝绘制项。
+    // 每帧 clear + 复用容量, 不产生堆分配抖动。
+    std::vector<const HD2DDrawItem*> _decal_buf;
+    std::vector<const HD2DDrawItem*> _stair_buf;
+    std::vector<const HD2DDrawItem*> _telegraph_buf;
+    std::vector<const HD2DDrawItem*> _link_buf;
+    std::vector<const HD2DDrawItem*> _portal_buf;
+    std::vector<const HD2DDrawItem*> _door_buf;
+    std::vector<const HD2DDrawItem*> _icon_buf;
+    std::vector<const HD2DDrawItem*> _projectile_buf;
+    std::vector<const HD2DDrawItem*> _billboard_buf;
+
     // 切片内简单光照 (无 shader 依赖版: 环境光 + 方向光)
     Vector3 _light_dir = {0.35f, -1.0f, 0.25f};
 
