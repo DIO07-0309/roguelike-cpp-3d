@@ -415,21 +415,15 @@ void HD2DRenderer::render_frame(const hd2d::SceneView& view) {
     _apply_post_processing(view);
 }
 
-// ── 场景绘制: 分 kind 绘制 (地形 → 实体 → 特效; 相机已在 render_frame 定位) ──
-// G42: 原实现按 kind 分 13 趟遍历 _draw_items (274 项 × 13 = 3562 次迭代/帧),
-// 而每项只命中一个 kind — 99% 的判断是浪费。改为单趟按 kind 分发到各图层桶,
-// 再按原有绘制顺序逐桶画, 保序不变 (绘制顺序即深度/混合顺序, 不能乱)。
-void HD2DRenderer::_draw_scene() {
-    // M6-i.2: {16,13,11}→{40,35,30} — 黑边暖灰化，与监狱地板 [122,112,88] 过渡更自然
-    BeginMode3D(_camera);
-    ClearBackground({40, 35, 30, 255});
-
-    _draw_terrain_pass();                    // M6-v2c: 雾 shader 包裹地形批
-
-    // 单趟分类: 只分本帧要画的 kind (墙/地板由 terrain_pass 负责)
+// G42: 单趟分类 — 见 _draw_scene 注释。
+// 必须先于任何 pass 调用: terrain_pass 与 fx_pass 都直接吃这些桶。
+void HD2DRenderer::_classify_draw_items() {
     _decal_buf.clear(); _stair_buf.clear(); _telegraph_buf.clear();
     _link_buf.clear(); _portal_buf.clear(); _door_buf.clear();
     _icon_buf.clear(); _projectile_buf.clear(); _billboard_buf.clear();
+    _fx_quad_buf.clear(); _fx_ring_buf.clear(); _fx_beam_buf.clear();
+    _fx_explosion_buf.clear(); _lava_floor_buf.clear(); _floor_buf.clear();
+    _wall_buf.clear();
     for (const auto& item : _draw_items) {
         switch (item.kind) {
             case HD2DDrawItem::Kind::FLOOR_DECAL:     _decal_buf.push_back(&item); break;
@@ -445,9 +439,31 @@ void HD2DRenderer::_draw_scene() {
             case HD2DDrawItem::Kind::ENTITY_BILLBOARD:
                 if (!hd2d::isGhostPart(item)) _billboard_buf.push_back(&item);
                 break;
-            default: break;   // 墙/地板/特效已由各自 pass 处理
+            case HD2DDrawItem::Kind::FX_QUAD:         _fx_quad_buf.push_back(&item); break;
+            case HD2DDrawItem::Kind::FX_RING_3D:      _fx_ring_buf.push_back(&item); break;
+            case HD2DDrawItem::Kind::FX_BEAM_3D:      _fx_beam_buf.push_back(&item); break;
+            case HD2DDrawItem::Kind::FX_EXPLOSION_3D: _fx_explosion_buf.push_back(&item); break;
+            case HD2DDrawItem::Kind::FLOOR_TILE:
+                (item.is_lava ? _lava_floor_buf : _floor_buf).push_back(&item);
+                break;
+            case HD2DDrawItem::Kind::WALL_BLOCK:      _wall_buf.push_back(&item); break;
+            default: break;   // FX 粒子批等由各自 pass 处理
         }
     }
+}
+
+// ── 场景绘制: 分 kind 绘制 (地形 → 实体 → 特效; 相机已在 render_frame 定位) ──
+// G42: 原实现按 kind 分 13 趟遍历 _draw_items (274 项 × 13 = 3562 次迭代/帧),
+// 而每项只命中一个 kind — 99% 的判断是浪费。改为单趟按 kind 分发到各图层桶,
+// 再按原有绘制顺序逐桶画, 保序不变 (绘制顺序即深度/混合顺序, 不能乱)。
+void HD2DRenderer::_draw_scene() {
+    // M6-i.2: {16,13,11}→{40,35,30} — 黑边暖灰化，与监狱地板 [122,112,88] 过渡更自然
+    BeginMode3D(_camera);
+    ClearBackground({40, 35, 30, 255});
+
+    // G42: 单趟分类必须先于任何 pass (terrain_pass / fx_pass 都吃桶)
+    _classify_draw_items();
+    _draw_terrain_pass();                   // M6-v2c: 雾 shader 包裹地形批
 
     // 按原绘制顺序逐桶画 (顺序 = 深度/混合顺序, 与原逐趟等价)
     for (const auto* it : _decal_buf)      _draw_floor_decal(*it);
@@ -533,14 +549,11 @@ void HD2DRenderer::_draw_ambient_batch() {
 // ── M6-v2c: 地形批 — 两遍分区 (lava 一遍 / 其余一遍), 每帧仅 2 次 shader 切换 ──
 // 逐 tile 交替切换会触发 rlgl batch flush (火山层可达数百次/帧), 故按
 // shader 分组连续绘制; fog 失败回退默认管线 (FOV 压暗 tint 语义保留)
+// G42: 改吃 _draw_scene 已分好的桶 (原 3 趟全量遍历 → 0 趟)
 void HD2DRenderer::_draw_terrain_pass() {
     if (!_fog_ok && !_lava_ok) {                 // 双回退: 纯默认管线
-        for (const auto& item : _draw_items) {
-            if (item.kind == HD2DDrawItem::Kind::FLOOR_TILE)
-                _draw_floor_tile(item);
-            else if (item.kind == HD2DDrawItem::Kind::WALL_BLOCK)
-                _draw_wall_block(item);
-        }
+        for (const auto* item : _floor_buf) _draw_floor_tile(*item);
+        for (const auto* item : _wall_buf)  _draw_wall_block(*item);
         return;
     }
     // Pass 1: 岩浆 tile 单批 (共享 uTime)
@@ -549,9 +562,7 @@ void HD2DRenderer::_draw_terrain_pass() {
         BeginShaderMode(_lava_shader);
         SetShaderValue(_lava_shader, _lava_time_loc, &now,
                        SHADER_UNIFORM_FLOAT);
-        for (const auto& item : _draw_items)
-            if (item.kind == HD2DDrawItem::Kind::FLOOR_TILE && item.is_lava)
-                _draw_floor_tile(item);
+        for (const auto* item : _lava_floor_buf) _draw_floor_tile(*item);
         EndShaderMode();
     }
     // Pass 2: 其余地形 (雾管线或默认)
@@ -559,13 +570,8 @@ void HD2DRenderer::_draw_terrain_pass() {
         _upload_fog_uniforms();
         BeginShaderMode(_fog_shader);
     }
-    for (const auto& item : _draw_items) {
-        bool is_floor = item.kind == HD2DDrawItem::Kind::FLOOR_TILE;
-        bool is_wall = item.kind == HD2DDrawItem::Kind::WALL_BLOCK;
-        if ((!is_floor && !is_wall) || (is_floor && item.is_lava && _lava_ok))
-            continue;                            // lava 已画 / 非地形跳过
-        is_floor ? _draw_floor_tile(item) : _draw_wall_block(item);
-    }
+    for (const auto* item : _floor_buf) _draw_floor_tile(*item);
+    for (const auto* item : _wall_buf)  _draw_wall_block(*item);
     if (_fog_ok) EndShaderMode();
 }
 
@@ -869,19 +875,15 @@ void HD2DRenderer::_draw_fx_particles_batch() {
 }
 // ── G5.5: FX 特效 pass — 粒子单批提交, 其余类型逐项视锥体裁剪 ──
 void HD2DRenderer::_draw_fx_pass() {
-    for (const auto& item : _draw_items)
-        if (item.kind == HD2DDrawItem::Kind::FX_QUAD && _fx_in_view(item, _camera_focus))
-            _draw_fx_quad(item);
+    for (const auto* item : _fx_quad_buf)
+        if (_fx_in_view(*item, _camera_focus)) _draw_fx_quad(*item);
     _draw_fx_particles_batch();
-    for (const auto& item : _draw_items)
-        if (item.kind == HD2DDrawItem::Kind::FX_RING_3D && _fx_in_view(item, _camera_focus))
-            _draw_fx_ring_3d(item);
-    for (const auto& item : _draw_items)
-        if (item.kind == HD2DDrawItem::Kind::FX_BEAM_3D && _fx_beam_in_view(item, _camera_focus))
-            _draw_fx_beam_3d(item);
-    for (const auto& item : _draw_items)
-        if (item.kind == HD2DDrawItem::Kind::FX_EXPLOSION_3D && _fx_in_view(item, _camera_focus))
-            _draw_fx_explosion_3d(item);
+    for (const auto* item : _fx_ring_buf)
+        if (_fx_in_view(*item, _camera_focus)) _draw_fx_ring_3d(*item);
+    for (const auto* item : _fx_beam_buf)
+        if (_fx_beam_in_view(*item, _camera_focus)) _draw_fx_beam_3d(*item);
+    for (const auto* item : _fx_explosion_buf)
+        if (_fx_in_view(*item, _camera_focus)) _draw_fx_explosion_3d(*item);
 }
 
 void HD2DRenderer::_draw_fx_ring_3d(const HD2DDrawItem& item) {

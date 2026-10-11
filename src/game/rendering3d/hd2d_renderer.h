@@ -144,6 +144,15 @@ private:
     std::vector<const HD2DDrawItem*> _icon_buf;
     std::vector<const HD2DDrawItem*> _projectile_buf;
     std::vector<const HD2DDrawItem*> _billboard_buf;
+    // G42: 特效/地形桶 — 原 _draw_fx_pass 4 趟 + _draw_terrain_pass 3 趟,
+    // 与 _draw_scene 同样的浪费。一并收进单趟分类。
+    std::vector<const HD2DDrawItem*> _fx_quad_buf;
+    std::vector<const HD2DDrawItem*> _fx_ring_buf;
+    std::vector<const HD2DDrawItem*> _fx_beam_buf;
+    std::vector<const HD2DDrawItem*> _fx_explosion_buf;
+    std::vector<const HD2DDrawItem*> _lava_floor_buf;
+    std::vector<const HD2DDrawItem*> _floor_buf;
+    std::vector<const HD2DDrawItem*> _wall_buf;
 
     // 切片内简单光照 (无 shader 依赖版: 环境光 + 方向光)
     Vector3 _light_dir = {0.35f, -1.0f, 0.25f};
@@ -191,6 +200,7 @@ private:
     void _update_camera_focus(const hd2d::SceneView& view);  // 聚焦/屏震/Boss 运镜
     void _position_camera();                       // 由焦点推出相机位姿
     void _apply_camera_fov(float fov_scale);  // 打击冲击 + 翻滚拉伸 → 本帧 FOV
+    void _classify_draw_items();   // G42: 单趟分发 _draw_items 到各图层桶
     void _load_terrain_shaders();   // v2c: 雾/岩浆 shader 懒加载+缓存 loc
     void _load_outline_shader();    // A1.1: billboard 真轮廓 shader
     void _update_px_per_world();    // A1.1: 每帧世界单位→屏幕像素比例换算
