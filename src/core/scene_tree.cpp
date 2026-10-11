@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstring>
 #include <cmath>
+#include <string>
 
 // M6-i.1: --hidwin 窗口移出屏幕 (后台取证; 定义于此以便测试目标也能链接)
 bool g_window_hidden = false;
@@ -187,14 +188,18 @@ void SceneTree::run() {
         DrawTexturePro(_target.texture, src, dst, {0, 0}, 0.0f, WHITE);
         // M6-i.1: 自动截图取证 (--autoshot N — 第 N 帧把主 RT 导出 PNG;
         // 绝对路径 saves/ 由 SaveManager mkdir 保证存在, 不依赖进程 CWD)
+        // G41: 文件名可由 g_autoshot_path 覆盖 (主题预览用; 空 = 原行为)
         extern int g_hd2d_autoshot;
+        extern std::string g_autoshot_path;
         if (g_hd2d_autoshot > 0 && --g_hd2d_autoshot == 0) {
             Image shot = LoadImageFromTexture(_target.texture);
-            ExportImage(shot, "saves/screenshot.png");
+            const char* out = g_autoshot_path.empty()
+                                ? "saves/screenshot.png" : g_autoshot_path.c_str();
+            ExportImage(shot, out);
             UnloadImage(shot);
             // M6-n: 取证帧同时记录 FPS (性能回归基线; --autoshot 专用)
-            LOG_INFO("[autoshot] 主 RT 已导出 -> saves/screenshot.png (%dx%d) FPS=%d",
-                     _target.texture.width, _target.texture.height, GetFPS());
+            LOG_INFO("[autoshot] 主 RT 已导出 -> %s (%dx%d) FPS=%d",
+                     out, _target.texture.width, _target.texture.height, GetFPS());
         }
         EndDrawing();
     }

@@ -30,6 +30,7 @@ namespace hd2d { struct SceneView; }   // G12-4: 3D 只读视图 (定义在 rend
 #include "combat_coordinator.h"
 #include "object_pool.h"
 #include "build_score.h"
+#include "game/director/theme_preview.h"   // G41: 流派主题预览
 #include "event_system.h"
 #include "floor_narrative.h"
 #include "npc_system.h"
@@ -267,6 +268,11 @@ public:
     void _account_sim_damage();
     void _log_unmarked_damage();
     void _detect_build_fusion();
+    // G41: 流派主题预览 (--theme-preview) — 轮换流派拍预览图
+    void _tick_theme_preview();
+    void _stage_theme_preview_fx(BuildType bt, int index);
+    ThemePreviewController _theme_preview;
+    bool _theme_preview_closed = false;
     void _tick_portal_pulse(float dt);
     void _tick_presentation_tail(float dt);
 

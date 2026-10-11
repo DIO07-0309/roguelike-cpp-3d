@@ -56,6 +56,9 @@ extern Font g_font;
 extern Font g_font_small;
 extern bool g_font_loaded;
 extern int  g_goto_floor;                    // v1.5.0-P0: scene_tree.cpp 定义
+extern bool g_theme_preview;                 // G41: main.cpp 定义
+extern std::string g_autoshot_path;          // G41: main.cpp 定义 (autoshot 输出名)
+extern int  g_hd2d_autoshot;                 // M6-i.1: hd2d_renderer.cpp 定义
 
 // ═══ G4.5: Replay static config ═══
 std::string GameScene::g_record_path;
@@ -884,6 +887,9 @@ void GameScene::_log_unmarked_damage() {
 
 void GameScene::_detect_build_fusion() {
     // D3 Step4: Build Fusion 检测 — 构筑成型/切换
+    // G41: 主题预览挂在这里执行 — 它必须跑在 build 检测之后才能覆盖主题,
+    // 且 _process 已 41 行不能再加一行 (控制器自取 dt, 无需传参)
+    _tick_theme_preview();
     {
         BuildScore bs = calculate_build(player.get());
         BuildType bt = bs.identify();
@@ -901,6 +907,68 @@ void GameScene::_detect_build_fusion() {
             _presentation.trigger_freeze(CombatFeelSystem::BUILD_COMPLETE);
         }
     }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// G41: 流派主题预览 (--theme-preview)
+// 把 12 个流派放在同一场景同一组特效下各拍一张, 免进游戏找怪触发。
+// ═══════════════════════════════════════════════════════════════
+void GameScene::_tick_theme_preview() {
+    if (!g_theme_preview) return;
+    // ★ 必须等楼层/章节开场动画结束: 开场字幕是满屏覆盖, 在它下面拍等于全废
+    // (本次实测: 12 张全部拍在 "第一章 Chapter 1" 字幕上, 特效被遮住)
+    if (_presentation.floor_intro_active || _presentation.chapter_intro_active) return;
+    // 开关打开即启用; 已拍完则只保留关闭动作, 不再重复触发
+    if (!_theme_preview_closed && !_theme_preview.active()) _theme_preview.enable();
+    if (_theme_preview_closed) return;
+
+    _theme_preview.tick([this](BuildType bt, int index) {
+        _stage_theme_preview_fx(bt, index);
+    });
+    if (_theme_preview.finished()) {
+        _theme_preview_closed = true;
+        LOG_INFO("[PREVIEW] 12 流派预览已全部导出到 saves/preview_NN_*.png");
+        CloseWindow();   // 拍完即退, 不留挂起进程
+    }
+}
+
+void GameScene::_stage_theme_preview_fx(BuildType bt, int index) {
+    // 抑制流派成型通知: 否则下一帧 _detect_build_fusion 会用"真实算出"的
+    // 流派 (未成型时恒为默认狂战) 覆盖掉预览主题
+    _gameplay.last_notified_build = bt;
+    _presentation.set_build_theme(bt);
+
+    const BuildTheme& th = _presentation.get_theme();
+    // 数值一并落日志 — 静态图看不出顿帧/震幅/音效, 这些只能靠日志对照
+    LOG_INFO("[PREVIEW] %02d %-8s | 震幅x%.2f 顿帧+%.3fs 视野%+.2f 翻滚FOV+%.1f"
+             " | 特效: 速x%.2f 爆炸x%.2f 束宽x%.2f 环速x%.2f 火花x%.2f 时长x%.2f"
+             " | 音: 命中=%s 技能=%s",
+             index, th.name, th.camera.shake_scale, th.camera.freeze_bonus,
+             th.camera.zoom_offset, th.camera.dash_offset,
+             th.vfx.particle_speed, th.vfx.explosion_scale, th.vfx.beam_width,
+             th.vfx.ring_speed, th.vfx.spark_scale, th.vfx.lifetime_scale,
+             th.audio.hit_sfx, th.audio.skill_sfx);
+
+    // 固定一组装饰特效 — 只让流派主题当唯一变量, 保证 12 张图可对比
+    // 布局: 沿玩家所在横线一字排开 5 组, 间距 90 世界单位。
+    // ★ 刻意不上下散开: 3D 相机俯角下, 靠边的组容易被墙挡住 (实测过),
+    //   同一横线 + 居中间距能保证每组都在画面内且互不糊团。
+    active_effects.clear();
+    if (!player) return;
+    VFXServer vfx;
+    float cx = player->entity.rect.x + player->entity.rect.width / 2;
+    float cy = player->entity.rect.y + player->entity.rect.height / 2;
+    vfx.explosion(cx - 180, cy, 48, {255, 140, 30, 240}, 18, 4.0f);  // 爆炸半径 + 火花
+    vfx.spark_burst(cx - 90, cy, 16, {255, 220, 100, 255}, 4.0f);    // 火花尺寸
+    vfx.flash(cx, cy, 40, {255, 255, 200, 210}, 4.0f);               // 闪光半径
+    vfx.smoke_puff(cx + 90, cy, 34, {140, 140, 140, 190}, 7, 4.0f);  // 烟雾半径
+    vfx.shockwave(cx + 180, cy, 72, {200, 80, 200, 220}, 3, 4.0f);   // 外环(不缩放)+内闪
+    for (auto& e : vfx.effects) active_effects.push_back(e);
+
+    char path[128];
+    snprintf(path, sizeof(path), "saves/preview_%02d_%s.png", index, th.name);
+    g_autoshot_path = path;
+    g_hd2d_autoshot = 1;   // 本帧渲染完即导出
 }
 
 void GameScene::_tick_portal_pulse(float dt) {

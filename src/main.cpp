@@ -61,6 +61,10 @@ Font g_font = {0};
 Font g_font_small = {0};
 bool g_font_loaded = false;
 
+// G41: 流派主题预览开关 (--theme-preview) — 定义在 game/director/theme_preview.cpp
+// (不放 main.cpp: 测试目标 roguelike_lib 排除 main.cpp, 否则测试链接 undefined)
+extern bool g_theme_preview;
+
 // ── G8.4: RL standalone runner (defined in ai/rl/rl_runner.cpp) ──
 extern void run_rl_mode(int test_episodes, int train_episodes);
 extern void run_rl_mirror_mode(int episodes);  // F15.4
@@ -188,6 +192,12 @@ int main(int argc, char** argv) {
             // M6-i.1: 覆盖读档楼层 (取证指定 F1/F6/F11)
             g_autocontinue = true;
             g_goto_floor = atoi(__argv[++i]);
+        } else if (arg == "--theme-preview") {
+            // G41: 流派主题预览 — 轮换 12 个 BuildType 各拍一张预览图到
+            // saves/preview_NN_<build>.png, 并存档该主题的全部手感数值。
+            // 免进游戏找怪触发; 建议配 --hidwin 后台跑, 加 --hd2d 出 3D 版。
+            g_theme_preview = true;
+            g_autocontinue = true;
         }
     }
 #endif

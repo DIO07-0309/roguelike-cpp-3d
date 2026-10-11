@@ -120,6 +120,20 @@ F15 镜像 Boss 读你的行为画像（攻防倾向/走位偏好/技能习惯�
 
 ## CHANGELOG
 
+- G41（开发版，未发布）：**流派主题预览工具** `--theme-preview` —— 一条命令产出 12 个流派的对比预览图，终结"验证视觉改动要进游戏找怪触发"。
+
+  - **用法**：`roguelike_cpp.exe --theme-preview`（2D）或 `--theme-preview --hd2d`（3D）；配 `--hidwin` 后台跑不弹窗。产出 `saves/preview_NN_<build>.png` 共 12 张，**拍完进程自动退出**。每个流派的全部手感数值同时写进 `game.log`（`[PREVIEW]` 行）——静态图看不出顿帧/震幅/音效，靠日志对照。
+  - **场景构造只让主题当唯一变量**：固定 5 组装饰特效沿玩家横线一字排开（爆炸 / 火花 / 闪光 / 烟雾 / 震波），间距 90 世界单位。布局刻意不上下散开——3D 相机俯角下靠边的组容易被墙挡住（实测过）。
+  - **为什么需要这个**：G39/G40 改的都是"看不出数值差异"的参数（屏震幅度 / FOV / 特效半径 / 音效），逐项实机验证要进游戏找对应怪物触发，成本极高且无法横向对比。现在 12 个流派同场景同特效各拍一张，直接可对比。
+  - 新增 `ThemePreviewController`（`src/game/director/theme_preview.{h,cpp}`，单一职责：只管何时切换/是否拍完，不含渲染与场景知识）+ `GameScene::_stage_theme_preview_fx()`（造场景 + 求截图）。
+  - **`autoshot` 输出名改为可覆盖**（`g_autoshot_path`，空 = 原 `saves/screenshot.png`，向后兼容），主题预览复用它触发截图，不新增导出路径。
+  - **踩坑记录（4 个，都是实测出来的）**：
+    1. **开场字幕吃掉全部截图**：`--theme-preview` 从楼层进入开始拍，12 张全拍在"第一章 Chapter 1"满屏字幕上，特效被遮住。已加门槛：等 `floor_intro_active`/`chapter_intro_active` 结束才开拍。
+    2. **全局量不能定义在 `main.cpp`**：测试目标 `roguelike_lib` 用 GLOB 收 `src/**/*.cpp` 但**显式排除 `main.cpp`**，定义在那儿会让所有测试链接报 undefined reference（实测 `hd2d_scene_builder_test` 挂掉）。已移到 `theme_preview.cpp`。
+    3. **新增 .cpp 必须重新 `cmake -B build`**：`file(GLOB_RECURSE)` 在配置期求值，只 `--build` 不 configure 会链接 undefined。
+    4. **`_process` 已 41 行，不能再加一行**：预览调用最初挂在 `_process` 里，直接把函数顶到 42 行违规。改为挂到 `_detect_build_fusion()` 内部（它必须跑在 build 检测之后才能覆盖主题），并让控制器自取 `GetFrameTime()` 免传 dt。
+  - 门禁：Release 0 error · ctest **82/82** · 函数长度扫描违规 **91→91**（未新增，`_process` 保持 41→40）· 2D 与 3D 两种模式均实测产出 12 张且进程自动退出。
+
 - G40-3（开发版，未发布）：**VFX 尺寸接线 + 找回丢失的 `freeze_bonus`** —— `explosion_scale` / `spark_scale` 首次生效；同时修复第一批一个字段被误回滚的问题。
 
   - **`explosion_scale` / `spark_scale` 接线**：新增 `Effect::themed` 标记（默认 `false` = 不缩放），仅 5 个纯装饰 primitive 置 `true`：`explosion` 的火花、`spark_burst`、`smoke_puff`、`flash`、`shockwave` 的内层 flash。在 `VFXServer` 的 `_ef()` 统一出口按 `spark_scale`（spark 类）或 `explosion_scale`（其余）缩放半径。
