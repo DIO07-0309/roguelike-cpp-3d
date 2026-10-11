@@ -1,4 +1,4 @@
-// M6-HD2D: 场景构建器实现 — GameScene 只读状态 → HD2DDrawItem 列表
+﻿// M6-HD2D: 场景构建器实现 — GameScene 只读状态 → HD2DDrawItem 列表
 // 切片范围: 地板/墙 tile (纯色起步) + 玩家/怪 billboard (贴图) + 特效
 // 红线: 只读 gs; 无 gameplay 副作用; 视觉随机只吃 visual_rng (本文件未用随机)
 #include "hd2d_scene_builder.h"
@@ -111,6 +111,12 @@ static TileTexPair _resolve_tile_tex(const GameMap& map, const char* kind,
 }
 
 // ── M6-v2h: 特殊房间地板 tint (2D game_map.draw 九色同源) ──
+// 已探索但当前不可见的统一压暗 (60% 灰) — 墙/地板/特殊房间共用同一语义
+static Color _unexplored_dim(Color c) {
+    return Color{(unsigned char)(c.r * 6 / 10), (unsigned char)(c.g * 6 / 10),
+                 (unsigned char)(c.b * 6 / 10), c.a};
+}
+
 static Color _special_room_tint(const SpecialRoom* sr) {
     Color base;
     switch (sr->type) {
@@ -208,6 +214,181 @@ static Color _wall_top_tint(const GameMap& map, const Color& tint) {
                  ch(pal.wall_top.b, pal.wall_face.b), 255};
 }
 
+// ── M6-v2a 地形构建子步骤 (G42: 从 166 行的 _build_terrain 拆出, 纯结构搬运) ──
+
+// 视野范围: 以玩家 tile 为中心的安全交集。
+// 范围比旧 ±16/±12 大: 相机 440 拉近后视野投影超出旧值 (实测 52% 屏幕是
+// ClearBackground), 故取 ±40/±30 并与地图边界求交
+static void _terrain_bounds(const GameMap* map, int cx, int cy,
+                            int& x0, int& y0, int& x1, int& y1) {
+    x0 = std::max(0, cx - 40);
+    x1 = std::min(map->width - 1, cx + 40);
+    y0 = std::max(0, cy - 30);
+    y1 = std::min(map->height - 1, cy + 30);
+}
+
+// 贴图回退链 (群系 → 通用 → 程序化), 与 2D 同源; 缺调色板时用兜底纯色
+static void _resolve_terrain_textures(const GameMap* map,
+                                      TileTexPair& wall_tex, TileTexPair& floor_tex) {
+    const auto& pal = map->palette();
+    bool has_pal = map->has_palette();
+    Color wall_c  = has_pal ? pal.wall_face : Color{60, 60, 80, 255};
+    Color floor_c = has_pal ? pal.floor_base : Color{25, 25, 35, 255};
+    wall_tex  = _resolve_tile_tex(*map, "wall", wall_c, true);
+    floor_tex = _resolve_tile_tex(*map, "floor", floor_c, false);
+}
+
+// WALL: 贴图墙 + 顶面色 (A3.2-fix2); 贴图存在时不再叠回退色
+static void _emit_wall_item(HD2DDrawItem& item, const GameMap* map,
+                            int tx, int ty, const TileTexPair& wall_tex) {
+    item.kind = HD2DDrawItem::Kind::WALL_BLOCK;
+    item.height = TILE_SIZE * 1.25f;
+    item.texture = wall_tex.tex;
+    item.tex_src = wall_tex.def.frame_w > 0
+        ? SpriteRenderer::frame_rect(wall_tex.def, 0) : Rectangle{};
+    // i.1-fix2: 贴图墙不再叠蓝灰回退色 (地板同规则; 压暗由探索态编码)
+    if (item.texture.id > 0)
+        item.tint = map->isVisible(tx, ty) ? WHITE : Color{153, 153, 153, 255};
+    item.top_tint = _wall_top_tint(*map, item.tint);  // A3.2-fix2
+}
+
+// DOOR: 竖立贴图面板 (四态纹理走 door.* manifest) + 两侧墙走向探测
+static void _emit_door_item(HD2DDrawItem& item, const GameMap* map, int tx, int ty) {
+    // M6-v2h: 门 → 竖立贴图面板
+    item.kind = HD2DDrawItem::Kind::DOOR_PANEL;
+    item.height = TILE_SIZE * 1.05f;
+    item.door_state = (int)map->door_state_at(tx, ty);
+    const char* door_id = "door.closed";
+    switch ((DoorState)item.door_state) {
+        case DoorState::OPEN:   door_id = "door.open";   break;
+        case DoorState::LOCKED: door_id = "door.locked"; break;
+        case DoorState::SEALED: door_id = "door.sealed"; break;
+        default: break;
+    }
+    item.texture = ResourceManager::inst().tex_by_id(door_id);
+    item.tint = map->isVisible(tx, ty) ? WHITE : Color{153, 153, 153, 255};
+    // M6-n: 探测门两侧墙走向 → 面板贴墙 (billboard 改 wall-aligned)
+    // 左右是墙 = 门嵌在东西走向墙里 → 面板法线沿 Z (axis 0)
+    bool wall_lr = map->tile_at(tx - 1, ty) == TileType::WALL ||
+                   map->tile_at(tx + 1, ty) == TileType::WALL;
+    item.door_axis = wall_lr ? 0 : 1;
+}
+
+// N2: 特殊房间纯色 FLOOR_DECAL — 盖住底层贴图 (2D DrawRectangle 同效果)
+static void _emit_special_room_floor(const GameMap* map, int tx, int ty,
+                                     const HD2DDrawItem& item,
+                                     std::vector<HD2DDrawItem>& out) {
+    const SpecialRoom* sr = map->get_special_room_at(tx, ty);
+    if (!sr) return;
+    Color tint = _special_room_tint(sr);
+    if (!map->isVisible(tx, ty))
+        tint = Color{(unsigned char)(tint.r * 6 / 10),
+                     (unsigned char)(tint.g * 6 / 10),
+                     (unsigned char)(tint.b * 6 / 10), 255};
+    HD2DDrawItem room_floor;
+    room_floor.kind = HD2DDrawItem::Kind::FLOOR_DECAL;
+    room_floor.world_pos = {(float)tx * TILE_SIZE + TILE_SIZE * 0.5f,
+                            0.02f,               // 略高于 base floor (0.01f)
+                            (float)ty * TILE_SIZE + TILE_SIZE * 0.5f};
+    room_floor.size = (float)TILE_SIZE;
+    room_floor.tint = tint;
+    room_floor.texture = {};
+    room_floor.tex_src = {};
+    out.push_back(room_floor);
+}
+
+// N5: 楼梯 4 级 3D 立方 (视觉 descending 沿 +Z) + 3 个金色下行箭头
+static void _emit_stairs_3d(const GameMap* map, int tx, int ty,
+                            std::vector<HD2DDrawItem>& out) {
+    float cx = (float)tx * TILE_SIZE + TILE_SIZE * 0.5f;
+    float cz = (float)ty * TILE_SIZE + TILE_SIZE * 0.5f;
+    for (int s = 0; s < 4; s++) {
+        HD2DDrawItem step;
+        step.kind = HD2DDrawItem::Kind::STAIR_STEP;
+        step.world_pos = {cx, 4.5f - (float)s * 1.8f, cz - 12.0f + (float)s * 8.0f};
+        step.size = TILE_SIZE - 4.0f - (float)s * 4.0f;
+        step.height = 8.0f;                        // Z 深度
+        step.tint = {(unsigned char)(60 + s * 14), (unsigned char)(48 + s * 12),
+                     (unsigned char)(26 + s * 8), 255};
+        out.push_back(step);
+    }
+    // 金色箭头 — 3 个大号 FLOOR_DECAL (2D 570-575 chevron 语义)
+    for (int c = 0; c < 3; c++) {
+        HD2DDrawItem arrow;
+        arrow.kind = HD2DDrawItem::Kind::FLOOR_DECAL;
+        arrow.world_pos = {cx, 0.20f + (float)c * 0.02f, cz - 8.0f + (float)c * 8.0f};
+        arrow.size = 14.0f;
+        arrow.tint = {255, 200, 50, 240};
+        arrow.texture = {};
+        arrow.tex_src = {};
+        out.push_back(arrow);
+    }
+}
+
+// M6-l: Boss FOV 红雾 — Boss 可见但玩家不可见的区域贴红色半透明 quad
+// 2D 同款: DrawRectangle({180,40,40,50})
+static void _emit_boss_fov_fog(const GameMap* map, int tx, int ty,
+                               const HD2DDrawItem& item,
+                               std::vector<HD2DDrawItem>& out) {
+    if (!map->isBossVisible(tx, ty) || !map->isExplored(tx, ty)
+        || map->isVisible(tx, ty))
+        return;
+    HD2DDrawItem fog;
+    fog.kind = HD2DDrawItem::Kind::FLOOR_DECAL;
+    fog.world_pos = item.world_pos;
+    fog.world_pos.y = 0.06f;
+    fog.size = TILE_SIZE;
+    fog.tile_x = tx;
+    fog.tile_y = ty;
+    fog.tint = {180, 40, 40, 50};
+    fog.texture = {};
+    out.push_back(fog);
+}
+
+// FLOOR / STAIRS_DOWN / LAVA: 贴图 + tint + 特殊房间 + 楼梯 3D 化 + 装饰
+static void _emit_floor_item(HD2DDrawItem& item, const GameMap* map, int tx, int ty,
+                             const TileTexPair& floor_tex, bool has_pal,
+                             const TilePalette& pal, std::vector<HD2DDrawItem>& out) {
+    TileType t = map->tile_at(tx, ty);
+    item.kind = HD2DDrawItem::Kind::FLOOR_TILE;
+    item.texture = floor_tex.tex;
+    item.tex_src = floor_tex.def.frame_w > 0
+        ? SpriteRenderer::frame_rect(floor_tex.def, 0) : Rectangle{};
+    // 贴图地板不再叠 tint (贴图自带配色; fog 由 renderer 压暗)
+    if (item.texture.id > 0) item.tint = WHITE;
+    // M6-v2c: LAVA tile 标记 → renderer 岩浆动画 shader 分流
+    // (tint 编码探索压暗: 可见=白 / 已探索不可见=60%灰)
+    if (t == TileType::LAVA) {
+        item.is_lava = true;
+        item.texture = {};          // 岩浆走程序化噪声, 弃贴图
+        item.tint = map->isVisible(tx, ty) ? WHITE : Color{153, 153, 153, 255};
+    }
+    // M6-v2h: 特殊房间地板 tint (2D 九色同源; triggered 压暗 55%)
+    // N2: 特殊房间另叠 FLOOR_DECAL 盖住底层贴图
+    if (t == TileType::FLOOR || t == TileType::STAIRS_DOWN) {
+        const SpecialRoom* sr = map->get_special_room_at(tx, ty);
+        if (sr) {
+            item.tint = _special_room_tint(sr);
+            if (!map->isVisible(tx, ty)) item.tint = _unexplored_dim(item.tint);
+            _emit_special_room_floor(map, tx, ty, item, out);
+        }
+    }
+    // M6-v2h: 楼梯 tint 换棕金阶调 (2D 60/48/26 系)
+    if (t == TileType::STAIRS_DOWN && item.texture.id > 0
+        && !map->get_special_room_at(tx, ty))
+        item.tint = map->isVisible(tx, ty) ? Color{150, 120, 70, 255}
+                                           : Color{90, 72, 42, 255};
+    // N5: 楼梯 4 级 3D 立方 (视觉 descending 沿 +Z 方向)
+    if (t == TileType::STAIRS_DOWN && map->isVisible(tx, ty))
+        _emit_stairs_3d(map, tx, ty, out);
+    // M6-j: 地板装饰 (2D 同款坐标哈希; 只在普通可见地板)
+    if (t == TileType::FLOOR && map->isVisible(tx, ty)
+        && !map->get_special_room_at(tx, ty))
+        _apply_floor_decoration(*map, tx, ty, has_pal, pal,
+                                floor_tex.tex, item, out);
+}
+
+
 static void _build_terrain(const hd2d::SceneView& view, std::vector<HD2DDrawItem>& out) {
     const GameMap* map = view.game_map;
     if (!map) return;
@@ -217,18 +398,14 @@ static void _build_terrain(const hd2d::SceneView& view, std::vector<HD2DDrawItem
         cx = (int)(view.player->entity.rect.x / TILE_SIZE);
         cy = (int)(view.player->entity.rect.y / TILE_SIZE);
     }
-    // 扩大 build 范围: 相机 440 拉近后视野投影超出旧 ±16/±12 (实测 52% 屏幕是 ClearBackground)
-    int x0 = std::max(0, cx - 40), x1 = std::min(map->width - 1, cx + 40);
-    int y0 = std::max(0, cy - 30), y1 = std::min(map->height - 1, cy + 30);
+    int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+    _terrain_bounds(map, cx, cy, x0, y0, x1, y1);
 
     // v2a: 与 2D 同源的贴图回退链 (群系 → 通用 → 程序化)
-    auto& res = ResourceManager::inst();
+    TileTexPair wall_tex, floor_tex;
+    _resolve_terrain_textures(map, wall_tex, floor_tex);
     const auto& pal = map->palette();
     bool has_pal = map->has_palette();
-    Color wall_c  = has_pal ? pal.wall_face : Color{60, 60, 80, 255};
-    Color floor_c = has_pal ? pal.floor_base : Color{25, 25, 35, 255};
-    TileTexPair wall_tex  = _resolve_tile_tex(*map, "wall", wall_c, true);
-    TileTexPair floor_tex = _resolve_tile_tex(*map, "floor", floor_c, false);
 
     for (int ty = y0; ty <= y1; ty++) {
         for (int tx = x0; tx <= x1; tx++) {
@@ -238,139 +415,17 @@ static void _build_terrain(const hd2d::SceneView& view, std::vector<HD2DDrawItem
             item.world_pos = {(float)tx * TILE_SIZE + TILE_SIZE * 0.5f, 0,
                               (float)ty * TILE_SIZE + TILE_SIZE * 0.5f};
             item.size = (float)TILE_SIZE;
-            // v1.6: 未探索 → 跳过 (虚空; 见函数头注释)
+            // v1.6: 未探索 → 跳过 (虚空)
             if (!map->isExplored(tx, ty)) continue;
             item.tint = _tile_color(t, map->isVisible(tx, ty));
-            if (t == TileType::WALL) {
-                item.kind = HD2DDrawItem::Kind::WALL_BLOCK;
-                item.height = TILE_SIZE * 1.25f;
-                item.texture = wall_tex.tex;
-                item.tex_src = wall_tex.def.frame_w > 0
-                    ? SpriteRenderer::frame_rect(wall_tex.def, 0) : Rectangle{};
-                // i.1-fix2: 贴图墙不再叠蓝灰回退色 (地板同规则; 压暗由探索态编码)
-                if (item.texture.id > 0)
-                    item.tint = map->isVisible(tx, ty) ? WHITE
-                                                      : Color{153, 153, 153, 255};
-                item.top_tint = _wall_top_tint(*map, item.tint);  // A3.2-fix2
-            } else if (t == TileType::DOOR) {
-                // M6-v2h: 门 → 竖立贴图面板 (四态纹理走 door.* manifest)
-                item.kind = HD2DDrawItem::Kind::DOOR_PANEL;
-                item.height = TILE_SIZE * 1.05f;
-                item.door_state = (int)map->door_state_at(tx, ty);
-                SpriteDef ddef;
-                const char* door_id = "door.closed";
-                switch ((DoorState)item.door_state) {
-                    case DoorState::OPEN:   door_id = "door.open";   break;
-                    case DoorState::LOCKED: door_id = "door.locked"; break;
-                    case DoorState::SEALED: door_id = "door.sealed"; break;
-                    default: break;
-                }
-                item.texture = res.tex_by_id(door_id);
-                item.tint = map->isVisible(tx, ty) ? WHITE
-                                                      : Color{153, 153, 153, 255};
-                // M6-n: 探测门两侧墙走向 → 面板贴墙 (billboard 改 wall-aligned)
-                // 左右是墙 = 门嵌在东西走向墙里 → 面板法线沿 Z (axis 0)
-                bool wall_lr = map->tile_at(tx - 1, ty) == TileType::WALL ||
-                               map->tile_at(tx + 1, ty) == TileType::WALL;
-                item.door_axis = wall_lr ? 0 : 1;
-            } else {
-                item.kind = HD2DDrawItem::Kind::FLOOR_TILE;
-                item.texture = floor_tex.tex;
-                item.tex_src = floor_tex.def.frame_w > 0
-                    ? SpriteRenderer::frame_rect(floor_tex.def, 0) : Rectangle{};
-                // 贴图地板不再叠 tint (贴图自带配色; fog 由 renderer 压暗)
-                if (item.texture.id > 0) item.tint = WHITE;
-                // M6-v2c: LAVA tile 标记 → renderer 岩浆动画 shader 分流
-                // tint 编码探索压暗: 可见=白(全亮) / 已探索不可见=60%灰
-                // (与 _tile_color fog 压暗 40% 同语义; shader 端乘 fragColor.rgb)
-                if (t == TileType::LAVA) {
-                    item.is_lava = true;
-                    item.texture = {};          // 岩浆走程序化噪声, 弃贴图
-                    item.tint = map->isVisible(tx, ty) ? WHITE
-                                                       : Color{153, 153, 153, 255};
-                }
-                // M6-v2h: 特殊房间地板 tint (2D 九色同源; triggered 压暗 55%)
-                if (t == TileType::FLOOR || t == TileType::STAIRS_DOWN) {
-                    const SpecialRoom* sr = map->get_special_room_at(tx, ty);
-                    if (sr) {
-                        item.tint = _special_room_tint(sr);
-                        if (!map->isVisible(tx, ty))
-                            item.tint = Color{
-                                (unsigned char)(item.tint.r * 6 / 10),
-                                (unsigned char)(item.tint.g * 6 / 10),
-                                (unsigned char)(item.tint.b * 6 / 10), 255};
-                        // N2: 特殊房间纯色覆盖 — 叠 FLOOR_DECAL 盖住底层贴图
-                        // (2D 版 DrawRectangle 同效果: 直接替换地板外观)
-                        HD2DDrawItem room_floor;
-                        room_floor.kind = HD2DDrawItem::Kind::FLOOR_DECAL;
-                        room_floor.world_pos = {
-                            (float)tx * TILE_SIZE + TILE_SIZE * 0.5f,
-                            0.02f,                      // 略高于 base floor (0.01f)
-                            (float)ty * TILE_SIZE + TILE_SIZE * 0.5f
-                        };
-                        room_floor.size = (float)TILE_SIZE;
-                        room_floor.tint = item.tint;
-                        room_floor.texture = {};
-                        room_floor.tex_src = {};
-                        out.push_back(room_floor);
-                    }
-                }
-                // M6-v2h: 楼梯 tint 换棕金阶调 (2D 60/48/26 系)
-                if (t == TileType::STAIRS_DOWN && item.texture.id > 0
-                    && !map->get_special_room_at(tx, ty))
-                    item.tint = map->isVisible(tx, ty)
-                        ? Color{150, 120, 70, 255} : Color{90, 72, 42, 255};
-                // N5: 楼梯 4 级 3D 立方 (视觉 descending 沿 +Z 方向)
-                if (t == TileType::STAIRS_DOWN && map->isVisible(tx, ty)) {
-                    float cx = (float)tx * TILE_SIZE + TILE_SIZE * 0.5f;
-                    float cz = (float)ty * TILE_SIZE + TILE_SIZE * 0.5f;
-                    for (int s = 0; s < 4; s++) {
-                        unsigned char cr = (unsigned char)(60 + s * 14);
-                        unsigned char cg = (unsigned char)(48 + s * 12);
-                        unsigned char cb = (unsigned char)(26 + s * 8);
-                        HD2DDrawItem step;
-                        step.kind = HD2DDrawItem::Kind::STAIR_STEP;
-                        step.world_pos = {cx, 4.5f - (float)s * 1.8f,
-                                          cz - 12.0f + (float)s * 8.0f};
-                        step.size = TILE_SIZE - 4.0f - (float)s * 4.0f;
-                        step.height = 8.0f;                        // Z 深度
-                        step.tint = {cr, cg, cb, 255};
-                        out.push_back(step);
-                    }
-                    // 金色箭头 — 3 个大号 FLOOR_DECAL (2D 570-575 chevron 语义)
-                    for (int c = 0; c < 3; c++) {
-                        HD2DDrawItem arrow;
-                        arrow.kind = HD2DDrawItem::Kind::FLOOR_DECAL;
-                        arrow.world_pos = {cx, 0.20f + (float)c * 0.02f,
-                                           cz - 8.0f + (float)c * 8.0f};
-                        arrow.size = 14.0f;
-                        arrow.tint = {255, 200, 50, 240};
-                        arrow.texture = {};
-                        arrow.tex_src = {};
-                        out.push_back(arrow);
-                    }
-                }
-                // M6-j: 地板装饰 (2D 同款坐标哈希; 只在普通可见地板)
-                if (t == TileType::FLOOR && map->isVisible(tx, ty)
-                    && !map->get_special_room_at(tx, ty))
-                    _apply_floor_decoration(*map, tx, ty, has_pal, pal,
-                                            floor_tex.tex, item, out);
-            }
+            if (t == TileType::WALL)
+                _emit_wall_item(item, map, tx, ty, wall_tex);
+            else if (t == TileType::DOOR)
+                _emit_door_item(item, map, tx, ty);
+            else
+                _emit_floor_item(item, map, tx, ty, floor_tex, has_pal, pal, out);
             out.push_back(item);
-            // M6-l: Boss FOV 红雾 — Boss 可见但玩家不可见的区域叠红色半透明
-            // 2D: DrawRectangle({180,40,40,50}); 3D: FLOOR_DECAL 贴地红色 quad
-            if (map->isBossVisible(tx, ty) && map->isExplored(tx, ty)
-                && !map->isVisible(tx, ty)) {
-                HD2DDrawItem fog;
-                fog.kind = HD2DDrawItem::Kind::FLOOR_DECAL;
-                fog.world_pos = item.world_pos;
-                fog.world_pos.y = 0.06f;
-                fog.size = TILE_SIZE;
-                fog.tile_x = tx; fog.tile_y = ty;
-                fog.tint = {180, 40, 40, 50};
-                fog.texture = {};
-                out.push_back(fog);
-            }
+            _emit_boss_fov_fog(map, tx, ty, item, out);
         }
     }
 }
