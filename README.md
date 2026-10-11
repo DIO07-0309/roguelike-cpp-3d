@@ -120,6 +120,20 @@ F15 镜像 Boss 读你的行为画像（攻防倾向/走位偏好/技能习惯�
 
 ## CHANGELOG
 
+- G40-2（开发版，未发布）：**VFX 速率/时长接线 + 特效 tick 重构** —— `particle_speed` / `lifetime_scale` 首次生效，并把逐字复制的特效生命周期循环收敛为单一入口。
+
+  - **先做可 Maintenance 重构**：`_tick_arena_tail` 与 `_tick_player_combat` 里各有一份**逐字相同**的 4 行特效 tick（`elapsed += dt` + erase）。两份必须同步改，漏一处就出"竞技场特效永远粘住"。已抽为 `GameScene::_tick_active_effects(dt)` 唯一入口，`fx.elapsed += dt` 全仓仅剩 1 处。
+  - `particle_speed` → 乘进 `elapsed` 推进速率。冰系 0.70（最慢）/ 雷系 1.40（最快）/ 默认狂战 1.10。
+  - `lifetime_scale` → 乘进"何时移除"这一单一判据（`elapsed >= duration * life_scale + start_delay`）。暗影 1.15（残影拖尾更久）/ 雷系 0.85（最短）。
+  - **刻意只接这两个、暂不接另外四个**：`explosion_scale` / `beam_width` / `ring_speed` / `spark_scale` 会缩放特效的**半径/尺寸**，但同一个 `active_effects` 列表里混着 AI 预警圈、Boss 震波半径、弹道轨迹线等 **gameplay 电报**——缩放后者会让玩家误判危险范围。这四个要么给 `Effect` 加"是否电报"标记，要么在绘制端维护排除名单，属独立设计决策，未讨论清楚前不动。
+  - 两个字段都加了防呆：非正值回落 1.0（否则特效会永久卡住或时间倒流）。
+  - **`UnwiredVfxFieldsAreStillDocumented` 测试** 把这四个 + 两个 Screen 字段显式标记为"仍是死数据"，防止后人误以为已接线。
+  - 真值表测试 `VfxRateTruthTable` 锁全部 12 流派的 `particle_speed`/`lifetime_scale`。**它当场抓住我自己的两处转录错误**（JUGGERNAUT 误写 0.75 实为 0.85、SUPPORT 误写 0.85 实为 1.00）——这正是真值表该干的事。
+  - 变异测试两次反证：ICE 的 `particle_speed` 0.70→1.00 被抓；SHADOW 的 `lifetime_scale` 1.15→1.05 被抓。
+  - 运行时取证：sim 实跑 12 次采样，`speed=1.10` 时 elapsed 推进明显快于 duration；`speed=1.00/life=1.05`（未成型前的默认主题路径）表现不同，证明两个乘数都真实参与计算。
+  - ⚠️ **操作失误记录**：取证后用 `git checkout --` 移除探针，把该文件里尚未提交的 G40 重构**一起回滚**了（`git checkout` 不区分探针与正式改动）。已按历史编辑重做并验证。教训：**探针必须与正式改动分次提交，或用 sed 精确删除**，绝不用 `git checkout` 清探针。
+  - 门禁：Release 0 error · ctest **82/82** · 函数长度扫描违规 **91→91**（未新增）。
+
 - G40（开发版，未发布）：**BuildTheme 打击感接线第一批** —— `freeze_bonus` / `zoom_offset` / `hit_sfx` / `skill_sfx` 四个字段首次生效。
 
   - **这四个字段自 G5.8.2 起就是死数据**（`_fill_theme` 里只写，全仓零读取）。G39 已救活 `shake_scale` 与 `dash_offset`，本批救活剩下四个，BuildTheme 的 17 个字段至此从"设计好了但没接"收敛到 11 个已活。

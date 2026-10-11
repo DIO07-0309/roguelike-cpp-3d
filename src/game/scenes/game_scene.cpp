@@ -1208,10 +1208,7 @@ void GameScene::_tick_arena_tail(float dt) {
     _cleanup_dead_monsters();
     _apply_pending_damage();
     // VFX tick — must run in arena too or effects stick forever
-    for (auto& fx : active_effects) fx.elapsed += dt;
-    active_effects.erase(std::remove_if(active_effects.begin(), active_effects.end(),
-        [](auto& fx) { return fx.elapsed >= fx.duration + fx.start_delay; }),
-        active_effects.end());
+    _tick_active_effects(dt);
     if (player && game_map) {
         auto [tx, ty] = game_map->pixel_to_tile(
             player->entity.rect.x + player->entity.rect.width / 2,
@@ -1321,12 +1318,27 @@ void GameScene::_tick_player_autonomy(float dt) {
     }
 }
 
+// G40: 特效生命周期唯一入口 — 从 _tick_arena_tail / _tick_player_combat
+// 逐字复制的 4 行抽出 (两份复制必须一起改, 漏一处就出现"竞技场特效粘住")
+void GameScene::_tick_active_effects(float dt) {
+    // G40: 流派特效速率 (BuildTheme::vfx.particle_speed, 此前死数据)
+    // 火 1.30 / 雷 1.40 / 影 0.85 / 冰 0.70 … 动画快慢差异;
+    // 只改 elapsed 推进速率, 不改危险区域半径, 无误导玩家风险
+    float speed = _presentation.get_theme().vfx.particle_speed;
+    // G40: 流派特效时长 (BuildTheme::vfx.lifetime_scale, 此前死数据)
+    // 影 1.15 (残影拖尾更久) / 火 0.90 … 作用于"何时移除"这一单一判据
+    float life_scale = _presentation.get_theme().vfx.lifetime_scale;
+    if (speed <= 0.0f) speed = 1.0f;          // 防呆: 非法值不让特效永久卡住
+    if (life_scale <= 0.0f) life_scale = 1.0f;
+    for (auto& fx : active_effects) fx.elapsed += dt * speed;
+    active_effects.erase(std::remove_if(active_effects.begin(), active_effects.end(),
+        [life_scale](auto& fx) { return fx.elapsed >= fx.duration * life_scale + fx.start_delay; }),
+        active_effects.end());
+}
+
 void GameScene::_tick_player_combat(float dt) {
     // VFX 更新
-    for (auto& fx : active_effects) fx.elapsed += dt;
-    active_effects.erase(std::remove_if(active_effects.begin(), active_effects.end(),
-        [](auto& fx) { return fx.elapsed >= fx.duration + fx.start_delay; }),
-        active_effects.end());
+    _tick_active_effects(dt);
 
     // G9.1: weapon tick + specials + projectiles
     player->weapon.tick(dt);

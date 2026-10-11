@@ -226,6 +226,7 @@ public:
     // G30-H: _process 子步骤 (尾段 G12-G14, 纯结构搬运, 执行顺序零改动)
     void _tick_player_autonomy(float dt);
     void _tick_player_combat(float dt);
+    void _tick_active_effects(float dt);   // G40: 特效生命周期唯一入口 (原两处逐字复制)
     void _tick_weapon_specials(float dt);
     void _emit_spear_vfx(const std::vector<WeaponAttackResult>& spec_results);
     void _emit_nunchaku_vfx(const std::vector<WeaponAttackResult>& spec_results);

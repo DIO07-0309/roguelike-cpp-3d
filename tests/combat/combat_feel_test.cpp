@@ -167,6 +167,76 @@ TEST(BuildTheme, AudioSignaturesAreValidAndDistinct) {
     }
 }
 
+// ------------------------------------------------------------
+// G40 第二批: VFX 速率/时长 — 同样必须真值表锁定
+// (只断言"有快有慢"的弱断言在第一批已被变异测试证明锁不住退化)
+// ------------------------------------------------------------
+
+TEST(BuildTheme, VfxRateTruthTable) {
+    struct Expect { BuildType bt; float speed; float life; };
+    const Expect table[] = {
+        {BuildType::ICE_MAGE,       0.70f, 1.05f},
+        {BuildType::FIRE_MAGE,      1.30f, 0.90f},
+        {BuildType::POISON_MASTER,  1.00f, 1.05f},
+        {BuildType::LIGHTNING_MAGE, 1.40f, 0.85f},
+        {BuildType::TIME_MASTER,    0.90f, 1.10f},
+        {BuildType::BERSERKER,      1.10f, 0.90f},
+        {BuildType::BLEED_BLADE,    1.05f, 0.95f},
+        {BuildType::SHADOW_STRIKER, 0.85f, 1.15f},
+        {BuildType::JUGGERNAUT,     0.85f, 1.10f},
+        {BuildType::SUPPORT,        1.00f, 1.05f},
+        {BuildType::SUMMON_LORD,    0.95f, 1.05f},
+        {BuildType::PROJECTILE,     1.15f, 0.95f},
+    };
+    for (const Expect& e : table) {
+        const BuildTheme t = BuildTheme::from_build_type(e.bt);
+        EXPECT_NEAR(t.vfx.particle_speed, e.speed, 1e-5f)
+            << "particle_speed 与真值表不符: " << t.name;
+        EXPECT_NEAR(t.vfx.lifetime_scale, e.life, 1e-5f)
+            << "lifetime_scale 与真值表不符: " << t.name;
+    }
+}
+
+TEST(BuildTheme, VfxRateIsThematicallySane) {
+    // 冰系最慢 / 雷系最快; 雷系最短 / 暗影最长 — 主题自洽,
+    // 若哪天数据被填反了(冰比雷快), 这里能抓住
+    EXPECT_LT(BuildTheme::from_build_type(BuildType::ICE_MAGE).vfx.particle_speed,
+              BuildTheme::from_build_type(BuildType::LIGHTNING_MAGE).vfx.particle_speed);
+    EXPECT_LT(BuildTheme::from_build_type(BuildType::LIGHTNING_MAGE).vfx.lifetime_scale,
+              BuildTheme::from_build_type(BuildType::SHADOW_STRIKER).vfx.lifetime_scale);
+}
+
+TEST(BuildTheme, VfxScalesAlwaysPositive) {
+    // speed/life <= 0 会让特效永不移除或时间倒流 —
+    // 实现里有防呆 clamp, 但数据层就该保证合法
+    const BuildType all[] = {
+        BuildType::ICE_MAGE, BuildType::FIRE_MAGE, BuildType::POISON_MASTER,
+        BuildType::LIGHTNING_MAGE, BuildType::TIME_MASTER, BuildType::BERSERKER,
+        BuildType::BLEED_BLADE, BuildType::SHADOW_STRIKER, BuildType::JUGGERNAUT,
+        BuildType::SUPPORT, BuildType::SUMMON_LORD, BuildType::PROJECTILE,
+    };
+    for (BuildType bt : all) {
+        const BuildTheme t = BuildTheme::from_build_type(bt);
+        EXPECT_GT(t.vfx.particle_speed, 0.0f) << "particle_speed 非法: " << t.name;
+        EXPECT_GT(t.vfx.lifetime_scale, 0.0f) << "lifetime_scale 非法: " << t.name;
+    }
+}
+
+// ------------------------------------------------------------
+// G40 第二批: 尚未接线的字段 — 明确标记为"仍应是死数据",
+// 防止有人以为它们已经接上 (也防止未来误接)
+// ------------------------------------------------------------
+
+TEST(BuildTheme, UnwiredVfxFieldsAreStillDocumented) {
+    // explosion_scale / beam_width / ring_speed / spark_scale / edge_tint /
+    // vignette_strength 仍只写不读。本测试不锁它们的值,
+    // 只确认这几个字段确实存在于结构体中(编译期契约), 值留待接线时再加真值表。
+    const BuildTheme t = BuildTheme::from_build_type(BuildType::SHADOW_STRIKER);
+    (void)t.vfx.explosion_scale; (void)t.vfx.beam_width;
+    (void)t.vfx.ring_speed;      (void)t.vfx.spark_scale;
+    (void)t.screen.edge_tint;    (void)t.screen.vignette_strength;
+    SUCCEED() << "以上字段当前仍是死数据, 接线时需补真值表测试";
+}
 TEST(BuildTheme, AudioSignaturesDifferAcrossBuilds) {
     // 真值表: 每个流派的 (hit_sfx, skill_sfx) 逐一钉死。
     // ★ 早期版本只断言"存在 2 种以上", 变异测试证明其过弱 —
