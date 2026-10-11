@@ -423,7 +423,7 @@ void HD2DRenderer::_classify_draw_items() {
     _icon_buf.clear(); _projectile_buf.clear(); _billboard_buf.clear();
     _fx_quad_buf.clear(); _fx_ring_buf.clear(); _fx_beam_buf.clear();
     _fx_explosion_buf.clear(); _lava_floor_buf.clear(); _floor_buf.clear();
-    _wall_buf.clear();
+    _wall_buf.clear(); _ambient_mote_buf.clear(); _fx_particle_buf.clear();
     for (const auto& item : _draw_items) {
         switch (item.kind) {
             case HD2DDrawItem::Kind::FLOOR_DECAL:     _decal_buf.push_back(&item); break;
@@ -447,7 +447,9 @@ void HD2DRenderer::_classify_draw_items() {
                 (item.is_lava ? _lava_floor_buf : _floor_buf).push_back(&item);
                 break;
             case HD2DDrawItem::Kind::WALL_BLOCK:      _wall_buf.push_back(&item); break;
-            default: break;   // FX 粒子批等由各自 pass 处理
+            case HD2DDrawItem::Kind::AMBIENT_MOTE:    _ambient_mote_buf.push_back(&item); break;
+            case HD2DDrawItem::Kind::FX_PARTICLE:     _fx_particle_buf.push_back(&item); break;
+            default: break;
         }
     }
 }
@@ -516,17 +518,16 @@ void HD2DRenderer::_draw_ambient_batch() {
     rlSetTexture(_mote_glow_tex.id);
     unsigned int cur_tex = _mote_glow_tex.id;
     rlBegin(RL_QUADS);
-    for (const auto& item : _draw_items) {
-        if (item.kind != HD2DDrawItem::Kind::AMBIENT_MOTE) continue;
+    for (const auto* item : _ambient_mote_buf) {
         // A2.2: 群系 PNG 优先 (同帧同群系, 实际只切 1 次); 缺失→程序化软光
-        if (item.texture.id > 0 && item.texture.id != cur_tex) {
-            cur_tex = item.texture.id;
+        if (item->texture.id > 0 && item->texture.id != cur_tex) {
+            cur_tex = item->texture.id;
             rlSetTexture(cur_tex);
         }
         // 软光晕 quad 大于可视核; 像素贴图核即图案, 放大系数收紧
-        float r = item.size * (item.texture.id > 0 ? 1.3f : 1.6f);
-        Vector3 c = item.world_pos;
-        Color t = item.tint;                          // builder 已含包络/闪烁
+        float r = item->size * (item->texture.id > 0 ? 1.3f : 1.6f);
+        Vector3 c = item->world_pos;
+        Color t = item->tint;                         // builder 已含包络/闪烁
         rlColor4ub(t.r, t.g, t.b, t.a);
         rlTexCoord2f(0, 0); rlVertex3f(c.x - right.x * r - up.x * r,
                                        c.y - right.y * r - up.y * r,
@@ -864,10 +865,9 @@ void HD2DRenderer::_draw_fx_particles_batch() {
     rlSetTexture(_mote_glow_tex.id);
     rlBegin(RL_QUADS);
     float t = GetTime() * 8.0f;
-    for (const auto& item : _draw_items) {
-        if (item.kind != HD2DDrawItem::Kind::FX_PARTICLE) continue;
-        if (!_fx_in_view(item, _camera_focus)) continue;  // 视锥体裁剪
-        _fx_emit_particle(item, right, up, t);
+    for (const auto* item : _fx_particle_buf) {
+        if (!_fx_in_view(*item, _camera_focus)) continue;  // 视锥体裁剪
+        _fx_emit_particle(*item, right, up, t);
     }
     rlEnd();
     rlSetTexture(0);

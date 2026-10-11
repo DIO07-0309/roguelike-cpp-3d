@@ -153,6 +153,9 @@ private:
     std::vector<const HD2DDrawItem*> _lava_floor_buf;
     std::vector<const HD2DDrawItem*> _floor_buf;
     std::vector<const HD2DDrawItem*> _wall_buf;
+    // G42: 最后两处"遍历找单一种类" — 氛围粒子与 FX 粒子批
+    std::vector<const HD2DDrawItem*> _ambient_mote_buf;
+    std::vector<const HD2DDrawItem*> _fx_particle_buf;
 
     // 切片内简单光照 (无 shader 依赖版: 环境光 + 方向光)
     Vector3 _light_dir = {0.35f, -1.0f, 0.25f};
