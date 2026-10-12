@@ -927,56 +927,47 @@ static bool fx_poison_shadow(const Effect& e, HD2DDrawItem& item, float fx_heigh
     return false;
 }
 
+// G42: 通用特效查表 (原 54 行 if 链)
+// 一条目 = {kind, 绘制 kind, size 系数, tint, 是否贴地压到 y=0.5}
+// height 用哨兵值 kNan 表示"沿用默认, 不赋值" — 原代码中 ring 类显式设
+// height, 而 spark/smoke/frenzy 等粒子分支并不设置 (保持 HD2DDrawItem 默认值)。
+// 表驱动时若一律赋 0 会改变那些粒子的渲染高度, 故需保留"不赋值"语义。
+struct FxGenericRule {
+    const char* kind;
+    HD2DDrawItem::Kind draw_kind;
+    float size_scale;
+    float height;
+    Color tint;
+    bool ground_at_half;
+};
+
+static constexpr float kFxHeightNone = -1.0f;   // 哨兵: 不赋 height
+
+static const FxGenericRule kFxGenericRules[] = {
+    {"ring",            HD2DDrawItem::Kind::FX_RING_3D,  0.7f,  3.0f, {255, 255, 200, 220}, false},
+    {"pulse",           HD2DDrawItem::Kind::FX_RING_3D,  0.7f,  3.0f, {255, 255, 200, 220}, false},
+    {"spark",           HD2DDrawItem::Kind::FX_PARTICLE, 0.35f, kFxHeightNone, {255, 240, 180, 200}, false},
+    {"smoke",           HD2DDrawItem::Kind::FX_PARTICLE, 0.35f, kFxHeightNone, {255, 240, 180, 200}, false},
+    {"blood_frenzy",    HD2DDrawItem::Kind::FX_PARTICLE, 0.5f,  kFxHeightNone, {200, 40, 50, 220},   false},
+    {"blood_pool",      HD2DDrawItem::Kind::FX_RING_3D,  1.0f,  1.0f, {150, 20, 30, 180},   true},
+    {"summon_spirit",   HD2DDrawItem::Kind::FX_RING_3D,  0.9f,  5.0f, {220, 220, 255, 220}, false},
+    {"summon_particle", HD2DDrawItem::Kind::FX_PARTICLE, 0.4f,  kFxHeightNone, {240, 240, 255, 200}, false},
+    {"summon_circle",   HD2DDrawItem::Kind::FX_RING_3D,  1.1f,  1.0f, {200, 200, 255, 180}, true},
+};
+
 static bool fx_generic(const Effect& e, HD2DDrawItem& item, float fx_height) {
-    if (e.kind == "ring" || e.kind == "pulse") {
-        item.kind = HD2DDrawItem::Kind::FX_RING_3D;
-        item.size = e.radius * 0.7f;
-        item.height = 3.0f;
-        item.tint = Color{255, 255, 200, 220};
-        return true;
-    }
-    if (e.kind == "spark" || e.kind == "smoke") {
-        item.kind = HD2DDrawItem::Kind::FX_PARTICLE;
-        item.size = e.radius * 0.35f;
-        item.tint = Color{255, 240, 180, 200};
-        return true;
-    }
-    if (e.kind == "blood_frenzy") {
-        item.kind = HD2DDrawItem::Kind::FX_PARTICLE;
-        item.size = e.radius * 0.5f;
-        item.tint = Color{200, 40, 50, 220};
-        return true;
-    }
-    if (e.kind == "blood_pool" ||
-        (e.kind == "blood_frenzy" && e.elapsed > e.duration * 0.4f)) {
-        item.kind = HD2DDrawItem::Kind::FX_RING_3D;
-        item.world_pos = {e.world_x, 0.5f, e.world_y};
-        item.size = e.radius * 1.0f;
-        item.height = 1.0f;
-        item.tint = Color{150, 20, 30, 180};
-        return true;
-    }
-    if (e.kind == "summon_spirit") {
-        item.kind = HD2DDrawItem::Kind::FX_RING_3D;
-        item.size = e.radius * 0.9f;
-        item.height = 5.0f;
-        item.tint = Color{220, 220, 255, 220};
-        return true;
-    }
-    if (e.kind == "summon_particle" ||
-        (e.kind == "summon_spirit" && e.elapsed > e.duration * 0.3f)) {
-        item.kind = HD2DDrawItem::Kind::FX_PARTICLE;
-        item.size = e.radius * 0.4f;
-        item.tint = Color{240, 240, 255, 200};
-        return true;
-    }
-    if (e.kind == "summon_circle" ||
-        (e.kind == "summon_spirit" && e.elapsed > e.duration * 0.5f)) {
-        item.kind = HD2DDrawItem::Kind::FX_RING_3D;
-        item.world_pos = {e.world_x, 0.5f, e.world_y};
-        item.size = e.radius * 1.1f;
-        item.height = 1.0f;
-        item.tint = Color{200, 200, 255, 180};
+    // ★ 语义保全 (同 fx_bolt): 原链中 blood_frenzy / summon_spirit 排在它们
+    //   的"按时序追加"项之前, 故这两个 kind 永远只产基础形态; 那些
+    //   elapsed > duration*k 条件实际只对独立的 _pool/_particle/_circle
+    //   kind 生效 (用 || 让两种 kind 走同一映射)。表驱动后不可给它们预置
+    //   时序分支, 否则改变产出。
+    for (const FxGenericRule& r : kFxGenericRules) {
+        if (e.kind != r.kind) continue;
+        item.kind = r.draw_kind;
+        item.size = e.radius * r.size_scale;
+        if (r.height != kFxHeightNone) item.height = r.height;
+        item.tint = r.tint;
+        if (r.ground_at_half) item.world_pos = {e.world_x, 0.5f, e.world_y};
         return true;
     }
     return false;
