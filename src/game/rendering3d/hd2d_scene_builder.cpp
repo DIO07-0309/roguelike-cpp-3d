@@ -746,6 +746,8 @@ static bool fx_whip(const Effect& e, HD2DDrawItem& item, float fx_height) {
     return false;
 }
 
+static constexpr float kFxHeightNone = -1.0f;   // 哨兵: 不赋 height
+
 // G42: bolt 系特效查表 (原 57 行 if 链; 纯数据映射, 无逻辑分叉)
 // 一条目 = {kind, DrawItem kind, size, 目标点模式, tint}
 //   终点模式: 0=无目标点(爆炸/粒子) 1=用 target 2=spread 偏移 3=落点=target
@@ -797,51 +799,45 @@ static bool fx_bolt(const Effect& e, HD2DDrawItem& item, float fx_height) {
     return false;
 }
 
+// G42: 火/冰系特效查表 (原 49 行 if 链)
+// end_mode: 0=无目标点 1=落点=target 2=贴地 world_pos 3=冰刺固定偏移 end_pos
+struct FxFireIceRule {
+    const char* kind;
+    HD2DDrawItem::Kind draw_kind;
+    float size_scale;   // 乘 e.radius; <0 表示改用 abs_size 绝对尺寸
+    float abs_size;
+    float height;
+    int end_mode;
+    Color tint;
+};
+
+static const FxFireIceRule kFxFireIceRules[] = {
+    {"fireball",       HD2DDrawItem::Kind::FX_EXPLOSION_3D, 1.3f, 0.0f,  kFxHeightNone, 0, {255, 120, 30, 255}},
+    {"fireball_trail", HD2DDrawItem::Kind::FX_PARTICLE,     0.6f, 0.0f,  kFxHeightNone, 0, {255, 80, 20, 200}},
+    {"fireball_hit",   HD2DDrawItem::Kind::FX_EXPLOSION_3D, -1.0f, 30.0f, kFxHeightNone, 1, {255, 200, 50, 255}},
+    {"ice_nova",       HD2DDrawItem::Kind::FX_RING_3D,      1.2f, 0.0f,  8.0f,          0, {120, 220, 255, 255}},
+    {"frostbite",      HD2DDrawItem::Kind::FX_RING_3D,      1.2f, 0.0f,  8.0f,          0, {120, 220, 255, 255}},
+    {"ice_spike",      HD2DDrawItem::Kind::FX_BEAM_3D,     -1.0f, 2.0f,  kFxHeightNone, 3, {180, 240, 255, 220}},
+    {"ice_ground",     HD2DDrawItem::Kind::FX_RING_3D,      0.9f, 0.0f,  1.5f,          2, {150, 230, 255, 180}},
+};
+
 static bool fx_fire_ice(const Effect& e, HD2DDrawItem& item, float fx_height) {
-    if (e.kind == "fireball") {
-        item.kind = HD2DDrawItem::Kind::FX_EXPLOSION_3D;
-        item.size = e.radius * 1.3f;
-        item.tint = Color{255, 120, 30, 255};
-        return true;
-    }
-    if (e.kind == "fireball_trail" ||
-        (e.kind == "fireball" && e.elapsed > e.duration * 0.3f)) {
-        item.kind = HD2DDrawItem::Kind::FX_PARTICLE;
-        item.size = e.radius * 0.6f;
-        item.tint = Color{255, 80, 20, 200};
-        return true;
-    }
-    if (e.kind == "fireball_hit" ||
-        (e.kind == "fireball" && e.elapsed > e.duration * 0.7f)) {
-        item.kind = HD2DDrawItem::Kind::FX_EXPLOSION_3D;
-        item.world_pos = {e.target_x, fx_height, e.target_y};
-        item.size = 30.0f;
-        item.tint = Color{255, 200, 50, 255};
-        return true;
-    }
-    if (e.kind == "ice_nova" || e.kind == "frostbite") {
-        item.kind = HD2DDrawItem::Kind::FX_RING_3D;
-        item.size = e.radius * 1.2f;
-        item.height = 8.0f;
-        item.tint = Color{120, 220, 255, 255};
-        return true;
-    }
-    if (e.kind == "ice_spike" ||
-        (e.kind == "ice_nova" && e.elapsed > e.duration * 0.4f)) {
-        item.kind = HD2DDrawItem::Kind::FX_BEAM_3D;
-        item.size = 2.0f;
-        float offset = 25.0f;
-        item.end_pos = {e.world_x + offset, fx_height + 20, e.world_y};
-        item.tint = Color{180, 240, 255, 220};
-        return true;
-    }
-    if (e.kind == "ice_ground" ||
-        (e.kind == "ice_nova" && e.elapsed > e.duration * 0.6f)) {
-        item.kind = HD2DDrawItem::Kind::FX_RING_3D;
-        item.world_pos = {e.world_x, 1.0f, e.world_y};
-        item.size = e.radius * 0.9f;
-        item.height = 1.5f;
-        item.tint = Color{150, 230, 255, 180};
+    // 语义保全 (同前三个表): fireball / ice_nova 排在各自"按时序追加"项
+    // 之前, 永远只产基础形态; elapsed>duration*k 只对独立 kind 生效。
+    for (const FxFireIceRule& r : kFxFireIceRules) {
+        if (e.kind != r.kind) continue;
+        item.kind = r.draw_kind;
+        item.size = r.size_scale < 0.0f ? r.abs_size : e.radius * r.size_scale;
+        if (r.height != kFxHeightNone) item.height = r.height;
+        item.tint = r.tint;
+        if (r.end_mode == 1) {
+            item.world_pos = {e.target_x, fx_height, e.target_y};
+        } else if (r.end_mode == 2) {
+            item.world_pos = {e.world_x, 1.0f, e.world_y};
+        } else if (r.end_mode == 3) {
+            // 冰刺: 固定 +25 偏移的立起 beam (原分支里的字面量)
+            item.end_pos = {e.world_x + 25.0f, fx_height + 20.0f, e.world_y};
+        }
         return true;
     }
     return false;
@@ -879,7 +875,6 @@ static bool fx_lightning(const Effect& e, HD2DDrawItem& item, float fx_height) {
 // G42: 毒/影系特效查表 (原 50 行 if 链)
 // 一条目 = {kind, 绘制 kind, size 系数, height, 地面高度(-1=不覆写), tint}
 // height/ground_y 用哨兵值表示"保留原分支语义, 不赋值" (见下)
-static constexpr float kFxHeightNone = -1.0f;   // 哨兵: 不赋 height
 
 struct FxPoisonShadowRule {
     const char* kind;
