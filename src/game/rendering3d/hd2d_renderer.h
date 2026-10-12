@@ -108,6 +108,15 @@ public:
         _zoom_offset = fractional;
     }
 
+    // G43: 渲染动画时间源 — 渲染路径原先 13 处直调 GetTime() (熔岩 shader/
+    // 传送门脉冲/特效脉冲/动画帧), 使每次运行的截图都不同, 渲染改动无法做
+    // 逐字节回归。统一走 anim_time(): 默认返回 GetTime(), 取证模式下由
+    // set_anim_time_override() 钉死 (--render-seed)。时间语义不变, 只是可固定。
+    float anim_time() const {
+        return _anim_time_override >= 0.0f ? _anim_time_override : GetTime();
+    }
+    void set_anim_time_override(float t) { _anim_time_override = t; }
+
 private:
     static Vector3 lerp_vec3(Vector3 a, Vector3 b, float t) {
         return {a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t};
@@ -123,6 +132,8 @@ private:
     Vector3 _shake_target = {0, 0, 0};
     Vector3 _shake_offset = {0, 0, 0};  // M6-v2e: 3D 相机 shake (帧内渲染值)
     float _fov_pulse = 0.0f;       // 3D 手感: 震幅驱动的 FOV 冲击量 (0=无, 0.06=最怼脸)
+    // G43: <0 = 未覆写 (走墙钟); >=0 = 取证钉死值
+    float _anim_time_override = -1.0f;
     float _dash_fov_deg = 0.0f;        // 翻滚 FOV 拉伸目标 (角度; 0=无)
     float _dash_fov_current = 0.0f;    // 翻滚 FOV 拉伸当前值 (平滑后)
     float _zoom_offset = 0.0f;         // G40: 流派视野偏移 (小数比例; 暗影-0.05/狂战+0.03)

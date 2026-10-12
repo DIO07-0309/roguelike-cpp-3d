@@ -17,6 +17,11 @@ bool g_theme_preview = false;
 // autoshot 输出路径覆盖; 空 = "saves/screenshot.png" (原行为, 向后兼容)
 std::string g_autoshot_path;
 
+// --anim-time <秒>: 钉死渲染动画时间 (<0 = 不覆写, 走墙钟)
+// G43: 渲染路径 13 处动画 (熔岩/传送门/特效脉冲/动画帧) 原先直调 GetTime(),
+// 使每次运行截图都不同 → 渲染改动无法逐字节回归。覆写后截图可复现。
+float g_anim_time_override = -1.0f;
+
 namespace {
 
 // 预览覆盖全部 12 个 BuildType (不含 NONE — 未成型主题=默认狂战, 单独说明)

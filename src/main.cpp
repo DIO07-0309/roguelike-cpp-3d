@@ -1,4 +1,4 @@
-// ============================================================
+﻿// ============================================================
 // Roguelike C++ Edition
 // 重庆大学大数据与软件学院 · 程序设计实训
 // 开发者：ruozhiDIO
@@ -64,6 +64,7 @@ bool g_font_loaded = false;
 // G41: 流派主题预览开关 (--theme-preview) — 定义在 game/director/theme_preview.cpp
 // (不放 main.cpp: 测试目标 roguelike_lib 排除 main.cpp, 否则测试链接 undefined)
 extern bool g_theme_preview;
+extern float g_anim_time_override;   // G43: 定义在 theme_preview.cpp (同 G41 理由)
 
 // ── G8.4: RL standalone runner (defined in ai/rl/rl_runner.cpp) ──
 extern void run_rl_mode(int test_episodes, int train_episodes);
@@ -198,6 +199,11 @@ int main(int argc, char** argv) {
             // 免进游戏找怪触发; 建议配 --hidwin 后台跑, 加 --hd2d 出 3D 版。
             g_theme_preview = true;
             g_autocontinue = true;
+        } else if (arg == "--anim-time" && i + 1 < __argc) {
+            // G43: 钉死渲染动画时间 — 渲染路径 13 处动画原先直调 GetTime()
+            // (墙钟), 导致每次运行截图都不同, 渲染改动无法逐字节回归。
+            // 配 --autoshot 可得到可复现的取证图, 用于渲染重构前后比对。
+            g_anim_time_override = (float)atof(__argv[++i]);
         }
     }
 #endif

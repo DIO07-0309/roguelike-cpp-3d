@@ -2,6 +2,7 @@
 // 切片范围: 地板/墙 tile (纯色起步) + 玩家/怪 billboard (贴图) + 特效
 // 红线: 只读 gs; 无 gameplay 副作用; 视觉随机只吃 visual_rng (本文件未用随机)
 #include "hd2d_scene_builder.h"
+#include "hd2d_renderer.h"        // G43: anim_time() 统一动画时间源
 #include "game/animation/player_avatar.h"
 #include "hd2d_scene_view.h"   // G12-4: 只读场景视图
 #include "world/game_map.h"
@@ -533,7 +534,7 @@ static void buildStaticPlayer(const hd2d::SceneView& view, int anim_frame, std::
 static void _build_entities(const hd2d::SceneView& view, std::vector<HD2DDrawItem>& out,
                             bool part_color_ready) {
     auto& res = ResourceManager::inst();
-    int anim_frame = ((int)(GetTime() * 4)) & 1;
+    int anim_frame = ((int)(HD2DRenderer::inst().anim_time() * 4)) & 1;
     if (view.player && view.player->combat.is_alive
         && (!part_color_ready || !buildPlayerAvatar(view, out)))
         buildStaticPlayer(view, anim_frame, out);
@@ -1084,7 +1085,7 @@ static void _build_arena_objects(const hd2d::SceneView& view, std::vector<HD2DDr
         }
         item.tint = WHITE;
         if (ao.type == ArenaObjectType::EXPLOSIVE_BARREL && ao.timer > 0.0f) {
-            float pulse = 0.6f + 0.4f * sinf((float)GetTime() * 14.0f);
+            float pulse = 0.6f + 0.4f * sinf((float)HD2DRenderer::inst().anim_time() * 14.0f);
             item.tint = {255, (unsigned char)(150 * pulse), (unsigned char)(100 * pulse), 255};
         }
         out.push_back(item);
@@ -1536,7 +1537,7 @@ static void _build_ambient(const hd2d::SceneView& view, std::vector<HD2DDrawItem
     // A2.2: 群系粒子贴图 (缺失→id=0→renderer 程序化软光回退)
     Texture2D mote_tex = cfg.texture.empty()
         ? Texture2D{} : ResourceManager::inst().load_texture(cfg.texture.c_str());
-    const float t = (float)GetTime();
+    const float t = (float)HD2DRenderer::inst().anim_time();
     for (const auto& p : ambient.particles()) {
         if (p.life <= 0.0f) continue;
         const float fade = p.life / p.max_life;            // 1→0 生命比

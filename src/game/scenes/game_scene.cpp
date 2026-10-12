@@ -59,6 +59,7 @@ extern int  g_goto_floor;                    // v1.5.0-P0: scene_tree.cpp 定义
 extern bool g_theme_preview;                 // G41: main.cpp 定义
 extern std::string g_autoshot_path;          // G41: main.cpp 定义 (autoshot 输出名)
 extern int  g_hd2d_autoshot;                 // M6-i.1: hd2d_renderer.cpp 定义
+extern float g_anim_time_override;           // G43: main.cpp 定义 (渲染动画时间覆写)
 
 // ═══ G4.5: Replay static config ═══
 std::string GameScene::g_record_path;
@@ -2908,6 +2909,10 @@ bool GameScene::_render_hd2d_frame(int sw, int sh, float shake_ox, float shake_o
             _npc_avatars_tick();
             hd2d.set_camera_shake(shake_ox, shake_oy);
             hd2d.set_camera_dash(_dash_fov_degrees());
+            // G43: 渲染动画时间覆写 (--anim-time) — 让截图可跨运行复现,
+            // 渲染重构才能做逐字节回归 (原 13 处动画直调墙钟 GetTime())
+            if (g_anim_time_override >= 0.0f)
+                hd2d.set_anim_time_override(g_anim_time_override);
             // G40: 流派视野偏移 (BuildTheme::camera.zoom_offset, 此前死数据)
             hd2d.set_camera_zoom(_presentation.get_theme().camera.zoom_offset);
             hd2d.render_frame(hd2d_view());

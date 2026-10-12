@@ -559,7 +559,7 @@ void HD2DRenderer::_draw_terrain_pass() {
     }
     // Pass 1: 岩浆 tile 单批 (共享 uTime)
     if (_lava_ok) {
-        float now = (float)GetTime();
+        float now = (float)anim_time();
         BeginShaderMode(_lava_shader);
         SetShaderValue(_lava_shader, _lava_time_loc, &now,
                        SHADER_UNIFORM_FLOAT);
@@ -793,7 +793,7 @@ void HD2DRenderer::_draw_blob_shadow(Vector3 pos, float w) {
 // ── 特效: 发光脉冲片 (轻量; v2 换 additive shader) ──
 void HD2DRenderer::_draw_fx_quad(const HD2DDrawItem& item) {
     Vector3 pos = item.world_pos;
-    float pulse = 0.8f + 0.2f * sinf((float)GetTime() * 6.0f + pos.x * 0.1f);
+    float pulse = 0.8f + 0.2f * sinf((float)anim_time() * 6.0f + pos.x * 0.1f);
     float s = item.size * pulse;
     DrawCube({pos.x, 0.15f, pos.z}, s, 0.06f, s * 0.6f, item.tint);
 }
@@ -864,7 +864,7 @@ void HD2DRenderer::_draw_fx_particles_batch() {
     BeginBlendMode(BLEND_ADDITIVE);
     rlSetTexture(_mote_glow_tex.id);
     rlBegin(RL_QUADS);
-    float t = GetTime() * 8.0f;
+    float t = anim_time() * 8.0f;
     for (const auto* item : _fx_particle_buf) {
         if (!_fx_in_view(*item, _camera_focus)) continue;  // 视锥体裁剪
         _fx_emit_particle(*item, right, up, t);
@@ -888,7 +888,7 @@ void HD2DRenderer::_draw_fx_pass() {
 
 void HD2DRenderer::_draw_fx_ring_3d(const HD2DDrawItem& item) {
     Vector3 pos = item.world_pos;
-    float t = GetTime();
+    float t = anim_time();
     float pulse = 0.8f + 0.2f * sinf(t * 5.0f);
     float radius = item.size * pulse;
     float thickness = item.height;
@@ -958,7 +958,7 @@ void HD2DRenderer::_draw_fx_beam_3d(const HD2DDrawItem& item) {
 
 void HD2DRenderer::_draw_fx_explosion_3d(const HD2DDrawItem& item) {
     Vector3 pos = item.world_pos;
-    float t = GetTime();
+    float t = anim_time();
     float pulse = 0.8f + 0.2f * sinf(t * 6.0f);
     float radius = item.size * pulse * 0.5f;
     
@@ -1002,7 +1002,7 @@ void HD2DRenderer::_draw_fx_explosion_3d(const HD2DDrawItem& item) {
 // 环面绕 Y 转 45° 朝向相机 (相机方向 X+Z 45°, 竖立不倒)
 void HD2DRenderer::_draw_portal_ring(const HD2DDrawItem& item) {
     Vector3 pos = item.world_pos;
-    float pulse = 0.8f + 0.2f * sinf((float)GetTime() * 3.0f);
+    float pulse = 0.8f + 0.2f * sinf((float)anim_time() * 3.0f);
     float radius = item.height * pulse;
     Color outer = item.portal_entry
         ? Color{80, 180, 255, (unsigned char)(200 * pulse)}
@@ -1102,8 +1102,10 @@ static void _draw_door_locked(Vector3 pos, float size, int axis, float door_h) {
 }
 
 // SEALED: 紫脉冲十字 (贴门面; 按 axis 取向)
-static void _draw_door_sealed(Vector3 pos, float size, int axis, float door_h) {
-    float pulse = 0.7f + 0.3f * sinf((float)GetTime() * 3.0f);
+// G43: anim_time 由调用方传入 — 本文件级 static 助手拿不到 renderer 成员
+static void _draw_door_sealed(Vector3 pos, float size, int axis, float door_h,
+                              float anim_time) {
+    float pulse = 0.7f + 0.3f * sinf((float)anim_time * 3.0f);
     Color seal = {(unsigned char)(160 * pulse), 50,
                   (unsigned char)(220 * pulse), 200};
     Vector3 c = {pos.x, door_h * 0.55f, pos.z};
@@ -1137,7 +1139,7 @@ void HD2DRenderer::_draw_door_panel(const HD2DDrawItem& item) {
         _draw_lock_badge(pos, item.height);
     }
     if ((DoorState)item.door_state == DoorState::SEALED)
-        _draw_door_sealed(pos, item.size, item.door_axis, item.height);
+        _draw_door_sealed(pos, item.size, item.door_axis, item.height, anim_time());
 }
 
 // ── M6-v2h: 锁徽记 — 门板中央小锁 (2D _draw_lock_icon 3D 对应) ──
@@ -1240,7 +1242,7 @@ static void _draw_flat_ring(Vector3 center, float radius, float y,
 void HD2DRenderer::_draw_warning_ring(const HD2DDrawItem& item) {
     Vector3 pos = item.world_pos;
     float fade = item.height;                      // builder 存的 fade (0~1)
-    float pulse = 1.0f + sinf((float)GetTime() * 12.0f) * 0.12f;
+    float pulse = 1.0f + sinf((float)anim_time() * 12.0f) * 0.12f;
     Color c = item.tint;
     c.a = (unsigned char)(c.a * fade);
 
@@ -1269,7 +1271,7 @@ void HD2DRenderer::_draw_trajectory_line(const HD2DDrawItem& item) {
     Vector3 from = item.world_pos;
     Vector3 to = item.end_pos;
     float fade = item.height;                      // builder 存的 fade
-    float pulse = 1.0f + sinf((float)GetTime() * 12.0f) * 0.12f;
+    float pulse = 1.0f + sinf((float)anim_time() * 12.0f) * 0.12f;
     Color c = item.tint;
     c.a = (unsigned char)(c.a * fade);
     // 主线 (宽 = 用双线近似 2D DrawLineEx 的厚度)
@@ -1291,7 +1293,7 @@ void HD2DRenderer::_draw_cone_fan(const HD2DDrawItem& item) {
     Vector3 pos = item.world_pos;
     float reach = item.size;
     float half = DEG2RAD * item.fan_half_deg;
-    float pulse = 0.85f + 0.15f * sinf((float)GetTime() * 10.0f);
+    float pulse = 0.85f + 0.15f * sinf((float)anim_time() * 10.0f);
     Color c = item.tint;
     c.a = (unsigned char)(c.a * pulse);
     const int SEG = 12;                       // 扇形细分 (2D 同为 12 段)
