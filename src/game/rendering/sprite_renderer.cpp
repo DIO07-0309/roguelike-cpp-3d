@@ -216,43 +216,53 @@ Texture2D SpriteRenderer::gen_biome_tile(Color base, Color accent, Color joint_c
 
 // ═══════════════ M6-j: 程序化地板装饰片 (确定性 decal) ═══════════════
 
-Texture2D SpriteRenderer::gen_floor_decal(int kind, Color primary,
-                                         Color secondary) {
+// ── G42: 地板装饰 32x32 程序化贴图, 每 kind 一个绘制函数 ──
+// kind 与 scene_builder 的 decal_roll 区间对应 (0 裂缝 / 1 苔藓 / 2 符文 /
+# // default 污渍)
+
+static void _gen_decal_crack(Image* p, Color primary, Color secondary) {
+    for (int s = 0; s < 3; s++) {                  // 三段折线 (墙缝深色)
+        int x0 = 6 + s * 9, y0 = 8 + s * 4;
+        for (int d = 0; d < 9; d++)
+            ImageDrawPixel(p, x0 + d, y0 + (d % 3) - 1, primary);
+    }
+    ImageDrawPixel(p, 15, 16, secondary);
+    ImageDrawPixel(p, 26, 20, secondary);
+}
+
+static void _gen_decal_moss(Image* p, Color primary, Color secondary) {
+    ImageDrawCircle(p, 10, 22, 3, primary);        // 3+2+1 团簇
+    ImageDrawCircle(p, 13, 24, 2, primary);
+    ImageDrawCircle(p, 22, 12, 2, primary);
+    ImageDrawPixel(p, 15, 20, secondary);
+    ImageDrawPixel(p, 24, 15, secondary);
+}
+
+static void _gen_decal_rune(Image* p, Color primary, Color secondary) {
+    for (int s = 0; s < 2; s++) {                  // 折线符文 + 中心点
+        int x0 = 8 + s * 12, y0 = 8;
+        for (int d = 0; d < 8; d++)
+            ImageDrawPixel(p, x0 + (d % 3), y0 + d, primary);
+        for (int d = 0; d < 8; d++)
+            ImageDrawPixel(p, x0 + 3 - (d % 3), y0 + d, primary);
+    }
+    ImageDrawCircle(p, 16, 17, 2, secondary);
+}
+
+static void _gen_decal_stain(Image* p, Color primary, Color secondary) {
+    for (int i = 0; i < 5; i++)                    // 不规则暗斑
+        ImageDrawRectangle(p, 6 + i * 5, 10 + (i % 4) * 4, 4, 3, primary);
+    ImageDrawPixel(p, 20, 20, secondary);
+}
+
+Texture2D SpriteRenderer::gen_floor_decal(int kind, Color primary, Color secondary) {
     Image img = GenImageColor(32, 32, BLANK);
     Image* p = &img;
     switch (kind) {
-        case 0:                                     // 裂缝: 三段折线 (墙缝深色)
-            for (int s = 0; s < 3; s++) {
-                int x0 = 6 + s * 9, y0 = 8 + s * 4;
-                for (int d = 0; d < 9; d++)
-                    ImageDrawPixel(p, x0 + d, y0 + (d % 3) - 1, primary);
-            }
-            ImageDrawPixel(p, 15, 16, secondary);
-            ImageDrawPixel(p, 26, 20, secondary);
-            break;
-        case 1:                                     // 苔藓斑: 3+2+1 团簇
-            ImageDrawCircle(p, 10, 22, 3, primary);
-            ImageDrawCircle(p, 13, 24, 2, primary);
-            ImageDrawCircle(p, 22, 12, 2, primary);
-            ImageDrawPixel(p, 15, 20, secondary);
-            ImageDrawPixel(p, 24, 15, secondary);
-            break;
-        case 2:                                     // 符文: 折线符文 + 中心点
-            for (int s = 0; s < 2; s++) {
-                int x0 = 8 + s * 12, y0 = 8;
-                for (int d = 0; d < 8; d++)
-                    ImageDrawPixel(p, x0 + (d % 3), y0 + d, primary);
-                for (int d = 0; d < 8; d++)
-                    ImageDrawPixel(p, x0 + 3 - (d % 3), y0 + d, primary);
-            }
-            ImageDrawCircle(p, 16, 17, 2, secondary);
-            break;
-        default:                                    // 污渍: 不规则暗斑
-            for (int i = 0; i < 5; i++)
-                ImageDrawRectangle(p, 6 + i * 5, 10 + (i % 4) * 4, 4, 3,
-                                    primary);
-            ImageDrawPixel(p, 20, 20, secondary);
-            break;
+        case 0: _gen_decal_crack(p, primary, secondary); break;
+        case 1: _gen_decal_moss(p, primary, secondary);  break;
+        case 2: _gen_decal_rune(p, primary, secondary);  break;
+        default: _gen_decal_stain(p, primary, secondary); break;
     }
     Texture2D tex = LoadTextureFromImage(img);
     UnloadImage(img);
@@ -415,45 +425,53 @@ Texture2D SpriteRenderer::gen_pixel_blast(Color c) {
     return tex;
 }
 
+// ── G42: 竞技场道具 32x32 程序化贴图, 每 type 一个绘制函数 ──
+// type 序号来自 ArenaObjectType 枚举 (桶/图腾/毒池/岩石/尖刺)
+
+static void _gen_arena_barrel(Image& img) {
+    Color wood = {160, 100, 40, 255}, band = {40, 30, 20, 255};
+    ImageDrawRectangle(&img, 8, 6, 16, 20, wood);
+    ImageDrawRectangle(&img, 6, 8, 20, 3, band);
+    ImageDrawRectangle(&img, 6, 20, 20, 3, band);
+    ImageDrawRectangle(&img, 12, 4, 8, 4, {60, 40, 20, 255});
+}
+
+static void _gen_arena_totem(Image& img) {
+    Color pole = {30, 120, 50, 255}, glow = {100, 255, 120, 200};
+    ImageDrawRectangle(&img, 12, 8, 8, 18, pole);
+    ImageDrawCircle(&img, 16, 10, 6, glow);
+    ImageDrawCircle(&img, 16, 10, 4, {200, 255, 200, 255});
+}
+
+static void _gen_arena_pool(Image& img) {
+    Color pool = {40, 150, 55, 180};
+    ImageDrawRectangle(&img, 4, 10, 24, 12, pool);
+    ImageDrawRectangle(&img, 8, 12, 16, 8, {60, 180, 70, 200});
+}
+
+static void _gen_arena_rock(Image& img) {
+    Color rock = {100, 95, 100, 255};
+    ImageDrawRectangle(&img, 6, 12, 20, 12, rock);
+    ImageDrawRectangle(&img, 8, 10, 6, 4, {120, 115, 120, 255});
+    ImageDrawRectangle(&img, 18, 8, 8, 6, {110, 105, 110, 255});
+}
+
+static void _gen_arena_spike(Image& img) {
+    Color spike = {180, 50, 50, 255};
+    for (int y = 4; y < 28; y++) {
+        int w = (y - 4) * 2 / 3;
+        ImageDrawLine(&img, 16 - w, y, 16 + w, y, spike);
+    }
+}
+
 Texture2D SpriteRenderer::gen_arena_prop(int type, Color base) {
     Image img = GenImageColor(32, 32, {0, 0, 0, 0});
     switch (type) {
-    case 0: {
-        Color wood = {160, 100, 40, 255}, band = {40, 30, 20, 255};
-        ImageDrawRectangle(&img, 8, 6, 16, 20, wood);
-        ImageDrawRectangle(&img, 6, 8, 20, 3, band);
-        ImageDrawRectangle(&img, 6, 20, 20, 3, band);
-        ImageDrawRectangle(&img, 12, 4, 8, 4, {60, 40, 20, 255});
-        break;
-    }
-    case 1: {
-        Color pole = {30, 120, 50, 255}, glow = {100, 255, 120, 200};
-        ImageDrawRectangle(&img, 12, 8, 8, 18, pole);
-        ImageDrawCircle(&img, 16, 10, 6, glow);
-        ImageDrawCircle(&img, 16, 10, 4, {200, 255, 200, 255});
-        break;
-    }
-    case 2: {
-        Color pool = {40, 150, 55, 180};
-        ImageDrawRectangle(&img, 4, 10, 24, 12, pool);
-        ImageDrawRectangle(&img, 8, 12, 16, 8, {60, 180, 70, 200});
-        break;
-    }
-    case 3: {
-        Color rock = {100, 95, 100, 255};
-        ImageDrawRectangle(&img, 6, 12, 20, 12, rock);
-        ImageDrawRectangle(&img, 8, 10, 6, 4, {120, 115, 120, 255});
-        ImageDrawRectangle(&img, 18, 8, 8, 6, {110, 105, 110, 255});
-        break;
-    }
-    case 4: {
-        Color spike = {180, 50, 50, 255};
-        for (int y = 4; y < 28; y++) {
-            int w = (y - 4) * 2 / 3;
-            ImageDrawLine(&img, 16 - w, y, 16 + w, y, spike);
-        }
-        break;
-    }
+    case 0: _gen_arena_barrel(img); break;
+    case 1: _gen_arena_totem(img);  break;
+    case 2: _gen_arena_pool(img);   break;
+    case 3: _gen_arena_rock(img);   break;
+    case 4: _gen_arena_spike(img);  break;
     }
     _add_noise(&img, base);
     Texture2D tex = LoadTextureFromImage(img);
