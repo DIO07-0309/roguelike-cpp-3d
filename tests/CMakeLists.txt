@@ -123,6 +123,8 @@ add_test(NAME simulation_test COMMAND simulation_test WORKING_DIRECTORY ${CMAKE_
 # P0-M2: SimAI teleport room-domain contract regression (locks F1 deadlock)
 # sim_ai_teleport.cpp is auto-included via roguelike_lib GLOB
 add_roguelike_test(p0_teleport_test sim/p0_teleport_test.cpp)
+# G45: 黄金基线 — 固定 seed 的真实对局结果钉死 (防静默行为漂移)
+add_roguelike_test(golden_baseline_test sim/golden_baseline_test.cpp)
 
 # G8.1: Behavior Tree test (pure C++, no game deps)
 add_executable(behavior_tree_test ai/behavior_tree_test.cpp)
