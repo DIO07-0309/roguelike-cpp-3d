@@ -1362,49 +1362,39 @@ void HD2DRenderer::_apply_bloom_biome_preset(const GameMap* map) {
 void HD2DRenderer::_draw_weather_particles(Game::WeatherSystem& weather) {
     // 开始 3D 模式
     BeginMode3D(_camera);
-    
-    // 相机位置（用于偏移粒子）
+    // 相机位置 (粒子坐标相对相机偏移)
     Vector3 cam_pos = _camera_focus;
-    
-    // 渲染天气粒子
     for (const auto& p : weather.get_particles()) {
         if (!p.active) continue;
-        
-        // 粒子位置相对于相机
-        Vector3 world_pos = {
-            cam_pos.x + p.position.x,
-            p.position.y,
-            cam_pos.z + p.position.z
-        };
-        
-        // 根据天气类型绘制不同形状
-        float life_ratio = p.life / p.max_life;
+        Vector3 world_pos = {cam_pos.x + p.position.x,
+                             p.position.y,
+                             cam_pos.z + p.position.z};
+        // 淡出: alpha 随剩余寿命衰减
         Color color = p.color;
-        color.a = (unsigned char)(color.a * (1.0f - life_ratio));  // 淡出
-        
-        // 雨滴：细长圆柱
-        if (weather.get_weather() == Game::WeatherType::RAIN) {
-            DrawCylinder(world_pos, p.size, p.size * 0.5f, 8.0f, 8, color);
-        }
-        // 雪花：小立方体
-        else if (weather.get_weather() == Game::WeatherType::SNOW) {
-            DrawCube(world_pos, p.size * 2.0f, p.size * 0.3f, p.size * 2.0f, color);
-        }
-        // 灰烬/灰尘/孢子：小球
-        else {
-            DrawSphere(world_pos, p.size, color);
-        }
+        color.a = (unsigned char)(color.a * (1.0f - p.life / p.max_life));
+        _draw_weather_particle(weather.get_weather(), world_pos, p.size, color);
     }
-    
-    // 结束 3D 模式
     EndMode3D();
-    
-    // 地面效果（潮湿/积雪/灰烬层）
-    if (weather.get_ground_alpha() > 0.01f) {
-        Color ground_tint = weather.get_ground_tint();
-        ground_tint.a = (unsigned char)(weather.get_ground_alpha() * 255);
-        DrawRectangle(0, 0, _target_w, _target_h, ground_tint);
-    }
+    _draw_weather_ground(weather);
+}
+
+// G42: 单颗天气粒子的形状 (雨=细长圆柱 / 雪=扁立方 / 其余=小球)
+void HD2DRenderer::_draw_weather_particle(Game::WeatherType type, Vector3 pos,
+                                          float size, Color color) {
+    if (type == Game::WeatherType::RAIN)
+        DrawCylinder(pos, size, size * 0.5f, 8.0f, 8, color);
+    else if (type == Game::WeatherType::SNOW)
+        DrawCube(pos, size * 2.0f, size * 0.3f, size * 2.0f, color);
+    else
+        DrawSphere(pos, size, color);
+}
+
+// G42: 地面天气覆盖层 (潮湿/积雪/灰烬 — 全屏 2D tint)
+void HD2DRenderer::_draw_weather_ground(Game::WeatherSystem& weather) {
+    if (weather.get_ground_alpha() <= 0.01f) return;
+    Color ground_tint = weather.get_ground_tint();
+    ground_tint.a = (unsigned char)(weather.get_ground_alpha() * 255);
+    DrawRectangle(0, 0, _target_w, _target_h, ground_tint);
 }
 
 // ── M6-v2c: 后处理 — bloom 链 + 夜色分级 + 地平雾带 (shader 版) ──

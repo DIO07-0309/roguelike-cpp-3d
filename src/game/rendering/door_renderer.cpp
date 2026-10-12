@@ -83,7 +83,7 @@ void DoorRenderer::on_state_change(int tx, int ty, DoorState from, DoorState to)
 }
 
 void DoorRenderer::draw_door(int tx, int ty, DoorState state, bool bright,
-                             float cam_x, float cam_y) {
+                              float cam_x, float cam_y) {
     if (!_loaded) return;
 
     float dx = (float)(tx * TILE_SIZE) - cam_x;
@@ -92,47 +92,52 @@ void DoorRenderer::draw_door(int tx, int ty, DoorState state, bool bright,
 
     auto it = _anims.find(_key(tx, ty));
     bool animating = (it != _anims.end() && it->second.progress < 1.0f);
+    if (animating)
+        _draw_door_transition(it->second, dst);
+    else
+        _draw_door_static(state, bright, dst);
+}
 
-    if (animating) {
-        auto& a = it->second;
-        float p = a.progress;
-        // old tile fades out
-        Texture2D old_tex = _tex_for(a.previous);
-        if (old_tex.id > 0) {
-            Color fade_out = { 255, 255, 255, (unsigned char)((1.0f - p) * 255) };
-            DrawTexturePro(old_tex, { 0, 0, (float)old_tex.width, (float)old_tex.height },
-                           dst, { 0, 0 }, 0.0f, fade_out);
-        }
-        // new tile fades in + scale
-        Texture2D new_tex = _tex_for(a.current);
-        if (new_tex.id > 0) {
-            float sc = 0.8f + 0.2f * p;
-            float off = (float)TILE_SIZE * (1.0f - sc) * 0.5f;
-            Rectangle scaled_dst = { dx + off, dy + off,
-                                     (float)TILE_SIZE * sc, (float)TILE_SIZE * sc };
-            Color fade_in = { 255, 255, 255, (unsigned char)(p * 255) };
-            DrawTexturePro(new_tex, { 0, 0, (float)new_tex.width, (float)new_tex.height },
-                           scaled_dst, { 0, 0 }, 0.0f, fade_in);
-        }
-    } else {
-        // static draw
-        Texture2D tex = _tex_for(state);
-        if (tex.id > 0) {
-            Color tint = bright ? WHITE : Color{ 160, 160, 160, 255 };
-            DrawTexturePro(tex, { 0, 0, (float)tex.width, (float)tex.height },
-                           dst, { 0, 0 }, 0.0f, tint);
-        }
-        // G10.2-B2 (D3): LOCKED 色罩 — 视觉明确区分于 CLOSED, 规则来自 manifest overlay
-        {
-            Color ov = overlay_for(state);
-            if (ov.a > 0) DrawRectangleRec(dst, ov);
-        }
-        // overlay icons (only when static)
-        float cx = dx + TILE_SIZE * 0.5f;
-        float cy = dy + TILE_SIZE * 0.5f;
-        if (state == DoorState::LOCKED) _draw_lock_icon(cx, cy, bright);
-        if (state == DoorState::SEALED) _draw_seal_icon(cx, cy, bright);
+// G42: 门切换动画 (旧贴图淡出 + 新贴图缩放淡入)
+void DoorRenderer::_draw_door_transition(const DoorAnimState& a, Rectangle dst) {
+    float p = a.progress;
+    // old tile fades out
+    Texture2D old_tex = _tex_for(a.previous);
+    if (old_tex.id > 0) {
+        Color fade_out = { 255, 255, 255, (unsigned char)((1.0f - p) * 255) };
+        DrawTexturePro(old_tex, { 0, 0, (float)old_tex.width, (float)old_tex.height },
+                       dst, { 0, 0 }, 0.0f, fade_out);
     }
+    // new tile fades in + scale
+    Texture2D new_tex = _tex_for(a.current);
+    if (new_tex.id > 0) {
+        float sc = 0.8f + 0.2f * p;
+        float off = (float)TILE_SIZE * (1.0f - sc) * 0.5f;
+        Rectangle scaled_dst = { dst.x + off, dst.y + off,
+                                 (float)TILE_SIZE * sc, (float)TILE_SIZE * sc };
+        Color fade_in = { 255, 255, 255, (unsigned char)(p * 255) };
+        DrawTexturePro(new_tex, { 0, 0, (float)new_tex.width, (float)new_tex.height },
+                       scaled_dst, { 0, 0 }, 0.0f, fade_in);
+    }
+}
+
+// G42: 静态门 (贴图 + LOCKED 色罩 + 锁/封图标)
+void DoorRenderer::_draw_door_static(DoorState state, bool bright, Rectangle dst) {
+    // static draw
+    Texture2D tex = _tex_for(state);
+    if (tex.id > 0) {
+        Color tint = bright ? WHITE : Color{ 160, 160, 160, 255 };
+        DrawTexturePro(tex, { 0, 0, (float)tex.width, (float)tex.height },
+                       dst, { 0, 0 }, 0.0f, tint);
+    }
+    // G10.2-B2 (D3): LOCKED 色罩 — 视觉明确区分于 CLOSED, 规则来自 manifest overlay
+    Color ov = overlay_for(state);
+    if (ov.a > 0) DrawRectangleRec(dst, ov);
+    // overlay icons (only when static)
+    float cx = dst.x + TILE_SIZE * 0.5f;
+    float cy = dst.y + TILE_SIZE * 0.5f;
+    if (state == DoorState::LOCKED) _draw_lock_icon(cx, cy, bright);
+    if (state == DoorState::SEALED) _draw_seal_icon(cx, cy, bright);
 }
 
 void DoorRenderer::_draw_lock_icon(float cx, float cy, bool bright) {

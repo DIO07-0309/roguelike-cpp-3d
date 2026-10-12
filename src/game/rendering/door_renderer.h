@@ -34,6 +34,9 @@ private:
     Texture2D _tex_for(DoorState s) const;
     void _draw_lock_icon(float cx, float cy, bool bright);
     void _draw_seal_icon(float cx, float cy, bool bright);
+    // G42: draw_door 51->16 行, 拆静态/动画两条独立路径
+    void _draw_door_static(DoorState state, bool bright, Rectangle dst);
+    void _draw_door_transition(const DoorAnimState& a, Rectangle dst);
 
 public:
     // ── G10.2-B2: Door Visual Asset Mapping (静态, headless 可测) ──

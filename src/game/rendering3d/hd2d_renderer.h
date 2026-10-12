@@ -10,6 +10,7 @@ struct HD2DDrawItem;
 
 namespace Game {
 class WeatherSystem;
+enum class WeatherType;   // G42: _draw_weather_particle 参数
 }
 
 // ============================================================
@@ -215,6 +216,10 @@ private:
     void _position_camera();                       // 由焦点推出相机位姿
     void _apply_camera_fov(float fov_scale);  // 打击冲击 + 翻滚拉伸 → 本帧 FOV
     void _classify_draw_items();   // G42: 单趟分发 _draw_items 到各图层桶
+    // G42: 天气渲染拆分 (原 _draw_weather_particles 47 行)
+    void _draw_weather_particle(Game::WeatherType type, Vector3 pos,
+                                float size, Color color);
+    void _draw_weather_ground(Game::WeatherSystem& weather);
     void _load_terrain_shaders();   // v2c: 雾/岩浆 shader 懒加载+缓存 loc
     void _load_outline_shader();    // A1.1: billboard 真轮廓 shader
     void _update_px_per_world();    // A1.1: 每帧世界单位→屏幕像素比例换算
