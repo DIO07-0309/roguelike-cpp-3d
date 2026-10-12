@@ -622,45 +622,44 @@ static bool fx_slash(const Effect& e, HD2DDrawItem& item, float fx_height) {
     return false;
 }
 
+// G42: 穿透系特效查表 (原 43 行 if 链; 本 fx 系列最后一个)
+// end_mode: 0=无目标点 1=落点=target 2=固定 +30 偏移 beam 3=落点爆炸(世界坐标)
+struct FxPierceRule {
+    const char* kind;
+    HD2DDrawItem::Kind draw_kind;
+    float size;
+    int end_mode;
+    Color tint;
+};
+
+static const FxPierceRule kFxPierceRules[] = {
+    {"pierce_beam_1",       HD2DDrawItem::Kind::FX_BEAM_3D,       3.0f,  1, {100, 180, 255, 255}},
+    {"pierce_beam_2",       HD2DDrawItem::Kind::FX_BEAM_3D,       5.0f,  1, {120, 200, 255, 255}},
+    {"pierce_beam_3",       HD2DDrawItem::Kind::FX_BEAM_3D,      10.0f,  1, {150, 220, 255, 255}},
+    {"pierce_beam_3_split", HD2DDrawItem::Kind::FX_BEAM_3D,       4.0f,  2, {100, 180, 255, 200}},
+    {"beam_hit",            HD2DDrawItem::Kind::FX_EXPLOSION_3D, 20.0f, 3, {180, 230, 255, 255}},
+};
+
 static bool fx_pierce(const Effect& e, HD2DDrawItem& item, float fx_height) {
-    if (e.kind == "pierce_beam_1") {
-        item.kind = HD2DDrawItem::Kind::FX_BEAM_3D;
-        item.size = 3.0f;
-        item.end_pos = {e.target_x, fx_height, e.target_y};
-        item.tint = Color{100, 180, 255, 255};
-        return true;
-    }
-    if (e.kind == "pierce_beam_2") {
-        item.kind = HD2DDrawItem::Kind::FX_BEAM_3D;
-        item.size = 5.0f;
-        item.end_pos = {e.target_x, fx_height, e.target_y};
-        item.tint = Color{120, 200, 255, 255};
-        return true;
-    }
-    if (e.kind == "pierce_beam_3") {
-        item.kind = HD2DDrawItem::Kind::FX_BEAM_3D;
-        item.size = 10.0f;
-        item.end_pos = {e.target_x, fx_height, e.target_y};
-        item.tint = Color{150, 220, 255, 255};
-        return true;
-    }
-    if (e.kind == "pierce_beam_3_split" ||
-        (e.kind == "pierce_beam_3" && e.elapsed > e.duration * 0.4f)) {
-        item.kind = HD2DDrawItem::Kind::FX_BEAM_3D;
-        item.size = 4.0f;
-        float offset = 30.0f;
-        item.end_pos = {e.target_x + offset, fx_height, e.target_y};
-        item.tint = Color{100, 180, 255, 200};
-        return true;
-    }
-    if (e.kind == "beam_hit" ||
-        (e.kind == "pierce_beam_1" && e.elapsed > e.duration * 0.7f) ||
-        (e.kind == "pierce_beam_2" && e.elapsed > e.duration * 0.7f) ||
-        (e.kind == "pierce_beam_3" && e.elapsed > e.duration * 0.6f)) {
-        item.kind = HD2DDrawItem::Kind::FX_EXPLOSION_3D;
-        item.world_pos = {e.target_x, fx_height, e.target_y};
-        item.size = 20.0f;
-        item.tint = Color{180, 230, 255, 255};
+    // ★ 语义保全 (同前几个 fx 表): 原链顺序为
+    //   pierce_beam_1/2/3 → pierce_beam_3_split → beam_hit
+    //   beam_hit 那条例外条件同时含 beam_1/2/3 的 elapsed 判定, 但它排在
+    //   三条基础 beam **之后**, 故基础 beam 命中时不会走到 beam_hit;
+    //   那些 elapsed 条件实际只对独立的 beam_hit kind 生效 (同前几个表的
+    //   "|| 兼容两种 kind" 写法)。表驱动保持该顺序语义即可。
+    for (const FxPierceRule& r : kFxPierceRules) {
+        if (e.kind != r.kind) continue;
+        item.kind = r.draw_kind;
+        item.size = r.size;
+        item.tint = r.tint;
+        if (r.end_mode == 1) {
+            item.end_pos = {e.target_x, fx_height, e.target_y};
+        } else if (r.end_mode == 2) {
+            // 分叉 beam: 固定 +30 偏移 (原分支里的字面量)
+            item.end_pos = {e.target_x + 30.0f, fx_height, e.target_y};
+        } else if (r.end_mode == 3) {
+            item.world_pos = {e.target_x, fx_height, e.target_y};
+        }
         return true;
     }
     return false;

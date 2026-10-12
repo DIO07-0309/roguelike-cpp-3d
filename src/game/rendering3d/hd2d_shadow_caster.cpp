@@ -92,6 +92,20 @@ void HD2DShadowCaster::update_light_camera(Vector3 cam_focus,
 }
 
 // ── 深度 pass: 墙 + billboard 实体 (v2f) ──
+// G42: 深度 pass 的相机兜底 — 渲染器未注入主相机时用默认 45 度透视,
+// 保证 billboard 剪影几何与主 pass 一致 (面朝相机方向)
+static const Camera3D* _shadow_depth_camera(const Camera3D* override,
+                                            Camera3D& fallback) {
+    if (override) return override;
+    fallback.position = {0, 640, 320};
+    fallback.target = {0, 0, 0};
+    fallback.up = {0, 1, 0};
+    fallback.fovy = 50.0f;
+    fallback.projection = CAMERA_PERSPECTIVE;
+    return &fallback;
+}
+
+// ── 深度 pass: 墙 + billboard 实体 (v2f) ──
 void HD2DShadowCaster::render_depth(
         const std::vector<HD2DDrawItem>& items, unsigned int outer_fbo) {
     if (!_ready) return;
@@ -107,16 +121,9 @@ void HD2DShadowCaster::render_depth(
     rlEnableDepthTest();
 
     // v2f: billboard 剪影 (alpha-discard; 需主相机朝向参数保持几何一致)
-    Camera3D view_camera = {};
-    const Camera3D* cam_ptr = _view_camera_override;
-    if (!cam_ptr) {
-        view_camera.position = {0, 640, 320};
-        view_camera.target = {0, 0, 0};
-        view_camera.up = {0, 1, 0};
-        view_camera.fovy = 50.0f;
-        view_camera.projection = CAMERA_PERSPECTIVE;
-        cam_ptr = &view_camera;
-    }
+    Camera3D fallback_camera = {};
+    const Camera3D* cam_ptr = _shadow_depth_camera(_view_camera_override,
+                                                   fallback_camera);
     if (_depth_shader_ok) {
         BeginShaderMode(_depth_shader);
         for (const auto& item : items)
