@@ -876,52 +876,40 @@ static bool fx_lightning(const Effect& e, HD2DDrawItem& item, float fx_height) {
     return false;
 }
 
+// G42: 毒/影系特效查表 (原 50 行 if 链)
+// 一条目 = {kind, 绘制 kind, size 系数, height, 地面高度(-1=不覆写), tint}
+// height/ground_y 用哨兵值表示"保留原分支语义, 不赋值" (见下)
+static constexpr float kFxHeightNone = -1.0f;   // 哨兵: 不赋 height
+
+struct FxPoisonShadowRule {
+    const char* kind;
+    HD2DDrawItem::Kind draw_kind;
+    float size_scale;
+    float height;
+    float ground_y;
+    Color tint;
+};
+
+static const FxPoisonShadowRule kFxPoisonShadowRules[] = {
+    {"poison",          HD2DDrawItem::Kind::FX_PARTICLE, 0.6f,  kFxHeightNone, -1.0f, {120, 220, 60, 220}},
+    {"poison_ring",     HD2DDrawItem::Kind::FX_RING_3D,  0.8f,  3.0f, 2.0f,          {100, 180, 40, 180}},
+    {"poison_ground",   HD2DDrawItem::Kind::FX_RING_3D,  1.0f,  1.0f, 0.5f,          {80, 160, 30, 150}},
+    {"shadow_strike",   HD2DDrawItem::Kind::FX_RING_3D,  1.1f,  6.0f, -1.0f,         {100, 40, 140, 240}},
+    {"shadow_fragment", HD2DDrawItem::Kind::FX_PARTICLE, 0.4f,  kFxHeightNone, -1.0f, {80, 20, 120, 200}},
+    {"shadow_ground",   HD2DDrawItem::Kind::FX_RING_3D,  0.9f,  1.5f, 0.5f,          {60, 10, 80, 200}},
+};
+
 static bool fx_poison_shadow(const Effect& e, HD2DDrawItem& item, float fx_height) {
-    if (e.kind == "poison") {
-        item.kind = HD2DDrawItem::Kind::FX_PARTICLE;
-        item.size = e.radius * 0.6f;
-        item.tint = Color{120, 220, 60, 220};
-        return true;
-    }
-    if (e.kind == "poison_ring" ||
-        (e.kind == "poison" && e.elapsed > e.duration * 0.4f)) {
-        item.kind = HD2DDrawItem::Kind::FX_RING_3D;
-        item.world_pos = {e.world_x, 2.0f, e.world_y};
-        item.size = e.radius * 0.8f;
-        item.height = 3.0f;
-        item.tint = Color{100, 180, 40, 180};
-        return true;
-    }
-    if (e.kind == "poison_ground" ||
-        (e.kind == "poison" && e.elapsed > e.duration * 0.6f)) {
-        item.kind = HD2DDrawItem::Kind::FX_RING_3D;
-        item.world_pos = {e.world_x, 0.5f, e.world_y};
-        item.size = e.radius * 1.0f;
-        item.height = 1.0f;
-        item.tint = Color{80, 160, 30, 150};
-        return true;
-    }
-    if (e.kind == "shadow_strike") {
-        item.kind = HD2DDrawItem::Kind::FX_RING_3D;
-        item.size = e.radius * 1.1f;
-        item.height = 6.0f;
-        item.tint = Color{100, 40, 140, 240};
-        return true;
-    }
-    if (e.kind == "shadow_fragment" ||
-        (e.kind == "shadow_strike" && e.elapsed > e.duration * 0.3f)) {
-        item.kind = HD2DDrawItem::Kind::FX_PARTICLE;
-        item.size = e.radius * 0.4f;
-        item.tint = Color{80, 20, 120, 200};
-        return true;
-    }
-    if (e.kind == "shadow_ground" ||
-        (e.kind == "shadow_strike" && e.elapsed > e.duration * 0.5f)) {
-        item.kind = HD2DDrawItem::Kind::FX_RING_3D;
-        item.world_pos = {e.world_x, 0.5f, e.world_y};
-        item.size = e.radius * 0.9f;
-        item.height = 1.5f;
-        item.tint = Color{60, 10, 80, 200};
+    // ★ 语义保全 (同 fx_bolt/fx_generic): 原链中 poison 与 shadow_strike
+    //   排在其"按时序追加"项之前, 永远只产基础形态; 那些 elapsed>duration*k
+    //   条件实际只对独立的 _ring/_ground/_fragment kind 生效。
+    for (const FxPoisonShadowRule& r : kFxPoisonShadowRules) {
+        if (e.kind != r.kind) continue;
+        item.kind = r.draw_kind;
+        item.size = e.radius * r.size_scale;
+        if (r.height != kFxHeightNone) item.height = r.height;
+        if (r.ground_y >= 0.0f) item.world_pos = {e.world_x, r.ground_y, e.world_y};
+        item.tint = r.tint;
         return true;
     }
     return false;
@@ -941,7 +929,6 @@ struct FxGenericRule {
     bool ground_at_half;
 };
 
-static constexpr float kFxHeightNone = -1.0f;   // 哨兵: 不赋 height
 
 static const FxGenericRule kFxGenericRules[] = {
     {"ring",            HD2DDrawItem::Kind::FX_RING_3D,  0.7f,  3.0f, {255, 255, 200, 220}, false},
