@@ -746,59 +746,52 @@ static bool fx_whip(const Effect& e, HD2DDrawItem& item, float fx_height) {
     return false;
 }
 
+// G42: bolt 系特效查表 (原 57 行 if 链; 纯数据映射, 无逻辑分叉)
+// 一条目 = {kind, DrawItem kind, size, 目标点模式, tint}
+//   终点模式: 0=无目标点(爆炸/粒子) 1=用 target 2=spread 偏移 3=落点=target
+struct FxBoltRule {
+    const char* kind;
+    HD2DDrawItem::Kind draw_kind;
+    float size;
+    int end_mode;
+    Color tint;
+};
+
+static const FxBoltRule kFxBoltRules[] = {
+    {"bolt_spread_1",          HD2DDrawItem::Kind::FX_BEAM_3D,       3.0f,  1, {255, 220, 100, 255}},
+    {"bolt_spread_2",          HD2DDrawItem::Kind::FX_BEAM_3D,       5.0f,  1, {255, 235, 130, 255}},
+    {"bolt_spread_3",          HD2DDrawItem::Kind::FX_EXPLOSION_3D, 25.0f, 0, {255, 255, 220, 255}},
+    {"bolt_spread_3_beam",     HD2DDrawItem::Kind::FX_BEAM_3D,      15.0f, 1, {255, 255, 240, 255}},
+    {"bolt_spread_3_spread_1", HD2DDrawItem::Kind::FX_BEAM_3D,       6.0f,  2, {255, 240, 150, 220}},
+    {"bolt_spread_3_spread_2", HD2DDrawItem::Kind::FX_BEAM_3D,       6.0f,  2, {255, 240, 150, 220}},
+    {"bolt_spread_3_spread_3", HD2DDrawItem::Kind::FX_BEAM_3D,       6.0f,  2, {255, 240, 150, 220}},
+    {"bolt_spread_3_trail",    HD2DDrawItem::Kind::FX_PARTICLE,     15.0f, 0, {255, 250, 200, 240}},
+    {"bolt_spread_3_hit",      HD2DDrawItem::Kind::FX_EXPLOSION_3D, 20.0f, 3, {255, 255, 255, 255}},
+};
+
 static bool fx_bolt(const Effect& e, HD2DDrawItem& item, float fx_height) {
-    if (e.kind == "bolt_spread_1") {
-        item.kind = HD2DDrawItem::Kind::FX_BEAM_3D;
-        item.size = 3.0f;
-        item.end_pos = {e.target_x, fx_height, e.target_y};
-        item.tint = Color{255, 220, 100, 255};
-        return true;
-    }
-    if (e.kind == "bolt_spread_2") {
-        item.kind = HD2DDrawItem::Kind::FX_BEAM_3D;
-        item.size = 5.0f;
-        item.end_pos = {e.target_x, fx_height, e.target_y};
-        item.tint = Color{255, 235, 130, 255};
-        return true;
-    }
-    if (e.kind == "bolt_spread_3") {
-        item.kind = HD2DDrawItem::Kind::FX_EXPLOSION_3D;
-        item.size = 25.0f;
-        item.tint = Color{255, 255, 220, 255};
-        return true;
-    }
-    if (e.kind == "bolt_spread_3_beam") {
-        item.kind = HD2DDrawItem::Kind::FX_BEAM_3D;
-        item.size = 15.0f;
-        item.end_pos = {e.target_x, fx_height, e.target_y};
-        item.tint = Color{255, 255, 240, 255};
-        return true;
-    }
-    if (e.kind == "bolt_spread_3_spread_1" ||
-        e.kind == "bolt_spread_3_spread_2" ||
-        e.kind == "bolt_spread_3_spread_3") {
-        item.kind = HD2DDrawItem::Kind::FX_BEAM_3D;
-        item.size = 6.0f;
-        float tx_offset = e.target_x + (e.kind == "bolt_spread_3_spread_1" ? -40 :
-                                        e.kind == "bolt_spread_3_spread_2" ? 40 : 0);
-        float ty_offset = e.target_y + (e.kind == "bolt_spread_3_spread_3" ? 40 : 0);
-        item.end_pos = {tx_offset, fx_height, ty_offset};
-        item.tint = Color{255, 240, 150, 220};
-        return true;
-    }
-    if (e.kind == "bolt_spread_3_trail" ||
-        (e.kind == "bolt_spread_3" && e.elapsed > e.duration * 0.3f)) {
-        item.kind = HD2DDrawItem::Kind::FX_PARTICLE;
-        item.size = 15.0f;
-        item.tint = Color{255, 250, 200, 240};
-        return true;
-    }
-    if (e.kind == "bolt_spread_3_hit" ||
-        (e.kind == "bolt_spread_3" && e.elapsed > e.duration * 0.7f)) {
-        item.kind = HD2DDrawItem::Kind::FX_EXPLOSION_3D;
-        item.world_pos = {e.target_x, fx_height, e.target_y};
-        item.size = 20.0f;
-        item.tint = Color{255, 255, 255, 255};
+    // ★ 语义保全说明: 原 if 链中 "bolt_spread_3" 排在其 trail/hit 时序项
+    //   **之前**, 所以 bolt_spread_3 永远只产基础爆炸; 那两个
+    //   `elapsed > duration*k` 条件只对独立的 _trail/_hit kind 生效
+    //   (写成 || 是为兼容两种 kind 走同一映射)。
+    //   改为表驱动后必须保持该顺序语义 — 故不预置 bolt_spread_3 的时序分支,
+    //   否则会改变它的产出。
+    for (const FxBoltRule& r : kFxBoltRules) {
+        if (e.kind != r.kind) continue;
+        item.kind = r.draw_kind;
+        item.size = r.size;
+        item.tint = r.tint;
+        if (r.end_mode == 1) {
+            item.end_pos = {e.target_x, fx_height, e.target_y};
+        } else if (r.end_mode == 2) {
+            // spread 三连: 1 左偏 / 2 右偏 / 3 下偏
+            float tx = e.target_x + (e.kind == "bolt_spread_3_spread_1" ? -40.0f
+                                   : e.kind == "bolt_spread_3_spread_2" ?  40.0f : 0.0f);
+            float ty = e.target_y + (e.kind == "bolt_spread_3_spread_3" ? 40.0f : 0.0f);
+            item.end_pos = {tx, fx_height, ty};
+        } else if (r.end_mode == 3) {
+            item.world_pos = {e.target_x, fx_height, e.target_y};
+        }
         return true;
     }
     return false;
