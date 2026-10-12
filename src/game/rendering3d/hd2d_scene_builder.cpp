@@ -1091,6 +1091,52 @@ static void _build_npcs(const hd2d::SceneView& view, std::vector<HD2DDrawItem>& 
 
 // ── M6-v2h: 特殊房间中心图标 → 贴地小 billboard (2D room_* 素材同源) ──
 // triggered 后不画 (2D 同条件); 缺素材跳过
+// N2: 菱形嵌纹 — 房间内每个地板 tile 中心添加亮色 diamond decal (2D 同款)
+static void _emit_room_inlay_decals(const GameMap& map, const SpecialRoom& sr,
+                                    std::vector<HD2DDrawItem>& out) {
+    Color base = _special_room_tint(&sr);
+    Color inlay = {(unsigned char)(base.r * 2 > 255 ? 255 : base.r * 2),
+                   (unsigned char)(base.g * 2 > 255 ? 255 : base.g * 2),
+                   (unsigned char)(base.b * 2 > 255 ? 255 : base.b * 2), 150};
+    int sx0 = std::max(0, sr.rx), sx1 = std::min(map.width, sr.rx + sr.rw);
+    int sy0 = std::max(0, sr.ry), sy1 = std::min(map.height, sr.ry + sr.rh);
+    for (int ty = sy0; ty < sy1; ty++) {
+        for (int tx = sx0; tx < sx1; tx++) {
+            if (map.tile_at(tx, ty) != TileType::FLOOR) continue;
+            HD2DDrawItem decal;
+            decal.kind = HD2DDrawItem::Kind::FLOOR_DECAL;
+            decal.world_pos = {(float)tx * TILE_SIZE + TILE_SIZE * 0.5f,
+                               0.12f,               // 高于地板+tint, 避免 z-fight
+                               (float)ty * TILE_SIZE + TILE_SIZE * 0.5f};
+            decal.size = TILE_SIZE * 0.35f;          // 菱形尺寸 (tile 中心小 diamond)
+            decal.tint = inlay;
+            decal.texture = {};
+            decal.tex_src = {};
+            out.push_back(decal);
+        }
+    }
+}
+
+// 房间中心图标 (2D room_* 素材同源); 无素材 key 或加载失败则不产出
+static void _emit_room_icon(ResourceManager& res, const SpecialRoom& sr,
+                            std::vector<HD2DDrawItem>& out) {
+    const char* ikey = _special_room_icon_key(sr.type);
+    if (!ikey) return;
+    HD2DDrawItem item;
+    item.kind = HD2DDrawItem::Kind::ROOM_ICON;
+    item.world_pos = {(float)sr.cx * TILE_SIZE + TILE_SIZE * 0.5f, 0,
+                      (float)sr.cy * TILE_SIZE + TILE_SIZE * 0.5f};
+    item.size = TILE_SIZE * 0.75f;
+    item.sort_y = (float)sr.cy * TILE_SIZE;
+    SpriteDef def;
+    item.texture = res.sprite_by_key(ikey, def);
+    if (item.texture.id <= 0) return;
+    item.tex_src = SpriteRenderer::frame_rect(def, 0);
+    item.tint = WHITE;
+    out.push_back(item);
+}
+
+// M6-v2h: 特殊房间地板 (嵌纹 + 中心图标) — 未触发才画 (2D 同条件)
 static void _build_special_rooms(const hd2d::SceneView& view, std::vector<HD2DDrawItem>& out) {
     const GameMap* map = view.game_map;
     if (!map) return;
@@ -1098,48 +1144,8 @@ static void _build_special_rooms(const hd2d::SceneView& view, std::vector<HD2DDr
     for (const auto& sr : map->special_rooms) {
         if (sr.type == SpecialRoomType::CHALLENGE) continue;   // 传送门另有绘制
         if (sr.triggered) continue;
-
-        // N2: 菱形嵌纹 — 房间内每个地板 tile 中心添加亮色 diamond decal
-        Color inlay_base = _special_room_tint(&sr);
-        Color inlay = { (unsigned char)(inlay_base.r * 2 > 255 ? 255 : inlay_base.r * 2),
-                        (unsigned char)(inlay_base.g * 2 > 255 ? 255 : inlay_base.g * 2),
-                        (unsigned char)(inlay_base.b * 2 > 255 ? 255 : inlay_base.b * 2),
-                        150 };
-        int sx0 = std::max(0, sr.rx), sx1 = std::min(map->width, sr.rx + sr.rw);
-        int sy0 = std::max(0, sr.ry), sy1 = std::min(map->height, sr.ry + sr.rh);
-        for (int ty = sy0; ty < sy1; ty++) {
-            for (int tx = sx0; tx < sx1; tx++) {
-                if (map->tile_at(tx, ty) != TileType::FLOOR) continue;
-                HD2DDrawItem decal;
-                decal.kind = HD2DDrawItem::Kind::FLOOR_DECAL;
-                decal.world_pos = {
-                    (float)tx * TILE_SIZE + TILE_SIZE * 0.5f,
-                    0.12f,                          // 高于地板+tint，避免 z-fight
-                    (float)ty * TILE_SIZE + TILE_SIZE * 0.5f
-                };
-                decal.size = TILE_SIZE * 0.35f;     // 菱形尺寸 (tile 中心小 diamond)
-                decal.tint = inlay;
-                decal.texture = {};
-                decal.tex_src = {};
-                out.push_back(decal);
-            }
-        }
-
-        // 中心图标 (2D room_* 素材同源)
-        const char* ikey = _special_room_icon_key(sr.type);
-        if (!ikey) continue;
-        HD2DDrawItem item;
-        item.kind = HD2DDrawItem::Kind::ROOM_ICON;
-        item.world_pos = {(float)sr.cx * TILE_SIZE + TILE_SIZE * 0.5f, 0,
-                          (float)sr.cy * TILE_SIZE + TILE_SIZE * 0.5f};
-        item.size = TILE_SIZE * 0.75f;
-        item.sort_y = (float)sr.cy * TILE_SIZE;
-        SpriteDef def;
-        item.texture = res.sprite_by_key(ikey, def);
-        if (item.texture.id <= 0) continue;
-        item.tex_src = SpriteRenderer::frame_rect(def, 0);
-        item.tint = WHITE;
-        out.push_back(item);
+        _emit_room_inlay_decals(*map, sr, out);
+        _emit_room_icon(res, sr, out);
     }
 }
 
