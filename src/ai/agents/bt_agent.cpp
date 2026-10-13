@@ -80,99 +80,96 @@ void BTAgent::_sync_state(const Player* player,
 //  Tree builder
 // ═══════════════════════════════════════════════════════════
 
-void BTAgent::build_tree() {
+// ── G46: 由若干节点克隆出一个 Sequence 子树 ──
+// build_tree 里 6 个子树都是"条件 → 动作"的两/三段 Sequence, 逐个手写
+// vector + push_back + clone 是纯样板。用变参 helper 一次成型。
+static std::unique_ptr<bt::Sequence> make_seq(
+        std::vector<std::unique_ptr<bt::Node>> children) {
+    return std::make_unique<bt::Sequence>(std::move(children));
+}
+
+// 把若干节点指针克隆后收集成 vector (供 make_seq 使用)
+static std::vector<std::unique_ptr<bt::Node>> clones_of(
+        std::initializer_list<bt::Node*> nodes) {
+    std::vector<std::unique_ptr<bt::Node>> v;
+    for (bt::Node* n : nodes) v.push_back(n->clone());
+    return v;
+}
+
+// ── G46: 建 9 个条件节点 ──
+// 从 build_tree 抽出 — 条件构造是纯样板 (名字 + lambda), 集中一处便于
+// 对照 Blackboard 键名审阅 (键名拼错不会报错, 只会让该分支永不命中)
+static void bt_build_conditions(
+        std::vector<std::unique_ptr<bt::Condition>>& out) {
     using namespace bt;
+    out.push_back(std::make_unique<Condition>("BossIntro",
+        [](Blackboard& b) { return b.get("boss_intro", false); }));
+    out.push_back(std::make_unique<Condition>("StairsActive",
+        [](Blackboard& b) { return b.get("stairs_active", false); }));
+    out.push_back(std::make_unique<Condition>("HPLow",
+        [](Blackboard& b) { return b.get("hp_ratio", 1.0f) < 0.35f; }));
+    out.push_back(std::make_unique<Condition>("HealReady",
+        [](Blackboard& b) { return b.get("heal_ready", false); }));
+    out.push_back(std::make_unique<Condition>("EnemyNear",
+        [](Blackboard& b) { return b.get("enemy_near", false); }));
+    out.push_back(std::make_unique<Condition>("BossNear",
+        [](Blackboard& b) { return b.get("boss_near", false); }));
+    out.push_back(std::make_unique<Condition>("SkillReady",
+        [](Blackboard& b) { return b.get("skill_ready", false); }));
+    out.push_back(std::make_unique<Condition>("EnemiesInAoE",
+        [](Blackboard& b) { return b.get("enemies_in_aoe", 0) >= 2; }));
+    out.push_back(std::make_unique<Condition>("NearRoom",
+        [](Blackboard& b) { return b.get("near_room", false); }));
+}
 
-    // Conditions (predicates on Blackboard)
-    auto bossIntro = std::make_unique<Condition>("BossIntro",
-        [](Blackboard& b) { return b.get("boss_intro", false); });
-    auto stairsActive = std::make_unique<Condition>("StairsActive",
-        [](Blackboard& b) { return b.get("stairs_active", false); });
-    auto hpLow = std::make_unique<Condition>("HPLow",
-        [](Blackboard& b) { return b.get("hp_ratio", 1.0f) < 0.35f; });
-    auto healReady = std::make_unique<Condition>("HealReady",
-        [](Blackboard& b) { return b.get("heal_ready", false); });
-    auto enemyNear = std::make_unique<Condition>("EnemyNear",
-        [](Blackboard& b) { return b.get("enemy_near", false); });
-    auto bossNear = std::make_unique<Condition>("BossNear",
-        [](Blackboard& b) { return b.get("boss_near", false); });
-    auto skillReady = std::make_unique<Condition>("SkillReady",
-        [](Blackboard& b) { return b.get("skill_ready", false); });
-    auto enemiesInAoE = std::make_unique<Condition>("EnemiesInAoE",
-        [](Blackboard& b) { return b.get("enemies_in_aoe", 0) >= 2; });
-    auto nearRoom = std::make_unique<Condition>("NearRoom",
-        [](Blackboard& b) { return b.get("near_room", false); });
+// ── G46: 建动作节点 (写 action 字符串进 Blackboard) ──
+static void bt_build_actions(std::vector<std::unique_ptr<bt::Action>>& out) {
+    using namespace bt;
+    out.push_back(std::make_unique<Action>("Confirm",
+        [](Blackboard& b) { b.set<std::string>("action", "confirm"); }));
+    out.push_back(std::make_unique<Action>("Descend",
+        [](Blackboard& b) { b.set<std::string>("action", "descend"); }));
+    out.push_back(std::make_unique<Action>("Heal",
+        [](Blackboard& b) { b.set<std::string>("action", "skill_3"); }));
+    out.push_back(std::make_unique<Action>("Attack",
+        [](Blackboard& b) { b.set<std::string>("action", "attack"); }));
+    out.push_back(std::make_unique<Action>("AoESkill",
+        [](Blackboard& b) { b.set<std::string>("action", "skill_2"); }));
+    out.push_back(std::make_unique<Action>("Pickup",
+        [](Blackboard& b) { b.set<std::string>("action", "pickup"); }));
+    out.push_back(std::make_unique<Action>("Wander",
+        [](Blackboard& b) { b.set<std::string>("action", "move_up"); }));
+}
 
-    // Actions (write action string into Blackboard)
-    auto actConfirm  = std::make_unique<Action>("Confirm",
-        [](Blackboard& b) { b.set<std::string>("action", "confirm"); });
-    auto actDescend  = std::make_unique<Action>("Descend",
-        [](Blackboard& b) { b.set<std::string>("action", "descend"); });
-    auto actHeal     = std::make_unique<Action>("Heal",
-        [](Blackboard& b) { b.set<std::string>("action", "skill_3"); });
-    auto actAttack   = std::make_unique<Action>("Attack",
-        [](Blackboard& b) { b.set<std::string>("action", "attack"); });
-    auto actSkill    = std::make_unique<Action>("Skill",
-        [](Blackboard& b) { b.set<std::string>("action", "skill_1"); });
-    auto actAoE      = std::make_unique<Action>("AoESkill",
-        [](Blackboard& b) { b.set<std::string>("action", "skill_2"); });
-    auto actPickup   = std::make_unique<Action>("Pickup",
-        [](Blackboard& b) { b.set<std::string>("action", "pickup"); });
-    auto actWander   = std::make_unique<Action>("Wander",
-        [](Blackboard& b) { b.set<std::string>("action", "move_up"); }); // default wander
+// ── G46: 子树 + root Selector 装配 ──
+// 下标契约: conds/acts 的顺序由 bt_build_conditions / bt_build_actions 的
+// push_back 顺序决定。用 enum 而非裸数字 — 顺序不一致时启动即崩, 不会静默
+// 选错分支 (vector::size() 非 constexpr, 只能运行期断言)。
+static std::unique_ptr<bt::Selector> bt_assemble_root(
+        std::vector<std::unique_ptr<bt::Condition>>& conds,
+        std::vector<std::unique_ptr<bt::Action>>& acts) {
+    enum CondIdx { C_BOSS_INTRO, C_STAIRS, C_HP_LOW, C_HEAL, C_ENEMY,
+                   C_BOSS_NEAR, C_SKILL, C_AOE, C_ROOM, C_COUNT };
+    enum ActIdx { A_CONFIRM, A_DESCEND, A_HEAL, A_ATTACK, A_AOE,
+                  A_PICKUP, A_WANDER, A_COUNT };
+    if (conds.size() != C_COUNT || acts.size() != A_COUNT) {
+        assert(false && "bt condition/action count mismatch index enum");
+        return nullptr;
+    }
+    // P0-1 修复记录: intro / stairs 最初写成裸 Condition, 导致
+    // actConfirm / actDescend 从未入树 (BT 无法关 intro、无法下楼)。
+    auto introST = make_seq(clones_of({conds[C_BOSS_INTRO].get(), acts[A_CONFIRM].get()}));
+    auto stairsST = make_seq(clones_of({conds[C_STAIRS].get(), acts[A_DESCEND].get()}));
+    auto healST   = make_seq(clones_of({conds[C_HP_LOW].get(), conds[C_HEAL].get(),
+                                        acts[A_HEAL].get()}));
+    auto bossST   = make_seq(clones_of({conds[C_BOSS_NEAR].get(), acts[A_ATTACK].get()}));
+    auto aoeST    = make_seq(clones_of({conds[C_AOE].get(), conds[C_SKILL].get(),
+                                        acts[A_AOE].get()}));
+    auto combatST = make_seq(clones_of({conds[C_ENEMY].get(), acts[A_ATTACK].get()}));
+    auto pickupST = make_seq(clones_of({conds[C_ROOM].get(), acts[A_PICKUP].get()}));
 
-    // Sub-trees
-    // Heal: HP low AND heal ready → use heal
-    auto healSeq = std::make_unique<Sequence>(std::vector<std::unique_ptr<Node>>{});
-    // Need to build via alternative: Sequence takes vector in constructor after we build it
-
-    std::vector<std::unique_ptr<Node>> heal_children;
-    heal_children.push_back(hpLow->clone());
-    heal_children.push_back(healReady->clone());
-    heal_children.push_back(actHeal->clone());
-    auto healST = std::make_unique<Sequence>(std::move(heal_children));
-
-    // Boss fight: boss nearby → attack
-    std::vector<std::unique_ptr<Node>> boss_children;
-    boss_children.push_back(bossNear->clone());
-    boss_children.push_back(actAttack->clone());
-    auto bossST = std::make_unique<Sequence>(std::move(boss_children));
-
-    // AoE skill: multiple enemies + skill ready
-    std::vector<std::unique_ptr<Node>> aoe_children;
-    aoe_children.push_back(enemiesInAoE->clone());
-    aoe_children.push_back(skillReady->clone());
-    aoe_children.push_back(actAoE->clone());
-    auto aoeST = std::make_unique<Sequence>(std::move(aoe_children));
-
-    // Combat: enemy near → attack or skill
-    std::vector<std::unique_ptr<Node>> combat_children;
-    combat_children.push_back(enemyNear->clone());
-    combat_children.push_back(actAttack->clone());
-    auto combatST = std::make_unique<Sequence>(std::move(combat_children));
-
-    // Pickup
-    std::vector<std::unique_ptr<Node>> pu_children;
-    pu_children.push_back(nearRoom->clone());
-    pu_children.push_back(actPickup->clone());
-    auto pickupST = std::make_unique<Sequence>(std::move(pu_children));
-
-    // Boss intro: condition + confirm action (P0-1 fix: was a bare Condition —
-    // actConfirm never entered the tree, so BT agent could not dismiss the intro)
-    std::vector<std::unique_ptr<Node>> intro_children;
-    intro_children.push_back(bossIntro->clone());
-    intro_children.push_back(actConfirm->clone());
-    auto introST = std::make_unique<Sequence>(std::move(intro_children));
-
-    // Stairs: condition + descend action (P0-1 fix: actDescend was created
-    // but never referenced — BT agent could never advance floors)
-    std::vector<std::unique_ptr<Node>> stairs_children;
-    stairs_children.push_back(stairsActive->clone());
-    stairs_children.push_back(actDescend->clone());
-    auto stairsST = std::make_unique<Sequence>(std::move(stairs_children));
-
-    // Root: Selector (priority order)
-    std::vector<std::unique_ptr<Node>> root_children;
+    // root = Selector, 优先级从上到下; 末尾 Wander 恒成功保证总有落点
+    std::vector<std::unique_ptr<bt::Node>> root_children;
     root_children.push_back(std::move(introST));    // 1. Boss intro → confirm
     root_children.push_back(std::move(stairsST));   // 2. Stairs → descend
     root_children.push_back(std::move(healST));     // 3. Heal if low
@@ -180,10 +177,16 @@ void BTAgent::build_tree() {
     root_children.push_back(std::move(aoeST));      // 5. AoE if multi-target
     root_children.push_back(std::move(combatST));   // 6. Attack nearest
     root_children.push_back(std::move(pickupST));   // 7. Pickup near room
-    root_children.push_back(actWander->clone());    // 8. Wander (always succeeds)
+    root_children.push_back(acts[A_WANDER]->clone());  // 8. Wander
+    return std::make_unique<bt::Selector>(std::move(root_children));
+}
 
-    // Root: Selector (priority order)
-    _root = std::make_unique<Selector>(std::move(root_children));
+void BTAgent::build_tree() {
+    std::vector<std::unique_ptr<bt::Condition>> conds;
+    std::vector<std::unique_ptr<bt::Action>> acts;
+    bt_build_conditions(conds);
+    bt_build_actions(acts);
+    _root = bt_assemble_root(conds, acts);
 }
 
 // ═══════════════════════════════════════════════════════════
