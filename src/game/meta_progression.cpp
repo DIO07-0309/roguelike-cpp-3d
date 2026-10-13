@@ -105,45 +105,51 @@ bool MetaSystem::save() const {
     meta_mkdir_impl("saves");     // 目录不存在则创建; 失败由 fopen 兜底
     FILE* f = fopen("saves/meta_save.json", "w");
     if (!f) return false;
+
     fprintf(f, "{\n");
     fprintf(f, "  \"runs\":%d,\n", _save.total_runs);
     fprintf(f, "  \"soul\":%d,\n", _save.currency.soul_fragments);
     fprintf(f, "  \"know\":%d,\n", _save.currency.knowledge);
     fprintf(f, "  \"memory\":%d,\n", _save.currency.ancient_memory);
-    fprintf(f, "  \"nodes\":[");
-    for (int i = 0; i < _node_count; i++) {
-        fprintf(f, "%d%s", _save.node_levels[i], (i < _node_count-1) ? "," : "");
-    }
-    fprintf(f, "],\n");
-    // G10.9-B2: 账号历史最高层
+    // G10.9-B2: 账号历史最高层 / B4-T9: 挑战房压轴保底计数
     fprintf(f, "  \"best_floor\":%d,\n", _save.best_floor);
-    // B4-T9: 挑战房压轴保底计数 (账号级, 跨 run/slot/重启持久)
     fprintf(f, "  \"pity\":%d,\n", _save.challenge_pity_streak);
+    _meta_save_arrays(f);
+    fclose(f);
+    return true;
+}
+
+// G53: 4 个数组字段的序列化 (nodes / endings / hints / deaths)
+void MetaSystem::_meta_save_arrays(FILE* f) const {
+    fprintf(f, "  \"nodes\":[");
+    for (int i = 0; i < _node_count; i++)
+        fprintf(f, "%d%s", _save.node_levels[i], (i < _node_count - 1) ? "," : "");
+    fprintf(f, "],\n");
+
     // G10.9-B2: 账号级结局收集
     fprintf(f, "  \"endings\":[");
     for (size_t i = 0; i < _save.unlocked_endings.size(); i++)
         fprintf(f, "%d%s", _save.unlocked_endings[i],
                 (i + 1 < _save.unlocked_endings.size()) ? "," : "");
     fprintf(f, "],\n");
+
     // G10.8-B3: 首次提示标记
     fprintf(f, "  \"hints\":[");
     bool first = true;
-    for (auto& [id, shown] : _save.first_hints_shown) {
-        if (!shown) continue;
-        fprintf(f, "%s\"%s\"", first ? "" : ",", id.c_str());
+    for (auto& kv : _save.first_hints_shown) {
+        if (!kv.second) continue;
+        fprintf(f, "%s\"%s\"", first ? "" : ",", kv.first.c_str());
         first = false;
     }
     fprintf(f, "],\n");
-    // v1.6-B2: 死因史 (最近 8 条: "层|死因" — 死因源无引号, 免转义)
+
+    // v1.6-B2: 死因史 (最近 8 条: 层|死因 — 死因源无引号, 免转义)
     fprintf(f, "  \"deaths\":[");
-    for (size_t i = 0; i < _save.death_history.size(); i++) {
+    for (size_t i = 0; i < _save.death_history.size(); i++)
         fprintf(f, "%s\"%d|%s\"", i ? "," : "",
                 _save.death_history[i].floor,
                 _save.death_history[i].cause.c_str());
-    }
     fprintf(f, "]\n}\n");
-    fclose(f);
-    return true;
 }
 
 // ── G49: meta_save.json 解析子步骤 (原 load 92 行, 4 个数组同构) ──
@@ -227,14 +233,26 @@ static void meta_parse_death_array(const char* buf, const char* key,
 bool MetaSystem::load() {
     FILE* f = fopen("saves/meta_save.json", "r");
     if (!f) return false;
-    // 简易解析 (v1.6-B2: 2048→4096 容纳 hints + deaths 数组)
+    // 简易解析 (v1.6-B2: 2048->4096 容纳 hints + deaths 数组)
     char buf[4096];
     fread(buf, 1, sizeof(buf)-1, f); fclose(f); buf[sizeof(buf)-1]=0;
+
+    _meta_load_scalars(buf);
+    _meta_load_arrays(buf);
+
+    LOG_INFO("[META] Loaded: runs=%d soul=%d hints=%zu deaths=%zu",
+             _save.total_runs, _save.currency.soul_fragments,
+             _save.first_hints_shown.size(), _save.death_history.size());
+    return true;
+}
+
+// G53: 标量字段 (6 个 int)
+void MetaSystem::_meta_load_scalars(const char* buf) {
     auto parse_int = [&](const char* key, int def) {
         const char* p = strstr(buf, key);
         if (!p) return def;
-        p += strlen(key) + 1; // skip past '":'
-        while (*p && (*p==' '||*p==':')) p++;
+        p += strlen(key) + 1;   // skip past \":\'\
+        while (*p && (*p == ' ' || *p == ':')) p++;
         return atoi(p);
     };
     _save.total_runs   = parse_int("\"runs\"", 0);
@@ -243,13 +261,16 @@ bool MetaSystem::load() {
     _save.currency.ancient_memory = parse_int("\"memory\"", 0);
     _save.best_floor  = parse_int("\"best_floor\"", 1);
     _save.challenge_pity_streak = parse_int("\"pity\"", 0);   // B4-T9
+}
 
+// G53: 4 个数组字段 + death_history 的 8 条环形上限
+void MetaSystem::_meta_load_arrays(const char* buf) {
     // G10.9-B2: endings 数组 ("endings":[1,2])
     _save.unlocked_endings.clear();
     meta_parse_int_array(buf, "\"endings\"", _save.unlocked_endings);
 
     // nodes 数组 (定长, 与 _node_count 对应) — helper 内部自行定位数组起点,
-    // 必须传 buf 而非已定位到 '[' 之后的指针 (那样会找不到 key)
+    // 必须传 buf 而非已定位到 [ 之后的指针 (那样会找不到 key)
     meta_parse_int_array_capped(buf, "\"nodes\"",
                                 _save.node_levels, _node_count);
 
@@ -257,7 +278,7 @@ bool MetaSystem::load() {
     _save.first_hints_shown.clear();
     meta_parse_string_array(buf, "\"hints\"", _save.first_hints_shown);
 
-    // v1.6-B2: deaths 数组 ("deaths":["3|火焰陷阱"]) — 老档无此键 → 空史, 天然兼容
+    // v1.6-B2: deaths 数组 — 老档无此键 -> 空史, 天然兼容
     _save.death_history.clear();
     meta_parse_death_array(buf, "\"deaths\"", _save.death_history);
 
@@ -266,10 +287,6 @@ bool MetaSystem::load() {
         _save.death_history.erase(
             _save.death_history.begin(),
             _save.death_history.end() - 8);
-    LOG_INFO("[META] Loaded: runs=%d soul=%d hints=%zu deaths=%zu",
-             _save.total_runs, _save.currency.soul_fragments,
-             _save.first_hints_shown.size(), _save.death_history.size());
-    return true;
 }
 
 // ══════════════════════════════════════════════════════════════

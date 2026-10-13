@@ -109,6 +109,10 @@ public:
     void set_challenge_pity_streak(int n);
 
 private:
+    // G53: load/save 拆分出的子步骤 (标量 / 4 个数组)
+    void _meta_load_scalars(const char* buf);
+    void _meta_load_arrays(const char* buf);
+    void _meta_save_arrays(FILE* f) const;
     MetaSave _save;
     MetaNode _nodes[10];  // 10个节点
     int     _node_count = 0;
