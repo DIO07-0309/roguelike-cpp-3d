@@ -418,112 +418,117 @@ void MirrorCombatDirector::_weapon_attack(Monster* boss, Player* player,
 
 // ============================================================
 // 镜像技能 — 实际效果的Boss版本
-// ============================================================
+// ── G52: _mirror_skill 按技能类型拆为 5 个助手 (原 105 行) ──
+// 每个助手负责: 射程判定 → 伤害计算 (时停窗口减半) → 应用 → 日志 → agent
+// 反馈。agent 的成败/数值语义必须与原逐 case 完全一致 — 它是在线自适应
+// 强化的判断依据, 改错会让 Echo 学错方向且不报错。
+
+// 近战 (type 0): 单体 + 物理防御
+void MirrorCombatDirector::mirror_skill_melee( Player* player,
+                               const MirrorSkillDef& ms, float dist, int atk) {
+    if (dist > ms.range) { _agent->report_outcome(false, 0.0f); return; }
+    int raw = (int)(atk * ms.dmg_mult * _aggression_bonus);
+    if (_freeze_timer > 0.0f) raw /= 2;   // G10.7-fix: 时停窗口伤害减半
+    int dmg = calculate_damage(raw,
+        player->combat.get_effective_defense(AttackType::PHYSICAL));
+    player->combat.take_damage(dmg);
+    LOG_INFO("[MIRROR] 镜像近战 [%s]: raw=%d → %d dmg", ms.name.c_str(), raw, dmg);
+    if (dmg > 0) player->combat.mark_damage_logged();
+    _agent->report_outcome(dmg > 0, (float)dmg);
+}
+
+// 弹幕 (type 1): 三连发, 每发独立过魔防
+void MirrorCombatDirector::mirror_skill_projectile( Player* player,
+                                    const MirrorSkillDef& ms, float dist,
+                                    int atk) {
+    if (dist > ms.range) { _agent->report_outcome(false, 0.0f); return; }
+    int total_dmg = 0;
+    for (int i = 0; i < 3; i++) {
+        int raw = (int)(atk * ms.dmg_mult * 0.6f);
+        if (_freeze_timer > 0.0f) raw /= 2;
+        int dmg = calculate_damage(raw,
+            player->combat.get_effective_defense(AttackType::MAGICAL),
+            AttackType::MAGICAL);
+        player->combat.take_damage(dmg);
+        total_dmg += dmg;
+        if (dmg > 0) player->combat.mark_damage_logged();
+    }
+    LOG_INFO("[MIRROR] 镜像弹幕 [%s]: 3发", ms.name.c_str());
+    _agent->report_outcome(total_dmg > 0, (float)total_dmg);
+}
+
+// 自愈 (type 2): 真回血 (Q3.10: max_hp/15 ≈ 6.7%)
+void MirrorCombatDirector::mirror_skill_heal( Monster* boss,
+                              const MirrorSkillDef& ms) {
+    int heal_amt = boss->combat.max_hp / 15;
+    boss->combat.heal(heal_amt);
+    LOG_INFO("[MIRROR] 镜像自愈 [%s]: +%d HP", ms.name.c_str(), heal_amt);
+    _agent->report_outcome(true, 0.0f);   // 验收: 执行成功正反馈
+}
+
+// AOE (type 3): 范围魔伤
+void MirrorCombatDirector::mirror_skill_aoe( Player* player,
+                             const MirrorSkillDef& ms, float dist, int atk) {
+    if (dist > ms.range) { _agent->report_outcome(false, 0.0f); return; }
+    int raw = (int)(atk * ms.dmg_mult * _aggression_bonus);
+    if (_freeze_timer > 0.0f) raw /= 2;   // G10.7-fix: 时停窗口伤害减半
+    int dmg = calculate_damage(raw,
+        player->combat.get_effective_defense(AttackType::MAGICAL),
+        AttackType::MAGICAL);
+    player->combat.take_damage(dmg);
+    LOG_INFO("[MIRROR] 镜像AOE [%s]: raw=%d → %d dmg", ms.name.c_str(), raw, dmg);
+    if (dmg > 0) player->combat.mark_damage_logged();
+    _agent->report_outcome(dmg > 0, (float)dmg);
+}
+
+// 时停 (type 4): Phase<2 仅减速, Phase≥2 真冻结 + 三重环演出
+void MirrorCombatDirector::mirror_skill_time_stop( Monster* boss,
+                                   Player* player, const MirrorSkillDef& ms,
+                                   std::vector<Effect>* effects) {
+    if (!_agent || _agent->current_phase() < 2) {
+        apply_buff(player, "slow", 4);
+        LOG_INFO("[MIRROR] 镜像时停 [%s]: 观察期仅减速", ms.name.c_str());
+        return;
+    }
+    _freeze_timer = 1.5f;   // Q3.10: 冻结 3s→1.5s (原 3s 占战斗一半时长,
+                                  // 免费输出窗口过大)
+    LOG_INFO("[MIRROR] 镜像时停 [%s]: 玩家冻结", ms.name.c_str());
+    // G10.7-fix: 发动演出 — 玩家必须"看到时停全过程"而非只承受结果
+    if (effects) {
+        float bx = boss->entity.rect.x + boss->entity.rect.width / 2;
+        float by = boss->entity.rect.y + boss->entity.rect.height / 2;
+        for (int ring_i = 0; ring_i < 3; ring_i++) {
+            Effect ef;
+            ef.kind = "ring";
+            ef.world_x = bx; ef.world_y = by;
+            ef.radius = 60.0f + ring_i * 50.0f;
+            ef.duration = 0.5f; ef.start_delay = ring_i * 0.12f;
+            ef.color = Color{130, 80, 220, 200};
+            effects->push_back(ef);
+        }
+    }
+    if (auto* audio = ServiceLocator::get<AudioServer>())
+        audio->play_sfx("timestop", 0.9f);   // 玩家自己的时停音效 — 听感同源
+}
+
 void MirrorCombatDirector::_mirror_skill(Monster* boss, Player* player,
                                           double gt, int idx,
                                           std::vector<Effect>* effects) {
     if (idx < 0 || idx >= (int)_skills.size()) return;
     auto& ms = _skills[idx];
     ms.last_used = (float)gt;
-    float dist = hypotf(
+    const float dist = hypotf(
         player->entity.rect.x - boss->entity.rect.x,
         player->entity.rect.y - boss->entity.rect.y);
-    int atk = boss->combat.attack;
+    const int atk = boss->combat.attack;
 
     switch (ms.skill_type) {
-    case 0: { // melee — 扇形/矩形近战
-        if (dist > ms.range) { if (_agent) _agent->report_outcome(false, 0.0f); break; }
-        int raw = (int)(atk * ms.dmg_mult * _aggression_bonus);
-        if (_freeze_timer > 0.0f) raw /= 2;   // G10.7-fix: Echo 时停窗口伤害减半
-        int dmg = calculate_damage(raw,
-            player->combat.get_effective_defense(AttackType::PHYSICAL));
-        player->combat.take_damage(dmg);
-        LOG_INFO("[MIRROR] 镜像近战 [%s]: raw=%d → %d dmg", ms.name.c_str(), raw, dmg);
-        if (dmg > 0) player->combat.mark_damage_logged();
-        if (_agent) _agent->report_outcome(dmg > 0, (float)dmg);
-        break;
-    }
-    case 1: { // projectile — 弹幕 (需在射程内, 可拉开距离闪避)
-        if (dist > ms.range) { if (_agent) _agent->report_outcome(false, 0.0f); break; }
-        int total_dmg = 0;
-        for (int i = 0; i < 3; i++) {
-            int raw = (int)(atk * ms.dmg_mult * 0.6f);
-            int dmg = calculate_damage(raw,
-                player->combat.get_effective_defense(AttackType::MAGICAL),
-                AttackType::MAGICAL);
-            player->combat.take_damage(dmg);
-            total_dmg += dmg;
-            if (dmg > 0) player->combat.mark_damage_logged();
-        }
-        LOG_INFO("[MIRROR] 镜像弹幕 [%s]: 3发", ms.name.c_str());
-        if (_agent) _agent->report_outcome(total_dmg > 0, (float)total_dmg);
-        break;
-    }
-    case 2: { // self_heal — 真正回血
-    int heal_amt = boss->combat.max_hp / 15;  // Q3.10: 20%→12.5%→10%→6.7% max HP (10% 仍太频, 每2-3击+120)
-    boss->combat.heal(heal_amt);
-    LOG_INFO("[MIRROR] 镜像自愈 [%s]: +%d HP", ms.name.c_str(), heal_amt);
-        if (_agent) _agent->report_outcome(true, 0.0f);   // 验收: 执行成功正反馈
-        break;
-    }
-    case 3: { // aoe — 范围伤害 (需在范围半径内)
-        if (dist > ms.range) { if (_agent) _agent->report_outcome(false, 0.0f); break; }
-        int raw = (int)(atk * ms.dmg_mult * _aggression_bonus);
-        if (_freeze_timer > 0.0f) raw /= 2;   // G10.7-fix: Echo 时停窗口伤害减半
-        int dmg = calculate_damage(raw,
-            player->combat.get_effective_defense(AttackType::MAGICAL),
-            AttackType::MAGICAL);
-        player->combat.take_damage(dmg);
-        LOG_INFO("[MIRROR] 镜像AOE [%s]: raw=%d → %d dmg", ms.name.c_str(), raw, dmg);
-        if (dmg > 0) player->combat.mark_damage_logged();
-        if (_agent) _agent->report_outcome(dmg > 0, (float)dmg);
-        break;
-    }
-    case 4: { // M4.2: time_stop — Mirror 专属真冻结 (Phase≥2 + CD 由状态机保证)
-        if (!_agent || _agent->current_phase() < 2) {
-            // Phase<2: 观察期不冻结, 仅减速 (防前期欺压)
-            apply_buff(player, "slow", 4);
-            LOG_INFO("[MIRROR] 镜像时停 [%s]: 观察期仅减速", ms.name.c_str());
-        } else {
-            _freeze_timer = 1.5f;   // Q3.10: 冻结 3s→1.5s (原 3s 占战斗一半时长, 免费输出窗口过大)
-            LOG_INFO("[MIRROR] 镜像时停 [%s]: 玩家冻结", ms.name.c_str());
-            // G10.7-fix: 发动演出 — 玩家必须"看到时停全过程"而非只承受结果
-            // (起手三重扩散环 + 专属音效; 冻结期间 Boss 常驻紫环由渲染层叠加)
-            if (effects) {
-                float bx = boss->entity.rect.x + boss->entity.rect.width / 2;
-                float by = boss->entity.rect.y + boss->entity.rect.height / 2;
-                for (int ring_i = 0; ring_i < 3; ring_i++) {
-                    Effect ef;
-                    ef.kind = "ring";
-                    ef.world_x = bx; ef.world_y = by;
-                    ef.radius = 60.0f + ring_i * 50.0f;
-                    ef.duration = 0.5f; ef.start_delay = ring_i * 0.12f;
-                    ef.color = Color{130, 80, 220, 200};
-                    effects->push_back(ef);
-                }
-            }
-            if (auto* audio = ServiceLocator::get<AudioServer>())
-                audio->play_sfx("timestop", 0.9f);   // 玩家自己的时停音效 — 听感同源
-        }
-        if (_agent) {
-            _agent->report_outcome(true, 0.0f);     // 验收: 执行成功正反馈
-            _agent->report_interrupt(true);         // 验收: 打断成功
-        }
-        break;
-    }
-    }
-
-    // 技能VFX
-    if (effects) {
-        Effect ef;
-        ef.kind = "shockwave";
-        ef.world_x = boss->entity.rect.x + boss->entity.rect.width / 2;
-        ef.world_y = boss->entity.rect.y + boss->entity.rect.height / 2;
-        ef.radius = ms.range; ef.duration = 0.4f; ef.elapsed = 0;
-        ef.color = (ms.skill_type == 2) ? Color{80, 200, 100, 160}
-                 : (ms.skill_type == 4) ? Color{100, 60, 200, 180}
-                 : Color{200, 100, 60, 160};
-        effects->push_back(ef);
+    case 0: mirror_skill_melee(player, ms, dist, atk); break;
+    case 1: mirror_skill_projectile(player, ms, dist, atk); break;
+    case 2: mirror_skill_heal(boss, ms); break;
+    case 3: mirror_skill_aoe(player, ms, dist, atk); break;
+    case 4: mirror_skill_time_stop(boss, player, ms, effects); break;
+    default: break;
     }
 }
 

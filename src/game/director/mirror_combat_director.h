@@ -91,6 +91,17 @@ private:
                         std::vector<Effect>* effects);
     void _mirror_skill(Monster* boss, Player* player, double gt,
                        int skill_idx, std::vector<Effect>* effects);
+    // G52: _mirror_skill 按技能类型拆出的 5 个助手 (需访问私有成员, 故为静态成员)
+    void mirror_skill_melee(Player* player, const MirrorSkillDef& ms,
+                            float dist, int atk);
+    void mirror_skill_projectile(Player* player, const MirrorSkillDef& ms,
+                                 float dist, int atk);
+    void mirror_skill_heal(Monster* boss, const MirrorSkillDef& ms);
+    void mirror_skill_aoe(Player* player, const MirrorSkillDef& ms,
+                          float dist, int atk);
+    void mirror_skill_time_stop(Monster* boss, Player* player,
+                                const MirrorSkillDef& ms,
+                                std::vector<Effect>* effects);
     void _ai_decide(Monster* boss, Player* player, double gt,
                     MirrorAgent* agent);
 
