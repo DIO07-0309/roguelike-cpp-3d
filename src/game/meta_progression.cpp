@@ -146,6 +146,84 @@ bool MetaSystem::save() const {
     return true;
 }
 
+// ── G49: meta_save.json 解析子步骤 (原 load 92 行, 4 个数组同构) ──
+
+// 取 "key" 对应的数组内容起点 (跳过 '[' 后的第一个字符);
+// 找不到 key 或缺 '[' 时返回 nullptr
+static const char* meta_array_at(const char* buf, const char* key) {
+    const char* p = strstr(buf, key);
+    if (!p) return nullptr;
+    p = strstr(p, "[");
+    if (!p) return nullptr;
+    return p + 1;
+}
+
+// 整型数组 ("endings":[1,2]) → append 到 out (不清空, 由调用方决定)
+static void meta_parse_int_array(const char* buf, const char* key,
+                                 std::vector<int>& out) {
+    const char* p = meta_array_at(buf, key);
+    if (!p) return;
+    while (*p && *p != ']') {
+        if (*p >= '0' && *p <= '9') out.push_back(atoi(p));
+        while (*p && *p != ',' && *p != ']') p++;
+        if (*p == ',') p++;
+    }
+}
+
+// 定长整型数组 ("nodes":[...]) → 最多写 max_n 个到 out, 不适配越界文件
+static void meta_parse_int_array_capped(const char* buf, const char* key,
+                                        int* out, int max_n) {
+    const char* p = meta_array_at(buf, key);
+    if (!p) return;
+    for (int i = 0; i < max_n && *p && *p != ']'; i++) {
+        while (*p && *p != '-' && (*p < '0' || *p > '9')) p++;
+        if (*p == ']') break;
+        out[i] = atoi(p);
+        while (*p && *p != ',' && *p != ']') p++;
+        if (*p == ',') p++;
+    }
+}
+
+// 字符串数组 ("hints":["a","b"]) → 每项以 key 存入 set (只关心存在性)
+static void meta_parse_string_array(const char* buf, const char* key,
+                                    std::unordered_map<std::string, bool>& out) {
+    const char* p = meta_array_at(buf, key);
+    if (!p) return;
+    while (*p && *p != ']') {
+        if (*p == '"') {
+            char id[32]; int k = 0;
+            p++;
+            while (*p && *p != '"' && k < 31) id[k++] = *p++;
+            id[k] = 0;
+            if (k > 0) out[id] = true;
+        }
+        p++;
+    }
+}
+
+// 结构化字符串数组 ("deaths":["3|火焰陷阱"]) → (floor, cause) 对。
+// 无 '|' 或 floor 非数字的项跳过 — 异常文件不应让读档失败
+static void meta_parse_death_array(const char* buf, const char* key,
+                                   std::vector<MetaSave::DeathRecord>& out) {
+    const char* p = meta_array_at(buf, key);
+    if (!p) return;
+    while (*p && *p != ']') {
+        if (*p == '"') {
+            char rec[96]; int k = 0;
+            p++;
+            while (*p && *p != '"' && k < 95) rec[k++] = *p++;
+            rec[k] = 0;
+            if (k > 0) {
+                int fl = atoi(rec);
+                const char* bar = strchr(rec, '|');
+                if (bar && *(bar + 1))
+                    out.push_back({fl, std::string(bar + 1)});
+            }
+        }
+        p++;
+    }
+}
+
 bool MetaSystem::load() {
     FILE* f = fopen("saves/meta_save.json", "r");
     if (!f) return false;
@@ -165,69 +243,24 @@ bool MetaSystem::load() {
     _save.currency.ancient_memory = parse_int("\"memory\"", 0);
     _save.best_floor  = parse_int("\"best_floor\"", 1);
     _save.challenge_pity_streak = parse_int("\"pity\"", 0);   // B4-T9
-    // G10.9-B2: 解析 endings 数组 ("endings":[1,2])
+
+    // G10.9-B2: endings 数组 ("endings":[1,2])
     _save.unlocked_endings.clear();
-    if (const char* ep = strstr(buf, "\"endings\"")) {
-        if ((ep = strstr(ep, "[")) != nullptr) {
-            ep++;
-            while (*ep && *ep != ']') {
-                if (*ep >= '0' && *ep <= '9')
-                    _save.unlocked_endings.push_back(atoi(ep));
-                while (*ep && *ep != ',' && *ep != ']') ep++;
-                if (*ep == ',') ep++;
-            }
-        }
-    }
-    // 解析 nodes 数组
-    const char* np = strstr(buf, "\"nodes\"");
-    if (np) { np = strstr(np, "["); if (np) { np++;
-        for (int i = 0; i < _node_count && *np && *np != ']'; i++) {
-            while (*np && *np != '-' && (*np < '0' || *np > '9')) np++;
-            if (*np == ']') break;
-            _save.node_levels[i] = atoi(np);
-            while (*np && *np != ',' && *np != ']') np++;
-            if (*np == ',') np++;
-    }}}
-    // G10.8-B3: 解析 hints 数组 ("hints":["a","b"] — 只关心存在性)
+    meta_parse_int_array(buf, "\"endings\"", _save.unlocked_endings);
+
+    // nodes 数组 (定长, 与 _node_count 对应) — helper 内部自行定位数组起点,
+    // 必须传 buf 而非已定位到 '[' 之后的指针 (那样会找不到 key)
+    meta_parse_int_array_capped(buf, "\"nodes\"",
+                                _save.node_levels, _node_count);
+
+    // G10.8-B3: hints 数组 — 只关心存在性
     _save.first_hints_shown.clear();
-    if (const char* hp = strstr(buf, "\"hints\"")) {
-        if ((hp = strstr(hp, "[")) != nullptr) {
-            hp++;
-            while (*hp && *hp != ']') {
-                if (*hp == '"') {
-                    char id[32]; int k = 0;
-                    hp++;
-                    while (*hp && *hp != '"' && k < 31) id[k++] = *hp++;
-                    id[k] = 0;
-                    if (k > 0) _save.first_hints_shown[id] = true;
-                }
-                hp++;
-            }
-        }
-    }
-    // v1.6-B2: 解析 deaths 数组 ("deaths":["3|火焰陷阱","5|兽人"]) — 老档无此键
-    // → 死因史为空, 天然兼容
+    meta_parse_string_array(buf, "\"hints\"", _save.first_hints_shown);
+
+    // v1.6-B2: deaths 数组 ("deaths":["3|火焰陷阱"]) — 老档无此键 → 空史, 天然兼容
     _save.death_history.clear();
-    if (const char* dp = strstr(buf, "\"deaths\"")) {
-        if ((dp = strstr(dp, "[")) != nullptr) {
-            dp++;
-            while (*dp && *dp != ']') {
-                if (*dp == '"') {
-                    char rec[96]; int k = 0;
-                    dp++;
-                    while (*dp && *dp != '"' && k < 95) rec[k++] = *dp++;
-                    rec[k] = 0;
-                    if (k > 0) {
-                        int fl = atoi(rec);
-                        const char* bar = strchr(rec, '|');
-                        if (bar && *(bar + 1))
-                            _save.death_history.push_back({fl, std::string(bar + 1)});
-                    }
-                }
-                dp++;
-            }
-        }
-    }
+    meta_parse_death_array(buf, "\"deaths\"", _save.death_history);
+
     // 与 record_death 的环形上限保持一致 (手写/异常文件: 丢最旧, 留最近 8 条)
     if (_save.death_history.size() > 8)
         _save.death_history.erase(

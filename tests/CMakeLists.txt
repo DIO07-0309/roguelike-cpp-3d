@@ -112,6 +112,8 @@ add_roguelike_test(boss_defs_test   boss/boss_defs_test.cpp)   # B4-T1: golem bo
 add_roguelike_test(action_test      combat/action_test.cpp)
 add_roguelike_test(relic_effect_test combat/relic_effect_test.cpp)
 add_roguelike_test(save_test        save/save_test.cpp)
+# G49: MetaSystem::load 手写解析护栏 (4 个数组 + 畸形项 + 8 条上限)
+add_roguelike_test(meta_load_guard_test save/meta_load_guard_test.cpp)
 # G7.3: Simulation test (data-structure only, no game deps)
 add_executable(simulation_test sim/simulation_test.cpp
     ${CMAKE_SOURCE_DIR}/src/core/sim/sim_runner.cpp)
