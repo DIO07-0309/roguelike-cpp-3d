@@ -68,6 +68,8 @@ public:
     std::unique_ptr<MirrorAgent> _mirror_agent;
     MirrorCombatDirector _mirror_combat;
     void _init_mirror_boss(Monster* boss, const class Player* player);
+    // G52: 从 BossDef 读 behavior_type 并初始化 domain/mirror 子系统
+    void _init_behavior_from_def(Monster* boss, const class Player* player);
     // M4e: 跨对局记忆 — 导出/注入 (空 vector 安全)
     void export_mirror_memory(std::vector<float>& alpha,
                               std::vector<float>& beta) const;

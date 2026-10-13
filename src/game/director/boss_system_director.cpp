@@ -58,66 +58,117 @@ void BossSystemDirector::reset_floor() {
     _mirror_combat.reset_run();
 }
 
+// ── G52: init_on_spawn 子步骤 (原 107 行, 按 D5 Step 拆分) ──
+
+// D5 Step1+2: 把 modifier / evolution 的数值乘到 Boss 战斗属性上
+static void boss_apply_spawn_modifiers(
+        Monster* boss, const BossModifierHook& mod, const BossEvolutionData& evo) {
+    if (mod.hp_scale != 1.0f) {
+        boss->combat.max_hp = (int)(boss->combat.max_hp * mod.hp_scale);
+        boss->combat.current_hp = boss->combat.max_hp;
+    }
+    if (mod.damage_scale != 1.0f)
+        boss->combat.attack = (int)(boss->combat.attack * mod.damage_scale);
+
+    // Evolution: 三个技能 damage_scale 的均值再乘一次
+    float skill_dmg_avg = (evo.charge_mod.damage_scale
+                         + evo.shockwave_mod.damage_scale
+                         + evo.summon_mod.damage_scale) / 3.0f;
+    if (skill_dmg_avg != 1.0f)
+        boss->combat.attack = (int)(boss->combat.attack * skill_dmg_avg);
+}
+
+// D5 Step2: 把 cooldown/area 变体乘到 BossAI 的三个技能上
+static void boss_apply_skill_modifiers(BossAI* bai, const BossEvolutionData& evo) {
+    bai->_charge->cooldown    *= evo.charge_mod.cooldown_scale;
+    bai->_shockwave->cooldown *= evo.shockwave_mod.cooldown_scale;
+    bai->_summon->cooldown    *= evo.summon_mod.cooldown_scale;
+    bai->_charge->fx_radius   *= evo.charge_mod.area_scale
+                                + evo.charge_mod.damage_scale - 1.0f;
+    bai->_shockwave->fx_radius *= evo.shockwave_mod.area_scale;
+    if (evo.summon_mod.double_strike) bai->_summon->cooldown *= 0.5f;
+}
+
+// F10.1: 从 BossDef 读 behavior_type (纯读取, 不碰成员)
+// mirror 分支由调用方处理 — 它需要 this->_init_mirror_boss
+static std::string boss_read_behavior_type(Monster* boss) {
+    auto* bai = dynamic_cast<BossAI*>(boss->ai);
+    if (!bai) return "";
+    const BossDef* def = get_boss_def(bai->_boss_id ? bai->_boss_id : "");
+    if (!def) return "";
+    return def->behavior_type;
+}
+
+// F10.3-fix: 克制元素加伤 (domain 分支专用)
+static float boss_weakness_mult(const BossDef* def, const Player* player) {
+    if (!player || !player->element.initialized) return 1.0f;
+    ElementType we = element_from_string(def->domain_config.weakness_element.c_str());
+    if (we == ElementType::NONE || we != player->element.type) return 1.0f;
+    return 1.0f + def->domain_config.weakness_bonus;
+}
+
+// F10.1: 从 BossDef 读 behavior_type 并初始化对应子系统
+// (成员函数 — domain 要写多个成员, mirror 要调 this->_init_mirror_boss)
+void BossSystemDirector::_init_behavior_from_def(Monster* boss, const Player* player) {
+    auto* bai = dynamic_cast<BossAI*>(boss->ai);
+    if (!bai) return;
+    const std::string btype = boss_read_behavior_type(boss);
+    if (btype.empty()) return;
+    _behavior_type = btype;
+
+    const BossDef* def = get_boss_def(bai->_boss_id ? bai->_boss_id : "");
+    if (!def) return;
+    if (_behavior_type == "domain") {
+        domain_cycle_duration = def->domain_config.cycle_time;
+        _vulnerable_dmg_mult  = def->domain_config.damage_multiplier;
+        _vulnerable_duration  = def->domain_config.vulnerable_duration;
+        _mechanic_duration    = def->domain_config.mechanic_duration;  // M4b
+        _weakness_dmg_mult    = boss_weakness_mult(def, player);
+    } else if (_behavior_type == "mirror") {
+        _init_mirror_boss(boss, player);
+    }
+}
+
 void BossSystemDirector::init_on_spawn(Monster* boss, int floor,
     const WorldState& ws, BuildType bt, const RelationshipSystem& rels,
     GameMap* map, const Player* player) {
     if (!boss) return;
 
-    // D5 Step1: BossModifier
+    // D5 Step1: BossModifier (HP/伤害缩放 + 文本)
     modifier_hook = BossNarrative::calc_modifier(floor, ws, bt, rels);
-    if (modifier_hook.hp_scale != 1.0f) {
-        boss->combat.max_hp = (int)(boss->combat.max_hp * modifier_hook.hp_scale);
-        boss->combat.current_hp = boss->combat.max_hp;
-    }
-    if (modifier_hook.damage_scale != 1.0f)
-        boss->combat.attack = (int)(boss->combat.attack * modifier_hook.damage_scale);
-
-    // D5 Step2: Evolution
-    evolution = calc_boss_evolution(floor, ws, bt, rels);
-    float skill_dmg_avg = (evolution.charge_mod.damage_scale
-                         + evolution.shockwave_mod.damage_scale
-                         + evolution.summon_mod.damage_scale) / 3.0f;
-    if (skill_dmg_avg > 1.0f || skill_dmg_avg < 1.0f)
-        boss->combat.attack = (int)(boss->combat.attack * skill_dmg_avg);
-
-    if (modifier_hook.disable_phase) {
-        auto* bai = dynamic_cast<BossAI*>(boss->ai);
-        if (bai) bai->is_enraged = true;
-    }
-    if (modifier_hook.add_minions && map) {
-        if (rng() % 100 < 80) {
-            auto [etx, ety] = map->pixel_to_tile(
-                boss->entity.position.x + 32, boss->entity.position.y);
-            if (map->is_walkable(etx, ety)) {
-                // Note: caller must add to monsters vector — we just signal via the hook
-                // The actual add_minions is handled in game_scene (monsters.emplace_back)
-                modifier_hook.add_minions = true;  // flag for caller
-            } else modifier_hook.add_minions = false;
-        } else modifier_hook.add_minions = false;
-    }
-
     modifier_text = modifier_hook.modifier_text ? modifier_hook.modifier_text : "";
 
-    // D5 Step3: Behavior
+    // D5 Step2: Evolution (技能变体)
+    evolution = calc_boss_evolution(floor, ws, bt, rels);
+    boss_apply_spawn_modifiers(boss, modifier_hook, evolution);
+
+    // modifier 的即时副作用: 禁用阶段 / 召唤小怪 (位置合法才算生效)
+    if (modifier_hook.disable_phase) {
+        if (auto* bai = dynamic_cast<BossAI*>(boss->ai)) bai->is_enraged = true;
+    }
+    if (modifier_hook.add_minions && map) {
+        auto [etx, ety] = map->pixel_to_tile(
+            boss->entity.position.x + 32, boss->entity.position.y);
+        modifier_hook.add_minions =
+            (rng() % 100 < 80) && map->is_walkable(etx, ety);
+    }
+
+    // D5 Step3: Behavior / Step5: Encounter / Step6: Cinematic + Timeline
     behavior = BossBehaviorState{};
     behavior.personality = boss_personality_for_floor(floor);
-
-    // D5 Step5: Encounter
     encounter.start(floor);
-
-    // D5 Step6: Cinematic + Timeline
     cinematic.start_intro();
     timeline.clear();
     timeline.record(0, "INTRO");
 
-    // Replay memory
+    // Replay memory (镜像 AI 读它做 prior)
     replay_mem = BossReplayMemory{};
     replay_mem.build = bt;
     replay_mem.blood_ritual = ws.has(WorldFlag::Blood_Ritual);
     replay_mem.curse = ws.has(WorldFlag::Accepted_Curse);
     replay_mem.saved_priest = ws.has(WorldFlag::Saved_Priest);
-
-    dmg_done = 0; dmg_taken = 0;
+    dmg_done = 0;
+    dmg_taken = 0;
 
     // G2.3: Arena 配置从 BossAI 读取 (boss_factory_create 已设置)
     if (auto* bai = dynamic_cast<BossAI*>(boss->ai))
@@ -125,47 +176,15 @@ void BossSystemDirector::init_on_spawn(Monster* boss, int floor,
     else
         _arena_cfg = nullptr;
 
-    // D5 Step2: Apply cooldown/area modifiers to BossAI
-    if (auto* bai = dynamic_cast<BossAI*>(boss->ai)) {
-        bai->_charge->cooldown    *= evolution.charge_mod.cooldown_scale;
-        bai->_shockwave->cooldown *= evolution.shockwave_mod.cooldown_scale;
-        bai->_summon->cooldown    *= evolution.summon_mod.cooldown_scale;
-        bai->_charge->fx_radius   *= evolution.charge_mod.area_scale
-                                      + evolution.charge_mod.damage_scale - 1.0f;
-        bai->_shockwave->fx_radius *= evolution.shockwave_mod.area_scale;
-        if (evolution.summon_mod.double_strike)
-            bai->_summon->cooldown *= 0.5f;
-    }
+    if (auto* bai = dynamic_cast<BossAI*>(boss->ai))
+        boss_apply_skill_modifiers(bai, evolution);
 
     // Build combined modifier text for intro
-    if (!modifier_text.empty() && evolution.evolution_name) {
+    if (!modifier_text.empty() && evolution.evolution_name)
         modifier_text = modifier_text + " [" + evolution.evolution_name + "]";
-    }
 
-    // F10.1: Read behavior_type + domain_config from BossDef (data-driven)
-    if (auto* bai = dynamic_cast<BossAI*>(boss->ai)) {
-        const BossDef* def = get_boss_def(bai->_boss_id ? bai->_boss_id : "");
-        if (def && !def->behavior_type.empty()) {
-            _behavior_type = def->behavior_type;
-            if (_behavior_type == "domain") {
-                domain_cycle_duration = def->domain_config.cycle_time;
-                _vulnerable_dmg_mult  = def->domain_config.damage_multiplier;
-                _vulnerable_duration  = def->domain_config.vulnerable_duration;
-                _mechanic_duration    = def->domain_config.mechanic_duration;  // M4b
-                // F10.3-fix: 数据驱动弱点元素 — 克制元素提升对核心伤害
-                _weakness_dmg_mult = 1.0f;
-                if (player && player->element.initialized) {
-                    ElementType we = element_from_string(
-                        def->domain_config.weakness_element.c_str());
-                    if (we != ElementType::NONE && we == player->element.type)
-                        _weakness_dmg_mult = 1.0f
-                            + def->domain_config.weakness_bonus;
-                }
-            } else if (_behavior_type == "mirror") {
-                _init_mirror_boss(boss, player);
-            }
-        }
-    }
+    // F10.1: behavior_type + domain 配置 (数据驱动)
+    _init_behavior_from_def(boss, player);
 }
 
 void BossSystemDirector::_init_mirror_boss(Monster* boss, const Player* player) {
