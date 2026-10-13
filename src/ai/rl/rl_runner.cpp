@@ -118,12 +118,10 @@ void run_rl_mode(int test_episodes, int train_episodes) {
 }
 
 // ── F15.4: Mirror self-play training ──
-void run_rl_mirror_mode(int episodes) {
-    using namespace rl;
-    using namespace mcts;
+// ── G52: run_rl_mirror_mode 子步骤 (原 91 行拆 4 段) ──
 
-    // Four player styles to train against
-    PlayerHabitProfile profiles[4];
+// 四种对战风格 (镜像 Boss 要学的对象)
+static void rl_mirror_build_profiles(PlayerHabitProfile (&profiles)[4]) {
     // AGGRESSIVE: high attack, low dodge
     profiles[0].attack_frequency = 0.90f; profiles[0].dodge_rate = 0.08f;
     profiles[0].aggression_score = 0.95f; profiles[0].style = PlayerStyle::AGGRESSIVE;
@@ -132,80 +130,91 @@ void run_rl_mirror_mode(int episodes) {
     profiles[1].attack_frequency = 0.25f; profiles[1].dodge_rate = 0.45f;
     profiles[1].aggression_score = 0.35f; profiles[1].style = PlayerStyle::DEFENSIVE;
     profiles[1].predict_low_dodge = false;
-    // SNIPER: retreat-heavy, range attacks
+    // SNIPER + MAGE 共用下标 2 (retreat + skill-heavy 的组合风格)
     profiles[2].attack_frequency = 0.55f; profiles[2].retreat_rate = 0.40f;
     profiles[2].style = PlayerStyle::SNIPER;
-    // MAGE: skill-heavy
     profiles[2].skill_frequency = 0.25f; profiles[2].predict_skill_spam = true;
-    profiles[2].predicted_fav_skill = 1;  // fireball
+    profiles[2].predicted_fav_skill = 1;   // fireball
     // BALANCED (default)
     profiles[3] = PlayerHabitProfile{};
+}
 
-    auto make_scenario_with_style = [](int style_id) -> SimulationState {
-        SimulationState s;
-        s.player.hp = 100; s.player.max_hp = 100;
-        s.player.x = 5; s.player.y = 5;
-        s.player.attack = 10; s.player.pdef = 3; s.player.mdef = 1;
-        s.player.alive = true;
-        // v0.9.36 G32-E: 同上 — Boss 原坐标 (3,0) 距玩家 (5,5) 为 7 格,
-    // 近战与技能伤害均无法触发, 镜像训练学不到真实交战。改到 (5,6) 即 d=1
-    s.monsters.push_back(MonsterSnapshot{"mirror_boss", 200, 200, 5, 6, 15, 5, 5, {}, true, true});
-        s.player_style = style_id + 1; // 1-4
-        return s;
-    };
+// 带风格标记的战斗场景 (Boss 取 d=1 可交战距离 — 同 rl_make_scenario 的修正)
+static mcts::SimulationState rl_mirror_scenario(int style_id) {
+    mcts::SimulationState s;
+    s.player.hp = 100; s.player.max_hp = 100;
+    s.player.x = 5; s.player.y = 5;
+    s.player.attack = 10; s.player.pdef = 3; s.player.mdef = 1;
+    s.player.alive = true;
+    s.player.skill_cooldowns[0] = 0; s.player.skill_cooldowns[1] = 0;
+    // v0.9.36 G32-E: Boss 原坐标 (3,0) 距玩家 (5,5) 为 7 格, 近战与技能
+    // 伤害均无法触发, 镜像训练学不到真实交战。改到 (5,6) 即 d=1
+    s.monsters.push_back(mcts::MonsterSnapshot{
+        "mirror_boss", 200, 200, 5, 6, 15, 5, 5, {}, true, true});
+    s.player_style = style_id + 1;   // 1-4
+    return s;
+}
 
-    CombatEnvironment env;
-    uint32_t seed = 42;
+// 单个风格的自对弈训练: 跑 episodes 局, Q 表落盘, 输出胜率/tail/reward
+static void rl_mirror_train_style(int style_i, int episodes,
+                                  const PlayerHabitProfile& profile) {
+    rl::QAgent q_agent(0.15, 0.9, 0.12);
+    rl::CombatEnvironment env;
+    const uint32_t seed = 42;
+    std::string qpath = std::string("saves/rl_mirror_q_") +
+                        profile.style_name() + ".json";
+    size_t loaded = q_agent.load(qpath) ? q_agent.table_size() : 0;
+    int wins = 0; double total_r = 0;
+    int tail_wins = 0;
+    int tail_start = episodes - episodes / 10;   // 末段 10% 低探索统计
+    if (loaded > 0)
+        printf("  [load] %s: %zu entries — 继续训练\n", qpath.c_str(), loaded);
+
+    for (int i = 0; i < episodes; i++) {
+        // v0.9.29: epsilon 退火 — 后期低探索收敛
+        q_agent.set_epsilon(EPS_START - (EPS_START - EPS_END) * (double)i / episodes);
+        auto initial = rl_mirror_scenario(style_i);
+        initial.rng.seed = seed + style_i * 7919u + i * 7331u;
+        auto obs = env.reset(initial);
+        while (!env.is_done()) {
+            uint32_t local_seed = seed + style_i * 7331u + i * 7919u + env.state().depth;
+            auto a = q_agent.select(env.state(), local_seed);
+            auto sr = env.step(a);
+            // Mirror reward replaces default step reward
+            double base = sr.reward;
+            bool dodged = (a == mcts::CombatAction::MOVE_LEFT
+                        || a == mcts::CombatAction::MOVE_RIGHT
+                        || a == mcts::CombatAction::MOVE_UP
+                        || a == mcts::CombatAction::MOVE_DOWN);
+            double mirror_bonus = MirrorAgent::mirror_reward(
+                profile, (int)a, base, 0, dodged, false);
+            // v0.9.36 G32-E: bootstrap 只在下一状态合法动作里取 max (G32-E-B1)
+            q_agent.update(obs, a, base + mirror_bonus, sr.observation,
+                           mcts::get_possible_actions(env.state()),
+                           env.is_done());
+            obs = sr.observation;
+            total_r += base + mirror_bonus;
+        }
+        if (env.state().victory) { wins++; if (i >= tail_start) tail_wins++; }
+    }
+    printf("  [%s] %d/%d wins (%.1f%%), avg_r=%.1f, Q=%zu\n",
+        profile.style_name(), wins, episodes, wins*100.0/episodes,
+        total_r/episodes, q_agent.table_size());
+    printf("  [tail %d eps] %d/%d wins (%.1f%%) — 低探索收敛水平\n",
+           episodes - tail_start, tail_wins, episodes - tail_start,
+           tail_wins*100.0/(episodes - tail_start));
+    if (q_agent.save(qpath))
+        printf("  [save] %s: %zu entries\n", qpath.c_str(), q_agent.table_size());
+    else
+        printf("  [save] FAILED: %s\n", qpath.c_str());
+}
+
+void run_rl_mirror_mode(int episodes) {
+    PlayerHabitProfile profiles[4];
+    rl_mirror_build_profiles(profiles);
 
     printf("═══ RL MIRROR: %d episodes × 4 styles ═══\n", episodes);
-    for (int style_i = 0; style_i < 4; style_i++) {
-        QAgent q_agent(0.15, 0.9, 0.12);
-        std::string qpath = std::string("saves/rl_mirror_q_") +
-                            profiles[style_i].style_name() + ".json";
-        size_t loaded = q_agent.load(qpath) ? q_agent.table_size() : 0;
-        int wins = 0; double total_r = 0;
-        int tail_wins = 0;
-        int tail_start = episodes - episodes / 10;  // 末段 10% 低探索统计
-        const auto& profile = profiles[style_i];
-        if (loaded > 0)
-            printf("  [load] %s: %zu entries — 继续训练\n", qpath.c_str(), loaded);
-
-        for (int i = 0; i < episodes; i++) {
-            // v0.9.29: epsilon 退火 — 后期低探索收敛
-            q_agent.set_epsilon(EPS_START - (EPS_START - EPS_END) * (double)i / episodes);
-            auto initial = make_scenario_with_style(style_i);
-            initial.rng.seed = seed + style_i * 7919u + i * 7331u;
-            auto obs = env.reset(initial);
-            while (!env.is_done()) {
-                uint32_t local_seed = seed + style_i * 7331u + i * 7919u + env.state().depth;
-                auto a = q_agent.select(env.state(), local_seed);
-                auto sr = env.step(a);
-                // Mirror reward replaces default step reward
-                double base = sr.reward;
-                bool dodged = (a == CombatAction::MOVE_LEFT || a == CombatAction::MOVE_RIGHT
-                            || a == CombatAction::MOVE_UP || a == CombatAction::MOVE_DOWN);
-                double mirror_bonus = MirrorAgent::mirror_reward(
-                    profile, (int)a, base, 0, dodged, false);
-                // v0.9.36 G32-E: bootstrap 只在下一状态合法动作里取 max (G32-E-B1)
-                q_agent.update(obs, a, base + mirror_bonus, sr.observation,
-                               mcts::get_possible_actions(env.state()),
-                               env.is_done());
-                obs = sr.observation;
-                total_r += base + mirror_bonus;
-            }
-            if (env.state().victory) { wins++; if (i >= tail_start) tail_wins++; }
-        }
-        printf("  [%s] %d/%d wins (%.1f%%), avg_r=%.1f, Q=%zu\n",
-            profiles[style_i].style_name(),
-            wins, episodes, wins*100.0/episodes,
-            total_r/episodes, q_agent.table_size());
-        printf("  [tail %d eps] %d/%d wins (%.1f%%) — 低探索收敛水平\n",
-               episodes - tail_start, tail_wins, episodes - tail_start,
-               tail_wins*100.0/(episodes - tail_start));
-        if (q_agent.save(qpath))
-            printf("  [save] %s: %zu entries\n", qpath.c_str(), q_agent.table_size());
-        else
-            printf("  [save] FAILED: %s\n", qpath.c_str());
-    }
+    for (int style_i = 0; style_i < 4; style_i++)
+        rl_mirror_train_style(style_i, episodes, profiles[style_i]);
     printf("Mirror RL complete.\n");
 }
