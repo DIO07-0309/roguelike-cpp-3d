@@ -16,103 +16,105 @@
 static const double EPS_START = 0.12;
 static const double EPS_END = 0.005;
 
-void run_rl_mode(int test_episodes, int train_episodes) {
-    using namespace rl;
-    using namespace mcts;
+// ── G52: run_rl_mode 子步骤 (原 98 行拆 test/train 两段) ──
 
-    // Build a typical combat scenario
-    auto make_scenario = []() -> SimulationState {
-        SimulationState s;
-        s.player.hp = 100; s.player.max_hp = 100;
-        s.player.x = 5; s.player.y = 5;
-        s.player.attack = 10; s.player.pdef = 3; s.player.mdef = 1;
-        s.player.alive = true;
-        s.player.skill_cooldowns[0] = 0; s.player.skill_cooldowns[1] = 0;
-// v0.9.36 G32-E: 怪物改为可交战距离 (G32-E-B4)
+// 典型战斗场景 (怪物取"可交战距离" — 见下方坐标注释)
+static mcts::SimulationState rl_make_scenario() {
+    mcts::SimulationState s;
+    s.player.hp = 100; s.player.max_hp = 100;
+    s.player.x = 5; s.player.y = 5;
+    s.player.attack = 10; s.player.pdef = 3; s.player.mdef = 1;
+    s.player.alive = true;
+    s.player.skill_cooldowns[0] = 0; s.player.skill_cooldowns[1] = 0;
+    // v0.9.36 G32-E: 怪物改为可交战距离 (G32-E-B4)
     // 旧坐标 (3,0)/(5,0) 距玩家 (5,5) 是 7/5 格, 而 ATTACK 要求 d<2
     // (action.h)、技能伤害要求 d<3 (environment.cpp) → 近战与技能伤害
     // 永远触发不了, 训出的策略只会绕圈和发呆(技能放出去 0 伤害还锁 11 步冷却)。
     // 现取 slime d=1(可近战) / orc d=2(仅技能)。
-    s.monsters.push_back(MonsterSnapshot{"slime", 20, 20, 5, 6, 3, 1, 0, {}, true});
-    s.monsters.push_back(MonsterSnapshot{"orc", 30, 30, 7, 5, 7, 3, 1, {}, true});
-        return s;
-    };
+    s.monsters.push_back(mcts::MonsterSnapshot{"slime", 20, 20, 5, 6, 3, 1, 0, {}, true});
+    s.monsters.push_back(mcts::MonsterSnapshot{"orc", 30, 30, 7, 5, 7, 3, 1, {}, true});
+    return s;
+}
 
-    CombatEnvironment env;
-    uint32_t seed = 42;
-
-    // ── Test mode: RandomAgent baseline ──
-    if (test_episodes > 0) {
-        RandomAgent random_agent;
-        printf("═══ RL TEST: %d episodes (RandomAgent) ═══\n", test_episodes);
-        int wins = 0; double total_reward = 0; int total_steps = 0;
-        for (int i = 0; i < test_episodes; i++) {
-            auto initial = make_scenario();
-            initial.rng.seed = seed + i * 7919u;
-            env.reset(initial);
-            int steps = 0;
-            while (!env.is_done() && steps < 50) {
-                uint32_t local_seed = seed + i * 7331u + steps;
-                auto a = random_agent.select(env.state(), local_seed);
-                auto sr = env.step(a);
-                total_reward += sr.reward;
-                steps++;
-            }
-            if (env.state().victory) wins++;
-            total_steps += steps;
-            if (test_episodes >= 10 && (i+1) % (test_episodes/10) == 0)
-                printf("  [%d/%d] wins=%d avg_r=%.1f\n", i+1, test_episodes, wins, total_reward/(i+1));
+// Test 模式: RandomAgent 基线
+static void rl_run_test_mode(int test_episodes) {
+    rl::RandomAgent random_agent;
+    rl::CombatEnvironment env;
+    const uint32_t seed = 42;
+    printf("═══ RL TEST: %d episodes (RandomAgent) ═══\n", test_episodes);
+    int wins = 0; double total_reward = 0; int total_steps = 0;
+    for (int i = 0; i < test_episodes; i++) {
+        auto initial = rl_make_scenario();
+        initial.rng.seed = seed + i * 7919u;
+        env.reset(initial);
+        int steps = 0;
+        while (!env.is_done() && steps < 50) {
+            uint32_t local_seed = seed + i * 7331u + steps;
+            auto a = random_agent.select(env.state(), local_seed);
+            auto sr = env.step(a);
+            total_reward += sr.reward;
+            steps++;
         }
-        printf("RandomAgent: %d/%d wins (%.1f%%), avg reward %.1f, avg steps %.1f\n",
-               wins, test_episodes, wins*100.0/test_episodes,
-               total_reward/test_episodes, (double)total_steps/test_episodes);
+        if (env.state().victory) wins++;
+        total_steps += steps;
+        if (test_episodes >= 10 && (i+1) % (test_episodes/10) == 0)
+            printf("  [%d/%d] wins=%d avg_r=%.1f\n", i+1, test_episodes, wins, total_reward/(i+1));
     }
+    printf("RandomAgent: %d/%d wins (%.1f%%), avg reward %.1f, avg steps %.1f\n",
+           wins, test_episodes, wins*100.0/test_episodes,
+           total_reward/test_episodes, (double)total_steps/test_episodes);
+}
 
-    // ── Train mode: Q-learning (Q 表持久化, 支持续训, epsilon 退火) ──
-    if (train_episodes > 0) {
-        QAgent q_agent(0.1, 0.9, 0.1);
-        const char* qpath = "saves/rl_qtable.json";
-        size_t loaded = q_agent.load(qpath) ? q_agent.table_size() : 0;
-        printf("═══ RL TRAIN: %d episodes (QAgent) ═══\n", train_episodes);
-        if (loaded > 0) printf("  [load] %s: %zu entries — 继续训练\n", qpath, loaded);
-        int wins = 0; int tail_wins = 0;
-        int tail_start = train_episodes - train_episodes / 10;  // 末段 10% 低探索统计
-        for (int i = 0; i < train_episodes; i++) {
-            // v0.9.29: epsilon 退火 — 后期低探索收敛 (突破 95%)
-            q_agent.set_epsilon(EPS_START - (EPS_START - EPS_END) * (double)i / train_episodes);
-            auto initial = make_scenario();
-            initial.rng.seed = seed + i * 7919u;
-            auto obs = env.reset(initial);
-            while (!env.is_done()) {
-                uint32_t local_seed = seed + i * 7331u + env.state().depth;
-                auto a = q_agent.select(env.state(), local_seed);
-                auto sr = env.step(a);
-                // v0.9.36 G32-E: bootstrap 只在下一状态合法动作里取 max (G32-E-B1)
-                q_agent.update(obs, a, sr.reward, sr.observation,
-                               mcts::get_possible_actions(env.state()),
-                               env.is_done());
-                obs = sr.observation;
-            }
-            if (env.state().victory) { wins++; if (i >= tail_start) tail_wins++; }
-            if (train_episodes >= 10 && (i+1) % (train_episodes/10) == 0)
-                printf("  [%d/%d] wins=%d Q-table=%zu\n", i+1, train_episodes, wins, q_agent.table_size());
+// Train 模式: Q-learning (Q 表持久化, 支持续训, epsilon 退火)
+static void rl_run_train_mode(int train_episodes) {
+    rl::QAgent q_agent(0.1, 0.9, 0.1);
+    rl::CombatEnvironment env;
+    const char* qpath = "saves/rl_qtable.json";
+    size_t loaded = q_agent.load(qpath) ? q_agent.table_size() : 0;
+    printf("═══ RL TRAIN: %d episodes (QAgent) ═══\n", train_episodes);
+    if (loaded > 0) printf("  [load] %s: %zu entries — 继续训练\n", qpath, loaded);
+    int wins = 0; int tail_wins = 0;
+    int tail_start = train_episodes - train_episodes / 10;  // 末段 10% 低探索统计
+    for (int i = 0; i < train_episodes; i++) {
+        // v0.9.29: epsilon 退火 — 后期低探索收敛 (突破 95%)
+        q_agent.set_epsilon(EPS_START - (EPS_START - EPS_END) * (double)i / train_episodes);
+        auto initial = rl_make_scenario();
+        initial.rng.seed = 42 + i * 7919u;
+        auto obs = env.reset(initial);
+        while (!env.is_done()) {
+            uint32_t local_seed = 42 + i * 7331u + env.state().depth;
+            auto a = q_agent.select(env.state(), local_seed);
+            auto sr = env.step(a);
+            // v0.9.36 G32-E: bootstrap 只在下一状态合法动作里取 max (G32-E-B1)
+            q_agent.update(obs, a, sr.reward, sr.observation,
+                           mcts::get_possible_actions(env.state()),
+                           env.is_done());
+            obs = sr.observation;
         }
-        printf("QAgent after training: %d/%d wins (%.1f%%), Q-table size=%zu\n",
-               wins, train_episodes, wins*100.0/train_episodes, q_agent.table_size());
-        printf("  [tail %d eps] %d/%d wins (%.1f%%) — 低探索收敛水平\n",
-               train_episodes - tail_start, tail_wins, train_episodes - tail_start,
-               tail_wins*100.0/(train_episodes - tail_start));
-        if (q_agent.save(qpath))
-            printf("  [save] %s: %zu entries\n", qpath, q_agent.table_size());
-        else
-            printf("  [save] FAILED: %s\n", qpath);
-        auto dist = q_agent.action_distribution();
-        printf("Action Q-values:\n");
-        for (auto& d : dist)
-            if (d.count > 0)
-                printf("  %10s: %5d entries  avg_q=%.2f\n",
-                       d.action_name.c_str(), d.count, d.avg_q);
+        if (env.state().victory) { wins++; if (i >= tail_start) tail_wins++; }
+        if (train_episodes >= 10 && (i+1) % (train_episodes/10) == 0)
+            printf("  [%d/%d] wins=%d Q-table=%zu\n", i+1, train_episodes, wins, q_agent.table_size());
     }
+    printf("QAgent after training: %d/%d wins (%.1f%%), Q-table size=%zu\n",
+           wins, train_episodes, wins*100.0/train_episodes, q_agent.table_size());
+    printf("  [tail %d eps] %d/%d wins (%.1f%%) — 低探索收敛水平\n",
+           train_episodes - tail_start, tail_wins, train_episodes - tail_start,
+           tail_wins*100.0/(train_episodes - tail_start));
+    if (q_agent.save(qpath))
+        printf("  [save] %s: %zu entries\n", qpath, q_agent.table_size());
+    else
+        printf("  [save] FAILED: %s\n", qpath);
+    auto dist = q_agent.action_distribution();
+    printf("Action Q-values:\n");
+    for (auto& d : dist)
+        if (d.count > 0)
+            printf("  %10s: %5d entries  avg_q=%.2f\n",
+                   d.action_name.c_str(), d.count, d.avg_q);
+}
+
+void run_rl_mode(int test_episodes, int train_episodes) {
+    if (test_episodes > 0) rl_run_test_mode(test_episodes);
+    if (train_episodes > 0) rl_run_train_mode(train_episodes);
 }
 
 // ── F15.4: Mirror self-play training ──
