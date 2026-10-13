@@ -120,6 +120,34 @@ F15 镜像 Boss 读你的行为画像（攻防倾向/走位偏好/技能习惯�
 
 ## CHANGELOG
 
+- G52（开发版，未发布）：**函数长度债收敛第四批** —— Boss 链路 / Mirror 链路 / RL 入口共 6 个函数拆分，全仓超规 **75→68**。
+
+  | 函数 | 前 | 后 | 手法 |
+  |---|---|---|---|
+  | `calc_boss_evolution` | 96 | 40 | 按 Build 反制 / F5 / F10 / F15 / clamp 拆 5 段 |
+  | `BossSystemDirector::init_on_spawn` | 107 | 52 | 按 D5 Step 拆（属性乘算/技能乘算/def 读取/弱点计算） |
+  | `MirrorCombatDirector::init` | 117 | 56 | 抽 `mirror_classify_skill`（9 分支中英双语技能识别）+ `mirror_init_learning` |
+  | `MirrorCombatDirector::_mirror_skill` | 105 | 24 | 按 5 类技能拆助手（melee/projectile/heal/aoe/time_stop） |
+  | `run_rl_mode` | 98 | 7 | 抽 scenario / RandomAgent 基线 / QAgent 训练 |
+  | `run_rl_mirror_mode` | 91 | 7 | 抽 4 风格配置 / 场景 / 单风格训练 |
+
+  - **★ 本轮两次因「helper 访问私有成员」返工**（`mirror_init_learning`、5 个 `mirror_skill_*`）：先写成 free function + 传对象指针，编译报 private 访问失败，才改为类的**私有静态成员**。**结论：需要访问私有成员的 helper 一开始就该声明为静态成员。**
+  - `run_rl_mode` 顺手消除了 C4700 未初始化告警来源：原 `make_scenario` 是 lambda、seed 字面量 42 在两处各写一遍。
+  - **RL 两模式用实跑验证**：`--rl-test 20 --rl-train 50` 输出 Q 表收敛统计与 action 分布齐全；`--rl-mirror 20` 四风格全部训练完并落盘。
+  - `_mirror_skill` 的 **agent 反馈语义逐 case 核对保留** —— 它是在线自适应强化的判断依据，改错会让 Echo 学错方向且不报错。
+  - 门禁：ctest **84/84** · Release 0 error · 全仓超规 **75→68** · 桌面包 1347 文件 0 漂移。
+
+- G51（开发版，未发布）：`CombatCoordinator::use_skill` 93→32 行，拆 TheWorld / 时停暂存 / 普通收尾三段。**重排过才发现**：`skill_heavy_vfx` 的位置影响 `effects` 数组顺序（=绘制层级），已挪回与原拆分前一致。
+
+- G50（开发版，未发布）：`CombatEnvironment::step` 100→25 行。**★ 顺序即语义**：`lcg()` 调用次序决定 RNG 流，与 MCTS 侧必须逐次一致；`rl_finish_step` 明确标注「不含 lcg」。
+
+- G49（开发版，未发布）：`MetaSystem::load` 92→36 行 + 新增 `meta_load_guard_test`。**护栏测试当场抓到重构引入的真 bug**：helper 收到「已定位到 `[` 之后」的指针却又重新查找 key，导致 `nodes` 数组读出全 0 —— 症状是玩家永久升级丢失但不崩不报错。
+
+- G48（开发版，未发布）：`AudioServer::init` 87→40 行，抽文件音效加载与 Kenney 层。sim 实跑确认 `timestop frameCount=170528`、`domain_expand=262657` 均从真实 wav 加载成功。
+
+- G46（开发版，未发布）：`bgm_track_for` 111→16 行（12 首 BGM 改静态填表）；`BTAgent::build_tree` 105→6 行。顺带清掉真 bug：`actSkill` 创建后从未入树，「skill_1」action 实际不可达。
+
+
 - G45（开发版，未发布）：**黄金基线回归测试** —— 集成层从「只测不崩」升级为「测结果对不对」，防静默行为漂移。
 
   - **动机**：809 个单元测试之后，集成层只剩 2 个冒烟测试，且只验证「不崩 + 时钟推进」。G44 拆 `main` 时漏掉 20+ 行初始化，症状是**游戏启动后首帧前静默退出**——这类缺陷冒烟测试抓不到（它还真跑了 60 tick 不崩）。
