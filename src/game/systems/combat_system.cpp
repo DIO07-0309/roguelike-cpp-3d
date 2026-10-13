@@ -483,6 +483,152 @@ std::string format_buff_time(float sec) {
 static std::unordered_map<std::string, RelicDef> g_relic_defs;
 static bool g_relic_defs_loaded = false;
 
+// ── G47: 圣物 def 解析子步骤 (原 _parse_relic_obj 119 行 4 层嵌套) ──
+
+// tag 字符串 → BuildTag。集中一处便于核对 JSON 里出现的所有取值
+// (未知 tag 会被静默忽略 — 这正是"数据填错不报错"的典型入口)
+static bool _relic_tag_from(const std::string& tag, BuildTag& out) {
+    if (tag == "melee")       out = BuildTag::MELEE;
+    else if (tag == "ranged") out = BuildTag::RANGED;
+    else if (tag == "magic")  out = BuildTag::MAGIC;
+    else if (tag == "fire")   out = BuildTag::FIRE;
+    else if (tag == "ice")    out = BuildTag::ICE;
+    else if (tag == "lightning") out = BuildTag::LIGHTNING;
+    else if (tag == "poison") out = BuildTag::POISON;
+    else if (tag == "bleed")  out = BuildTag::BLEED;
+    else if (tag == "summon") out = BuildTag::SUMMON;
+    else if (tag == "combo")  out = BuildTag::COMBO;
+    else if (tag == "heavy")  out = BuildTag::HEAVY;
+    else if (tag == "aoe")    out = BuildTag::AOE;
+    else if (tag == "projectile") out = BuildTag::PROJECTILE;
+    else if (tag == "heal")   out = BuildTag::HEAL;
+    else if (tag == "time")   out = BuildTag::TIME;
+    else if (tag == "defense") out = BuildTag::DEFENSE;
+    else if (tag == "support") out = BuildTag::SUPPORT;
+    else if (tag == "dot")    out = BuildTag::DOT;
+    else return false;
+    return true;
+}
+
+// "hud_color": [r,g,b]
+static std::string _parse_relic_hud_color(const char*& p, RelicDef& out) {
+    p = _skip_ws(p);
+    if (*p != '[') return "expected '['";
+    p++;
+    out.hud_color_r = _read_int(p);
+    p = _skip_ws(p); if (*p == ',') p++;
+    out.hud_color_g = _read_int(p);
+    p = _skip_ws(p); if (*p == ',') p++;
+    out.hud_color_b = _read_int(p);
+    p = _skip_ws(p); if (*p == ']') p++;
+    return "";
+}
+
+// "tags": [...]
+static void _parse_relic_tags(const char*& p, RelicDef& out) {
+    p = _skip_ws(p);
+    if (*p != '[') return;
+    p++;
+    out.favorite_tags.clear();
+    while (*p) {
+        p = _skip_ws(p);
+        if (*p == ']') { p++; break; }
+        if (*p == ',') { p++; continue; }
+        BuildTag tag{};
+        if (_relic_tag_from(_read_string(p), tag))
+            out.favorite_tags.push_back(tag);
+    }
+}
+
+// effect 对象内的枚举字段 (trigger / type / target)。
+// 未知取值保持默认 — 与原先逐字段 if-else 语义一致
+static void _parse_relic_effect_enum(const std::string& key, const char*& p,
+                                     RelicEffectDef& eff) {
+    if (key == "trigger") {
+        std::string v = _read_string(p);
+        if (v == "passive") eff.trigger = RelicTrigger::PASSIVE;
+        else if (v == "on_hit") eff.trigger = RelicTrigger::ON_HIT;
+        else if (v == "on_kill") eff.trigger = RelicTrigger::ON_KILL;
+        else if (v == "pre_damage") eff.trigger = RelicTrigger::PRE_DAMAGE;
+        else if (v == "on_hurt") eff.trigger = RelicTrigger::ON_HURT;
+        else if (v == "on_floor_enter") eff.trigger = RelicTrigger::ON_FLOOR_ENTER;
+    } else if (key == "type") {
+        std::string v = _read_string(p);
+        if (v == "modify_stat") eff.type = RelicEffectType::MODIFY_STAT;
+        else if (v == "add_buff") eff.type = RelicEffectType::ADD_BUFF;
+        else if (v == "heal") eff.type = RelicEffectType::HEAL;
+        else if (v == "deal_aoe_damage") eff.type = RelicEffectType::DEAL_AOE_DAMAGE;
+        else if (v == "damage_reduction") eff.type = RelicEffectType::DAMAGE_REDUCTION;
+    } else if (key == "target") {
+        std::string v = _read_string(p);
+        if (v == "self") eff.target = RelicTarget::SELF;
+        else if (v == "all_enemies") eff.target = RelicTarget::ALL_ENEMIES;
+    }
+}
+
+// 跳过单个未知 JSON 值 (字符串/数组/对象/裸标量) — 保持 p 前进
+static void _skip_unknown_json_value(const char*& p) {
+    if (*p == '"') { _read_string(p); }
+    else if (*p == '[') { while (*p && *p != ']') p++; if (*p == ']') p++; }
+    else if (*p == '{') { int d = 1; p++; while (*p && d) { if (*p=='{') d++; if (*p=='}') d--; p++; } }
+    else { while (*p && *p != ',' && *p != '}') p++; }
+}
+
+// effect 对象: { trigger, type, target, stat, value, ... }
+static void _parse_relic_effect_obj(const char*& p, RelicDef& out) {
+    if (*p != '{') return;
+    p++;
+    RelicEffectDef eff;
+    while (*p) {
+        p = _skip_ws(p);
+        if (*p == '}') { p++; break; }
+        if (*p == ',') { p++; continue; }
+        std::string ek = _read_string(p);
+        p = _skip_ws(p);
+        if (*p != ':') break;
+        p++;
+        if (ek == "trigger" || ek == "type" || ek == "target") {
+            _parse_relic_effect_enum(ek, p, eff);
+        } else if (ek == "stat")     { eff.stat = _read_string(p);
+        } else if (ek == "value")    { eff.value = _read_float(p);
+        } else if (ek == "value2")   { eff.value2 = _read_int(p);
+        } else if (ek == "buff_id")  { eff.buff_id = _read_string(p);
+        } else if (ek == "chance")   { eff.chance = _read_float(p);
+        } else {
+            _skip_unknown_json_value(p);
+        }
+    }
+    out.effects.push_back(eff);
+}
+
+// "effects": [ {...}, {...} ]
+static void _parse_relic_effects(const char*& p, RelicDef& out) {
+    p = _skip_ws(p);
+    if (*p != '[') return;
+    p++;
+    while (*p) {
+        p = _skip_ws(p);
+        if (*p == ']') { p++; break; }
+        if (*p == ',') { p++; continue; }
+        if (*p != '{') break;
+        _parse_relic_effect_obj(p, out);
+    }
+}
+
+// 标量字段 (id/name/rarity/param ...)。返回 false = key 未被识别, 调用方
+// 负责跳过其值 — 与原实现的 else 分支语义一致
+static bool _parse_relic_scalar_field(const std::string& key, const char*& p,
+                                      RelicDef& out) {
+    if (key == "id")             { out.id = _read_string(p);        return true; }
+    if (key == "name")           { out.name = _read_string(p);      return true; }
+    if (key == "short_name")     { out.short_name = _read_string(p); return true; }
+    if (key == "desc")           { out.desc = _read_string(p);      return true; }
+    if (key == "rarity")         { out.rarity = _read_string(p);    return true; }
+    if (key == "param")          { out.param = _read_float(p);      return true; }
+    if (key == "param2")         { out.param2 = _read_int(p);       return true; }
+    return false;
+}
+
 // 复用 combat_system.cpp 现有的 _skip_ws / _read_string / _read_float / _read_int
 static std::string _parse_relic_obj(const char*& p, RelicDef& out) {
     p = _skip_ws(p);
@@ -498,107 +644,16 @@ static std::string _parse_relic_obj(const char*& p, RelicDef& out) {
         if (*p != ':') return "expected ':' after " + key;
         p++;
 
-        if (key == "id")              out.id = _read_string(p);
-        else if (key == "name")        out.name = _read_string(p);
-        else if (key == "short_name")  out.short_name = _read_string(p);
-        else if (key == "desc")        out.desc = _read_string(p);
-        else if (key == "rarity")       out.rarity = _read_string(p);
-        else if (key == "param")       out.param = _read_float(p);
-        else if (key == "param2")      out.param2 = _read_int(p);
-        else if (key == "hud_color") {
-            p = _skip_ws(p); if (*p != '[') return "expected '['"; p++;
-            out.hud_color_r = _read_int(p);
-            p = _skip_ws(p); if (*p == ',') p++;
-            out.hud_color_g = _read_int(p);
-            p = _skip_ws(p); if (*p == ',') p++;
-            out.hud_color_b = _read_int(p);
-            p = _skip_ws(p); if (*p == ']') p++;
+        std::string err;
+        if (key == "hud_color") {
+            err = _parse_relic_hud_color(p, out);
+            if (!err.empty()) return err;
         } else if (key == "tags") {
-            p = _skip_ws(p); if (*p == '[') p++;
-            out.favorite_tags.clear();
-            while (*p) {
-                p = _skip_ws(p);
-                if (*p == ']') { p++; break; }
-                if (*p == ',') { p++; continue; }
-                std::string tag = _read_string(p);
-                if (tag == "melee") out.favorite_tags.push_back(BuildTag::MELEE);
-                else if (tag == "ranged") out.favorite_tags.push_back(BuildTag::RANGED);
-                else if (tag == "magic") out.favorite_tags.push_back(BuildTag::MAGIC);
-                else if (tag == "fire") out.favorite_tags.push_back(BuildTag::FIRE);
-                else if (tag == "ice") out.favorite_tags.push_back(BuildTag::ICE);
-                else if (tag == "lightning") out.favorite_tags.push_back(BuildTag::LIGHTNING);
-                else if (tag == "poison") out.favorite_tags.push_back(BuildTag::POISON);
-                else if (tag == "bleed") out.favorite_tags.push_back(BuildTag::BLEED);
-                else if (tag == "summon") out.favorite_tags.push_back(BuildTag::SUMMON);
-                else if (tag == "combo") out.favorite_tags.push_back(BuildTag::COMBO);
-                else if (tag == "heavy") out.favorite_tags.push_back(BuildTag::HEAVY);
-                else if (tag == "aoe") out.favorite_tags.push_back(BuildTag::AOE);
-                else if (tag == "projectile") out.favorite_tags.push_back(BuildTag::PROJECTILE);
-                else if (tag == "heal") out.favorite_tags.push_back(BuildTag::HEAL);
-                else if (tag == "time") out.favorite_tags.push_back(BuildTag::TIME);
-                else if (tag == "defense") out.favorite_tags.push_back(BuildTag::DEFENSE);
-                else if (tag == "support") out.favorite_tags.push_back(BuildTag::SUPPORT);
-                else if (tag == "dot") out.favorite_tags.push_back(BuildTag::DOT);
-            }
+            _parse_relic_tags(p, out);
         } else if (key == "effects") {
-            p = _skip_ws(p);
-            if (*p == '[') {
-                p++;
-                while (*p) {
-                    p = _skip_ws(p);
-                    if (*p == ']') { p++; break; }
-                    if (*p == ',') { p++; continue; }
-                    if (*p != '{') break;
-                    RelicEffectDef eff;
-                    p++;
-                    while (*p) {
-                        p = _skip_ws(p);
-                        if (*p == '}') { p++; break; }
-                        if (*p == ',') { p++; continue; }
-                        std::string ek = _read_string(p);
-                        p = _skip_ws(p);
-                        if (*p != ':') break;
-                        p++;
-                        if (ek == "trigger") {
-                            std::string v = _read_string(p);
-                            if (v == "passive") eff.trigger = RelicTrigger::PASSIVE;
-                            else if (v == "on_hit") eff.trigger = RelicTrigger::ON_HIT;
-                            else if (v == "on_kill") eff.trigger = RelicTrigger::ON_KILL;
-                            else if (v == "pre_damage") eff.trigger = RelicTrigger::PRE_DAMAGE;
-                            else if (v == "on_hurt") eff.trigger = RelicTrigger::ON_HURT;
-                            else if (v == "on_floor_enter") eff.trigger = RelicTrigger::ON_FLOOR_ENTER;
-                        } else if (ek == "type") {
-                            std::string v = _read_string(p);
-                            if (v == "modify_stat") eff.type = RelicEffectType::MODIFY_STAT;
-                            else if (v == "add_buff") eff.type = RelicEffectType::ADD_BUFF;
-                            else if (v == "heal") eff.type = RelicEffectType::HEAL;
-                            else if (v == "deal_aoe_damage") eff.type = RelicEffectType::DEAL_AOE_DAMAGE;
-                            else if (v == "damage_reduction") eff.type = RelicEffectType::DAMAGE_REDUCTION;
-                        } else if (ek == "target") {
-                            std::string v = _read_string(p);
-                            if (v == "self") eff.target = RelicTarget::SELF;
-                            else if (v == "all_enemies") eff.target = RelicTarget::ALL_ENEMIES;
-                        } else if (ek == "stat") { eff.stat = _read_string(p);
-                        } else if (ek == "value") { eff.value = _read_float(p);
-                        } else if (ek == "value2") { eff.value2 = _read_int(p);
-                        } else if (ek == "buff_id") { eff.buff_id = _read_string(p);
-                        } else if (ek == "chance") { eff.chance = _read_float(p);
-                        } else {
-                            if (*p == '"') _read_string(p);
-                            else if (*p == '[') { while (*p && *p != ']') p++; if (*p == ']') p++; }
-                            else if (*p == '{') { int d=1; p++; while(*p&&d){if(*p=='{')d++;if(*p=='}')d--;p++;} }
-                            else { while (*p && *p != ',' && *p != '}') p++; }
-                        }
-                    }
-                    out.effects.push_back(eff);
-                }
-            }
-        } else {
-            p = _skip_ws(p);
-            if (*p == '"') { _read_string(p); }
-            else if (*p == '[') { while (*p && *p != ']') p++; if (*p == ']') p++; }
-            else if (*p == '{') { int d = 1; p++; while (*p && d) { if (*p=='{') d++; if (*p=='}') d--; p++; } }
-            else { while (*p && *p != ',' && *p != '}' && *p != '\n') p++; }
+            _parse_relic_effects(p, out);
+        } else if (!_parse_relic_scalar_field(key, p, out)) {
+            _skip_unknown_json_value(p);
         }
     }
     return "unterminated";
