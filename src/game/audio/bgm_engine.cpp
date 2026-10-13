@@ -64,116 +64,139 @@ struct BgmTrack {
     const char* bass_wave = "triangle";
 };
 
+// ── G46: BGM 曲目数据表 (原 bgm_track_for 111 行 if-else 链) ──
+// 曲目本质是纯数据 (bpm + 和弦/旋律/贝斯音符序列 + 波形), 无逻辑分叉,
+// 故改为"填表 + 单次查找"。表在首次调用时构建 (BgmTrack 内含 vector,
+// 不能 constexpr), 之后只读。
+using NoteEntry = BgmTrack::NoteEntry;
+
+static void bgm_fill_select(BgmTrack& t) {
+    t.bpm = 85;
+    t.chords = {{"A3",2.0f},{"F3",2.0f},{"G3",2.0f},{"E3",2.0f},{"A3",2.0f},{"F3",1.5f},{"C4",1.0f},{"G3",1.5f}};
+    t.melody = {{0,0.8f},{"A4",0.5f},{0,0.3f},{"C5",0.4f},{0,0.6f},{"E5",0.5f},{0,0.4f},{"D5",0.3f},{0,0.5f},{"C5",0.4f},{"B4",0.3f},{"A4",0.6f}};
+    t.melody_wave = "triangle";
+}
+static void bgm_fill_dungeon(BgmTrack& t) {
+    t.bpm = 75;
+    t.chords = {{"C3",3.0f},{"Db3",3.0f},{"Eb3",3.0f},{"C3",3.0f}};
+    t.melody = {{"C4",0.5f},{0,1.0f},{"Db4",0.4f},{0,0.8f},{"Eb4",0.4f},{0,1.2f},{"C4",0.6f},{0,0.6f}};
+}
+static void bgm_fill_boss(BgmTrack& t) {
+    t.bpm = 150;
+    t.chords = {{"C3",1.0f},{"Ab2",1.0f},{"Bb2",1.0f},{"G2",1.0f}};
+    t.melody = {{"C4",0.12f},{"Eb4",0.12f},{"G4",0.12f},{"C5",0.2f},{"B4",0.12f},{"G4",0.12f},{"F4",0.15f},{"Eb4",0.1f},{0,0.05f}};
+    t.bass = {{"C2",0.25f},{"C2",0.25f},{"Ab1",0.25f},{"Ab1",0.25f},{"Bb1",0.25f},{"Bb1",0.25f},{"G1",0.25f},{"G1",0.25f}};
+    t.melody_wave = "saw";
+    t.bass_wave = "square";
+}
+static void bgm_fill_boss_f5(BgmTrack& t) { bgm_fill_boss(t); }
+static void bgm_fill_challenge(BgmTrack& t) {
+    t.bpm = 160;
+    t.chords = {{"C3",0.5f},{"Ab2",0.5f},{"Bb2",0.5f},{"G2",0.5f}};
+    t.melody = {{"C4",0.08f},{"Eb4",0.08f},{"G4",0.08f},{"C5",0.16f},
+                {"Bb4",0.08f},{"G4",0.08f},{"Bb4",0.08f},{"C5",0.16f},
+                {"F4",0.08f},{"Ab4",0.08f},{"C5",0.08f},{"Eb5",0.16f},
+                {"D5",0.08f},{"Bb4",0.08f},{"G4",0.08f},{"C5",0.24f}};
+    t.bass = {{"C2",0.125f},{"C2",0.125f},{"C2",0.125f},{"C2",0.125f},
+              {"Ab1",0.125f},{"Ab1",0.125f},{"Ab1",0.125f},{"Ab1",0.125f},
+              {"Bb1",0.125f},{"Bb1",0.125f},{"Bb1",0.125f},{"Bb1",0.125f},
+              {"G1",0.125f},{"G1",0.125f},{"G1",0.125f},{"G1",0.125f}};
+    t.melody_wave = "saw";
+    t.bass_wave = "square";
+}
+static void bgm_fill_boss_f10(BgmTrack& t) {
+    t.bpm = 160;
+    t.chords = {{"G3",0.8f},{"Bb2",0.8f},{"D3",0.8f},{"G3",0.8f}};
+    t.melody = {{"G4",0.1f},{"Bb4",0.1f},{"D5",0.1f},{"G5",0.2f},{"F5",0.1f},{"D5",0.1f},{"Bb4",0.15f},{"A4",0.1f},{0,0.05f}};
+    t.bass = {{"G2",0.2f},{"G2",0.2f},{"Bb1",0.2f},{"Bb1",0.2f},{"D2",0.2f},{"D2",0.2f},{"G2",0.2f},{"G2",0.2f}};
+    t.melody_wave = "saw";
+    t.bass_wave = "square";
+}
+static void bgm_fill_boss_f15(BgmTrack& t) {
+    t.bpm = 140;
+    t.chords = {{"C3",1.2f},{"Ab2",1.2f},{"Eb3",1.2f},{"C3",1.2f}};
+    t.melody = {{"C5",0.15f},{"Eb5",0.15f},{"Ab5",0.15f},{"C6",0.3f},{"B5",0.15f},{"Ab5",0.15f},{"Eb5",0.2f},{0,0.1f}};
+    t.bass = {{"C2",0.3f},{"C2",0.3f},{"Ab1",0.3f},{"Ab1",0.3f},{"Eb2",0.3f},{"Eb2",0.3f},{"C2",0.3f},{"C2",0.3f}};
+    t.melody_wave = "triangle";
+    t.bass_wave = "sine";
+}
+static void bgm_fill_victory(BgmTrack& t) {
+    t.bpm = 132;
+    t.chords = {{"C4",1.0f},{"G3",1.0f},{"A3",1.0f},{"F3",1.0f},
+                {"C4",1.0f},{"G3",1.0f},{"F3",1.0f},{"C4",1.0f}};
+    t.melody = {
+        {"C5",0.25f},{"E5",0.25f},{"G5",0.25f},{"C6",0.25f},
+        {"B5",0.25f},{"G5",0.25f},{"D5",0.25f},{0,0.25f},
+        {"A5",0.25f},{"C6",0.25f},{"B5",0.25f},{"G5",0.25f},
+        {"F5",0.25f},{"A5",0.25f},{"G5",0.25f},{"E5",0.25f},
+        {"C5",0.25f},{"E5",0.25f},{"G5",0.25f},{"C6",0.25f},
+        {"B5",0.25f},{"C6",0.25f},{"D5",0.25f},{"G5",0.25f},
+        {"A5",0.25f},{"F5",0.25f},{"G5",0.25f},{"E5",0.25f},
+        {"C6",0.5f},{"G5",0.25f},{"E5",0.25f},
+    };
+    t.bass = {{"C3",0.5f},{"C3",0.5f},{"G2",0.5f},{"G2",0.5f},
+              {"A2",0.5f},{"A2",0.5f},{"F2",0.5f},{"F2",0.5f},
+              {"C3",0.5f},{"C3",0.5f},{"G2",0.5f},{"G2",0.5f},
+              {"F2",0.5f},{"F2",0.5f},{"C3",0.5f},{"G2",0.5f}};
+    t.melody_wave = "square";
+    t.bass_wave = "triangle";
+}
+static void bgm_fill_title(BgmTrack& t) {
+    t.chords = {{"C4",1.6f},{"G3",1.6f},{"A3",1.6f},{"F3",1.6f},{"C4",1.6f},{"G3",1.6f},{"F3",1.6f},{"C4",2.4f}};
+    t.melody = {{"C5",0.3f},{"E5",0.2f},{"G5",0.3f},{"C6",0.4f},{0,0.2f},{"G5",0.2f},{"E5",0.3f},{"C5",0.3f},{"D5",0.2f},{0,0.1f},{"C6",0.3f},{"B5",0.2f},{"A5",0.3f},{"G5",0.2f},{"E5",0.3f},{"F5",0.3f},{"G5",0.3f},{"C6",0.4f},{0,0.3f},{"C6",0.3f},{"B5",0.2f},{"C6",0.3f},{"G5",0.4f},{"E5",0.3f},{"C5",0.3f},{"D5",0.3f},{"C5",0.6f}};
+    t.bass = {{"C3",0.8f},{"G2",0.8f},{"A2",0.8f},{"F2",0.8f},{"C3",0.8f},{"G2",0.8f},{"F2",0.8f},{"C3",1.2f}};
+}
+static void bgm_fill_prison(BgmTrack& t) {
+    t.bpm = 72;
+    t.chords = {{"C3",3.0f},{"Db3",3.0f},{"Eb3",3.0f},{"C3",3.0f}};
+    t.melody = {{"C4",0.5f},{0,1.0f},{"Db4",0.4f},{0,0.8f},{"Eb4",0.4f},{0,1.2f},{"C4",0.6f},{0,0.6f}};
+    t.bass = {{"C2",1.5f},{"Db2",1.5f},{"Eb2",1.5f},{"C2",1.5f}};
+    t.melody_wave = "square";
+    t.bass_wave = "square";
+}
+static void bgm_fill_volcano(BgmTrack& t) {
+    t.bpm = 90;
+    t.chords = {{"C3",3.0f},{"Db3",3.0f},{"Eb3",3.0f},{"C3",3.0f}};
+    t.melody = {{"C4",0.4f},{"Eb4",0.4f},{"G4",0.4f},{"Bb4",0.4f},{"C5",0.4f},{"Bb4",0.4f},{"G4",0.4f},{"Eb4",0.4f}};
+    t.bass = {{"C2",0.75f},{"Db2",0.75f},{"Eb2",0.75f},{"C2",0.75f}};
+    t.melody_wave = "saw";
+    t.bass_wave = "triangle";
+}
+static void bgm_fill_abyss(BgmTrack& t) {
+    t.bpm = 62;
+    t.chords = {{"C3",4.0f},{"Ab2",4.0f},{"Eb3",4.0f},{"C3",4.0f}};
+    t.melody = {{"C5",1.0f},{0,0.5f},{"Eb5",0.5f},{0,1.0f},{"Ab5",1.0f},{0,1.5f}};
+    t.bass = {{"C2",2.0f},{"Ab1",2.0f},{"Eb2",2.0f},{"C2",2.0f}};
+    t.melody_wave = "triangle";
+    t.bass_wave = "sine";
+}
+
+// 曲目名 → 填表函数。beat 统一由 bpm 推导, 不在各 fill 里重复赋值
+struct BgmTrackDef { const char* name; void (*fill)(BgmTrack&); };
+static const BgmTrackDef kBgmTracks[] = {
+    {"select",     bgm_fill_select},
+    {"dungeon",    bgm_fill_dungeon},
+    {"boss",       bgm_fill_boss},
+    {"boss_f5",    bgm_fill_boss_f5},        // F5 与 boss 同曲
+    {"challenge",  bgm_fill_challenge},
+    {"boss_f10",   bgm_fill_boss_f10},
+    {"boss_f15",   bgm_fill_boss_f15},
+    {"victory",    bgm_fill_victory},
+    {"title",      bgm_fill_title},
+    {"prison",     bgm_fill_prison},
+    {"volcano",    bgm_fill_volcano},
+    {"abyss",      bgm_fill_abyss},
+};
+
 static BgmTrack bgm_track_for(const std::string& name) {
     BgmTrack track;
-    if (name == "select") {
-        track.bpm = 85;
-        track.beat = 60.0f / track.bpm;
-        track.chords = {{"A3",2.0f},{"F3",2.0f},{"G3",2.0f},{"E3",2.0f},{"A3",2.0f},{"F3",1.5f},{"C4",1.0f},{"G3",1.5f}};
-        track.melody = {{0,0.8f},{"A4",0.5f},{0,0.3f},{"C5",0.4f},{0,0.6f},{"E5",0.5f},{0,0.4f},{"D5",0.3f},{0,0.5f},{"C5",0.4f},{"B4",0.3f},{"A4",0.6f}};
-        track.melody_wave = "triangle";
-    } else if (name == "dungeon") {
-        track.bpm = 75;
-        track.beat = 60.0f / track.bpm;
-        track.chords = {{"C3",3.0f},{"Db3",3.0f},{"Eb3",3.0f},{"C3",3.0f}};
-        track.melody = {{"C4",0.5f},{0,1.0f},{"Db4",0.4f},{0,0.8f},{"Eb4",0.4f},{0,1.2f},{"C4",0.6f},{0,0.6f}};
-    } else if (name == "boss") {
-        track.bpm = 150;
-        track.beat = 60.0f / track.bpm;
-        track.chords = {{"C3",1.0f},{"Ab2",1.0f},{"Bb2",1.0f},{"G2",1.0f}};
-        track.melody = {{"C4",0.12f},{"Eb4",0.12f},{"G4",0.12f},{"C5",0.2f},{"B4",0.12f},{"G4",0.12f},{"F4",0.15f},{"Eb4",0.1f},{0,0.05f}};
-        track.bass = {{"C2",0.25f},{"C2",0.25f},{"Ab1",0.25f},{"Ab1",0.25f},{"Bb1",0.25f},{"Bb1",0.25f},{"G1",0.25f},{"G1",0.25f}};
-        track.melody_wave = "saw";
-        track.bass_wave = "square";
-    } else if (name == "challenge") {
-        track.bpm = 160;
-        track.beat = 60.0f / track.bpm;
-        track.chords = {{"C3",0.5f},{"Ab2",0.5f},{"Bb2",0.5f},{"G2",0.5f}};
-        track.melody = {{"C4",0.08f},{"Eb4",0.08f},{"G4",0.08f},{"C5",0.16f},
-                        {"Bb4",0.08f},{"G4",0.08f},{"Bb4",0.08f},{"C5",0.16f},
-                        {"F4",0.08f},{"Ab4",0.08f},{"C5",0.08f},{"Eb5",0.16f},
-                        {"D5",0.08f},{"Bb4",0.08f},{"G4",0.08f},{"C5",0.24f}};
-        track.bass = {{"C2",0.125f},{"C2",0.125f},{"C2",0.125f},{"C2",0.125f},
-                      {"Ab1",0.125f},{"Ab1",0.125f},{"Ab1",0.125f},{"Ab1",0.125f},
-                      {"Bb1",0.125f},{"Bb1",0.125f},{"Bb1",0.125f},{"Bb1",0.125f},
-                      {"G1",0.125f},{"G1",0.125f},{"G1",0.125f},{"G1",0.125f}};
-        track.melody_wave = "saw";
-        track.bass_wave = "square";
-    } else if (name == "boss_f5") {
-        track.bpm = 150;
-        track.beat = 60.0f / track.bpm;
-        track.chords = {{"C3",1.0f},{"Ab2",1.0f},{"Bb2",1.0f},{"G2",1.0f}};
-        track.melody = {{"C4",0.12f},{"Eb4",0.12f},{"G4",0.12f},{"C5",0.2f},{"B4",0.12f},{"G4",0.12f},{"F4",0.15f},{"Eb4",0.1f},{0,0.05f}};
-        track.bass = {{"C2",0.25f},{"C2",0.25f},{"Ab1",0.25f},{"Ab1",0.25f},{"Bb1",0.25f},{"Bb1",0.25f},{"G1",0.25f},{"G1",0.25f}};
-        track.melody_wave = "saw";
-        track.bass_wave = "square";
-    } else if (name == "boss_f10") {
-        track.bpm = 160;
-        track.beat = 60.0f / track.bpm;
-        track.chords = {{"G3",0.8f},{"Bb2",0.8f},{"D3",0.8f},{"G3",0.8f}};
-        track.melody = {{"G4",0.1f},{"Bb4",0.1f},{"D5",0.1f},{"G5",0.2f},{"F5",0.1f},{"D5",0.1f},{"Bb4",0.15f},{"A4",0.1f},{0,0.05f}};
-        track.bass = {{"G2",0.2f},{"G2",0.2f},{"Bb1",0.2f},{"Bb1",0.2f},{"D2",0.2f},{"D2",0.2f},{"G2",0.2f},{"G2",0.2f}};
-        track.melody_wave = "saw";
-        track.bass_wave = "square";
-    } else if (name == "boss_f15") {
-        track.bpm = 140;
-        track.beat = 60.0f / track.bpm;
-        track.chords = {{"C3",1.2f},{"Ab2",1.2f},{"Eb3",1.2f},{"C3",1.2f}};
-        track.melody = {{"C5",0.15f},{"Eb5",0.15f},{"Ab5",0.15f},{"C6",0.3f},{"B5",0.15f},{"Ab5",0.15f},{"Eb5",0.2f},{0,0.1f}};
-        track.bass = {{"C2",0.3f},{"C2",0.3f},{"Ab1",0.3f},{"Ab1",0.3f},{"Eb2",0.3f},{"Eb2",0.3f},{"C2",0.3f},{"C2",0.3f}};
-        track.melody_wave = "triangle";
-        track.bass_wave = "sine";
-    } else if (name == "victory") {
-        track.bpm = 132;
-        track.beat = 60.0f / track.bpm;
-        track.chords = {{"C4",1.0f},{"G3",1.0f},{"A3",1.0f},{"F3",1.0f},
-                        {"C4",1.0f},{"G3",1.0f},{"F3",1.0f},{"C4",1.0f}};
-        track.melody = {
-            {"C5",0.25f},{"E5",0.25f},{"G5",0.25f},{"C6",0.25f},
-            {"B5",0.25f},{"G5",0.25f},{"D5",0.25f},{0,0.25f},
-            {"A5",0.25f},{"C6",0.25f},{"B5",0.25f},{"G5",0.25f},
-            {"F5",0.25f},{"A5",0.25f},{"G5",0.25f},{"E5",0.25f},
-            {"C5",0.25f},{"E5",0.25f},{"G5",0.25f},{"C6",0.25f},
-            {"B5",0.25f},{"C6",0.25f},{"D5",0.25f},{"G5",0.25f},
-            {"A5",0.25f},{"F5",0.25f},{"G5",0.25f},{"E5",0.25f},
-            {"C6",0.5f},{"G5",0.25f},{"E5",0.25f},
-        };
-        track.bass = {{"C3",0.5f},{"C3",0.5f},{"G2",0.5f},{"G2",0.5f},
-                      {"A2",0.5f},{"A2",0.5f},{"F2",0.5f},{"F2",0.5f},
-                      {"C3",0.5f},{"C3",0.5f},{"G2",0.5f},{"G2",0.5f},
-                      {"F2",0.5f},{"F2",0.5f},{"C3",0.5f},{"G2",0.5f}};
-        track.melody_wave = "square";
-        track.bass_wave = "triangle";
-    } else if (name == "title") {
-        track.chords = {{"C4",1.6f},{"G3",1.6f},{"A3",1.6f},{"F3",1.6f},{"C4",1.6f},{"G3",1.6f},{"F3",1.6f},{"C4",2.4f}};
-        track.melody = {{"C5",0.3f},{"E5",0.2f},{"G5",0.3f},{"C6",0.4f},{0,0.2f},{"G5",0.2f},{"E5",0.3f},{"C5",0.3f},{"D5",0.2f},{0,0.1f},{"C6",0.3f},{"B5",0.2f},{"A5",0.3f},{"G5",0.2f},{"E5",0.3f},{"F5",0.3f},{"G5",0.3f},{"C6",0.4f},{0,0.3f},{"C6",0.3f},{"B5",0.2f},{"C6",0.3f},{"G5",0.4f},{"E5",0.3f},{"C5",0.3f},{"D5",0.3f},{"C5",0.6f}};
-        track.bass = {{"C3",0.8f},{"G2",0.8f},{"A2",0.8f},{"F2",0.8f},{"C3",0.8f},{"G2",0.8f},{"F2",0.8f},{"C3",1.2f}};
-    } else if (name == "prison") {
-        track.bpm = 72;
-        track.beat = 60.0f / track.bpm;
-        track.chords = {{"C3",3.0f},{"Db3",3.0f},{"Eb3",3.0f},{"C3",3.0f}};
-        track.melody = {{"C4",0.5f},{0,1.0f},{"Db4",0.4f},{0,0.8f},{"Eb4",0.4f},{0,1.2f},{"C4",0.6f},{0,0.6f}};
-        track.bass = {{"C2",1.5f},{"Db2",1.5f},{"Eb2",1.5f},{"C2",1.5f}};
-        track.melody_wave = "square";
-        track.bass_wave = "square";
-    } else if (name == "volcano") {
-        track.bpm = 90;
-        track.beat = 60.0f / track.bpm;
-        track.chords = {{"C3",3.0f},{"Db3",3.0f},{"Eb3",3.0f},{"C3",3.0f}};
-        track.melody = {{"C4",0.4f},{"Eb4",0.4f},{"G4",0.4f},{"Bb4",0.4f},{"C5",0.4f},{"Bb4",0.4f},{"G4",0.4f},{"Eb4",0.4f}};
-        track.bass = {{"C2",0.75f},{"Db2",0.75f},{"Eb2",0.75f},{"C2",0.75f}};
-        track.melody_wave = "saw";
-        track.bass_wave = "triangle";
-    } else if (name == "abyss") {
-        track.bpm = 62;
-        track.beat = 60.0f / track.bpm;
-        track.chords = {{"C3",4.0f},{"Ab2",4.0f},{"Eb3",4.0f},{"C3",4.0f}};
-        track.melody = {{"C5",1.0f},{0,0.5f},{"Eb5",0.5f},{0,1.0f},{"Ab5",1.0f},{0,1.5f}};
-        track.bass = {{"C2",2.0f},{"Ab1",2.0f},{"Eb2",2.0f},{"C2",2.0f}};
-        track.melody_wave = "triangle";
-        track.bass_wave = "sine";
+    for (const BgmTrackDef& def : kBgmTracks) {
+        if (name != def.name) continue;
+        def.fill(track);
+        track.beat = 60.0f / track.bpm;   // 统一在此推导, fill 不关心 beat
+        return track;
     }
-    return track;
+    return track;   // 未知名 → 默认 track (bpm 110, 空序列)
 }
 
 static std::vector<short> render_bgm_chords(const BgmTrack& track, const std::string& name, int n) {
