@@ -139,6 +139,74 @@ const char* MirrorCombatDirector::active_weapon_name() const {
     return weapon_type_name((WeaponType)(_slot_is_ranged ? _slot_ranged.type : _slot_melee.type));
 }
 
+// ── G52: init 子步骤 ──
+
+// 技能类型从名字识别 (中文/英文双语关键字)。返回 skill_type,
+// 并通过引用回填 range / dmg_mult。
+// 顺序即优先级: 自愈 > 时停 > 斩 > 罚 > 冰 > 影 > 血 > 召唤 > 默认
+static int mirror_classify_skill(const std::string& name, float& range,
+                                 float& dmg_mult) {
+    if (name.find("愈") != std::string::npos ||
+        name.find("Heal") != std::string::npos ||
+        name.find("回") != std::string::npos) {
+        range = 0;      dmg_mult = 1.0f;  return 2;   // self_heal
+    }
+    if (name.find("时停") != std::string::npos ||
+        name.find("World") != std::string::npos) {
+        range = 999;    dmg_mult = 0;     return 4;   // time_stop
+    }
+    if (name.find("斩") != std::string::npos ||
+        name.find("Slash") != std::string::npos) {
+        range = 96;     dmg_mult = 1.5f;  return 0;   // melee
+    }
+    if (name.find("罚") != std::string::npos ||
+        name.find("Wrath") != std::string::npos) {
+        range = 140;    dmg_mult = 0.8f;  return 3;   // aoe
+    }
+    if (name.find("冰") != std::string::npos ||
+        name.find("Ice") != std::string::npos) {
+        range = 200;    dmg_mult = 1.2f;  return 1;   // projectile
+    }
+    if (name.find("影") != std::string::npos ||
+        name.find("Shadow") != std::string::npos) {
+        range = 80;     dmg_mult = 2.0f;  return 0;   // melee burst
+    }
+    if (name.find("血") != std::string::npos ||
+        name.find("Blood") != std::string::npos) {
+        range = 0;      dmg_mult = 1.3f;  return 2;   // self_buff+heal
+    }
+    if (name.find("召唤") != std::string::npos ||
+        name.find("Summon") != std::string::npos) {
+        range = 160;    dmg_mult = 0.6f;  return 3;   // aoe summon
+    }
+    range = 120;        dmg_mult = 1.0f;  return 1;   // projectile default
+}
+
+// M1 "它真的在学我": 开局本命技 + 节奏模仿
+static void mirror_init_learning(std::vector<MirrorSkillDef>& skills,
+                                 int& skill_idx, float& skill_cd_timer,
+                                 float& slot_melee_cd, MirrorAgent* agent) {
+    if (!agent) return;
+    const auto& prof = agent->profile();
+    // 1) 最爱技能开局: Echo 首技 = 玩家本命技能 (面板承诺真上场)。
+    //    skill_preference[0..3] 与玩家 skills 顺序对齐; 找最大偏好对应槽位。
+    //    自奶技能 (type 2) 不作开场表演。
+    int fav = prof.predicted_fav_skill;
+    if (fav >= 0 && fav < (int)skills.size()
+        && skills[fav].skill_type != 2) {
+        skill_idx = fav;
+        skill_cd_timer = 1.5f;   // 开场 1.5s 后甩出本命技
+        LOG_INFO("[MIRROR] 开局本命技: %s (偏好%.0f%%)",
+                 skills[fav].name.c_str(),
+                 prof.skill_preference[fav] * 100.0f);
+    }
+    // 2) 节奏模仿: 攻击 CD 从玩家 attack_frequency 派生 (乱拳玩家→乱拳镜像)
+    if (prof.attack_frequency > 0.1f) {
+        float cd = 1.0f / prof.attack_frequency;
+        slot_melee_cd = (cd < 0.6f) ? 0.6f : (cd > 1.6f) ? 1.6f : cd;
+    }
+}
+
 void MirrorCombatDirector::init(const Player* player, Monster* boss,
                                  BossAI* bai, MirrorAgent* agent) {
     if (!player || !boss || !bai) return;
@@ -192,69 +260,22 @@ void MirrorCombatDirector::init(const Player* player, Monster* boss,
     }
     _slot_is_ranged = false;
 
-    // 复制技能数据
+    // 复制技能数据 (类型由名字识别)
     _skills.clear();
     for (auto& sk : player->skills.active_skills) {
         MirrorSkillDef ms;
         ms.name = sk->name;
         ms.cooldown = sk->cooldown;
         ms.last_used = -99.0f;
-        ms.dmg_mult = 1.0f;
-        ms.range = 100.0f;
-        // 技能类型识别
-        const auto& n = sk->name;
-        if (n.find("愈") != std::string::npos ||
-            n.find("Heal") != std::string::npos ||
-            n.find("回") != std::string::npos) {
-            ms.skill_type = 2; ms.range = 0;      // self_heal
-        } else if (n.find("时停") != std::string::npos ||
-                   n.find("World") != std::string::npos) {
-            ms.skill_type = 4; ms.range = 999.0f; ms.dmg_mult = 0; // time_stop
-        } else if (n.find("斩") != std::string::npos ||
-                   n.find("Slash") != std::string::npos) {
-            ms.skill_type = 0; ms.range = 96.0f; ms.dmg_mult = 1.5f; // melee
-        } else if (n.find("罚") != std::string::npos ||
-                   n.find("Wrath") != std::string::npos) {
-            ms.skill_type = 3; ms.range = 140.0f; ms.dmg_mult = 0.8f; // aoe
-        } else if (n.find("冰") != std::string::npos ||
-                   n.find("Ice") != std::string::npos) {
-            ms.skill_type = 1; ms.range = 200.0f; ms.dmg_mult = 1.2f; // projectile
-        } else if (n.find("影") != std::string::npos ||
-                   n.find("Shadow") != std::string::npos) {
-            ms.skill_type = 0; ms.range = 80.0f; ms.dmg_mult = 2.0f;  // melee burst
-        } else if (n.find("血") != std::string::npos ||
-                   n.find("Blood") != std::string::npos) {
-            ms.skill_type = 2; ms.dmg_mult = 1.3f; ms.range = 0;      // self_buff+heal
-        } else if (n.find("召唤") != std::string::npos ||
-                   n.find("Summon") != std::string::npos) {
-            ms.skill_type = 3; ms.range = 160.0f; ms.dmg_mult = 0.6f; // aoe summon
-        } else {
-            ms.skill_type = 1; ms.range = 120.0f; ms.dmg_mult = 1.0f; // projectile default
-        }
+        ms.skill_type = mirror_classify_skill(sk->name, ms.range, ms.dmg_mult);
         _skills.push_back(ms);
     }
     _attack_cd = 1.2f;
 
-    // ── M1: "它真的在学我" 三连 ──
-    if (agent) {
-        const auto& prof = agent->profile();
-        // 1) 最爱技能开局: Echo 首技 = 玩家本命技能 (面板承诺的"最爱技能"真上场)
-        //    skill_preference[0..3] 与玩家 skills 顺序对齐; 找最大偏好对应槽位
-        int fav = prof.predicted_fav_skill;
-        if (fav >= 0 && fav < (int)_skills.size()
-            && _skills[fav].skill_type != 2) {   // 自奶技能不作开场表演
-            _skill_idx = fav;
-            _skill_cd_timer = 1.5f;              // 开场 1.5s 后甩出本命技
-            LOG_INFO("[MIRROR] 开局本命技: %s (偏好%.0f%%)",
-                     _skills[fav].name.c_str(),
-                     prof.skill_preference[fav] * 100.0f);
-        }
-        // 2) 节奏模仿: 攻击 CD 从玩家 attack_frequency 派生 (乱拳玩家→乱拳镜像)
-        if (prof.attack_frequency > 0.1f) {
-            float cd = 1.0f / prof.attack_frequency;
-            _slot_melee.cd = (cd < 0.6f) ? 0.6f : (cd > 1.6f) ? 1.6f : cd;
-        }
-    }
+    // ── M1: "它真的在学我" ──
+    mirror_init_learning(_skills, _skill_idx, _skill_cd_timer,
+                        _slot_melee.cd, agent);
+
     LOG_INFO("[MIRROR] Combat init: stages=%d skills=%d", _total_stages, (int)_skills.size());
 }
 
