@@ -16,60 +16,80 @@ void SimRunner::begin(const SimulationConfig& cfg) {
     printf("[SIM] Starting %d runs (seed_start=%u)\n", cfg.runs, cfg.seed_start);
 }
 
-void SimRunner::record_run(const RunResult& s) {
-    _report.runs.push_back(s);
-    _report.total_runs++;
-    int n = _report.total_runs;
+// ── G53: record_run 子步骤 (原 75 行按数据类型拆) ──
 
-    _report.avg_floor        = (_report.avg_floor   * (n-1) + s.floor_reached) / n;
-    _report.avg_turns        = (_report.avg_turns   * (n-1) + s.turns) / n;
-    _report.avg_damage_dealt = (_report.avg_damage_dealt * (n-1) + s.damage_dealt) / n;
-    _report.avg_damage_taken = (_report.avg_damage_taken * (n-1) + s.damage_taken) / n;
-    _report.avg_heal         = (_report.avg_heal * (n-1) + s.heal_total) / n;
-    _report.avg_relics       = (_report.avg_relics  * (n-1) + s.relics_collected) / n;
-    _report.avg_equipment    = (_report.avg_equipment * (n-1) + s.equipment_count) / n;
+// 7 个滚动均值 (增量公式: avg = (avg*(n-1) + x)/n, 避免存全部样本)
+static void sim_report_update_averages(BalanceReport& rep, const RunResult& s) {
+    const int n = rep.total_runs;
+    rep.avg_floor        = (rep.avg_floor        * (n - 1) + s.floor_reached)    / n;
+    rep.avg_turns        = (rep.avg_turns        * (n - 1) + s.turns)            / n;
+    rep.avg_damage_dealt = (rep.avg_damage_dealt * (n - 1) + s.damage_dealt)     / n;
+    rep.avg_damage_taken = (rep.avg_damage_taken * (n - 1) + s.damage_taken)     / n;
+    rep.avg_heal         = (rep.avg_heal         * (n - 1) + s.heal_total)       / n;
+    rep.avg_relics       = (rep.avg_relics       * (n - 1) + s.relics_collected) / n;
+    rep.avg_equipment    = (rep.avg_equipment    * (n - 1) + s.equipment_count)  / n;
+}
 
-    if (s.victory) _report.total_wins++;
-    if (s.bosses_killed >= 1) _report.boss_kill_count[0]++;
-    if (s.bosses_killed >= 2) _report.boss_kill_count[1]++;
-    if (s.bosses_killed >= 3) _report.boss_kill_count[2]++;
-    if (s.build_type >= 0 && s.build_type <= 12)
-        _report.build_count[s.build_type]++;
+// 5 个分布/计数 (胜场/Boss 数/Build/死亡楼层)
+static void sim_report_update_counts(BalanceReport& rep, const RunResult& s) {
+    if (s.victory) rep.total_wins++;
+    if (s.bosses_killed >= 1) rep.boss_kill_count[0]++;
+    if (s.bosses_killed >= 2) rep.boss_kill_count[1]++;
+    if (s.bosses_killed >= 3) rep.boss_kill_count[2]++;
+    if (s.build_type >= 0 && s.build_type <= 12) rep.build_count[s.build_type]++;
     if (s.floor_reached >= 1 && s.floor_reached <= 15)
-        _report.death_floor_dist[s.floor_reached - 1]++;
+        rep.death_floor_dist[s.floor_reached - 1]++;
+}
 
+// 4 个分组统计 (build / relic / enemy / outcome+cause+weapon)
+static void sim_report_update_groups(BalanceReport& rep, const RunResult& s) {
     // Build stats
     if (!s.build_name.empty()) {
-        auto& b = _report.builds[s.build_name];
-        b.build_id = s.build_name; b.games++;
+        auto& b = rep.builds[s.build_name];
+        b.build_id = s.build_name;
+        b.games++;
         if (s.victory) b.wins++;
-        b.avg_floor = (b.avg_floor * (b.games-1) + s.floor_reached) / b.games;
+        b.avg_floor = (b.avg_floor * (b.games - 1) + s.floor_reached) / b.games;
     }
     // Relic stats
     for (auto& rid : s.relics_picked) {
-        auto& r = _report.relics[rid]; r.relic_id = rid;
-        r.picked++; if (s.victory) r.wins++;
+        auto& r = rep.relics[rid];
+        r.relic_id = rid;
+        r.picked++;
+        if (s.victory) r.wins++;
     }
     // Enemy stats
     for (auto& eid : s.enemies_fought) {
-        auto& e = _report.enemies[eid]; e.enemy_id = eid; e.appearances++;
-        // M2: 该敌人是击杀者 → 记 player_deaths (死因归因到 enemy 维度)
+        auto& e = rep.enemies[eid];
+        e.enemy_id = eid;
+        e.appearances++;
+        // M2: 该敌人是否击杀者 — player_deaths (死因归因 enemy 维度)
         if (s.outcome == RunOutcome::DEATH_MONSTER && eid == s.death_cause)
             e.player_deaths++;
     }
-    // M2: 结果分类/死因/武器 汇总
-    _report.outcome_dist.counts[(int)s.outcome]++;
+    // M2: 结果分类 / 死因 / 武器
+    rep.outcome_dist.counts[(int)s.outcome]++;
     if (!s.death_cause.empty()) {
-        auto& c = _report.causes[s.death_cause];
-        c.cause = s.death_cause; c.deaths++;
+        auto& c = rep.causes[s.death_cause];
+        c.cause = s.death_cause;
+        c.deaths++;
     }
-    {
-        auto& w = _report.weapons[s.weapon_id_final.empty() ? "none" : s.weapon_id_final];
-        w.weapon_id = s.weapon_id_final.empty() ? "none" : s.weapon_id_final;
-        w.games++;
-        if (s.victory) w.wins++;
-        w.avg_floor = (w.avg_floor * (w.games-1) + s.floor_reached) / w.games;
-    }
+    const std::string wid = s.weapon_id_final.empty() ? "none" : s.weapon_id_final;
+    auto& w = rep.weapons[wid];
+    w.weapon_id = wid;
+    w.games++;
+    if (s.victory) w.wins++;
+    w.avg_floor = (w.avg_floor * (w.games - 1) + s.floor_reached) / w.games;
+}
+
+void SimRunner::record_run(const RunResult& s) {
+    _report.runs.push_back(s);
+    _report.total_runs++;
+
+    sim_report_update_averages(_report, s);
+    sim_report_update_counts(_report, s);
+    sim_report_update_groups(_report, s);
+
     _report.win_rate = _report.total_runs > 0
         ? (float)_report.total_wins / _report.total_runs : 0;
 
@@ -78,15 +98,16 @@ void SimRunner::record_run(const RunResult& s) {
     if (_all_builds && _current_run >= _cfg.runs && _all_builds_next < 12) {
         _all_builds_next++;
         _current_run = 0;
-        static const char* bnames[] = {"NONE","Berserker","FireMage","Poison","TimeM","Support",
-            "Projectile","IceMage","Lightning","Bleed","Shadow","Juggernaut","Summon"};
+        static const char* bnames[] = {"NONE","Berserker","FireMage","Poison","TimeM",
+            "Support","Projectile","IceMage","Lightning","Bleed","Shadow","Juggernaut","Summon"};
         if (_all_builds_next < 12)
             printf("[SIM] Switching to build %d/%d: %s\n",
-                   _all_builds_next+1, 12, bnames[_all_builds_next+1]);
+                   _all_builds_next + 1, 12, bnames[_all_builds_next + 1]);
     }
 
-    int pct = (_current_run * 100) / _cfg.runs;
-    int prev_pct = ((_current_run - 1) * 100) / _cfg.runs;
+    // 进度打印 (同一百分比只打一次)
+    const int pct = (_current_run * 100) / _cfg.runs;
+    const int prev_pct = ((_current_run - 1) * 100) / _cfg.runs;
     if (pct != prev_pct)
         printf("[SIM] %3d%%  %d/%d  (wins:%d, avg_floor:%.2f)\n",
                pct, _current_run, _cfg.runs, _report.total_wins, _report.avg_floor);
@@ -114,24 +135,13 @@ uint32_t SimRunner::next_seed() const {
 int g_p1c4_probe_frame = 0;
 int g_p1c4_d_bucket[8] = {0};
 
-void SimRunner::finalize() {
-    _active = false;
-    auto& r = _report;
-    int N = r.total_runs;
-    printf("\n═══ BALANCE REPORT: %d runs ═══\n", N);
-    // P1-C4 探针: 攻击圈命中距离分布 (0-7+格) — F1 零输出死因定位
-    // (定义在此: sim_ai.cpp 的引用方只需 extern, test 二进制可链接)
-    {
-        int tot = 0;
-        for (int i = 0; i < 8; i++) tot += g_p1c4_d_bucket[i];
-        if (tot > 0) {
-            printf("  [C4PROBE] attack-eval hit dist (tiles): ");
-            for (int i = 0; i < 8; i++)
-                printf("d%d=%.1f%% ", i, g_p1c4_d_bucket[i]*100.0/tot);
-            printf("(n=%d)\n", tot);
-        }
-    }
-    printf("  Win rate:     %.1f%% (%d/%d)\n", r.win_rate*100, r.total_wins, N);
+// ââ G53: finalize å­æ­¥éª¤ (å 66 è¡ææ¥è¡¨åºåæ) ââ
+// ä¸æ®µæè¡é½æ¯ãæ¶é + æåº + æå°ãï¼åé¨ç map éååéåä¿çåæ ·ï¼é¶æ¹åã
+
+// Build æè¡ (æèçéåº; >70% æ  OP, <25% æ  UP)
+// å¤´é¨æ±æ» (èç/åå¼/Boss)
+static void sim_print_summary(const BalanceReport& r, int n) {
+    printf("  Win rate:     %.1f%% (%d/%d)\n", r.win_rate * 100, r.total_wins, n);
     printf("  Avg floor:    %.2f\n", r.avg_floor);
     printf("  Avg turns:    %.1f\n", r.avg_turns);
     printf("  Avg damage:   dealt=%.1f  taken=%.1f  heal=%.1f\n",
@@ -139,8 +149,12 @@ void SimRunner::finalize() {
     printf("  Avg relics:   %.2f\n", r.avg_relics);
     printf("  Avg equips:   %.2f\n", r.avg_equipment);
     printf("  Boss kills:   F5=%.1f%%  F10=%.1f%%  F15=%.1f%%\n",
-        r.boss_kill_count[0]*100.0/N, r.boss_kill_count[1]*100.0/N, r.boss_kill_count[2]*100.0/N);
+        r.boss_kill_count[0] * 100.0 / n,
+        r.boss_kill_count[1] * 100.0 / n,
+        r.boss_kill_count[2] * 100.0 / n);
+}
 
+static void sim_print_build_ranking(const BalanceReport& r) {
     // Build ranking
     printf("\n  BUILD RANKING:\n");
     std::vector<const BuildStats*> branked;
@@ -152,7 +166,10 @@ void SimRunner::finalize() {
         printf("    %15s: %3d runs  win=%.1f%%  avg_f=%.1f%s\n",
             bs->build_id.c_str(), bs->games, bs->win_rate()*100, bs->avg_floor, tag);
     }
+}
 
+// å£ç© Top 10 (ææ¾åæ°éåº; >80% æ  HOT, <5% æ  COLD)
+static void sim_print_relic_ranking(const BalanceReport& r, int n) {
     // Relic ranking (top 10)
     printf("\n  RELIC TOP 10:\n");
     std::vector<const RelicStats*> rranked;
@@ -162,12 +179,15 @@ void SimRunner::finalize() {
     int s = 0;
     for (auto* rs : rranked) {
         if (s++ >= 10) break;
-        float pr = (float)rs->picked / N;
+        float pr = (float)rs->picked / n;
         printf("    %20s: picked=%d  pick=%.1f%%  win=%.1f%%%s\n",
             rs->relic_id.c_str(), rs->picked, pr*100, rs->win_rate()*100,
             pr > 0.80f ? " [HOT]" : pr < 0.05f ? " [COLD]" : "");
     }
+}
 
+// æäººå¨è (åºç°æ° / å»ææ° / å»æç; >30% æ  HIGH)
+static void sim_print_enemy_threat(const BalanceReport& r) {
     // Enemy threat
     printf("\n  ENEMY THREAT:\n");
     for (auto& [id, es] : r.enemies) {
@@ -176,6 +196,31 @@ void SimRunner::finalize() {
             es.enemy_id.c_str(), es.appearances, es.kills, threat*100,
             threat > 0.30f ? " [HIGH]" : "");
     }
+}
+
+void SimRunner::finalize() {
+    _active = false;
+    auto& r = _report;
+    const int n = r.total_runs;
+    printf("\nâââ BALANCE REPORT: %d runs âââ\n", n);
+
+    // P1-C4 æ¢é: æ»å»åå½ä¸­è·ç¦»åå¸ (0-7+æ ¼) â F1 é¶è¾åºæ­»å å®ä½
+    // (å®ä¹å¨æ­¤: sim_ai.cpp çå¼ç¨æ¹åªé extern, test äºè¿å¶å¯é¾æ¥)
+    {
+        int tot = 0;
+        for (int i = 0; i < 8; i++) tot += g_p1c4_d_bucket[i];
+        if (tot > 0) {
+            printf("  [C4PROBE] attack-eval hit dist (tiles): ");
+            for (int i = 0; i < 8; i++)
+                printf("d%d=%.1f%% ", i, g_p1c4_d_bucket[i] * 100.0 / tot);
+            printf("(n=%d)\n", tot);
+        }
+    }
+
+    sim_print_summary(r, n);
+    sim_print_build_ranking(r);
+    sim_print_relic_ranking(r, n);
+    sim_print_enemy_threat(r);
 
     r.save_to_file("reports/balance_report.json");
     printf("\n  Report saved to reports/balance_report.json\n");
