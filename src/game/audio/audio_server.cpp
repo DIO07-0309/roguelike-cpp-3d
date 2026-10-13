@@ -278,15 +278,21 @@ void AudioServer::_load_sfx_from_paths(std::unordered_map<std::string, Sound>& s
 
 // ── G48: Kenney CC0 文件音效层 ──
 // 返回命中数; 0 命中时由调用方告警 (该层静默缺失)
+// G53: Kenney CC0 文件音效清单 (11 项) — 提为常量使告警里的分母可推导,
+// 不再与合成音注册表 kSynthSfx 的数量混淆 (曾误报 0/16)
+static const char* const kKenneySfxList[] = {
+    "hit_sword", "hit_spear", "hit_dagger", "hit_crossbow", "hit_staff",
+    "death_normal", "death_elite", "death_boss",
+    "skill_cast", "ui_click", "ui_select"
+};
+
 int AudioServer::_load_kenney_sfx(std::unordered_map<std::string, Sound>& sfx,
                                  const std::string& dir) {
-    const char* sfx_list[] = {
-        "hit_sword", "hit_spear", "hit_dagger", "hit_crossbow", "hit_staff",
-        "death_normal", "death_elite", "death_boss",
-        "skill_cast", "ui_click", "ui_select"
-    };
+    const char* const* sfx_list = kKenneySfxList;
+    const int sfx_total = (int)(sizeof(kKenneySfxList) / sizeof(kKenneySfxList[0]));
     int loaded = 0;
-    for (const char* name : sfx_list) {
+    for (int i = 0; i < sfx_total; i++) {
+        const char* name = sfx_list[i];
         std::string path = dir + name + ".wav";
         if (FileExists(path.c_str())) {
             sfx[name] = LoadSound(path.c_str());
@@ -296,25 +302,37 @@ int AudioServer::_load_kenney_sfx(std::unordered_map<std::string, Sound>& sfx,
     return loaded;
 }
 
+// ── G53: 合成音效注册表 (原 17 行逐条赋值, 改为表驱动) ──
+// 一条目 = {key, 编译函数}; fallback 音 (文件缺失时也必须有) 与合成音共用此表
+struct SynthSfxEntry {
+    const char* key;
+    Sound (*compile)();
+};
+
+static const SynthSfxEntry kSynthSfx[] = {
+    {"melee",        [] { return _compile_melee(); }},
+    {"hit",          [] { return _compile_hit(); }},
+    {"slash",        [] { return _compile_slash(); }},
+    {"bolt",         [] { return _compile_bolt(); }},
+    {"heal",         [] { return _compile_heal(); }},
+    {"pickup",       [] { return _compile_pickup(); }},
+    {"levelup",      [] { return _compile_levelup(); }},
+    {"victory",      [] { return _compile_victory(); }},
+    {"hurt",         [] { return _compile_hurt(); }},          // Q4.4: 玩家受击
+    {"monster_atk",  [] { return _compile_monster_atk(); }},   // Q4.4: 怪物攻击
+    {"ice_crack",    [] { return _compile_ice_crack(); }},     // Q4.6: recipe 音效
+    {"lightning",    [] { return _compile_lightning(); }},     // Q4.6: recipe 音效
+    {"summon",       [] { return _compile_summon(); }},        // Q4.6: recipe 音效
+    {"ui_click",     [] { return _compile_ui_click(); }},      // Q4.5: UI 点击
+    {"ui_confirm",   [] { return _compile_ui_confirm(); }},    // Q4.5: UI 确认
+    {"door_open",    [] { return _compile_door_open(); }},     // 4 处调用点此前无注册 → 完全无声
+};
+
 void AudioServer::init() {
     if (g_muted) return;  // Q3.1: sim 模式跳过音频合成
     LOG_INFO("音频: 初始化SFX...");
-    _sfx["melee"]   = _compile_melee();
-    _sfx["hit"]     = _compile_hit();
-    _sfx["slash"]   = _compile_slash();
-    _sfx["bolt"]    = _compile_bolt();
-    _sfx["heal"]    = _compile_heal();
-    _sfx["pickup"]  = _compile_pickup();
-    _sfx["levelup"] = _compile_levelup();
-    _sfx["victory"] = _compile_victory();
-    _sfx["hurt"]        = _compile_hurt();         // Q4.4: 玩家受击
-    _sfx["monster_atk"] = _compile_monster_atk();  // Q4.4: 怪物攻击
-    _sfx["ice_crack"]   = _compile_ice_crack();    // Q4.6: recipe 音效
-    _sfx["lightning"]   = _compile_lightning();    // Q4.6: recipe 音效
-    _sfx["summon"]      = _compile_summon();       // Q4.6: recipe 音效
-    _sfx["ui_click"]    = _compile_ui_click();     // Q4.5: UI 点击
-    _sfx["ui_confirm"]  = _compile_ui_confirm();   // Q4.5: UI 确认
-    _sfx["door_open"]   = _compile_door_open();    // 4 处调用点此前无注册 → 完全无声
+    for (const SynthSfxEntry& e : kSynthSfx)
+        _sfx[e.key] = e.compile();
 
     // 文件音效: fallback 先放合成音, 再尝试覆盖为真实音频
     // (ResourceManager 在 AudioServer 之后初始化, 故此处用已知路径直读)
@@ -329,7 +347,8 @@ void AudioServer::init() {
     const int kenney_hit = _load_kenney_sfx(_sfx, _sfx_path);
     if (kenney_hit == 0)
         LOG_WARN("音频: %s 下 0/%d 个 Kenney SFX 命中 — 该层静默缺失, 全程仅用合成音",
-                 _sfx_path.c_str(), 11);
+                 _sfx_path.c_str(),
+                 (int)(sizeof(kKenneySfxList) / sizeof(kKenneySfxList[0])));
 
     // BGM
     LOG_INFO("音频: 合成BGM(4支)...");

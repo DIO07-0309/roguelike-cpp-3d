@@ -76,6 +76,15 @@ static int _read_int(const char*& p) {
     return v;
 }
 
+// G53: 跳过单个未知 JSON 值 (字符串/数组/对象/裸标量)
+static void _skip_unknown_buff_value(const char*& p) {
+    p = _skip_ws(p);
+    if (*p == '"') { _read_string(p); }
+    else if (*p == '[') { while (*p && *p != ']') p++; if (*p == ']') p++; }
+    else if (*p == '{') { int d = 1; p++; while (*p && d) { if (*p=='{') d++; if (*p=='}') d--; p++; } }
+    else { while (*p && *p != ',' && *p != '}' && *p != '\n') p++; }
+}
+
 static std::string _parse_buff_obj(const char*& p, BuffDef& out) {
     p = _skip_ws(p);
     if (*p != '{') return "expected '{'";
@@ -90,14 +99,19 @@ static std::string _parse_buff_obj(const char*& p, BuffDef& out) {
         if (*p != ':') return "expected ':' after " + key;
         p++;
 
-        if (key == "id")              out.id = _read_string(p);
-        else if (key == "display_name") out.display_name = _read_string(p);
-        else if (key == "short_name")   out.short_name = _read_string(p);
-        else if (key == "duration")     out.duration = _read_float(p);
-        else if (key == "max_stacks")   out.max_stacks = _read_int(p);
+        // 字符串类字段 (id/display_name/short_name)
+        if (key == "id" || key == "display_name" || key == "short_name") {
+            std::string* dst = (key == "id") ? &out.id
+                            : (key == "display_name") ? &out.display_name
+                            : &out.short_name;
+            *dst = _read_string(p);
+        }
+        else if (key == "duration")      out.duration = _read_float(p);
+        else if (key == "max_stacks")    out.max_stacks = _read_int(p);
         else if (key == "tick_interval") out.tick_interval = _read_float(p);
         else if (key == "tick_damage")   out.tick_damage = _read_int(p);
         else if (key == "hud_color") {
+            // "hud_color": [r,g,b]
             p = _skip_ws(p);
             if (*p != '[') return "expected '['";
             p++;
@@ -109,11 +123,7 @@ static std::string _parse_buff_obj(const char*& p, BuffDef& out) {
             p = _skip_ws(p);
             if (*p == ']') p++;
         } else {
-            p = _skip_ws(p);
-            if (*p == '"') { _read_string(p); }
-            else if (*p == '[') { while (*p && *p != ']') p++; if (*p == ']') p++; }
-            else if (*p == '{') { int d = 1; p++; while (*p && d) { if (*p=='{') d++; if (*p=='}') d--; p++; } }
-            else { while (*p && *p != ',' && *p != '}' && *p != '\n') p++; }
+            _skip_unknown_buff_value(p);
         }
     }
     return "unterminated";
