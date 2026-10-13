@@ -250,6 +250,52 @@ static Sound _compile_victory() {
 // ============================================================
 bool AudioServer::g_muted = false;  // Q3.1: --sim 静音
 
+// ── G48: 从候选路径加载音频文件到 _sfx[key] ──
+// 原 timestop / domain_expand 两块加载逻辑逐字重复 (~18 行 × 2),
+// 抽成一处。加载失败保留 fallback (调用方先放入合成音)。
+void AudioServer::_load_sfx_from_paths(std::unordered_map<std::string, Sound>& sfx,
+                                       const std::string& key,
+                                       const std::vector<const char*>& paths) {
+    for (const char* path : paths) {
+        if (!FileExists(path)) continue;
+        int data_size = 0;
+        unsigned char* data = LoadFileData(path, &data_size);
+        if (data && data_size > 0) {
+            Wave wave = LoadWaveFromMemory(".wav", data, data_size);
+            if (wave.frameCount > 0) {
+                Sound s = LoadSoundFromWave(wave);
+                sfx[key] = s;
+                LOG_INFO("音频: %s loaded frameCount=%d path=%s",
+                         key.c_str(), s.frameCount, path);
+            }
+            UnloadWave(wave);
+            UnloadFileData(data);
+            return;                      // 命中一个即止
+        }
+        if (data) UnloadFileData(data);
+    }
+}
+
+// ── G48: Kenney CC0 文件音效层 ──
+// 返回命中数; 0 命中时由调用方告警 (该层静默缺失)
+int AudioServer::_load_kenney_sfx(std::unordered_map<std::string, Sound>& sfx,
+                                 const std::string& dir) {
+    const char* sfx_list[] = {
+        "hit_sword", "hit_spear", "hit_dagger", "hit_crossbow", "hit_staff",
+        "death_normal", "death_elite", "death_boss",
+        "skill_cast", "ui_click", "ui_select"
+    };
+    int loaded = 0;
+    for (const char* name : sfx_list) {
+        std::string path = dir + name + ".wav";
+        if (FileExists(path.c_str())) {
+            sfx[name] = LoadSound(path.c_str());
+            loaded++;
+        }
+    }
+    return loaded;
+}
+
 void AudioServer::init() {
     if (g_muted) return;  // Q3.1: sim 模式跳过音频合成
     LOG_INFO("音频: 初始化SFX...");
@@ -268,74 +314,28 @@ void AudioServer::init() {
     _sfx["summon"]      = _compile_summon();       // Q4.6: recipe 音效
     _sfx["ui_click"]    = _compile_ui_click();     // Q4.5: UI 点击
     _sfx["ui_confirm"]  = _compile_ui_confirm();   // Q4.5: UI 确认
-    _sfx["door_open"]   = _compile_door_open();    // 门开启: 4 处调用点此前无注册 → 完全无声
+    _sfx["door_open"]   = _compile_door_open();    // 4 处调用点此前无注册 → 完全无声
 
-    // timestop: 直接从已知路径加载 (ResourceManager 在 AudioServer 之后初始化)
+    // 文件音效: fallback 先放合成音, 再尝试覆盖为真实音频
+    // (ResourceManager 在 AudioServer 之后初始化, 故此处用已知路径直读)
     _sfx["timestop"] = _compile_bolt();  // fallback
-    {
-        const char* paths[] = {"assets/jojo_timestop.wav", "assets/jojo_timestop.mp3"};
-        for (auto p : paths) {
-            if (!FileExists(p)) continue;
-            int dataSize = 0;
-            unsigned char* data = LoadFileData(p, &dataSize);
-            if (data && dataSize > 0) {
-                Wave wave = LoadWaveFromMemory(".wav", data, dataSize);
-                if (wave.frameCount > 0) {
-                    _sfx["timestop"] = LoadSoundFromWave(wave);
-                    LOG_INFO("音频: timestop loaded frameCount=%d path=%s", _sfx["timestop"].frameCount, p);
-                }
-                UnloadWave(wave);
-                UnloadFileData(data);
-                break;
-            }
-            if (data) UnloadFileData(data);
-        }
-    }
-
-    // domain_expand: 直接从已知路径加载
+    _load_sfx_from_paths(_sfx, "timestop", {"assets/jojo_timestop.wav",
+                                            "assets/jojo_timestop.mp3"});
     _sfx["domain_expand"] = _compile_domain_expand();  // fallback: 文件缺失不再静默无声
-    {
-        const char* paths[] = {"assets/domain_expand.wav", "assets/domain_expand.mp3"};
-        for (auto p : paths) {
-            if (!FileExists(p)) continue;
-            int dataSize = 0;
-            unsigned char* data = LoadFileData(p, &dataSize);
-            if (data && dataSize > 0) {
-                Wave wave = LoadWaveFromMemory(".wav", data, dataSize);
-                if (wave.frameCount > 0) {
-                    _sfx["domain_expand"] = LoadSoundFromWave(wave);
-                    LOG_INFO("音频: domain_expand loaded frameCount=%d path=%s", _sfx["domain_expand"].frameCount, p);
-                }
-                UnloadWave(wave);
-                UnloadFileData(data);
-                break;
-            }
-            if (data) UnloadFileData(data);
-        }
-    }
+    _load_sfx_from_paths(_sfx, "domain_expand", {"assets/domain_expand.wav",
+                                                 "assets/domain_expand.mp3"});
 
-    // A7-T4: 加载音效资源 (Kenney CC0)
-    const char* sfx_list[] = {
-        "hit_sword", "hit_spear", "hit_dagger", "hit_crossbow", "hit_staff",
-        "death_normal", "death_elite", "death_boss",
-        "skill_cast", "ui_click", "ui_select"
-    };
-    int sfx_loaded = 0;
-    for (const char* sfx : sfx_list) {
-        std::string path = _sfx_path + sfx + ".wav";
-        if (FileExists(path.c_str())) {
-            _sfx[sfx] = LoadSound(path.c_str());
-            sfx_loaded++;
-        }
-    }
-    if (sfx_loaded == 0)
+    // A7-T4: Kenney CC0 音效资源层
+    const int kenney_hit = _load_kenney_sfx(_sfx, _sfx_path);
+    if (kenney_hit == 0)
         LOG_WARN("音频: %s 下 0/%d 个 Kenney SFX 命中 — 该层静默缺失, 全程仅用合成音",
-                 _sfx_path.c_str(), (int)(sizeof(sfx_list) / sizeof(sfx_list[0])));
+                 _sfx_path.c_str(), 11);
 
     // BGM
     LOG_INFO("音频: 合成BGM(4支)...");
     _bgm.init();
-    LOG_INFO("音频: 就绪 (SFX %d 项, 其中文件 %d 项) + BGM 4 支", (int)_sfx.size(), sfx_loaded);
+    LOG_INFO("音频: 就绪 (SFX %d 项, 其中文件 %d 项) + BGM 4 支",
+             (int)_sfx.size(), kenney_hit);
 }
 
 void AudioServer::close() {
