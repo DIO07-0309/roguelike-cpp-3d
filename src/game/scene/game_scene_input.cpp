@@ -246,6 +246,46 @@ void GameSceneInput::handle_event_input(const InputMap& input) {
 // ============================================================
 // Dialogue input handler
 // ============================================================
+// 对话确认翻到底时的收尾: NPC 结局奖励 + 告别语 + 关闭对话
+void GameSceneInput::_finish_dialogue_page(DialogueState& d) {
+    if (d.target_npc) {
+        _apply_npc_farewell_rewards(d.target_npc);
+    }
+    d.active = false;
+    d.target_npc = nullptr;
+}
+
+// NPC 楼层 -> 世界 flag / 关系奖励 / 告别语 (一张表, 由 dialogue 收尾调用)
+void GameSceneInput::_apply_npc_farewell_rewards(NPCState* npc) {
+    npc->finished = true;
+    const int npc_floor = npc->id / 10;
+    if (npc_floor == 2) {
+        _s._gameplay.world_state.set(WorldFlag::Saved_Prisoner);
+        _s._gameplay.rels.apply_reward(RR_SAVE_PRISONER);
+    } else if (npc_floor == 7) {
+        _s._gameplay.world_state.set(WorldFlag::Saved_Priest);
+        _s._gameplay.rels.apply_reward(RR_SAVE_PRIEST);
+    } else if (npc_floor == 9) {
+        _s._gameplay.rels.add_respect(90, 1);
+    } else if (npc_floor == 14) {
+        _s._gameplay.rels.add_trust(140, 1);
+        _s._gameplay.rels.add_respect(140, 2);
+    }
+    const NPCData* cfg = get_npc_config(npc->id / 10, npc->id % 10);
+    if (cfg && cfg->farewell) {
+        _s._presentation.room_msg = cfg->farewell;
+        _s._presentation.room_msg_timer = 2.0f;
+    }
+}
+
+// 取消对话: 只关对话 + 一句离场提示, 不动 NPC 状态
+void GameSceneInput::_leave_dialogue() {
+    _s._dialogue.active = false;
+    _s._dialogue.target_npc = nullptr;
+    _s._presentation.room_msg = "你转身离开了。";
+    _s._presentation.room_msg_timer = 1.5f;
+}
+
 void GameSceneInput::handle_dialogue_input(const InputMap& input) {
     auto& d = _s._dialogue;
     if (!d.active) return;
@@ -266,42 +306,20 @@ void GameSceneInput::handle_dialogue_input(const InputMap& input) {
         d.page++;
         d.timer = 0.0f;
         if (d.page >= (int)d.pages.size()) {
-            if (d.target_npc) {
-                d.target_npc->finished = true;
-                int npc_floor = d.target_npc->id / 10;
-                if (npc_floor == 2) {
-                    _s._gameplay.world_state.set(WorldFlag::Saved_Prisoner);
-                    _s._gameplay.rels.apply_reward(RR_SAVE_PRISONER);
-                } else if (npc_floor == 7) {
-                    _s._gameplay.world_state.set(WorldFlag::Saved_Priest);
-                    _s._gameplay.rels.apply_reward(RR_SAVE_PRIEST);
-                } else if (npc_floor == 9) {
-                    _s._gameplay.rels.add_respect(90, 1);
-                } else if (npc_floor == 14) {
-                    _s._gameplay.rels.add_trust(140, 1);
-                    _s._gameplay.rels.add_respect(140, 2);
-                }
-                const NPCData* cfg = get_npc_config(d.target_npc->id / 10, d.target_npc->id % 10);
-                if (cfg && cfg->farewell) {
-                    _s._presentation.room_msg = cfg->farewell;
-                    _s._presentation.room_msg_timer = 2.0f;
-                }
-            }
-            d.active = false;
-            d.target_npc = nullptr;
+            _finish_dialogue_page(d);
+            return;
         }
     }
     if (_s._is_action_just_pressed(input,"cancel")) {
-        d.active = false; d.target_npc = nullptr;
-        _s._presentation.room_msg = "你转身离开了。";
-        _s._presentation.room_msg_timer = 1.5f;
+        _leave_dialogue();
     }
 }
 
 // ============================================================
 // Debug key handler (F1-F12, only in _DEBUG builds)
 // ============================================================
-void GameSceneInput::handle_debug_keys() {
+// F2/F3/F5/F6/F7: 快速施加 buff 调试
+void GameSceneInput::_handle_debug_buff_keys() {
     if (!_s.player) return;
     if (IsKeyPressed(KEY_F7))
         apply_buff(_s.player.get(), "attack_up", 1);
@@ -309,6 +327,10 @@ void GameSceneInput::handle_debug_keys() {
         apply_buff(_s.player.get(), "slow", 1);
     if (IsKeyPressed(KEY_F3) && !_s.monsters.empty())
         apply_buff(_s.monsters[0].get(), "poison", 2);
+    if (IsKeyPressed(KEY_F5) && !_s.monsters.empty())
+        apply_buff(_s.monsters[0].get(), "slow", 2);
+    if (IsKeyPressed(KEY_F6) && !_s.monsters.empty())
+        apply_buff(_s.monsters[0].get(), "attack_up", 2);
     if (IsKeyPressed(KEY_F4)) {
         auto dump = [](const std::vector<BuffInstance>& buffs, const char* who) {
             if (buffs.empty()) { LOG_INFO("[F4] %s buffs: (none)", who); return; }
@@ -319,35 +341,48 @@ void GameSceneInput::handle_debug_keys() {
         dump(_s.player->active_buffs, "Player");
         if (!_s.monsters.empty()) dump(_s.monsters[0]->active_buffs, "Monster[0]");
     }
-    if (IsKeyPressed(KEY_F5) && !_s.monsters.empty())
-        apply_buff(_s.monsters[0].get(), "slow", 2);
-    if (IsKeyPressed(KEY_F6) && !_s.monsters.empty())
-        apply_buff(_s.monsters[0].get(), "attack_up", 2);
+}
+
+// F8-F12: 视觉覆盖层开关 (F12 带 Shift/Ctrl 修饰)
+void GameSceneInput::_handle_debug_overlay_keys() {
     if (IsKeyPressed(KEY_F8))
         _s._presentation.show_growth_debug = !_s._presentation.show_growth_debug;
     if (IsKeyPressed(KEY_F9))
         _s._presentation.combat_juice_on = !_s._presentation.combat_juice_on;
-    // M6-i.1: 游戏内截图 (调试键 F7 — raylib TakeScreenshot 直接读 GL
-    // 帧缓冲, 3D/HDR 内容零失真; 截到工作目录 screenshot.png)
-    if (IsKeyPressed(KEY_F7)) {
-        TakeScreenshot("screenshot.png");
-        LOG_INFO("[截图] screenshot.png 已保存 (工作目录)");
-    }
     if (IsKeyPressed(KEY_F10))
         _s._presentation.show_flow_debug = !_s._presentation.show_flow_debug;
     if (IsKeyPressed(KEY_F11))
         _s._presentation.show_boss_behavior = !_s._presentation.show_boss_behavior;
+    // F12 裸按切换 show_boss_cmd; 带 Shift/Ctrl 时额外触发各自分支
+    // (原实现即为"三者并存": 修饰键按下时裸切换同样会发生, 保持原样)
     if (IsKeyPressed(KEY_F12))
         _s._presentation.show_boss_cmd = !_s._presentation.show_boss_cmd;
     if (IsKeyDown(KEY_LEFT_SHIFT) && IsKeyPressed(KEY_F12))
         _s._presentation.show_boss_report = !_s._presentation.show_boss_report;
-    if (IsKeyDown(KEY_LEFT_CONTROL) && IsKeyPressed(KEY_F12)) {
-        static int ending_idx = 0;
-        EndingType all[] = {EndingType::BAD_END, EndingType::NORMAL_END,
-                            EndingType::GOOD_END, EndingType::TRUE_END, EndingType::SECRET_END};
-        ending_idx = (ending_idx + 1) % 5;
-        _s._gameplay.ending_dir.debug_override(all[ending_idx]);
-        _s._presentation.room_msg = std::string("[Preview] ") + _s._gameplay.ending_dir.ending_name();
-        _s._presentation.room_msg_timer = 2.0f;
-    }
+}
+
+// 游戏内截图 (F7)
+static void _debug_take_screenshot() {
+    // M6-i.1: raylib TakeScreenshot 直接读 GL 帧缓冲, 3D/HDR 内容零失真
+    TakeScreenshot("screenshot.png");
+    LOG_INFO("[截图] screenshot.png 已保存 (工作目录)");
+}
+
+void GameSceneInput::_handle_debug_ending_preview() {
+    if (!IsKeyDown(KEY_LEFT_CONTROL) || !IsKeyPressed(KEY_F12)) return;
+    static int ending_idx = 0;
+    EndingType all[] = {EndingType::BAD_END, EndingType::NORMAL_END,
+                        EndingType::GOOD_END, EndingType::TRUE_END, EndingType::SECRET_END};
+    ending_idx = (ending_idx + 1) % 5;
+    _s._gameplay.ending_dir.debug_override(all[ending_idx]);
+    _s._presentation.room_msg = std::string("[Preview] ") + _s._gameplay.ending_dir.ending_name();
+    _s._presentation.room_msg_timer = 2.0f;
+}
+
+void GameSceneInput::handle_debug_keys() {
+    if (!_s.player) return;
+    _handle_debug_buff_keys();
+    _handle_debug_overlay_keys();
+    if (IsKeyPressed(KEY_F7)) _debug_take_screenshot();
+    _handle_debug_ending_preview();
 }
