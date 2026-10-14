@@ -106,6 +106,97 @@ void GameSceneInteraction::tick_event_ui(float dt) {
     }
 }
 
+// G53: ENTER 标题屏 (事件名 + 上下金线)
+void GameSceneInteraction::_draw_event_enter_panel(int sw, int sh,
+                                                   const char* ename,
+                                                   const Color& gold,
+                                                   const Color& white,
+                                                   const Color& bg) {
+    DrawRectangle(0, 0, sw, sh, bg);
+    GameRenderer::draw_glow_text("══════════════", sw/2.0f, sh/2.0f - 40, 22, gold, true);
+    char title_buf[64]; snprintf(title_buf, sizeof(title_buf), "EVENT");
+    GameRenderer::draw_glow_text(title_buf, sw/2.0f, sh/2.0f - 12, 36, gold, true);
+    GameRenderer::draw_glow_text(ename, sw/2.0f, sh/2.0f + 28, 22, white, true);
+    GameRenderer::draw_glow_text("══════════════", sw/2.0f, sh/2.0f + 52, 22, gold, true);
+}
+
+// G53: DESC / CHOICE 共用面板 (描述文本 + 选项列表 + 底部按键提示)
+void GameSceneInteraction::_draw_event_choice_panel(int sw, int sh, float alpha,
+                                                    const char* ename,
+                                                    const Color& gold,
+                                                    const Color& white) {
+    auto& ui = _s._event_ui;
+    const float pw = 500, ph = 260;
+    Rectangle pr = {sw/2.0f - pw/2, sh/2.0f - ph/2, pw, ph};
+    GameRenderer::draw_panel(pr, ename, {15,15,35,(unsigned char)(220*alpha)});
+    if (g_font_loaded && !ui.desc_text.empty())
+        DrawTextEx(g_font_small, ui.desc_text.c_str(), {pr.x+30, pr.y+50}, 16, 1, white);
+    if (ui.phase == EventPhase::CHOICE) {
+        // 选项文本按事件类型硬编码 (BLOOD/PRISONER/CURSED 是YES/NO, 其余各自三选)
+        const char* alt_opts[3] = {nullptr, nullptr, nullptr};
+        if (ui.current == EventType::ALTAR_CHOICE) {
+            alt_opts[0] = "→ 攻击强化"; alt_opts[1] = "  生命恢复"; alt_opts[2] = "  技能进化";
+        } else if (ui.current == EventType::MERCHANT) {
+            alt_opts[0] = "→ 购买药水"; alt_opts[1] = "  攻击祝福"; alt_opts[2] = "  随机圣物";
+        }
+        const bool yes_no = (ui.current == EventType::BLOOD_RITUAL
+                          || ui.current == EventType::PRISONER
+                          || ui.current == EventType::CURSED_ROOM);
+        float oy = pr.y + 130;
+        for (int i = 0; i < ui.option_count; i++) {
+            const char* choice_text = "?";
+            if (yes_no)
+                choice_text = (i == 0) ? "→ YES" : "  NO";
+            else if (alt_opts[0] && i < 3)
+                choice_text = alt_opts[i];
+            Color cc = (i == ui.selected) ? gold
+                       : Color{180,180,180,(unsigned char)(200*alpha)};
+            DrawTextEx(g_font_small, choice_text, {pr.x+40, oy + i*28}, 16, 1, cc);
+        }
+    }
+    const char* hint = (ui.phase == EventPhase::DESC)
+        ? "[ENTER]继续  [ESC]离开" : "[←→]选择  [ENTER]确认  [ESC]取消";
+    DrawTextEx(g_font_small, hint,
+        {pr.x + (pw - MeasureTextEx(g_font_small,hint,14,1).x)/2, pr.y+ph-28},
+        14, 1, Color{140,140,160,(unsigned char)(180*alpha)});
+}
+
+// G53: ANIM 脉冲双环 (半径随 timer 呼吸)
+void GameSceneInteraction::_draw_event_anim_panel(int sw, int sh, float alpha,
+                                                  const Color& bg) {
+    auto& ui = _s._event_ui;
+    DrawRectangle(0, 0, sw, sh, bg);
+    float pulse = sinf(ui.timer * 8) * 30;
+    float r = 80 + pulse;
+    DrawRing({sw/2.0f, sh/2.0f}, r*0.7f, r, 0, 360, 24,
+             Color{ui.anim_color.r, ui.anim_color.g, ui.anim_color.b, (unsigned char)(180*alpha)});
+    DrawRing({sw/2.0f, sh/2.0f}, r*0.4f, r*0.5f, 0, 360, 16,
+             Color{ui.anim_color.r, ui.anim_color.g, ui.anim_color.b, (unsigned char)(120*alpha)});
+}
+
+// G53: REWARD / COMPLETE 结果屏 (final=true 为收尾版, 字号略小偏暗)
+void GameSceneInteraction::_draw_event_result_panel(int sw, int sh, float alpha,
+                                                    bool final) {
+    auto& ui = _s._event_ui;
+    if (final)
+        DrawRectangle(0, 0, sw, sh, {0,0,0,(unsigned char)(120*alpha)});
+    else
+        DrawRectangle(0, 0, sw, sh, {0,0,0,(unsigned char)(140*alpha)});
+    const int title_size = final ? 24 : 28;
+    const int text_size  = final ? 18 : 20;
+    const int title_off  = final ? -20 : -30;
+    const int text_off   = final ? 18 : 20;
+    GameRenderer::draw_glow_text("EVENT COMPLETE", sw/2.0f, sh/2.0f + title_off,
+                                 title_size,
+                                 {255,210,50,(unsigned char)((final ? 200 : 255)*alpha)},
+                                 true);
+    if (!ui.complete_text.empty())
+        GameRenderer::draw_glow_text(ui.complete_text.c_str(), sw/2.0f, sh/2.0f + text_off,
+                                     text_size,
+                                     {240,240,240,(unsigned char)((final ? 180 : 230)*alpha)},
+                                     true);
+}
+
 void GameSceneInteraction::draw_event_ui(int sw, int sh) {
     auto& ui = _s._event_ui;
     if (!ui.active) return;
@@ -117,73 +208,22 @@ void GameSceneInteraction::draw_event_ui(int sw, int sh) {
     Color bg = {0, 0, 0, (unsigned char)(140 * alpha)};
 
     switch (ui.phase) {
-    case EventPhase::ENTER: {
-        DrawRectangle(0, 0, sw, sh, bg);
-        GameRenderer::draw_glow_text("══════════════", sw/2.0f, sh/2.0f - 40, 22, gold, true);
-        char title_buf[64]; snprintf(title_buf, sizeof(title_buf), "EVENT");
-        GameRenderer::draw_glow_text(title_buf, sw/2.0f, sh/2.0f - 12, 36, gold, true);
-        GameRenderer::draw_glow_text(ename, sw/2.0f, sh/2.0f + 28, 22, white, true);
-        GameRenderer::draw_glow_text("══════════════", sw/2.0f, sh/2.0f + 52, 22, gold, true);
+    case EventPhase::ENTER:
+        _draw_event_enter_panel(sw, sh, ename, gold, white, bg);
         break;
-    }
     case EventPhase::DESC:
-    case EventPhase::CHOICE: {
-        float pw = 500, ph = 260;
-        Rectangle pr = {sw/2.0f - pw/2, sh/2.0f - ph/2, pw, ph};
-        GameRenderer::draw_panel(pr, ename, {15,15,35,(unsigned char)(220*alpha)});
-        if (g_font_loaded && !ui.desc_text.empty())
-            DrawTextEx(g_font_small, ui.desc_text.c_str(), {pr.x+30, pr.y+50}, 16, 1, white);
-        if (ui.phase == EventPhase::CHOICE) {
-            float oy = pr.y + 130;
-            for (int i = 0; i < ui.option_count; i++) {
-                const char* choice_text = "?";
-                if (ui.current == EventType::BLOOD_RITUAL || ui.current == EventType::PRISONER
-                    || ui.current == EventType::CURSED_ROOM)
-                    choice_text = (i == 0) ? "→ YES" : "  NO";
-                else if (ui.current == EventType::ALTAR_CHOICE) {
-                    const char* opts[] = {"→ 攻击强化", "  生命恢复", "  技能进化"};
-                    choice_text = (i < 3) ? opts[i] : "?";
-                } else if (ui.current == EventType::MERCHANT) {
-                    const char* opts[] = {"→ 购买药水", "  攻击祝福", "  随机圣物"};
-                    choice_text = (i < 3) ? opts[i] : "?";
-                }
-                Color cc = (i == ui.selected) ? gold : Color{180,180,180,(unsigned char)(200*alpha)};
-                DrawTextEx(g_font_small, choice_text, {pr.x+40, oy + i*28}, 16, 1, cc);
-            }
-        }
-        const char* hint = (ui.phase == EventPhase::DESC)
-            ? "[ENTER]继续  [ESC]离开" : "[←→]选择  [ENTER]确认  [ESC]取消";
-        DrawTextEx(g_font_small, hint,
-            {pr.x + (pw - MeasureTextEx(g_font_small,hint,14,1).x)/2, pr.y+ph-28},
-            14, 1, Color{140,140,160,(unsigned char)(180*alpha)});
+    case EventPhase::CHOICE:
+        _draw_event_choice_panel(sw, sh, alpha, ename, gold, white);
         break;
-    }
-    case EventPhase::ANIM: {
-        DrawRectangle(0, 0, sw, sh, bg);
-        float pulse = sinf(ui.timer * 8) * 30;
-        float r = 80 + pulse;
-        DrawRing({sw/2.0f, sh/2.0f}, r*0.7f, r, 0, 360, 24,
-                 Color{ui.anim_color.r, ui.anim_color.g, ui.anim_color.b, (unsigned char)(180*alpha)});
-        DrawRing({sw/2.0f, sh/2.0f}, r*0.4f, r*0.5f, 0, 360, 16,
-                 Color{ui.anim_color.r, ui.anim_color.g, ui.anim_color.b, (unsigned char)(120*alpha)});
+    case EventPhase::ANIM:
+        _draw_event_anim_panel(sw, sh, alpha, bg);
         break;
-    }
-    case EventPhase::REWARD: {
-        DrawRectangle(0, 0, sw, sh, bg);
-        GameRenderer::draw_glow_text("EVENT COMPLETE", sw/2.0f, sh/2.0f - 30, 28, gold, true);
-        if (!ui.complete_text.empty())
-            GameRenderer::draw_glow_text(ui.complete_text.c_str(), sw/2.0f, sh/2.0f + 20, 20, white, true);
+    case EventPhase::REWARD:
+        _draw_event_result_panel(sw, sh, alpha, false);
         break;
-    }
-    case EventPhase::COMPLETE: {
-        DrawRectangle(0, 0, sw, sh, {0,0,0,(unsigned char)(120*alpha)});
-        GameRenderer::draw_glow_text("EVENT COMPLETE", sw/2.0f, sh/2.0f - 20, 24,
-                                      {255,210,50,(unsigned char)(200*alpha)}, true);
-        if (!ui.complete_text.empty())
-            GameRenderer::draw_glow_text(ui.complete_text.c_str(), sw/2.0f, sh/2.0f + 18, 18,
-                                          {240,240,240,(unsigned char)(180*alpha)}, true);
+    case EventPhase::COMPLETE:
+        _draw_event_result_panel(sw, sh, alpha, true);
         break;
-    }
     default: break;
     }
 }

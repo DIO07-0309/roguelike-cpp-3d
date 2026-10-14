@@ -33,5 +33,13 @@ private:
     // G53: draw_quest_log 拆出的两段 (任务列表 / NPC 关系栏)
     void _draw_quest_list(const Rectangle& pr);
     void _draw_npc_relations(const Rectangle& pr);
+    // G53: draw_event_ui 拆出的四段面板 (标题 / 描述+选项 / 动画 / 结果)
+    void _draw_event_enter_panel(int sw, int sh, const char* ename,
+                                 const Color& gold, const Color& white,
+                                 const Color& bg);
+    void _draw_event_choice_panel(int sw, int sh, float alpha, const char* ename,
+                                  const Color& gold, const Color& white);
+    void _draw_event_anim_panel(int sw, int sh, float alpha, const Color& bg);
+    void _draw_event_result_panel(int sw, int sh, float alpha, bool final);
     GameScene& _s;
 };
