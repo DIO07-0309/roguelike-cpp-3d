@@ -37,6 +37,31 @@ void GameSceneInteraction::start_event_presentation(EventType et) {
     _s._event_ui.anim_color = _event_anim_color(et);
 }
 
+// G53: 事件落定后的世界 flag / 关系副作用 (选 0 = 主动接受诅咒/仪式)
+void GameSceneInteraction::_apply_event_reward_flags(const DungeonEvent& ev,
+                                                     int selected) {
+    if (selected != 0) return;
+    if (ev.type == EventType::CURSED_ROOM) {
+        _s._gameplay.world_state.set(WorldFlag::Accepted_Curse);
+        _s._gameplay.rels.add_trust(70, -1);
+        _s._gameplay.rels.add_fear(70, 1);
+    } else if (ev.type == EventType::BLOOD_RITUAL) {
+        _s._gameplay.world_state.set(WorldFlag::Blood_Ritual);
+        _s._gameplay.rels.apply_reward(RR_BLOOD_RITUAL);
+    }
+}
+
+// G53: execute_event 的返回值是带前缀的协议串, 这里归类成给玩家看的一句
+void GameSceneInteraction::_set_event_complete_text(std::string& complete_text,
+                                                    const std::string& reward_text) {
+    if (reward_text.size() > 6 && reward_text.substr(0, 6) == "RELIC:")
+        complete_text = "获得圣物:" + reward_text.substr(6);
+    else if (reward_text.size() > 4 && reward_text.substr(0, 4) == "MSG:")
+        complete_text = reward_text.substr(4);
+    else
+        complete_text = reward_text;
+}
+
 void GameSceneInteraction::tick_event_ui(float dt) {
     auto& ui = _s._event_ui;
     if (!ui.active) return;
@@ -59,20 +84,8 @@ void GameSceneInteraction::tick_event_ui(float dt) {
             ui.timer = 1.5f;
             DungeonEvent ev; ev.type = ui.current; ev.triggered = false;
             ui.reward_text = execute_event(ev, _s.player.get(), _s.current_floor);
-            if (ev.type == EventType::CURSED_ROOM && ui.selected == 0) {
-                _s._gameplay.world_state.set(WorldFlag::Accepted_Curse);
-                _s._gameplay.rels.add_trust(70, -1);
-                _s._gameplay.rels.add_fear(70, 1);
-            } else if (ev.type == EventType::BLOOD_RITUAL && ui.selected == 0) {
-                _s._gameplay.world_state.set(WorldFlag::Blood_Ritual);
-                _s._gameplay.rels.apply_reward(RR_BLOOD_RITUAL);
-            }
-            if (ui.reward_text.size() > 6 && ui.reward_text.substr(0, 6) == "RELIC:")
-                ui.complete_text = "获得圣物:" + ui.reward_text.substr(6);
-            else if (ui.reward_text.size() > 4 && ui.reward_text.substr(0, 4) == "MSG:")
-                ui.complete_text = ui.reward_text.substr(4);
-            else
-                ui.complete_text = ui.reward_text;
+            _apply_event_reward_flags(ev, ui.selected);
+            _set_event_complete_text(ui.complete_text, ui.reward_text);
         }
         break;
     case EventPhase::REWARD:
@@ -276,61 +289,71 @@ void GameSceneInteraction::draw_dialogue(int sw, int sh) {
     DrawTextEx(g_font_small, pg, {pr.x+16, pr.y+ph-30}, 13, 1, {180,180,200,200});
 }
 
+// G53: 任务列表 (跳过 hidden; y 越界即停, 不裁剪滚动)
+void GameSceneInteraction::_draw_quest_list(const Rectangle& pr) {
+    auto& quests = _s._gameplay.quest_mgr.all_quests();
+    if (quests.empty()) {
+        DrawTextEx(g_font_small, "暂无任务。", {pr.x+30, pr.y+60}, 16, 1, {160,160,180,200});
+        return;
+    }
+    int done = _s._gameplay.quest_mgr.completed_count();
+    char progress[32];
+    snprintf(progress, sizeof(progress), "%d/%d 完成", done, (int)quests.size());
+    DrawTextEx(g_font_small, progress, {pr.x+pr.width-100, pr.y+14}, 12, 1, {200,200,100,200});
+
+    float y = pr.y + 45;
+    for (auto& q : quests) {
+        if (q.hidden) continue;
+        const char* status; Color c;
+        switch (q.state) {
+            case QuestState::COMPLETED: status = "[?完成]"; c = {100,200,100,255}; break;
+            case QuestState::ACCEPTED:  status = "→进行中!"; c = {255,200,50,255}; break;
+            case QuestState::AVAILABLE: status = "○可接"; c = {180,180,220,255}; break;
+            case QuestState::FAILED:    status = "[?失败]"; c = {200,100,100,255}; break;
+            default: status = "[锁]"; c = {100,100,100,200}; break;
+        }
+        char buf[128];
+        snprintf(buf, sizeof(buf), "%s %s", status, q.title.c_str());
+        DrawTextEx(g_font_small, buf, {pr.x+25, y}, 16, 1, c);
+        DrawTextEx(g_font_small, q.desc.c_str(), {pr.x+40, y+22}, 13, 1, {180,180,200,200});
+        y += 44;
+        // 与关系栏保持 100px 间距, 再高就截断
+        if (y > pr.y + pr.height - 100) break;
+    }
+}
+
+// G53: NPC 关系栏 (跳过 total()==0 的关系; 名字是硬编码 id 映射)
+void GameSceneInteraction::_draw_npc_relations(const Rectangle& pr) {
+    auto& rels = _s._gameplay.rels.all();
+    if (rels.empty()) return;
+    DrawLine(pr.x+15, pr.y+pr.height-85, pr.x+pr.width-15, pr.y+pr.height-85, {60,60,90,180});
+    float ry = pr.y+pr.height-78;
+    DrawTextEx(g_font_small, "NPC关系:", {pr.x+20, ry}, 12, 1, {200,180,140,220});
+    ry += 16;
+    for (auto& r : rels) {
+        if (r.total() == 0) continue;
+        const char* npc_name = "???";
+        if (r.npc_id == 20) npc_name = "埃德加";
+        else if (r.npc_id == 70) npc_name = "泰伦斯";
+        else if (r.npc_id == 90) npc_name = "索拉斯";
+        else if (r.npc_id == 110) npc_name = "灵魂";
+        else if (r.npc_id == 140) npc_name = "守望者";
+        char rbuf[80];
+        snprintf(rbuf, sizeof(rbuf), "%s  Tr:%d Rs:%d Fr:%d",
+            npc_name, r.trust, r.respect, r.fear);
+        DrawTextEx(g_font_small, rbuf, {pr.x+25, ry}, 12, 1, {180,180,200,200});
+        ry += 14;
+        if (ry > pr.y + pr.height - 10) break;
+    }
+}
+
 void GameSceneInteraction::draw_quest_log(int sw, int sh) {
     float pw = 380, ph = 420;
     Rectangle pr = {sw/2.0f - pw/2, sh/2.0f - ph/2, pw, ph};
-    auto& quests = _s._gameplay.quest_mgr.all_quests();
-    int done = _s._gameplay.quest_mgr.completed_count(), total = (int)quests.size();
     GameRenderer::draw_panel(pr, "任务日志  F1关闭", {20,20,40,230});
 
-    if (quests.empty()) {
-        DrawTextEx(g_font_small, "暂无任务。", {pr.x+30, pr.y+60}, 16, 1, {160,160,180,200});
-    } else {
-        char progress[32];
-        snprintf(progress, sizeof(progress), "%d/%d 完成", done, total);
-        DrawTextEx(g_font_small, progress, {pr.x+pr.width-100, pr.y+14}, 12, 1, {200,200,100,200});
-        float y = pr.y+45;
-        for (auto& q : quests) {
-            if (q.hidden) continue;
-            const char* status; Color c;
-            switch (q.state) {
-                case QuestState::COMPLETED: status = "[?完成]"; c = {100,200,100,255}; break;
-                case QuestState::ACCEPTED:  status = "→进行中!"; c = {255,200,50,255}; break;
-                case QuestState::AVAILABLE: status = "○可接"; c = {180,180,220,255}; break;
-                case QuestState::FAILED:    status = "[?失败]"; c = {200,100,100,255}; break;
-                default: status = "[锁]"; c = {100,100,100,200}; break;
-            }
-            char buf[128];
-            snprintf(buf, sizeof(buf), "%s %s", status, q.title.c_str());
-            DrawTextEx(g_font_small, buf, {pr.x+25, y}, 16, 1, c);
-            DrawTextEx(g_font_small, q.desc.c_str(), {pr.x+40, y+22}, 13, 1, {180,180,200,200});
-            y += 44;
-            if (y > pr.y + ph - 100) break;
-        }
-
-        auto& rels = _s._gameplay.rels.all();
-        if (!rels.empty()) {
-            DrawLine(pr.x+15, pr.y+ph-85, pr.x+pr.width-15, pr.y+ph-85, {60,60,90,180});
-            float ry = pr.y+ph-78;
-            DrawTextEx(g_font_small, "NPC关系:", {pr.x+20, ry}, 12, 1, {200,180,140,220});
-            ry += 16;
-            for (auto& r : rels) {
-                if (r.total() == 0) continue;
-                const char* npc_name = "???";
-                if (r.npc_id == 20) npc_name = "埃德加";
-                else if (r.npc_id == 70) npc_name = "泰伦斯";
-                else if (r.npc_id == 90) npc_name = "索拉斯";
-                else if (r.npc_id == 110) npc_name = "灵魂";
-                else if (r.npc_id == 140) npc_name = "守望者";
-                char rbuf[80];
-                snprintf(rbuf, sizeof(rbuf), "%s  Tr:%d Rs:%d Fr:%d",
-                    npc_name, r.trust, r.respect, r.fear);
-                DrawTextEx(g_font_small, rbuf, {pr.x+25, ry}, 12, 1, {180,180,200,200});
-                ry += 14;
-                if (ry > pr.y + ph - 10) break;
-            }
-        }
-    }
+    _draw_quest_list(pr);
+    _draw_npc_relations(pr);
 }
 
 // ============================================================
