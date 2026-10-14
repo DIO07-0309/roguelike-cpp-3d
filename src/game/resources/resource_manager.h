@@ -77,6 +77,8 @@ private:
 
     void _init_font();
     void _free_font();
+    // G53: _init_font 拆出的单字体尝试 (返回 false 表示该文件不可用, 需卸载继续)
+    bool _try_load_font(const char* path, int* cp_data, int cp_count);
 
     Font  _font = {0}, _font_small_{0};
     bool  _font_ok = false;

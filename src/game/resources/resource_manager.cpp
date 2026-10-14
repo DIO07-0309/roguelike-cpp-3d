@@ -117,6 +117,46 @@ void ResourceManager::unload_all() {
     _loaded = false;
 }
 
+// ── G53: 字体码位准备 (运行期扫描 / 编译期常量两套) ──
+// statics 提到文件作用域: 运行期扫描只做一次, 但 cp_vec 必须活过本次调用
+static std::vector<int> g_font_cp_vec;
+static int g_font_cp_count = 0;
+static bool g_font_cp_built = false;
+
+static void _prepare_font_cp(int*& cp_data, int& cp_count_val) {
+#ifdef FONT_USE_RUNTIME_SCAN
+    if (!g_font_cp_built) {
+        g_font_cp_count = _build_font_cp(g_font_cp_vec);
+        g_font_cp_built = true;
+        LOG_INFO("ResourceManager: 运行时扫描 %d 个码位", g_font_cp_count);
+    }
+    cp_data = g_font_cp_vec.data();
+    cp_count_val = g_font_cp_count;
+#else
+    cp_data = const_cast<int*>(FONT_CP_DATA);
+    cp_count_val = FONT_CP_COUNT;
+    LOG_INFO("ResourceManager: 编译期 %d 个码位", cp_count_val);
+#endif
+}
+
+// 尝试加载单个字体文件; 成功返回 true (成员已就位), 失败则卸载并返回 false
+bool ResourceManager::_try_load_font(const char* path, int* cp_data,
+                                     int cp_count) {
+    if (!FileExists(path)) { LOG_INFO("  跳过: %s", path); return false; }
+    _font = LoadFontEx(path, 40, cp_data, cp_count);
+    _font_small_ = LoadFontEx(path, 24, cp_data, cp_count);
+    LOG_INFO("  尝试: %s -> 字形:%d/%d", path, _font.glyphCount, cp_count);
+    if (_font.texture.id > 0 && _font.glyphCount > 200) {
+        _font_ok = true;
+        SetTextureFilter(_font.texture, TEXTURE_FILTER_BILINEAR);
+        SetTextureFilter(_font_small_.texture, TEXTURE_FILTER_BILINEAR);
+        LOG_INFO("字体: %s (atlas OK)", path);
+        return true;
+    }
+    UnloadFont(_font); UnloadFont(_font_small_);
+    return false;
+}
+
 void ResourceManager::_init_font() {
     // G10.9: 用户提供的思源黑体优先 (Bold 标题更清晰), 多级后备
     const char* font_paths[] = {
@@ -127,36 +167,12 @@ void ResourceManager::_init_font() {
         nullptr
     };
 
-#ifdef FONT_USE_RUNTIME_SCAN
-    static std::vector<int> cp_vec;
-    static int cp_count = 0;
-    static bool cp_built = false;
-    if (!cp_built) {
-        cp_count = _build_font_cp(cp_vec);
-        cp_built = true;
-        LOG_INFO("ResourceManager: 运行时扫描 %d 个码位", cp_count);
-    }
-    int* cp_data = cp_vec.data();
-    int  cp_count_val = cp_count;
-#else
-    int* cp_data = const_cast<int*>(FONT_CP_DATA);
-    const int  cp_count_val = FONT_CP_COUNT;
-    LOG_INFO("ResourceManager: 编译期 %d 个码位", cp_count_val);
-#endif
+    int* cp_data = nullptr;
+    int cp_count = 0;
+    _prepare_font_cp(cp_data, cp_count);
 
     for (int i = 0; font_paths[i]; i++) {
-        if (!FileExists(font_paths[i])) { LOG_INFO("  跳过: %s", font_paths[i]); continue; }
-        _font = LoadFontEx(font_paths[i], 40, cp_data, cp_count_val);
-        _font_small_ = LoadFontEx(font_paths[i], 24, cp_data, cp_count_val);
-        LOG_INFO("  尝试: %s -> 字形:%d/%d", font_paths[i], _font.glyphCount, cp_count_val);
-        if (_font.texture.id > 0 && _font.glyphCount > 200) {
-            _font_ok = true;
-            SetTextureFilter(_font.texture, TEXTURE_FILTER_BILINEAR);
-            SetTextureFilter(_font_small_.texture, TEXTURE_FILTER_BILINEAR);
-            LOG_INFO("字体: %s (atlas OK)", font_paths[i]);
-            return;
-        }
-        UnloadFont(_font); UnloadFont(_font_small_);
+        if (_try_load_font(font_paths[i], cp_data, cp_count)) return;
     }
     _font = GetFontDefault(); _font_small_ = GetFontDefault(); _font_ok = false;
     LOG_WARN("无中文字体 — 英文界面");
