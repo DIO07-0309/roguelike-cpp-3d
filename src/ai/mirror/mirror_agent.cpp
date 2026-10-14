@@ -255,49 +255,62 @@ PlayerIntention intention_from_chain_symbol(int s) {
 }
 }  // namespace
 
+// M3: ML 插槽层 — 注册的预测器给出的动作映射到 boss 臂
+int MirrorAgent::_arbitrate_ml(const MirrorBattleState& st) {
+    if (!_ml_predictor) return -1;
+    int arm = boss_arm_for_action(_ml_predictor(st));
+    if (arm < 0) return -1;
+    _debug_stats->on_arbitrate(false, true);   // 验收: ML 仲裁
+    return _record_arm(arm, st);
+}
+
+// M4.4: 战术链层 — 预测玩家下一步战术符号 → 意图 → 应对臂
+int MirrorAgent::_arbitrate_chain(const MirrorBattleState& st) {
+    if (!_chain || _seq_b < 0 || _seq_a < 0) return -1;
+    ChainPrediction cp = _chain->predict(_seq_a, _seq_b);
+    if (cp.level < 0) cp = _chain->predict_fuzzy2(_seq_b);
+    if (cp.level < 0 || cp.confidence <= clone_confidence_threshold()) return -1;
+    PlayerIntention it = intention_from_chain_symbol(cp.best);
+    int arm = boss_arm_for_intent(it);
+    if (arm < 0) return -1;
+    _debug_stats->on_arbitrate(true, false);   // 验收: 战术链仲裁
+    return _record_arm(arm, st);
+}
+
+// v0.9.30: RL 层 — 离线训练 Q 表 (全局最优策略经验, 优先于个体克隆)
+int MirrorAgent::_arbitrate_rl(const MirrorBattleState& st) {
+    if (!_rl_policy) return -1;
+    int arm = _rl_arm(st);
+    if (arm < 0) return -1;
+    _debug_stats->on_rl();   // 验收: RL 仲裁
+    return _record_arm(arm, st);
+}
+
+// M3: 克隆层 — 置信度>门槛 时克隆意图驱动 Boss 臂 (M4: 漂移大则门槛上浮)
+int MirrorAgent::_arbitrate_clone(const MirrorBattleState& st) {
+    if (!_clone) return -1;
+    ClonePrediction p = _clone->predict(st.dist_tiles, st.player_hp_pct,
+                                        st.player_skills_ready);
+    if (p.level > 1 || p.confidence <= clone_confidence_threshold()) return -1;
+    int arm = boss_arm_for_intent(p.best);
+    if (arm < 0) return -1;
+    _debug_stats->on_arbitrate(true, false);   // 验收: 克隆仲裁
+    return _record_arm(arm, st);
+}
+
 int MirrorAgent::recommend_action(const MirrorBattleState& st) {
     if (!_policy || _phase < 2) return -1;   // 观察期: 走规则
-    // M3: ML 插槽优先 (G5 — 注册即启用, 默认关闭)
-    if (_ml_predictor) {
-        int arm = boss_arm_for_action(_ml_predictor(st));
-        if (arm >= 0) {
-            _debug_stats->on_arbitrate(false, true);   // 验收: ML 仲裁
-            return _record_arm(arm, st);
-        }
-    }
-    // M4.4: 战术链层仲裁 — 预测玩家下一步战术符号 → 意图 → 应对臂
-    if (_chain && _seq_b >= 0 && _seq_a >= 0) {
-        ChainPrediction cp = _chain->predict(_seq_a, _seq_b);
-        if (cp.level < 0) cp = _chain->predict_fuzzy2(_seq_b);
-        if (cp.level >= 0 && cp.confidence > clone_confidence_threshold()) {
-            PlayerIntention it = intention_from_chain_symbol(cp.best);
-            int arm = boss_arm_for_intent(it);
-            if (arm >= 0) {
-                _debug_stats->on_arbitrate(true, false);   // 验收: 战术链仲裁
-                return _record_arm(arm, st);
-            }
-        }
-    }
-    // v0.9.30: RL 层仲裁 — 离线训练 Q 表 (全局最优策略经验, 优先于个体克隆)
-    if (_rl_policy) {
-        int arm = _rl_arm(st);
-        if (arm >= 0) {
-            _debug_stats->on_rl();   // 验收: RL 仲裁
-            return _record_arm(arm, st);
-        }
-    }
-    // M3: 克隆层仲裁 — 置信度>门槛 时克隆意图驱动 Boss 臂 (M4: 漂移大则门槛上浮)
-    if (_clone) {
-        ClonePrediction p = _clone->predict(st.dist_tiles, st.player_hp_pct,
-                                            st.player_skills_ready);
-        if (p.level <= 1 && p.confidence > clone_confidence_threshold()) {
-            int arm = boss_arm_for_intent(p.best);
-            if (arm >= 0) {
-                _debug_stats->on_arbitrate(true, false);   // 验收: 克隆仲裁
-                return _record_arm(arm, st);
-            }
-        }
-    }
+
+    // 四层仲裁按优先级依次询问, 第一个给出可用臂的层级生效
+    int arm = _arbitrate_ml(st);
+    if (arm >= 0) return arm;
+    arm = _arbitrate_chain(st);
+    if (arm >= 0) return arm;
+    arm = _arbitrate_rl(st);
+    if (arm >= 0) return arm;
+    arm = _arbitrate_clone(st);
+    if (arm >= 0) return arm;
+
     _debug_stats->on_arbitrate(false, false);   // 验收: Thompson 采样
     float dist_px = st.dist_tiles * 32.0f;
     _last_bucket = OnlineAdaptivePolicy::bucket_for(dist_px, st.player_hp_pct);

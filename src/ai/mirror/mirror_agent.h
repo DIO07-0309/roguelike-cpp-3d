@@ -196,6 +196,11 @@ private:
     int _max_bucket_hits() const;
     // M3: 记录选中臂 (含上下文桶) — 保证 report_outcome 反馈链
     int _record_arm(int act, const MirrorBattleState& st);
+    // G53: recommend_action 拆出的四层仲裁 (均返回 boss 臂, -1=该层不发言)
+    int _arbitrate_ml(const MirrorBattleState& st);
+    int _arbitrate_chain(const MirrorBattleState& st);
+    int _arbitrate_rl(const MirrorBattleState& st);
+    int _arbitrate_clone(const MirrorBattleState& st);
     MlPredictor _ml_predictor;                       // M3: G5 插槽, 默认关闭
     std::unique_ptr<MirrorDebugStats> _debug_stats;  // 验收: AI 调用链统计
 
