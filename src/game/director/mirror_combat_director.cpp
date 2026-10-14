@@ -282,6 +282,55 @@ void MirrorCombatDirector::init(const Player* player, Monster* boss,
 // ============================================================
 // 主循环 — 每帧由 BossSystemDirector::tick 调用
 // ============================================================
+// ── G53: tick 拆出的四态行为机 ──────────────────────────────
+
+// state 0: approach — 追击到首选距离, 到位则转 attack
+void MirrorCombatDirector::_tick_behavior_approach(
+    Monster* boss, Player* player, float dt, float dist) {
+    if (dist > _preferred_dist * 1.2f) {
+        _chase_player(boss, player, dt);
+    } else {
+        _behavior_state = 1;  // 进入攻击
+    }
+}
+
+// state 1: attack — 武器连招; 每2次攻击后按冷却决定转 skill 还是回 approach
+void MirrorCombatDirector::_tick_behavior_attack(
+    Monster* boss, Player* player, double game_time, std::vector<Effect>* effects) {
+    _weapon_attack(boss, player, game_time, effects);
+    if (_combo_stage == 0) _behavior_state = (_skill_cd_timer <= 0) ? 2 : 0;
+}
+
+// state 2: skill — 冷却到点且技能非空时按战术挑选 (替代循环轮转)
+void MirrorCombatDirector::_tick_behavior_skill(
+    Monster* boss, Player* player, double game_time, std::vector<Effect>* effects) {
+    if (_skill_cd_timer > 0 || _skills.empty()) {
+        _behavior_state = 0;
+        return;
+    }
+    int pick = _pick_skill_for_tactic();
+    if (pick < 0) pick = (_skill_idx + 1) % (int)_skills.size();
+    _skill_idx = pick;
+    _mirror_skill(boss, player, game_time, _skill_idx, effects);
+    _skill_cd_timer = _skills[_skill_idx].cooldown;
+    _behavior_state = 0;
+}
+
+// state 3: retreat — 后撤到首选距离的 0.6 倍以下
+void MirrorCombatDirector::_tick_behavior_retreat(
+    Monster* boss, Player* player, float dt, float dist) {
+    if (dist >= _preferred_dist * 0.6f) {
+        _behavior_state = 0;
+        return;
+    }
+    float dx = boss->entity.rect.x - player->entity.rect.x;
+    float dy = boss->entity.rect.y - player->entity.rect.y;
+    float len = hypotf(dx, dy);
+    if (len > 1) boss->entity.position.x += dx / len * 100.0f * dt;
+    if (len > 1) boss->entity.position.y += dy / len * 100.0f * dt;
+    boss->entity.sync_rect();
+}
+
 bool MirrorCombatDirector::tick(float dt, Monster* boss, Player* player,
                                  double game_time, MirrorAgent* agent,
                                  std::vector<Effect>* effects) {
@@ -323,46 +372,16 @@ bool MirrorCombatDirector::tick(float dt, Monster* boss, Player* player,
         _ai_decide(boss, player, game_time, agent);
     }
 
-    // 技能冷却计时
+    // 技能冷却 / 冻结 / 武器切换 三个独立计时器
     if (_skill_cd_timer > 0) _skill_cd_timer -= dt;
-    // M4.2: 镜像冻结倒计时 (与玩家门控独立 — Echo 冻结玩家但自身可继续行动)
     if (_freeze_timer > 0) _freeze_timer -= dt;
-    // M4.3: 武器切换冷却
     if (_weapon_switch_timer > 0) _weapon_switch_timer -= dt;
 
-    // 行为状态机
     switch (_behavior_state) {
-    case 0: // approach — 追击到合适距离
-        if (dist > _preferred_dist * 1.2f) _chase_player(boss, player, dt);
-        else _behavior_state = 1;  // 进入攻击
-        break;
-    case 1: // attack — 武器连招
-        _weapon_attack(boss, player, game_time, effects);
-        // 每2次攻击切换状态
-        if (_combo_stage == 0) _behavior_state = (_skill_cd_timer <= 0) ? 2 : 0;
-        break;
-    case 2: // skill — 使用镜像技能 (M4.1: 按战术挑选, 替代循环轮转)
-        if (_skill_cd_timer <= 0 && !_skills.empty()) {
-            int pick = _pick_skill_for_tactic();
-            if (pick < 0) pick = (_skill_idx + 1) % (int)_skills.size();
-            _skill_idx = pick;
-            _mirror_skill(boss, player, game_time, _skill_idx, effects);
-            _skill_cd_timer = _skills[_skill_idx].cooldown;
-            _behavior_state = 0;
-        } else {
-            _behavior_state = 0;
-        }
-        break;
-    case 3: // retreat — 后撤拉开距离
-        if (dist < _preferred_dist * 0.6f) {
-            float dx = boss->entity.rect.x - player->entity.rect.x;
-            float dy = boss->entity.rect.y - player->entity.rect.y;
-            float len = hypotf(dx, dy);
-            if (len > 1) boss->entity.position.x += dx / len * 100.0f * dt;
-            if (len > 1) boss->entity.position.y += dy / len * 100.0f * dt;
-            boss->entity.sync_rect();
-        } else _behavior_state = 0;
-        break;
+    case 0: _tick_behavior_approach(boss, player, dt, dist); break;
+    case 1: _tick_behavior_attack(boss, player, game_time, effects); break;
+    case 2: _tick_behavior_skill(boss, player, game_time, effects); break;
+    case 3: _tick_behavior_retreat(boss, player, dt, dist); break;
     }
     return true;
 }

@@ -112,6 +112,13 @@ private:
     // M4e: 在线决策动作映射 — act<0 返回false (观察期走规则)
     bool _apply_online_action(int act);
     void _chase_player(Monster* boss, Player* player, float dt);
+    // G53: tick 拆出的四态行为机 (approach / attack / skill / retreat)
+    void _tick_behavior_approach(Monster* boss, Player* player, float dt, float dist);
+    void _tick_behavior_attack(Monster* boss, Player* player, double gt,
+                               std::vector<Effect>* effects);
+    void _tick_behavior_skill(Monster* boss, Player* player, double gt,
+                              std::vector<Effect>* effects);
+    void _tick_behavior_retreat(Monster* boss, Player* player, float dt, float dist);
     // M2: 识别玩家本帧实际动作 (攻击/技能/闪避/喝药) — 供在线准确率反馈
     PlayerActionType _detect_player_action(Player* player, double gt,
                                            float dx, float dy, float* last_hp);
