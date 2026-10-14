@@ -189,24 +189,57 @@ auto* boss = boss_factory_create(btype, _s.stairs_pos.first, _s.stairs_pos.secon
 // ============================================================
 // Event input handler
 // ============================================================
+// P1-A4-fix: sim 模式事件 UI 自动推进 — AI 决策集无 confirm/cancel 词汇。
+// 真实卡死链: AI 按 E 触发事件 → DESC/CHOICE 无限等待 → 攻击消费链断 → 围殴致死。
+// sim 的目的是战斗/平衡测试, 叙事 UI 直接选第一项通过 (确定性: 选项0)。
+// ANIM/RESULT 由 _update 的 timer 自行推进, 无需输入。
+void GameSceneInput::_sim_advance_event_ui(EventPresentation& ui) {
+    if (ui.phase == EventPhase::DESC) {
+        ui.phase = (ui.option_count > 0) ? EventPhase::CHOICE : EventPhase::ANIM;
+        if (ui.phase == EventPhase::ANIM) ui.timer = 0.8f;
+        else ui.selected = 0;
+    } else if (ui.phase == EventPhase::CHOICE) {
+        ui.selected = 0;
+        ui.phase = EventPhase::ANIM;
+        ui.timer = 0.8f;
+    }
+}
+
+// DESC 阶段: confirm 进入选项 (无选项则直接进动画+屏震)
+void GameSceneInput::_handle_event_desc_phase(const InputMap& input,
+                                              EventPresentation& ui) {
+    if (!_s._is_action_just_pressed(input, "confirm")) return;
+    if (ui.option_count > 0) {
+        ui.phase = EventPhase::CHOICE;
+        ui.selected = 0;
+    } else {
+        ui.phase = EventPhase::ANIM;
+        ui.timer = 0.8f;
+        _s._presentation.trigger_shake(3.0f);
+    }
+}
+
+// CHOICE 阶段: 左右移动游标 (循环), confirm 定选+屏震
+void GameSceneInput::_handle_event_choice_phase(const InputMap& input,
+                                                EventPresentation& ui) {
+    if (_s._is_action_just_pressed(input, "move_left"))
+        ui.selected = (ui.selected - 1 + ui.option_count) % ui.option_count;
+    if (_s._is_action_just_pressed(input, "move_right"))
+        ui.selected = (ui.selected + 1) % ui.option_count;
+    if (_s._is_action_just_pressed(input, "confirm")) {
+        ui.phase = EventPhase::ANIM;
+        ui.timer = 0.8f;
+        _s._presentation.trigger_shake(4.0f);
+    }
+}
+
 void GameSceneInput::handle_event_input(const InputMap& input) {
     auto& ui = _s._event_ui;
     if (!ui.active) return;
 
-    // P1-A4-fix: sim 模式事件 UI 自动推进 — AI 决策集无 confirm/cancel 词汇,
-    // 真实卡死链: AI 按 E 触发事件 → DESC/CHOICE 无限等待 → 攻击消费链断 → 围殴致死.
-    // sim 的目的是战斗/平衡测试, 叙事 UI 直接选第一项通过 (确定性: 选项0).
     if (_s._sim_mode) {
-        if (ui.phase == EventPhase::DESC) {
-            ui.phase = (ui.option_count > 0) ? EventPhase::CHOICE : EventPhase::ANIM;
-            if (ui.phase == EventPhase::ANIM) ui.timer = 0.8f;
-            else ui.selected = 0;
-        } else if (ui.phase == EventPhase::CHOICE) {
-            ui.selected = 0;
-            ui.phase = EventPhase::ANIM;
-            ui.timer = 0.8f;
-        }
-        return;   // ANIM/RESULT 由 _update 的 timer 自行推进, 无需输入
+        _sim_advance_event_ui(ui);
+        return;
     }
 
     if (_s._is_action_just_pressed(input,"cancel")) {
@@ -220,26 +253,9 @@ void GameSceneInput::handle_event_input(const InputMap& input) {
     }
 
     if (ui.phase == EventPhase::DESC) {
-        if (_s._is_action_just_pressed(input,"confirm")) {
-            if (ui.option_count > 0) {
-                ui.phase = EventPhase::CHOICE;
-                ui.selected = 0;
-            } else {
-                ui.phase = EventPhase::ANIM;
-                ui.timer = 0.8f;
-                _s._presentation.trigger_shake(3.0f);
-            }
-        }
+        _handle_event_desc_phase(input, ui);
     } else if (ui.phase == EventPhase::CHOICE) {
-        if (_s._is_action_just_pressed(input,"move_left"))
-            ui.selected = (ui.selected - 1 + ui.option_count) % ui.option_count;
-        if (_s._is_action_just_pressed(input,"move_right"))
-            ui.selected = (ui.selected + 1) % ui.option_count;
-        if (_s._is_action_just_pressed(input,"confirm")) {
-            ui.phase = EventPhase::ANIM;
-            ui.timer = 0.8f;
-            _s._presentation.trigger_shake(4.0f);
-        }
+        _handle_event_choice_phase(input, ui);
     }
 }
 

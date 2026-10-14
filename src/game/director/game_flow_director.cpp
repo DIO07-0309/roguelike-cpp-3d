@@ -98,6 +98,48 @@ void GameFlowDirector::_fill_mirror_verdict(DeathScene& ds) {
     }
 }
 
+// G53: NPC 结局列表 (最多 8 条, 超出部分不进 Credits)
+void GameFlowDirector::_fill_victory_npc_endings(const GameScene& gs,
+                                                 VictoryScene& vs) {
+    auto& npc_ends = gs._gameplay.ending_dir.npc_endings();
+    vs.npc_count = (int)npc_ends.size();
+    for (size_t i = 0; i < npc_ends.size() && i < 8; i++) {
+        vs.npc_names[i]   = npc_ends[i].name;
+        vs.npc_results[i] = npc_ends[i].result;
+        vs.npc_details[i] = npc_ends[i].detail;
+    }
+}
+
+// G53: Boss 战报 + 时间线 (最多 16 条, 空 label 归一为空串)
+void GameFlowDirector::_fill_victory_boss_report(const GameScene& gs,
+                                                 VictoryScene& vs) {
+    vs.boss_rank      = gs._boss.battle_report.rank_name();
+    vs.boss_dmg_done  = gs._boss.battle_report.total_damage;
+    vs.boss_dmg_taken = gs._boss.battle_report.damage_taken;
+    vs.boss_time      = gs._boss.battle_report.battle_time;
+    vs.boss_arena     = gs._boss.battle_report.arena_zones_spawned;
+
+    vs.timeline_count = gs._boss.timeline.count();
+    auto& tl = gs._boss.timeline.events();
+    for (int i = 0; i < gs._boss.timeline.count() && i < 16; i++) {
+        vs.timeline_times[i]  = tl[i].time;
+        vs.timeline_labels[i] = tl[i].label ? tl[i].label : "";
+    }
+}
+
+// G53: 本局统计 (楼层/Boss/击杀/遗物/任务/连击/时长)
+void GameFlowDirector::_fill_victory_run_stats(const GameScene& gs,
+                                               VictoryScene& vs) {
+    vs.run_floor    = gs._gameplay.run_stats.floor_reached;
+    vs.run_bosses   = gs._gameplay.run_stats.bosses_killed;
+    vs.run_kills    = gs._gameplay.run_stats.total_kills;
+    vs.run_elites   = gs._gameplay.run_stats.elite_kills;
+    vs.run_relics   = gs._gameplay.run_stats.relics_collected;
+    vs.run_quests   = gs._gameplay.run_stats.quests_done;
+    vs.run_combo    = gs._gameplay.run_stats.combo_max;
+    vs.run_playtime = gs._gameplay.run_stats.play_time;
+}
+
 void GameFlowDirector::on_game_clear() {
     if (!_scene) return;
     current_state = GameFlowState::GAME_CLEAR;
@@ -119,32 +161,9 @@ void GameFlowDirector::on_game_clear() {
     vs->meta_knowledge = ending.meta_reward_knowledge();
 
     // 填充 Credits 数据 (NPC / Timeline / Report / Summary)
-    auto& npc_ends = ending.npc_endings();
-    vs->npc_count = (int)npc_ends.size();
-    for (size_t i = 0; i < npc_ends.size() && i < 8; i++) {
-        vs->npc_names[i]   = npc_ends[i].name;
-        vs->npc_results[i] = npc_ends[i].result;
-        vs->npc_details[i] = npc_ends[i].detail;
-    }
-    vs->timeline_count = gs->_boss.timeline.count();
-    auto& tl = gs->_boss.timeline.events();
-    for (int i = 0; i < gs->_boss.timeline.count() && i < 16; i++) {
-        vs->timeline_times[i]  = tl[i].time;
-        vs->timeline_labels[i] = tl[i].label ? tl[i].label : "";
-    }
-    vs->boss_rank     = gs->_boss.battle_report.rank_name();
-    vs->boss_dmg_done = gs->_boss.battle_report.total_damage;
-    vs->boss_dmg_taken= gs->_boss.battle_report.damage_taken;
-    vs->boss_time     = gs->_boss.battle_report.battle_time;
-    vs->boss_arena    = gs->_boss.battle_report.arena_zones_spawned;
-    vs->run_floor     = gs->_gameplay.run_stats.floor_reached;
-    vs->run_bosses    = gs->_gameplay.run_stats.bosses_killed;
-    vs->run_kills     = gs->_gameplay.run_stats.total_kills;
-    vs->run_elites    = gs->_gameplay.run_stats.elite_kills;
-    vs->run_relics    = gs->_gameplay.run_stats.relics_collected;
-    vs->run_quests    = gs->_gameplay.run_stats.quests_done;
-    vs->run_combo     = gs->_gameplay.run_stats.combo_max;
-    vs->run_playtime  = gs->_gameplay.run_stats.play_time;
+    _fill_victory_npc_endings(*gs, *vs);
+    _fill_victory_boss_report(*gs, *vs);
+    _fill_victory_run_stats(*gs, *vs);
 
     // G10.9-B1: Meta 奖励已在 _gameplay.on_game_clear → reward_from_ending 内发放
     // (此处旧代码再 add_currency → 双发), 这里只保证 meta 落盘一次

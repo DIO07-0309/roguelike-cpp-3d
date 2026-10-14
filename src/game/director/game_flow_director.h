@@ -10,6 +10,7 @@ class GameMap;
 class Monster;
 struct DroppedItem;
 class GameScene;
+struct VictoryScene;
 class DeathScene;   // v1.6-B1: _fill_mirror_verdict 参数 (仅引用, 前置声明即可)
 
 // ============================================================
@@ -61,4 +62,8 @@ private:
     GameScene* _scene = nullptr;
     // v1.6-B1: F15 死亡镜像复盘填充 (非 F15 留空)
     void _fill_mirror_verdict(DeathScene& ds);
+    // G53: on_game_clear 拆出的三段 VictoryScene 填充 (NPC / 战报 / 本局统计)
+    void _fill_victory_npc_endings(const GameScene& gs, VictoryScene& vs);
+    void _fill_victory_boss_report(const GameScene& gs, VictoryScene& vs);
+    void _fill_victory_run_stats(const GameScene& gs, VictoryScene& vs);
 };

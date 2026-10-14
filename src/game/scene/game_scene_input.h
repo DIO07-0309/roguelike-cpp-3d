@@ -4,6 +4,8 @@
 class GameScene;
 struct DialogueState;
 struct NPCState;
+struct EventPresentation;
+enum class EventPhase;
 
 // 从 GameScene 提取的输入处理模块
 class GameSceneInput {
@@ -29,6 +31,10 @@ private:
     void _handle_debug_buff_keys();
     void _handle_debug_overlay_keys();
     void _handle_debug_ending_preview();
+    // G53: handle_event_input 拆出的三段 (sim 自动推进 / DESC 阶段 / CHOICE 阶段)
+    void _sim_advance_event_ui(EventPresentation& ui);
+    void _handle_event_desc_phase(const InputMap& input, EventPresentation& ui);
+    void _handle_event_choice_phase(const InputMap& input, EventPresentation& ui);
 
 private:
     GameScene& _s;
