@@ -110,6 +110,8 @@ public:
                         std::vector<Monster*>& monsters,
                         GameMap* map, double game_time) override;
     float windup_left = 0.0f;
+    // G53: execute 拆出的单射线命中判定 (±15° 扇形内, 60px 宽容, 300px 射程)
+    int _ray_hit_damage(Monster* boss, Player* player, float base_ang) const;
 };
 
 // M4a: 弹幕 — 蓄力后向玩家扇形发射多颗弹, 命中减速

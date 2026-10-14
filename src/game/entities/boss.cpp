@@ -181,6 +181,24 @@ void WhirlwindSkill::draw(Monster* boss, float cam_x, float cam_y) const {
 LaserBarrageSkill::LaserBarrageSkill() : BossSkill("炼狱激光", 9.0f) {
     fx_kind = "cone"; fx_radius = 200; fx_color = {255, 100, 20, 255};
 }
+// G53: 单条射线的命中判定 (垂直偏差 <60px, 且落在正前方 300px 内)
+// 命中则扣血并返回本次伤害; 未命中返回 0
+int LaserBarrageSkill::_ray_hit_damage(Monster* boss, Player* player,
+                                       float base_ang) const {
+    float bx = boss->entity.rect.x + boss->entity.rect.width/2;
+    float by = boss->entity.rect.y + boss->entity.rect.height/2;
+    float lx = cosf(base_ang), ly = sinf(base_ang);
+    float px = player->entity.rect.x + player->entity.rect.width/2;
+    float py = player->entity.rect.y + player->entity.rect.height/2;
+    float dot = (px-bx)*lx + (py-by)*ly;
+    float perp = fabsf((px-bx)*(-ly) + (py-by)*lx);
+    if (perp >= 60.0f || dot <= 0 || dot >= 300.0f) return 0;
+    int dmg = calculate_damage((int)(boss->combat.get_effective_attack() * 1.8),
+        player->combat.get_effective_defense(AttackType::MAGICAL), AttackType::MAGICAL);
+    player->combat.take_damage(dmg);
+    return dmg;
+}
+
 std::string LaserBarrageSkill::execute(Monster* boss, Player* player,
                                        std::vector<Monster*>&, GameMap*, double gt) {
     if (windup_left > 0) { return ""; } // 蓄力中
@@ -192,16 +210,7 @@ std::string LaserBarrageSkill::execute(Monster* boss, Player* player,
     int total = 0;
     for (int i = -1; i <= 1; i++) {
         float ang = base_ang + (float)i * 0.25f; // ±15° spread
-        float lx = cosf(ang), ly = sinf(ang);
-        float px = player->entity.rect.x + player->entity.rect.width/2;
-        float py = player->entity.rect.y + player->entity.rect.height/2;
-        float dot = (px-bx)*lx + (py-by)*ly;
-        float perp = fabsf((px-bx)*(-ly) + (py-by)*lx);
-        if (perp < 60.0f && dot > 0 && dot < 300.0f) {
-            int dmg = calculate_damage((int)(boss->combat.get_effective_attack() * 1.8),
-                player->combat.get_effective_defense(AttackType::MAGICAL), AttackType::MAGICAL);
-            player->combat.take_damage(dmg); total += dmg;
-        }
+        total += _ray_hit_damage(boss, player, ang);
     }
     mark_used(gt);
     return total > 0 ? "激光弹幕 造成 " + std::to_string(total) + " 伤害" : "激光未命中";

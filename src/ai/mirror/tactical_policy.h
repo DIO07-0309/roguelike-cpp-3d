@@ -71,6 +71,11 @@ public:
 
 private:
     Config _cfg;
+    // G53: predict 的 4 个优先级规则 (返回 false = 该级不适用, 继续下探)
+    bool _rule_flee(const MirrorBattleState& st, TacticalIntent& out) const;
+    bool _rule_melee(const MirrorBattleState& st, TacticalIntent& out) const;
+    bool _rule_skill(const MirrorBattleState& st, TacticalIntent& out) const;
+    bool _rule_approach(const MirrorBattleState& st, TacticalIntent& out) const;
 };
 
 }  // namespace mirror
