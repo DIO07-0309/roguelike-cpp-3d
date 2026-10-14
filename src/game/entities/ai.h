@@ -210,6 +210,11 @@ protected:
     // D8 Step1: 新技能执行器
     void _exec_charge(Monster* self, Player* player, GameMap* map,
                       std::vector<Effect>* effects, MonsterSkillState& sk);
+    // G53: _exec_charge 拆出的两段 (房间边界判定 / 冲刺轨迹特效)
+    bool _charge_dest_outside_room(Monster* self, float ndx, float ndy,
+                                   float charge_dist, GameMap* map) const;
+    void _charge_push_trail(Monster* self, float ndx, float ndy,
+                            float charge_dist, std::vector<Effect>* effects) const;
     void _exec_mass_summon(Monster* self, Player* player, GameMap* map,
                            std::vector<Monster*>* all, std::vector<Effect>* effects,
                            MonsterSkillState& sk);

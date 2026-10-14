@@ -418,6 +418,11 @@ void GameMap::drawTileLayer(float cam_x, float cam_y, int sw, int sh, const Tile
         }
     }
 
+    _draw_footstep_layer(cam_x, cam_y, sw, sh);
+}
+
+// G53: drawTileLayer 拆出的脚步残影层 (第二遍遍历)
+void GameMap::_draw_footstep_layer(float cam_x, float cam_y, int sw, int sh) const {
     for (int i = 0; i < FOOTSTEP_MAX; i++) {
         const Footstep& fs = _footsteps[i];
         if (fs.life <= 0) continue;

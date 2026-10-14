@@ -190,9 +190,11 @@ public:
     int get_footstep_head() const { return _footstep_head; }
     static int get_footstep_max() { return FOOTSTEP_MAX; }
 
-private:
-    std::vector<std::vector<Tile>> _tiles;
-    bool _in_bounds(int tx, int ty) const;
+ private:
+     std::vector<std::vector<Tile>> _tiles;
+     bool _in_bounds(int tx, int ty) const;
+     // G53: drawTileLayer 拆出的第二遍循环 (脚步残影层)
+     void _draw_footstep_layer(float cam_x, float cam_y, int sw, int sh) const;
     void _init_walls();
     TilePalette _palette;      // M4f: 当前 biome 调色板
     bool _has_palette = false;

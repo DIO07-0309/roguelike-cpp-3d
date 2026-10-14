@@ -764,6 +764,32 @@ void MonsterAI::_exec_summon(Monster* self, Player*, GameMap* map,
 // ============================================================
 // D8 Step1: CHARGE — 蓄力后直线冲刺, 撞击造成伤害+击退
 // ============================================================
+// 冲刺落点若不在怪物当前房间内, 则本次冲撞被房间边界拦下
+bool MonsterAI::_charge_dest_outside_room(Monster* self, float ndx, float ndy,
+                                          float charge_dist, GameMap* map) const {
+    if (_monster_room < 0 || !_room_mgr) return false;
+    float dest_cx = self->entity.rect.x + self->entity.rect.width / 2 + ndx * charge_dist;
+    float dest_cy = self->entity.rect.y + self->entity.rect.height / 2 + ndy * charge_dist;
+    auto [dtx, dty] = map->pixel_to_tile(dest_cx, dest_cy);
+    return _room_mgr->room_at(dtx, dty) != _monster_room;
+}
+
+// 冲刺轨迹特效 (起点为冲刺前的位置, 终点为当前位置)
+void MonsterAI::_charge_push_trail(Monster* self, float ndx, float ndy,
+                                   float charge_dist,
+                                   std::vector<Effect>* effects) const {
+    if (!effects) return;
+    Effect trail;
+    trail.kind = "bolt";
+    trail.world_x = self->entity.rect.x + self->entity.rect.width / 2 - ndx * charge_dist;
+    trail.world_y = self->entity.rect.y + self->entity.rect.height / 2 - ndy * charge_dist;
+    trail.target_x = self->entity.rect.x + self->entity.rect.width / 2;
+    trail.target_y = self->entity.rect.y + self->entity.rect.height / 2;
+    trail.radius = 4; trail.duration = 0.3f; trail.elapsed = 0;
+    trail.color = {255, 180, 40, 200};
+    effects->push_back(trail);
+}
+
 void MonsterAI::_exec_charge(Monster* self, Player* player, GameMap* map,
                               std::vector<Effect>* effects, MonsterSkillState& sk) {
     float dx = player->entity.rect.x + player->entity.rect.width/2
@@ -774,16 +800,10 @@ void MonsterAI::_exec_charge(Monster* self, Player* player, GameMap* map,
     if (dist < 1) return;
     float ndx = dx/dist, ndy = dy/dist;
 
-    // Room boundary: block charge if destination is outside monster's room
+    // 冲刺距离: 4格 (房间边界不足时缩短)
     float charge_dist = std::min(dist, 4.0f * 32.0f);
-    if (_monster_room >= 0 && _room_mgr) {
-        float dest_cx = self->entity.rect.x + self->entity.rect.width/2 + ndx * charge_dist;
-        float dest_cy = self->entity.rect.y + self->entity.rect.height/2 + ndy * charge_dist;
-        auto [dtx, dty] = map->pixel_to_tile(dest_cx, dest_cy);
-        if (_room_mgr->room_at(dtx, dty) != _monster_room) { (void)sk; return; }
-    }
+    if (_charge_dest_outside_room(self, ndx, ndy, charge_dist, map)) { (void)sk; return; }
 
-    // 冲刺距离: 4格
     self->entity.position.x += ndx * charge_dist;
     self->entity.position.y += ndy * charge_dist;
     self->entity.sync_rect();
@@ -805,18 +825,7 @@ void MonsterAI::_exec_charge(Monster* self, Player* player, GameMap* map,
         clamp_displacement(player->entity, ndx * 48.0f, ndy * 48.0f, map);
     }
 
-    // 冲刺轨迹特效
-    if (effects) {
-        Effect trail;
-        trail.kind = "bolt";
-        trail.world_x = self->entity.rect.x + self->entity.rect.width/2 - ndx * charge_dist;
-        trail.world_y = self->entity.rect.y + self->entity.rect.height/2 - ndy * charge_dist;
-        trail.target_x = self->entity.rect.x + self->entity.rect.width/2;
-        trail.target_y = self->entity.rect.y + self->entity.rect.height/2;
-        trail.radius = 4; trail.duration = 0.3f; trail.elapsed = 0;
-        trail.color = {255, 180, 40, 200};
-        effects->push_back(trail);
-    }
+    _charge_push_trail(self, ndx, ndy, charge_dist, effects);
     (void)sk;
 }
 
