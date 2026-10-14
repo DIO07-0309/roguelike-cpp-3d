@@ -862,6 +862,43 @@ void MonsterAI::_exec_mass_summon(Monster* self, Player*, GameMap* map,
 // D2 Step4: Team Decision — 怪物协同 AI (G2.2 重构)
 // TeamCoordinator 负责分析, MonsterAI 负责执行
 // ============================================================
+// G53: 执行移动建议 (前排角色顺带锁定保护目标)
+void MonsterAI::_team_execute_move(Monster* self, GameMap* map,
+                                   const TeamDecision& dec, double dt) {
+    _apply_movement(self, map, dec.move_x, dec.move_y, dt);
+}
+
+// G53: 执行辅助行动 (随机 buff 或治疗, 后置 4 秒冷却)
+void MonsterAI::_team_execute_support(Monster* self, const TeamDecision& dec) {
+    if (self->support_cooldown > 0) return;
+    if (rng() % 2 == 0) {
+        apply_buff(dec.support_target, "attack_up", 1);
+    } else {
+        dec.support_target->combat.heal(
+            (int)(dec.support_target->combat.max_hp * 0.15f));
+    }
+    self->support_cooldown = 4.0f;
+}
+
+// G53: 指挥光环 (6 格内友军 attack_up, 10 秒冷却; 递减优先于归零判断)
+void MonsterAI::_team_execute_command(Monster* self,
+                                      std::vector<Monster*>* all, double dt) {
+    _command_cooldown -= (float)dt;
+    if (_command_cooldown > 0) return;
+    float ax = self->entity.rect.x + self->entity.rect.width / 2;
+    float ay = self->entity.rect.y + self->entity.rect.height / 2;
+    for (auto* a : *all) {
+        if (!a || !a->combat.is_alive || a == self) continue;
+        float d2 = (a->entity.rect.x + a->entity.rect.width/2 - ax)
+                 * (a->entity.rect.x + a->entity.rect.width/2 - ax)
+                 + (a->entity.rect.y + a->entity.rect.height/2 - ay)
+                 * (a->entity.rect.y + a->entity.rect.height/2 - ay);
+        if (d2 < (6.0f * 32.0f) * (6.0f * 32.0f))
+            apply_buff(a, "attack_up", 1);
+    }
+    _command_cooldown = 10.0f;
+}
+
 void MonsterAI::_team_decision(Monster* self, Player* player, GameMap* map,
                                 double dt, std::vector<Monster*>* all) {
     // ── 概率门 (保留在 MonsterAI — 这是执行决策, 非分析) ──
@@ -874,43 +911,24 @@ void MonsterAI::_team_decision(Monster* self, Player* player, GameMap* map,
     // ── G2.2: 委托分析给 TeamCoordinator ──
     TeamDecision dec = TeamCoordinator::evaluate(self, *player, *all, map);
 
-    // ── 执行: 移动建议 ──
+    // ── 执行: 移动建议 (与辅助/光环互斥, 动了就不再干别的) ──
     if (dec.move_x != 0.0f || dec.move_y != 0.0f) {
-        _apply_movement(self, map, dec.move_x, dec.move_y, dt);
+        // map 参数必须原样传给 _apply_movement (碰撞/边界判定要用)
+        _team_execute_move(self, map, dec, dt);
         if (role == TeamRole::FRONTLINE && dec.support_target)
             _protect_target = dec.support_target;
         return;
     }
 
     // ── 执行: 辅助行动 ──
-    if (dec.should_support && dec.support_target && self->support_cooldown <= 0) {
-        if (rng() % 2 == 0)
-            apply_buff(dec.support_target, "attack_up", 1);
-        else
-            dec.support_target->combat.heal(
-                (int)(dec.support_target->combat.max_hp * 0.15f));
-        self->support_cooldown = 4.0f;
+    if (dec.should_support && dec.support_target) {
+        _team_execute_support(self, dec);
         return;
     }
 
     // ── 执行: 指挥光环 ──
-    if (dec.should_command) {
-        _command_cooldown -= (float)dt;
-        if (_command_cooldown <= 0) {
-            float ax = self->entity.rect.x + self->entity.rect.width / 2;
-            float ay = self->entity.rect.y + self->entity.rect.height / 2;
-            for (auto* a : *all) {
-                if (!a || !a->combat.is_alive || a == self) continue;
-                float d2 = (a->entity.rect.x + a->entity.rect.width/2 - ax)
-                         * (a->entity.rect.x + a->entity.rect.width/2 - ax)
-                         + (a->entity.rect.y + a->entity.rect.height/2 - ay)
-                         * (a->entity.rect.y + a->entity.rect.height/2 - ay);
-                if (d2 < (6.0f * 32.0f) * (6.0f * 32.0f))
-                    apply_buff(a, "attack_up", 1);
-            }
-            _command_cooldown = 10.0f;
-        }
-    }
+    if (dec.should_command)
+        _team_execute_command(self, all, dt);
 }
 
 // ═══════════════════════════════════════════════════════════════

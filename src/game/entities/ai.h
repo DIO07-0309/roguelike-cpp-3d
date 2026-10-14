@@ -3,6 +3,7 @@
 #include <vector>
 #include <random>
 #include "raylib.h"
+#include "systems/team_coordinator.h"   // G2.2 / G53: TeamDecision 形参需要完整定义
 
 // Forward declarations
 class Monster;
@@ -190,7 +191,13 @@ protected:
 
     // D2 Step4: Team决策 — 协同站位/保护/治疗/侧翼/指挥
     void _team_decision(Monster* self, Player* player, GameMap* map,
-                        double dt, std::vector<Monster*>* all);
+        double dt, std::vector<Monster*>* all);
+    // G53: _team_decision 拆出的三段执行 (移动 / 辅助 / 指挥光环)
+    void _team_execute_move(Monster* self, GameMap* map, const TeamDecision& dec,
+                            double dt);
+    void _team_execute_support(Monster* self, const TeamDecision& dec);
+    void _team_execute_command(Monster* self, std::vector<Monster*>* all,
+                               double dt);
 
     // D2 Step3: Think层 — 决策是否释放技能
     bool _think_and_cast(Monster* self, Player* player, GameMap* map,

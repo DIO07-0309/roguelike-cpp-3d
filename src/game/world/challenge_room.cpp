@@ -235,6 +235,35 @@ void ChallengeRoomController::tick(
     }
 }
 
+// G53: 单怪生成 — 确定性取位 (50 次尝试) + 楼层缩放 + 挑战加成
+// 返回 nullptr 表示这个 slot 这一波没放下 (调用方不占 alive 计数)
+Monster* ChallengeRoomController::_spawn_one_wave_monster(
+    GameMap* map, int floor, int wave_index, int slot_index,
+    uint32_t wave_seed, const GrowthCurve& gc, const ChallengeModifier& mod) {
+    for (int attempt = 0; attempt < 50; attempt++) {
+        uint32_t pos_hash = wave_seed ^ (uint32_t)(slot_index * 50 + attempt);
+        int rx = _room_rx + 1 + (int)(pos_hash % (uint32_t)(_room_rw - 2));
+        int ry = _room_ry + 1 + (int)((pos_hash >> 8) % (uint32_t)(_room_rh - 2));
+
+        if (!map->is_walkable(rx, ry)) continue;
+        // No spawn on doors
+        if (map->is_door(rx, ry)) continue;
+
+        auto [px, py] = map->tile_to_pixel(rx, ry);
+        uint32_t type_rng = wave_seed ^ (uint32_t)(slot_index * 7 + 13);
+        const char* type = _pick_monster_type(floor, wave_index, type_rng);
+        Monster* m = spawn_monster((float)px, (float)py, type);
+        if (!m) continue;
+
+        // Apply floor scaling + challenge modifier
+        m->combat.max_hp = (int)(m->combat.max_hp * gc.monster_hp * mod.hp_multiplier);
+        m->combat.current_hp = m->combat.max_hp;
+        m->combat.attack = (int)(m->combat.attack * gc.monster_atk * mod.attack_multiplier);
+        return m;
+    }
+    return nullptr;
+}
+
 void ChallengeRoomController::_spawn_wave(
     int wave_index, GameMap* map,
     std::vector<std::unique_ptr<Monster>>& monsters,
@@ -249,38 +278,15 @@ void ChallengeRoomController::_spawn_wave(
     int count = 4;  // monsters per wave
     ChallengeModifier mod;
     const GrowthCurve& gc = g_growth.curve(floor);
-
     uint32_t wave_seed = _deterministic_seed(seed, room_idx, wave_index);
 
     for (int i = 0; i < count; i++) {
         if ((int)monsters.size() >= MAX_CHALLENGE_MONSTERS) break;
-
-        // Deterministic position attempt
-        for (int attempt = 0; attempt < 50; attempt++) {
-            uint32_t pos_hash = wave_seed ^ (uint32_t)(i * 50 + attempt);
-            int rx = _room_rx + 1 + (int)(pos_hash % (uint32_t)(_room_rw - 2));
-            int ry = _room_ry + 1 + (int)((pos_hash >> 8) % (uint32_t)(_room_rh - 2));
-
-            if (!map->is_walkable(rx, ry)) continue;
-
-            // No spawn on doors
-            if (map->is_door(rx, ry)) continue;
-
-            auto [px, py] = map->tile_to_pixel(rx, ry);
-            uint32_t type_rng = wave_seed ^ (uint32_t)(i * 7 + 13);
-            const char* type = _pick_monster_type(floor, wave_index, type_rng);
-            Monster* m = spawn_monster((float)px, (float)py, type);
-            if (!m) continue;
-
-            // Apply floor scaling + challenge modifier
-            m->combat.max_hp = (int)(m->combat.max_hp * gc.monster_hp * mod.hp_multiplier);
-            m->combat.current_hp = m->combat.max_hp;
-            m->combat.attack = (int)(m->combat.attack * gc.monster_atk * mod.attack_multiplier);
-
-            monsters.emplace_back(m);
-            _monsters_alive_this_wave++;
-            break;
-        }
+        Monster* m = _spawn_one_wave_monster(map, floor, wave_index, i,
+                                             wave_seed, gc, mod);
+        if (!m) continue;
+        monsters.emplace_back(m);
+        _monsters_alive_this_wave++;
     }
 
     LOG_INFO("[CHALLENGE] Wave %d spawned, %d monsters alive",

@@ -3,6 +3,7 @@
 #include <vector>
 #include <string>
 #include <memory>
+#include "growth_curve.h"
 
 class Player;
 class GameMap;
@@ -149,8 +150,13 @@ private:
     RewardReport _last_reward = {};
 
     void _spawn_wave(int wave_index, GameMap* map,
-                     std::vector<std::unique_ptr<Monster>>& monsters,
-                     int floor, uint32_t seed, int room_idx);
+        std::vector<std::unique_ptr<Monster>>& monsters,
+        int floor, uint32_t seed, int room_idx);
+    // G53: _spawn_wave 拆出的单怪生成 (确定性取位 + 楼层缩放 + 挑战加成)
+    Monster* _spawn_one_wave_monster(
+        GameMap* map, int floor, int wave_index, int slot_index,
+        uint32_t wave_seed, const struct GrowthCurve& gc,
+        const struct ChallengeModifier& mod);
     void _spawn_boss_wave(GameMap* map,
                           std::vector<std::unique_ptr<Monster>>& monsters,
                           int floor);
