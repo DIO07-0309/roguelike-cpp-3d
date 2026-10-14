@@ -120,6 +120,31 @@ F15 镜像 Boss 读你的行为画像（攻防倾向/走位偏好/技能习惯�
 
 ## CHANGELOG
 
+- G53（开发版，未发布）：**函数长度债收敛第五批** —— 存档 / 模拟报表 / RL 训练 / 输入 / 资源 / 结局 共 12 个函数拆分，全仓超规 **68→52**。
+
+  | 函数 | 前 | 后 | 手法 |
+  |---|---|---|---|
+  | `MetaSystem::load` / `save` | 47 / 45 | 12 / 15 | 各抽「标量 / 4 个数组」两组子步骤；有 `meta_load_guard_test` 3 用例兜底 |
+  | `SimRunner::record_run` | 75 | 28 | 按数据类型拆 3 个 helper（7 个滚动均值 / 5 个分布计数 / 4 个分组统计） |
+  | `SimRunner::finalize` | 66 | 25 | **代码块原样搬运**进 4 个打印 helper（报表格式一行未改） |
+  | `rl_run_train_mode` / `rl_mirror_train_style` | 46 / 45 | 20 / 16 | 抽 episode 级 helper（`rl_train_one_episode` / `rl_mirror_one_episode`）+ 加载/打印/保存/退火共用助手 |
+  | `VFXServer` 的 `_emit_step` | 43 | ≤10/个 | 12 分支 if 链 → 派发表（type string → emit 函数指针） |
+  | `compute_state_hash` | 45 | 21 | 抽怪物收集+排序（**排序逻辑整块搬运**，回放哈希不可动摇） |
+  | `ResourceManager::_init_font` | 44 | 18 | 抽码位准备 / 单字体尝试；运行期扫描的 static 提到文件作用域 |
+  | `GameMap::drawTileLayer` | 42 | 30 | 抽出第二遍遍历（脚步残影层） |
+  | `MonsterAI::_exec_charge` | 54 | 28 | 抽房间边界判定 / 冲刺轨迹特效 |
+  | `_build_reactions` | 54 | 5 | **10 条 push_back → static const 数组**（数据表化，消灭函数体） |
+  | `EndingDirector::begin` | 49 | 15 | 按「结局判定 / registry 填充 / 解锁记录」拆 3 段 |
+  | `handle_dialogue_input` / `handle_debug_keys` | 51 / 52 | 21 / 10 | 按对话阶段 / 按键功能域拆分 |
+
+  过程记录（3 次自查抓到的风险，已全部回退或修正）：
+
+  - **行为漂移**：拆 `handle_debug_keys` 时给 F12 裸按加了「排除 Shift/Ctrl」条件，以为在修 bug —— 实际改变了原有「修饰键按下时三分支同时触发」的行为，已改回原语义。
+  - **前置声明写错作用域**：把 `struct DialogueState` / `NPCState` 写在类内 private 区，变成 `GameSceneInput::DialogueState` 嵌套类型，`.cpp` 访问成员报 incomplete type。前置声明必须在类外全局作用域。
+  - **转义地狱**：用 Python 生成含大量 C++ 引号的代码，反斜杠层数错两轮（`\\"` 多一层）导致 `stray '\' in program`；靠一次精确字符串替换修正。教训：生成含转义的代码必须先打印目标行肉眼核对。
+
+  部分重构刻意保留的行为差异（不是 bug）：`DqnNet::load` 因 `Layer` 是私有嵌套类型，自由函数无法声明其形参，提取收益仅 5 行，判定不值得动头文件，保持 42 行原状。
+
 - G52（开发版，未发布）：**函数长度债收敛第四批** —— Boss 链路 / Mirror 链路 / RL 入口共 6 个函数拆分，全仓超规 **75→68**。
 
   | 函数 | 前 | 后 | 手法 |
