@@ -8,6 +8,7 @@
 #include <cmath>
 #include <algorithm>
 #include <cstring>
+#include <unordered_map>
 
 // G40: 装饰特效统一出口 — 按流派 BuildTheme 缩放半径/尺寸。
 // 仅纯装饰特效走这里 (explosion/spark/smoke/flash/shockwave);
@@ -147,49 +148,124 @@ Color VFXServer::preset_color(const std::string& name) {
 }
 
 // G5.8.8: 单步分发 — 由 play_recipe 调用, 支持 JSON 全部 kind
+// ── G53: step 公共取色/计数 (多个 emit 分支都要用) ──
+static Color step_color(const VFXStep& step) {
+    return step.color_preset.empty()
+           ? Color{255, 200, 50, 220}
+           : VFXServer::preset_color(step.color_preset);
+}
+
+static int step_count(const VFXStep& step, int level) {
+    return step.count + level / 2; // level scales count
+}
+
+// ── G53: VFX 派发表 (原 43 行 if 链) ──
+// beam/bolt/lightning 需要算端点, 各自带 target 解析; 其余直接调 vfx API。
+using VFXEmit = void (*)(VFXServer&, const VFXStep&, float, float,
+                         Direction, float, float, int);
+
+// beam/bolt 共用: 显式目标 (tx/ty) 优先, 否则按 direction+dist 算端点;
+// 零长跳过 (G10.5-B B5)
+static void _vfx_emit_beam_like(VFXServer& vfx, const VFXStep& step,
+                                float cx, float cy, float tx, float ty) {
+    float btx = tx ? tx : cx + cosf(step.direction_rad) * step.target_dist;
+    float bty = ty ? ty : cy + sinf(step.direction_rad) * step.target_dist;
+    float blen = hypotf(btx - cx, bty - cy);
+    // G10.5-B B5: 零长 beam/bolt 跳过 (tx=0 且 target_dist=0 时退化为不可见点)
+    if (blen > 1.0f) vfx.beam(cx, cy, btx, bty, step_color(step), step.duration);
+}
+
+static void _emit_ring(VFXServer& vfx, const VFXStep& st, float cx, float cy,
+                       Direction, float, float, int level) {
+    vfx.ring(cx, cy, st.radius, step_color(st), st.layers + level / 2,
+             st.duration, st.layer_delay);
+}
+
+static void _emit_beam(VFXServer& vfx, const VFXStep& st, float cx, float cy,
+                      Direction, float tx, float ty, int) {
+    _vfx_emit_beam_like(vfx, st, cx, cy, tx, ty);
+}
+
+static void _emit_lightning(VFXServer& vfx, const VFXStep& st, float cx, float cy,
+                            Direction, float tx, float ty, int level) {
+    float ltx = tx ? tx : cx + cosf(st.direction_rad) * st.target_dist;
+    float lty = ty ? ty : cy + sinf(st.direction_rad) * st.target_dist;
+    float llen = hypotf(ltx - cx, lty - cy);
+    if (llen > 1.0f)
+        vfx.lightning(cx, cy, ltx, lty, step_count(st, level), step_color(st),
+                      st.duration);
+}
+
+static void _emit_explosion(VFXServer& vfx, const VFXStep& st, float cx, float cy,
+                            Direction, float, float, int level) {
+    vfx.explosion(cx, cy, st.radius, step_color(st), step_count(st, level),
+                  st.duration);
+}
+
+static void _emit_shockwave(VFXServer& vfx, const VFXStep& st, float cx, float cy,
+                            Direction, float, float, int level) {
+    vfx.shockwave(cx, cy, st.radius, step_color(st), step_count(st, level),
+                  st.duration);
+}
+
+static void _emit_slash_arc(VFXServer& vfx, const VFXStep& st, float cx, float cy,
+                            Direction dir, float, float, int) {
+    vfx.slash_arc(cx, cy, dir, st.radius, step_color(st), st.duration);
+}
+
+// G5.8.8-fix: cone 独立 kind, 使用 GameRenderer 的矩形锥形渲染
+static void _emit_cone(VFXServer& vfx, const VFXStep& st, float cx, float cy,
+                       Direction dir, float, float, int) {
+    Effect ef = {"cone", cx, cy, st.radius, step_color(st), st.duration, 0, dir};
+    vfx.effects.push_back(ef);
+}
+
+static void _emit_smoke_puff(VFXServer& vfx, const VFXStep& st, float cx, float cy,
+                             Direction, float, float, int level) {
+    vfx.smoke_puff(cx, cy, st.radius, step_color(st), step_count(st, level),
+                   st.duration);
+}
+
+static void _emit_spark_burst(VFXServer& vfx, const VFXStep& st, float cx, float cy,
+                              Direction, float, float, int level) {
+    vfx.spark_burst(cx, cy, step_count(st, level), step_color(st), st.duration);
+}
+
+static void _emit_aura_ring(VFXServer& vfx, const VFXStep& st, float cx, float cy,
+                            Direction, float, float, int) {
+    vfx.aura_ring(cx, cy, st.radius, step_color(st), st.duration);
+}
+
+static void _emit_flash(VFXServer& vfx, const VFXStep& st, float cx, float cy,
+                        Direction, float, float, int) {
+    vfx.flash(cx, cy, st.radius, step_color(st), st.duration);
+}
+
+// kind 字符串 -> emit 函数 (未知 type 静默忽略, 与原 if 链末行行为一致)
+static const std::unordered_map<std::string, VFXEmit>& _vfx_emit_table() {
+    static const std::unordered_map<std::string, VFXEmit> tbl = {
+        {"ring",      _emit_ring},
+        {"beam",      _emit_beam},
+        {"bolt",      _emit_beam},
+        {"lightning", _emit_lightning},
+        {"explosion", _emit_explosion},
+        {"shockwave", _emit_shockwave},
+        {"slash_arc", _emit_slash_arc},
+        {"cone",      _emit_cone},
+        {"smoke",     _emit_smoke_puff},
+        {"spark",     _emit_spark_burst},
+        {"aura",      _emit_aura_ring},
+        {"flash",     _emit_flash},
+    };
+    return tbl;
+}
+
 static void _emit_step(VFXServer& vfx, const VFXStep& step, float cx, float cy,
                        Direction dir, float tx, float ty, int level) {
-    Color c = step.color_preset.empty()
-              ? Color{255, 200, 50, 220}
-              : VFXServer::preset_color(step.color_preset);
-    int cnt = step.count + level / 2; // level scales count
-
-    if (step.type == "ring")
-        vfx.ring(cx, cy, step.radius, c, step.layers + level / 2, step.duration,
-                 step.layer_delay);
-    else if (step.type == "beam" || step.type == "bolt") {
-        float btx = tx ? tx : cx + cosf(step.direction_rad) * step.target_dist;
-        float bty = ty ? ty : cy + sinf(step.direction_rad) * step.target_dist;
-        // G10.5-B B5: 零长 beam/bolt 跳过 (tx=0 且 target_dist=0 时退化为不可见点)
-        float blen = hypotf(btx - cx, bty - cy);
-        if (blen > 1.0f) vfx.beam(cx, cy, btx, bty, c, step.duration);
-    }
-    else if (step.type == "lightning") {
-        float ltx = tx ? tx : cx + cosf(step.direction_rad) * step.target_dist;
-        float lty = ty ? ty : cy + sinf(step.direction_rad) * step.target_dist;
-        float llen = hypotf(ltx - cx, lty - cy);
-        if (llen > 1.0f)
-            vfx.lightning(cx, cy, ltx, lty, cnt, c, step.duration);
-    }
-    else if (step.type == "explosion")
-        vfx.explosion(cx, cy, step.radius, c, cnt, step.duration);
-    else if (step.type == "shockwave")
-        vfx.shockwave(cx, cy, step.radius, c, cnt, step.duration);
-    else if (step.type == "slash_arc")
-        vfx.slash_arc(cx, cy, dir, step.radius, c, step.duration);
-    else if (step.type == "cone") {
-        // G5.8.8-fix: cone 独立 kind, 使用 GameRenderer 的矩形锥形渲染
-        Effect ef = {"cone", cx, cy, step.radius, c, step.duration, 0, dir};
-        vfx.effects.push_back(ef);
-    }
-    else if (step.type == "smoke")
-        vfx.smoke_puff(cx, cy, step.radius, c, cnt, step.duration);
-    else if (step.type == "spark")
-        vfx.spark_burst(cx, cy, cnt, c, step.duration);
-    else if (step.type == "aura")
-        vfx.aura_ring(cx, cy, step.radius, c, step.duration);
-    else if (step.type == "flash")
-        vfx.flash(cx, cy, step.radius, c, step.duration);
+    const auto& tbl = _vfx_emit_table();
+    auto it = tbl.find(step.type);
+    if (it != tbl.end())
+        it->second(vfx, step, cx, cy, dir, tx, ty, level);
 }
 
 void VFXServer::play_recipe(const char* recipe_id, float cx, float cy,

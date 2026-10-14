@@ -51,12 +51,12 @@ bool DqnNet::load(const std::string& path) {
     }
     fclose(f);
 
-    // 层间维度必须首尾相接, 否则前向会读到越界权重
-    for (size_t i = 1; i < layers.size(); i++) {
-        if (layers[i].in_dim != layers[i - 1].out_dim) return false;
-    }
     if (!ok || layers.empty()) return false;
 
+    // 层间维度必须首尾相接, 否则前向会读到越界权重
+    for (size_t k = 1; k < layers.size(); k++) {
+        if (layers[k].in_dim != layers[k - 1].out_dim) return false;
+    }
     _layers = std::move(layers);
     return true;
 }
