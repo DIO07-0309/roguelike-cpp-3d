@@ -290,6 +290,7 @@ void GameSceneInteraction::draw_dialogue(int sw, int sh) {
 }
 
 // G53: 任务列表 (跳过 hidden; y 越界即停, 不裁剪滚动)
+// 注意: 关系栏沿用原逻辑 — 只在任务非空时才绘制 (空任务时整块留空)
 void GameSceneInteraction::_draw_quest_list(const Rectangle& pr) {
     auto& quests = _s._gameplay.quest_mgr.all_quests();
     if (quests.empty()) {
@@ -353,7 +354,9 @@ void GameSceneInteraction::draw_quest_log(int sw, int sh) {
     GameRenderer::draw_panel(pr, "任务日志  F1关闭", {20,20,40,230});
 
     _draw_quest_list(pr);
-    _draw_npc_relations(pr);
+    // 关系栏沿用原逻辑: 只在任务非空时才绘制 (无任务时只显示"暂无任务")
+    if (!_s._gameplay.quest_mgr.all_quests().empty())
+        _draw_npc_relations(pr);
 }
 
 // ============================================================
