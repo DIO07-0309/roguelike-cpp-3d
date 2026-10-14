@@ -59,6 +59,11 @@ private:
     std::vector<NPCEnding> _npc_endings;
     WorldEnding _world;
     void _build_npc_endings(const WorldState& ws, const RelationshipSystem& rels);
+    // G53: begin 拆出的三段 (结局判定 / registry 填充 / 解锁记录)
+    EndingType _determine_ending(const WorldState& ws, BossRank rank,
+                                 float collection_pct) const;
+    void _apply_ending_def();
+    void _record_unlocked(int ending_type);
     // G2.5: string storage — 避免 registry c_str() 悬挂
     struct _EndTexts { std::string sky, line, title; };
     _EndTexts _texts;

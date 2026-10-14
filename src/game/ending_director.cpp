@@ -5,53 +5,62 @@
 #include "core/event_bus.h"      // G2.5: ENDING_REACHED
 #include "meta_progression.h"    // G10.9-B1: unlock_ending 账号级落盘
 
+// G53: 结局判定 — 按 True_End / Good / Normal / Bad 的优先级链
+EndingType EndingDirector::_determine_ending(const WorldState& ws, BossRank rank,
+                                             float collection_pct) const {
+    if (ws.has(WorldFlag::True_Ending_Ready) && rank >= BossRank::S
+        && collection_pct >= 0.90f)
+        return EndingType::SECRET_END;
+    if (ws.has(WorldFlag::True_Ending_Ready) && rank >= BossRank::A)
+        return EndingType::TRUE_END;
+    if (ws.has(WorldFlag::All_Boss_Defeated)
+        && ws.has(WorldFlag::Saved_Prisoner)
+        && ws.has(WorldFlag::Saved_Priest))
+        return EndingType::GOOD_END;
+    if (ws.has(WorldFlag::Boss3_Defeated))
+        return EndingType::NORMAL_END;
+    return EndingType::BAD_END;  // 死亡或Boss未全杀
+}
+
+// G53: 从 registry 取 flavor text / meta reward (替代旧的 WORLD_ENDINGS[5])
+void EndingDirector::_apply_ending_def() {
+    // G2.5: flavor text / meta reward 从 registry 读取
+    const EndingDef* def = get_ending_def((int)_type);
+    if (!def) {
+        _world = { _type, "灰暗", "一切归于沉寂。", "END", 0, 0 };
+        return;
+    }
+    _texts.sky   = def->sky_color;
+    _texts.line  = def->final_line;
+    _texts.title = def->title;
+    _world = { _type,
+               _texts.sky.c_str(),
+               _texts.line.c_str(),
+               _texts.title.c_str(),
+               def->meta_soul_bonus,
+               def->meta_knowledge_bonus };
+}
+
+// G53: 解锁记录 — 去重 + 账号级落盘 + 事件广播
+void EndingDirector::_record_unlocked(int ending_type) {
+    // G2.5: 记录已解锁结局 (去重)
+    for (int v : _unlocked) if (v == ending_type) return;
+    _unlocked.push_back(ending_type);
+    // G10.9-B1: 账号级落盘 — 解锁即写 meta (修审计 bug#2: 此前从不持久化)
+    MetaSystem::unlock_ending(ending_type);
+    // EventBus emit (保持与 Quest/Attack/Skill Evolution 一致的风格)
+    EventBus::inst().emit(GameEventType::ENDING_REACHED, nullptr, ending_type);
+}
+
 void EndingDirector::begin(const WorldState& ws, BossRank rank, float coll_pct,
                             const RelationshipSystem& rels,
                             const QuestManager& qm) {
     (void)qm;
     _npc_endings.clear();
 
-    // 判定EndingType (算法不变)
-    if (ws.has(WorldFlag::True_Ending_Ready) && rank >= BossRank::S && coll_pct >= 0.90f)
-        _type = EndingType::SECRET_END;
-    else if (ws.has(WorldFlag::True_Ending_Ready) && rank >= BossRank::A)
-        _type = EndingType::TRUE_END;
-    else if (ws.has(WorldFlag::All_Boss_Defeated)
-             && ws.has(WorldFlag::Saved_Prisoner)
-             && ws.has(WorldFlag::Saved_Priest))
-        _type = EndingType::GOOD_END;
-    else if (ws.has(WorldFlag::Boss3_Defeated))
-        _type = EndingType::NORMAL_END;
-    else // 死亡或Boss未全杀
-        _type = EndingType::BAD_END;
-
-    // ── G2.5: flavor text / meta reward 从 registry 读取 (替代 WORLD_ENDINGS[5]) ──
-    const EndingDef* def = get_ending_def((int)_type);
-    if (def) {
-        _texts.sky   = def->sky_color;
-        _texts.line  = def->final_line;
-        _texts.title = def->title;
-        _world = { _type,
-                   _texts.sky.c_str(),
-                   _texts.line.c_str(),
-                   _texts.title.c_str(),
-                   def->meta_soul_bonus,
-                   def->meta_knowledge_bonus };
-    } else {
-        _world = { _type, "灰暗", "一切归于沉寂。", "END", 0, 0 };
-    }
-
-    // G2.5: 记录已解锁结局 (去重)
-    {
-        int et = (int)_type;
-        bool found = false;
-        for (int v : _unlocked) if (v == et) { found = true; break; }
-        if (!found) _unlocked.push_back(et);
-        // G10.9-B1: 账号级落盘 — 解锁即写 meta (修审计 bug#2: 此前从不持久化)
-        MetaSystem::unlock_ending(et);
-        // EventBus emit (保持与 Quest/Attack/Skill Evolution 一致的风格)
-        EventBus::inst().emit(GameEventType::ENDING_REACHED, nullptr, et);
-    }
+    _type = _determine_ending(ws, rank, coll_pct);
+    _apply_ending_def();
+    _record_unlocked((int)_type);
 
     // NPC 结局
     _build_npc_endings(ws, rels);
