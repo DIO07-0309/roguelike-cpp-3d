@@ -203,6 +203,19 @@ protected:
     bool _think_and_cast(Monster* self, Player* player, GameMap* map,
                          double dt, double gt,
                          std::vector<Monster*>* all, std::vector<Effect>* effects);
+    // G53: _think_and_cast 拆出的四段 (蓄力中 / 持续中 / 连发中 / 释放决策)
+    bool _skill_tick_casting(Monster* self, Player* player, GameMap* map,
+                             double dt, MonsterSkillState& sk,
+                             std::vector<Effect>* effects);
+    bool _skill_tick_duration(MonsterSkillState& sk, float dt);
+    bool _skill_tick_rapid(Monster* self, Player* player, double gt,
+                           MonsterSkillState& sk, float dt);
+    bool _skill_wants_cast(const MonsterSkillState& sk, float dist,
+                           std::vector<Monster*>* all) const;
+    void _skill_begin_cast(Monster* self, Player* player, GameMap* map,
+                           std::vector<Monster*>* all,
+                           std::vector<Effect>* effects,
+                           MonsterSkillState& sk);
     // D2 Step3: 各技能执行
     void _exec_rapid_shot(Monster* self, Player* player, double gt,
                           std::vector<Effect>* effects, MonsterSkillState& sk);

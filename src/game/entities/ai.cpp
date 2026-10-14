@@ -492,6 +492,133 @@ void MonsterAI::_pick_new_dir() {
 // ============================================================
 // D2 Step3: Think — Decision Layer
 // ============================================================
+// ── G53: _think_and_cast 拆出的四个阶段 ──────────────────────
+
+// 蓄力中: 扣时间 + 预警特效; 蓄满则触发对应 exec (返回 true=本帧已处理)
+bool MonsterAI::_skill_tick_casting(Monster* self, Player* player, GameMap* map,
+                                    double dt, MonsterSkillState& sk,
+                                    std::vector<Effect>* effects) {
+    sk.cast_left -= (float)dt;
+    if (sk.type == MonsterSkillType::RAPID_SHOT && effects) {
+        // 红线预警
+        Effect warn;
+        warn.kind = "bolt";
+        warn.world_x = self->entity.rect.x + self->entity.rect.width/2;
+        warn.world_y = self->entity.rect.y + self->entity.rect.height/2;
+        warn.target_x = player->entity.rect.x + player->entity.rect.width/2;
+        warn.target_y = player->entity.rect.y + player->entity.rect.height/2;
+        warn.radius = 3; warn.duration = 0.12f; warn.elapsed = 0;
+        warn.color = {255, 80, 40, 180};
+        effects->push_back(warn);
+    }
+    if (sk.cast_left > 0) return true;   // 蓄力中不移动
+    if (sk.type == MonsterSkillType::CHARGE) {
+        _exec_charge(self, player, map, effects, sk);
+        sk.active = false; sk.cooldown = sk.max_cooldown;
+        return true;
+    }
+    if (sk.type == MonsterSkillType::SNIPE) {
+        _exec_snipe(self, player, effects, sk, _monster_room, _player_room);
+        return true;
+    }
+    if (sk.type == MonsterSkillType::AMBUSH_ATTACK) {
+        _exec_ambush(self, player, map, effects, sk, _monster_room, _player_room, _room_mgr);
+        return true;
+    }
+    sk.active = true;   // 蓄力完毕
+    return true;
+}
+
+// 持续中: Shield 光环特效; Totem 不阻塞移动 (返回 false)
+bool MonsterAI::_skill_tick_duration(MonsterSkillState& sk, float dt) {
+    sk.duration_left -= dt;
+    if (sk.duration_left <= 0) sk.active = false;
+    if (sk.type == MonsterSkillType::TOTEM) return false;
+    return true;
+}
+
+// Rapid Shot 连发中: 计时到点就射一发
+bool MonsterAI::_skill_tick_rapid(Monster* self, Player* player, double gt,
+                                  MonsterSkillState& sk, float dt) {
+    sk.shot_timer -= dt;
+    if (sk.shot_timer <= 0) return false;   // 由调用方执行射击
+    return true;
+}
+
+// 释放决策: 各技能的触发距离/条件表 (dist 为像素)
+bool MonsterAI::_skill_wants_cast(const MonsterSkillState& sk, float dist,
+                                  std::vector<Monster*>* all) const {
+    const float sight = sight_range * 32.0f;
+    const float atk = attack_range * 32.0f;
+    switch (sk.type) {
+    case MonsterSkillType::RAPID_SHOT:
+        return (dist <= sight && dist > atk);
+    case MonsterSkillType::TOTEM:
+        return all != nullptr;          // 只要有友方就放
+    case MonsterSkillType::LEAP:
+        return (dist > 4.0f * 32.0f && dist < 10.0f * 32.0f);
+    case MonsterSkillType::SHIELD:
+        return (dist <= atk);
+    case MonsterSkillType::SUMMON:
+        return ((int)(*all).size() < 8); // 场上怪不多时
+    // D8: Charger — 中距蓄力冲撞
+    case MonsterSkillType::CHARGE:
+        return (dist > 3.0f * 32.0f && dist < 8.0f * 32.0f);
+    // D8: Summoner — 场上怪物不多时召唤
+    case MonsterSkillType::MASS_SUMMON:
+        return (all && (int)(*all).size() < 10);
+    case MonsterSkillType::SNIPE:
+        return (dist > 4.0f * 32.0f && dist < 12.0f * 32.0f);
+    case MonsterSkillType::SCATTER:
+        return (dist > 3.0f * 32.0f && dist < 9.0f * 32.0f);
+    case MonsterSkillType::AMBUSH_ATTACK:
+        return (dist > 5.0f * 32.0f && dist < 10.0f * 32.0f);
+    case MonsterSkillType::GUARD_AURA:
+        return (all && (int)(*all).size() >= 2);
+    default:
+        return false;
+    }
+}
+
+// 开始释放: 立即执行型走 exec, 蓄力型设 cast_left
+void MonsterAI::_skill_begin_cast(Monster* self, Player* player, GameMap* map,
+                                  std::vector<Monster*>* all,
+                                  std::vector<Effect>* effects,
+                                  MonsterSkillState& sk) {
+    switch (sk.type) {
+    case MonsterSkillType::RAPID_SHOT:
+        sk.cast_left = 0.35f; sk.shot_count = 0; break;
+    case MonsterSkillType::TOTEM:
+        _exec_totem(self, player, all, effects, sk);
+        sk.cooldown = sk.max_cooldown; break;
+    case MonsterSkillType::LEAP:
+        _exec_leap(self, player, map, sk);
+        sk.cooldown = sk.max_cooldown; break;
+    case MonsterSkillType::SHIELD:
+        _exec_shield(self, sk);
+        sk.cast_left = 0.2f; break;
+    case MonsterSkillType::SUMMON:
+        _exec_summon(self, player, map, all, effects, sk);
+        sk.cooldown = sk.max_cooldown; break;
+    // D8: CHARGE — 蓄力冲刺 (0.5s蓄力→冲刺)
+    case MonsterSkillType::CHARGE:
+        sk.cast_left = 0.5f; break;
+    // D8: MASS_SUMMON — 一次召唤2只
+    case MonsterSkillType::MASS_SUMMON:
+        _exec_mass_summon(self, player, map, all, effects, sk);
+        sk.cooldown = sk.max_cooldown; break;
+    case MonsterSkillType::SNIPE:
+        sk.cast_left = 1.2f; break;  // 蓄力→ exec_snipe
+    case MonsterSkillType::SCATTER:
+        _exec_scatter(self, player, effects, sk, _monster_room, _player_room); break;
+    case MonsterSkillType::AMBUSH_ATTACK:
+        sk.cast_left = 0.3f; break;  // 蓄力→ exec_ambush
+    case MonsterSkillType::GUARD_AURA:
+        _exec_guard_aura(self, all, effects, sk); break;
+    default: break;
+    }
+}
+
 bool MonsterAI::_think_and_cast(Monster* self, Player* player, GameMap* map,
                                  double dt, double gt,
                                  std::vector<Monster*>* all, std::vector<Effect>* effects) {
@@ -499,40 +626,11 @@ bool MonsterAI::_think_and_cast(Monster* self, Player* player, GameMap* map,
         // 冷却计时
         if (sk.cooldown > 0) { sk.cooldown -= (float)dt; continue; }
 
-        // 正在释放中 — 蓄力/持续
-        if (sk.cast_left > 0) {
-            sk.cast_left -= (float)dt;
-            if (sk.type == MonsterSkillType::RAPID_SHOT && effects) {
-                // 红线预警
-                Effect warn;
-                warn.kind = "bolt";
-                warn.world_x = self->entity.rect.x + self->entity.rect.width/2;
-                warn.world_y = self->entity.rect.y + self->entity.rect.height/2;
-                warn.target_x = player->entity.rect.x + player->entity.rect.width/2;
-                warn.target_y = player->entity.rect.y + player->entity.rect.height/2;
-                warn.radius = 3; warn.duration = 0.12f; warn.elapsed = 0;
-                warn.color = {255, 80, 40, 180};
-                effects->push_back(warn);
-            }
-            if (sk.cast_left <= 0) {
-                if (sk.type == MonsterSkillType::CHARGE) {
-                    _exec_charge(self, player, map, effects, sk);
-                    sk.active = false; sk.cooldown = sk.max_cooldown; return true;
-                }
-                if (sk.type == MonsterSkillType::SNIPE) {
-                    _exec_snipe(self, player, effects, sk, _monster_room, _player_room); return true;
-                }
-                if (sk.type == MonsterSkillType::AMBUSH_ATTACK) {
-                    _exec_ambush(self, player, map, effects, sk, _monster_room, _player_room, _room_mgr); return true;
-                }
-                sk.active = true; // 蓄力完毕
-            }
-            return true; // 蓄力中不移动
-        }
+        if (sk.cast_left > 0)
+            return _skill_tick_casting(self, player, map, dt, sk, effects);
 
         // 持续技能 (Shield/Totem/Summon)
         if (sk.duration_left > 0) {
-            sk.duration_left -= (float)dt;
             if (sk.type == MonsterSkillType::SHIELD && effects) {
                 // 蓝色护盾光环
                 Effect s;
@@ -542,97 +640,21 @@ bool MonsterAI::_think_and_cast(Monster* self, Player* player, GameMap* map,
                 s.color = {60, 140, 255, 120};
                 effects->push_back(s);
             }
-            if (sk.duration_left <= 0) sk.active = false;
-            if (sk.type == MonsterSkillType::TOTEM) return false; // 图腾不阻塞移动
-            return true; // 护盾中继续不移动
+            return _skill_tick_duration(sk, (float)dt);
         }
 
         // Rapid Shot 连发中
         if (sk.type == MonsterSkillType::RAPID_SHOT && sk.active && sk.shot_count < 3) {
-            sk.shot_timer -= (float)dt;
-            if (sk.shot_timer <= 0) {
-                _exec_rapid_shot(self, player, gt, effects, sk);
-                return true;
-            }
+            if (_skill_tick_rapid(self, player, gt, sk, (float)dt))
+                return true;   // 还在等下一发
+            _exec_rapid_shot(self, player, gt, effects, sk);
             return true;
         }
 
         // 决策: 是否需要释放?
-        float dist = _dist_to(self, player);
-        bool should_cast = false;
-        switch (sk.type) {
-        case MonsterSkillType::RAPID_SHOT:
-            should_cast = (dist <= sight_range * 32.0f && dist > attack_range * 32.0f);
-            break;
-        case MonsterSkillType::TOTEM:
-            should_cast = (all != nullptr); // 只要有友方就放
-            break;
-        case MonsterSkillType::LEAP:
-            should_cast = (dist > 4.0f * 32.0f && dist < 10.0f * 32.0f);
-            break;
-        case MonsterSkillType::SHIELD:
-            should_cast = (dist <= attack_range * 32.0f);
-            break;
-        case MonsterSkillType::SUMMON:
-            should_cast = ((int)(*all).size() < 8); // 场上怪不多时
-            break;
-        // D8: Charger — 中距蓄力冲撞
-        case MonsterSkillType::CHARGE:
-            should_cast = (dist > 3.0f * 32.0f && dist < 8.0f * 32.0f);
-            break;
-        // D8: Summoner — 场上怪物不多时召唤
-        case MonsterSkillType::MASS_SUMMON:
-            should_cast = (all && (int)(*all).size() < 10);
-            break;
-        case MonsterSkillType::SNIPE:
-            should_cast = (dist > 4.0f * 32.0f && dist < 12.0f * 32.0f);
-            break;
-        case MonsterSkillType::SCATTER:
-            should_cast = (dist > 3.0f * 32.0f && dist < 9.0f * 32.0f);
-            break;
-        case MonsterSkillType::AMBUSH_ATTACK:
-            should_cast = (dist > 5.0f * 32.0f && dist < 10.0f * 32.0f);
-            break;
-        case MonsterSkillType::GUARD_AURA:
-            should_cast = (all && (int)(*all).size() >= 2);
-            break;
-        default: break;
-        }
-        if (!should_cast) continue;
+        if (!_skill_wants_cast(sk, _dist_to(self, player), all)) continue;
 
-        // 开始释放
-        switch (sk.type) {
-        case MonsterSkillType::RAPID_SHOT:
-            sk.cast_left = 0.35f; sk.shot_count = 0; break;
-        case MonsterSkillType::TOTEM:
-            _exec_totem(self, player, all, effects, sk);
-            sk.cooldown = sk.max_cooldown; break;
-        case MonsterSkillType::LEAP:
-            _exec_leap(self, player, map, sk);
-            sk.cooldown = sk.max_cooldown; break;
-        case MonsterSkillType::SHIELD:
-            _exec_shield(self, sk);
-            sk.cast_left = 0.2f; break;
-        case MonsterSkillType::SUMMON:
-            _exec_summon(self, player, map, all, effects, sk);
-            sk.cooldown = sk.max_cooldown; break;
-        // D8: CHARGE — 蓄力冲刺 (0.5s蓄力→冲刺)
-        case MonsterSkillType::CHARGE:
-            sk.cast_left = 0.5f; break;
-        // D8: MASS_SUMMON — 一次召唤2只
-        case MonsterSkillType::MASS_SUMMON:
-            _exec_mass_summon(self, player, map, all, effects, sk);
-            sk.cooldown = sk.max_cooldown; break;
-        case MonsterSkillType::SNIPE:
-            sk.cast_left = 1.2f; break;  // 蓄力→ exec_snipe
-        case MonsterSkillType::SCATTER:
-            _exec_scatter(self, player, effects, sk, _monster_room, _player_room); break;
-        case MonsterSkillType::AMBUSH_ATTACK:
-            sk.cast_left = 0.3f; break;  // 蓄力→ exec_ambush
-        case MonsterSkillType::GUARD_AURA:
-            _exec_guard_aura(self, all, effects, sk); break;
-        default: break;
-        }
+        _skill_begin_cast(self, player, map, all, effects, sk);
         return true;
     }
     return false;
