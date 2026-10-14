@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>                   // M6-i.1: strcmp (biome 短名映射)
+#include <unordered_map>
 
 GameMap::GameMap(int w, int h, int ts)
     : width(w), height(h), tile_size(ts),
@@ -323,63 +324,113 @@ static Color _dim(Color c, float brightness) {
 
 // G11.1-C: 特殊房间像素徽记 — 替代 ASCII 字符的 20x20 程序化小图形
 // 每种房间一个可辨识轮廓: 宝箱/祭坛十字/泉水波/金币/锤/书/骰子/柱/问号
+// ── G53: 特殊房间徽记 (原 57 行 switch, 每类一个绘制函数) ──
+// 共用的取色/偏移收进 EmblemCtx, 绘制体只认 ctx 不认原始坐标 —
+// 每类徽记独立增删, 不会再牵动其他人的 case。
+struct EmblemCtx {
+    float ox, oy;   // 徽记区左上 (20x20)
+    Color m;        // 主体色 (亮/暗 triggered 态)
+    Color a;        // 点缀色
+    Color dark;     // 暗部
+    float bright;   // 原亮度 (泉水等固有色的叠加用)
+};
+
+using EmblemDraw = void (*)(const EmblemCtx&);
+
+// 宝箱: 箱体 + 锁扣 + 掀盖
+static void _emblem_treasure(const EmblemCtx& c) {
+    DrawRectangle(c.ox, c.oy + 8, 20, 12, c.dark);
+    DrawRectangleLines(c.ox, c.oy + 8, 20, 12, c.m);
+    DrawRectangle(c.ox + 2, c.oy + 2, 16, 7, c.m);
+    DrawRectangle(c.ox + 8, c.oy + 10, 4, 6, c.a);
+}
+
+// 祭坛: 台座 + 发光十字
+static void _emblem_altar(const EmblemCtx& c) {
+    DrawRectangle(c.ox + 2, c.oy + 14, 16, 6, c.dark);
+    DrawRectangle(c.ox + 5, c.oy + 10, 10, 4, c.dark);
+    DrawRectangle(c.ox + 8, c.oy + 1, 4, 10, c.a);
+    DrawRectangle(c.ox + 4, c.oy + 4, 12, 4, c.a);
+}
+
+// 泉水: 圆池 + 涟漪 (池水色不随 triggered 变, 按原始亮度叠加)
+static void _emblem_fountain(const EmblemCtx& c) {
+    Color water = _dim(Color{70, 130, 170, 255}, c.bright);
+    DrawCircle(c.ox + 10, c.oy + 10, 9, c.dark);
+    DrawCircle(c.ox + 10, c.oy + 10, 7, water);
+    DrawRing({c.ox + 10, c.oy + 10}, 3, 5, 0, 360, 12, c.m);
+}
+
+// 商店 / 神龛: 金币堆 + "$" 记号
+static void _emblem_coin_pile(const EmblemCtx& c) {
+    DrawCircle(c.ox + 7, c.oy + 13, 4, c.a);
+    DrawCircle(c.ox + 14, c.oy + 12, 3, c.a);
+    DrawCircle(c.ox + 10, c.oy + 7, 4, c.m);
+    DrawText("$", (int)c.ox + 7, (int)c.oy + 4, 10, c.m);
+}
+
+// 铁匠: 锤头 + 柄
+static void _emblem_blacksmith(const EmblemCtx& c) {
+    DrawRectangle(c.ox + 2, c.oy + 3, 12, 7, c.dark);
+    DrawRectangle(c.ox + 5, c.oy + 4, 9, 5, c.m);
+    DrawRectangle(c.ox + 12, c.oy + 9, 3, 11, c.a);
+}
+
+// 图书馆: 打开的书
+static void _emblem_library(const EmblemCtx& c) {
+    DrawRectangle(c.ox + 1, c.oy + 6, 9, 10, c.dark);
+    DrawRectangle(c.ox + 10, c.oy + 6, 9, 10, c.dark);
+    DrawRectangle(c.ox + 2, c.oy + 7, 7, 8, c.m);
+    DrawRectangle(c.ox + 11, c.oy + 7, 7, 8, c.m);
+}
+
+// 赌徒: 骰子 + 三点
+static void _emblem_gambler(const EmblemCtx& c) {
+    DrawRectangle(c.ox + 2, c.oy + 2, 16, 16, c.dark);
+    DrawRectangleLines(c.ox + 2, c.oy + 2, 16, 16, c.m);
+    DrawCircle(c.ox + 7, c.oy + 7, 2, c.m);
+    DrawCircle(c.ox + 13, c.oy + 13, 2, c.m);
+    DrawCircle(c.ox + 10, c.oy + 10, 2, c.a);
+}
+
+// SECRET/其他: 问号菱形 (default)
+static void _emblem_unknown(const EmblemCtx& c) {
+    DrawRectangle(c.ox + 6, c.oy + 1, 8, 4, c.m);
+    DrawRectangle(c.ox + 12, c.oy + 3, 3, 6, c.m);
+    DrawRectangle(c.ox + 9, c.oy + 8, 4, 3, c.m);
+    DrawRectangle(c.ox + 9, c.oy + 13, 4, 4, c.a);
+}
+
+// 房间类型 -> 绘制函数
+static const std::unordered_map<SpecialRoomType, EmblemDraw>& _emblem_table() {
+    static const std::unordered_map<SpecialRoomType, EmblemDraw> tbl = {
+        {SpecialRoomType::TREASURE,    _emblem_treasure},
+        {SpecialRoomType::ALTAR,       _emblem_altar},
+        {SpecialRoomType::FOUNTAIN,    _emblem_fountain},
+        {SpecialRoomType::SHOP,        _emblem_coin_pile},
+        {SpecialRoomType::SHRINE,      _emblem_coin_pile},
+        {SpecialRoomType::BLACKSMITH,  _emblem_blacksmith},
+        {SpecialRoomType::LIBRARY,     _emblem_library},
+        {SpecialRoomType::GAMBLER,     _emblem_gambler},
+    };
+    return tbl;
+}
+
 static void _draw_room_emblem(SpecialRoomType type, float dx, float dy,
                               float bright, bool triggered) {
-    float ox = dx + 6, oy = dy + 6;          // 20x20 徽记区
+    EmblemCtx c;
+    c.ox = dx + 6; c.oy = dy + 6;   // 20x20 徽记区
     Color main_c = triggered ? Color{110, 105, 100, 255} : Color{235, 225, 190, 255};
-    Color accent = triggered ? Color{80, 78, 75, 255}   : Color{212, 160, 23, 255};
-    Color m = _dim(main_c, bright), a = _dim(accent, bright);
-    Color dark = _dim(Color{40, 34, 28, 255}, bright);
-    switch (type) {
-        case SpecialRoomType::TREASURE:     // 宝箱: 箱体 + 锁扣 + 掀盖
-            DrawRectangle(ox, oy + 8, 20, 12, dark);
-            DrawRectangleLines(ox, oy + 8, 20, 12, m);
-            DrawRectangle(ox + 2, oy + 2, 16, 7, m);
-            DrawRectangle(ox + 8, oy + 10, 4, 6, a);
-            break;
-        case SpecialRoomType::ALTAR:        // 祭坛: 台座 + 发光十字
-            DrawRectangle(ox + 2, oy + 14, 16, 6, dark);
-            DrawRectangle(ox + 5, oy + 10, 10, 4, dark);
-            DrawRectangle(ox + 8, oy + 1, 4, 10, a);
-            DrawRectangle(ox + 4, oy + 4, 12, 4, a);
-            break;
-        case SpecialRoomType::FOUNTAIN:     // 泉水: 圆池 + 涟漪
-            DrawCircle(ox + 10, oy + 10, 9, dark);
-            DrawCircle(ox + 10, oy + 10, 7, _dim(Color{70, 130, 170, 255}, bright));
-            DrawRing({ox + 10, oy + 10}, 3, 5, 0, 360, 12, m);
-            break;
-        case SpecialRoomType::SHOP:         // 商店: 金币堆
-        case SpecialRoomType::SHRINE:
-            DrawCircle(ox + 7, oy + 13, 4, a);
-            DrawCircle(ox + 14, oy + 12, 3, a);
-            DrawCircle(ox + 10, oy + 7, 4, m);
-            DrawText("$", (int)ox + 7, (int)oy + 4, 10, m);
-            break;
-        case SpecialRoomType::BLACKSMITH:   // 铁匠: 锤头 + 柄
-            DrawRectangle(ox + 2, oy + 3, 12, 7, dark);
-            DrawRectangle(ox + 5, oy + 4, 9, 5, m);
-            DrawRectangle(ox + 12, oy + 9, 3, 11, a);
-            break;
-        case SpecialRoomType::LIBRARY:      // 图书馆: 打开的书
-            DrawRectangle(ox + 1, oy + 6, 9, 10, dark);
-            DrawRectangle(ox + 10, oy + 6, 9, 10, dark);
-            DrawRectangle(ox + 2, oy + 7, 7, 8, m);
-            DrawRectangle(ox + 11, oy + 7, 7, 8, m);
-            break;
-        case SpecialRoomType::GAMBLER:      // 赌徒: 骰子 + 点数
-            DrawRectangle(ox + 2, oy + 2, 16, 16, dark);
-            DrawRectangleLines(ox + 2, oy + 2, 16, 16, m);
-            DrawCircle(ox + 7, oy + 7, 2, m);
-            DrawCircle(ox + 13, oy + 13, 2, m);
-            DrawCircle(ox + 10, oy + 10, 2, a);
-            break;
-        default:                            // SECRET/其他: 问号菱形
-            DrawRectangle(ox + 6, oy + 1, 8, 4, m);
-            DrawRectangle(ox + 12, oy + 3, 3, 6, m);
-            DrawRectangle(ox + 9, oy + 8, 4, 3, m);
-            DrawRectangle(ox + 9, oy + 13, 4, 4, a);
-            break;
-    }
+    Color accent = triggered ? Color{80, 78, 75, 255} : Color{212, 160, 23, 255};
+    c.m = _dim(main_c, bright);
+    c.a = _dim(accent, bright);
+    c.dark = _dim(Color{40, 34, 28, 255}, bright);
+    c.bright = bright;
+
+    const auto& tbl = _emblem_table();
+    auto it = tbl.find(type);
+    if (it != tbl.end()) it->second(c);
+    else _emblem_unknown(c);
 }
 void GameMap::draw(float cam_x, float cam_y, int sw, int sh) const {
     TileCtx ctx = setupTileTextures();

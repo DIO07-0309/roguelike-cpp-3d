@@ -13,16 +13,9 @@ BTAgent::~BTAgent() {}
 //  Blackboard sync: game state → key-value pairs
 // ═══════════════════════════════════════════════════════════
 
-void BTAgent::_sync_state(const Player* player,
-    const std::vector<Monster*>& monsters,
-    const GameMap* map, bool stairs_active, bool boss_intro_active) {
-    if (!player) return;
-
-    _board.set("hp", (float)player->combat.current_hp);
-    _board.set("max_hp", (float)player->combat.max_hp);
-    _board.set("hp_ratio", _hp_ratio(player));
-
-    int enemy_count = (int)monsters.size();
+// 敌人态势: 存活数 / 最近敌人距离与名字 / AOE 内数量
+void BTAgent::_sync_enemy_situation(const Player* player,
+    const std::vector<Monster*>& monsters) {
     int alive = 0;
     float nearest_dist = 9999;
     std::string nearest_id = "none";
@@ -36,40 +29,69 @@ void BTAgent::_sync_state(const Player* player,
     _board.set("enemy_count", alive);
     _board.set("enemy_near", nearest_dist < 3.0f * 32.0f);
     _board.set("nearest_dist", nearest_dist);
-    _board.set("enemies_in_aoe", _count_enemies_in_range(player, monsters, 4.0f * 32.0f));
+    _board.set("enemies_in_aoe",
+               _count_enemies_in_range(player, monsters, 4.0f * 32.0f));
+    _board.set("nearest_id", nearest_id);   // name 也进黑板, BT 节点可直接读
+}
 
-    // Boss proximity
-    bool boss_near = false;
+// Boss 是否在 5 格内 (首个即判定, 不需要统计全部)
+void BTAgent::_sync_boss_proximity(const Player* player,
+    const std::vector<Monster*>& monsters) {
     for (auto* m : monsters)
         if (m && m->is_boss && m->combat.is_alive) {
             float d = hypotf(m->entity.rect.x - player->entity.rect.x,
                              m->entity.rect.y - player->entity.rect.y);
-            if (d < 5.0f * 32.0f) { boss_near = true; break; }
+            _board.set("boss_near", d < 5.0f * 32.0f);
+            return;
         }
-    _board.set("boss_near", boss_near);
+    _board.set("boss_near", false);
+}
+
+// 玩家是否站在某个特殊房间附近 (3 格内)
+void BTAgent::_sync_room_proximity(const Player* player, const GameMap* map) {
+    if (!map) { _board.set("near_room", false); return; }
+    for (auto& sr : map->special_rooms) {
+        float dx = player->entity.rect.x + player->entity.rect.width / 2
+                   - (sr.cx * 32 + 16);
+        float dy = player->entity.rect.y + player->entity.rect.height / 2
+                   - (sr.cy * 32 + 16);
+        if (sqrtf(dx * dx + dy * dy) < 3.0f * 32.0f) {
+            _board.set("near_room", true);
+            return;
+        }
+    }
+    _board.set("near_room", false);
+}
+
+void BTAgent::_sync_state(const Player* player,
+    const std::vector<Monster*>& monsters,
+    const GameMap* map, bool stairs_active, bool boss_intro_active) {
+    if (!player) return;
+
+    _board.set("hp", (float)player->combat.current_hp);
+    _board.set("max_hp", (float)player->combat.max_hp);
+    _board.set("hp_ratio", _hp_ratio(player));
+
+    _sync_enemy_situation(player, monsters);
+    _sync_boss_proximity(player, monsters);
+    _sync_room_proximity(player, map);
+
     _board.set("stairs_active", stairs_active);
     _board.set("boss_intro", boss_intro_active);
 
-    // Skills
+    // Skills: 任一主动技 ready 即可 (BT 只关心"能不能放", 不关心放哪个)
     bool any_ready = false;
     for (int i = 0; i < 4; i++)
-        if (i < (int)player->skills.active_skills.size() && player->skills.active_skills[i]->can_use(_game_time)) { any_ready = true; break; }
+        if (i < (int)player->skills.active_skills.size()
+            && player->skills.active_skills[i]->can_use(_game_time)) {
+            any_ready = true;
+            break;
+        }
     _board.set("skill_ready", any_ready);
 
     // Heal slot available
     // Heal skills are typically index 2 (self_heal). Check if ready.
     _board.set("heal_ready", player->skills.active_skills.size() > 2);
-
-    // Near special room
-    bool near_room = false;
-    if (map) {
-        for (auto& sr : map->special_rooms) {
-            float dx = player->entity.rect.x + player->entity.rect.width/2 - (sr.cx * 32 + 16);
-            float dy = player->entity.rect.y + player->entity.rect.height/2 - (sr.cy * 32 + 16);
-            if (sqrtf(dx*dx+dy*dy) < 3.0f * 32.0f) { near_room = true; break; }
-        }
-    }
-    _board.set("near_room", near_room);
 
     // Build identity
     _board.set("prefer_range", _board.get("prefer_range", 0.3f));

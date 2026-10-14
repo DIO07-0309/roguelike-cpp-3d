@@ -57,6 +57,12 @@ private:
     void _sync_state(const Player* player,
         const std::vector<Monster*>& monsters,
         const GameMap* map, bool stairs_active, bool boss_intro_active);
+    // G53: _sync_state 拆出的三段 (敌人态势 / Boss 贴近 / 特殊房间贴近)
+    void _sync_enemy_situation(const Player* player,
+        const std::vector<Monster*>& monsters);
+    void _sync_boss_proximity(const Player* player,
+        const std::vector<Monster*>& monsters);
+    void _sync_room_proximity(const Player* player, const GameMap* map);
     void _resolve_profile(const Player* player);
     Monster* _find_nearest(const Player* player,
         const std::vector<Monster*>& monsters) const;
