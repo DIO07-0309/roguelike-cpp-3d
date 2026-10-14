@@ -220,11 +220,9 @@ void Monster::update_ai(Player* player, GameMap* map, double dt, double gt,
     if (ai) ai->update(this, player, map, dt, gt, all, effects, monster_room, player_room, room_mgr);
 }
 
-void Monster::draw(float cam_x, float cam_y) {
-    Entity& e = entity;
-    Rectangle dr = {e.position.x - cam_x, e.position.y - cam_y,
-                    e.size.x, e.size.y};
-
+// G53: 类型专属光环 (Boss 脉冲框 / Bomber 黄脉冲 / Tank 厚边框 /
+// Charger 方向箭头 / Summoner 魔法环) — 各自 pulse 频率不同, 不合并绘制
+void Monster::_draw_type_aura(const Rectangle& dr) const {
     // Boss 光晕
     if (is_boss) {
         float pulse = 3 + fabs(sinf((float)GetTime() * 6)) * 5;
@@ -258,6 +256,23 @@ void Monster::draw(float cam_x, float cam_y) {
         DrawRing({dr.x + dr.width/2, dr.y + dr.height/2}, ring - 2, ring,
                  0, 360, 16, Color{180, 120, 220, 160});
     }
+}
+
+// G53: 血条 (Boss 不画; ratio>0.5 与 <=0.5 用两档红色区分)
+void Monster::_draw_hp_bar(const Rectangle& dr) const {
+    if (is_boss || combat.current_hp >= combat.max_hp) return;
+    float ratio = (float)combat.current_hp / combat.max_hp;
+    DrawRectangle(dr.x, dr.y - 8, dr.width, 4, {40, 10, 10, 255});
+    Color hc = ratio > 0.5f ? Color{200, 40, 40, 255} : Color{200, 20, 20, 255};
+    DrawRectangle(dr.x, dr.y - 8, dr.width * ratio, 4, hc);
+}
+
+void Monster::draw(float cam_x, float cam_y) {
+    Entity& e = entity;
+    Rectangle dr = {e.position.x - cam_x, e.position.y - cam_y,
+                    e.size.x, e.size.y};
+
+    _draw_type_aura(dr);
 
     // 阴影
     DrawEllipse(dr.x + dr.width/2, dr.y + dr.height + 2, dr.width/2 - 2, 3,
@@ -282,13 +297,7 @@ void Monster::draw(float cam_x, float cam_y) {
         DrawRectangleRoundedLines(spr, 0.15f, 4, is_boss ? 3 : 2, bc);
     }
 
-    // 血条 (非Boss 且受伤)
-    if (!is_boss && combat.current_hp < combat.max_hp) {
-        float ratio = (float)combat.current_hp / combat.max_hp;
-        DrawRectangle(dr.x, dr.y - 8, dr.width, 4, {40, 10, 10, 255});
-        Color hc = ratio > 0.5f ? Color{200, 40, 40, 255} : Color{200, 20, 20, 255};
-        DrawRectangle(dr.x, dr.y - 8, dr.width * ratio, 4, hc);
-    }
+    _draw_hp_bar(dr);
 }
 
 // ============================================================

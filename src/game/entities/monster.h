@@ -101,6 +101,9 @@ public:
     bool can_attack(double game_time) const;
 
     void draw(float cam_x, float cam_y);
+    // G53: draw 拆出的两段 (类型专属光环 / 血条)
+    void _draw_type_aura(const Rectangle& dr) const;
+    void _draw_hp_bar(const Rectangle& dr) const;
 
     // A6-S1: 骨骼皮肤 (渲染层专属; 仅渲染路径由 GameScene 懒建/驱动, sim/无头永不触达)
     SkeletonAvatar* skeleton_avatar() { return _skeleton_avatar.get(); }

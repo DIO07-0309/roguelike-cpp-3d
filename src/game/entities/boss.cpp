@@ -222,31 +222,23 @@ std::string LaserBarrageSkill::execute(Monster* boss, Player* player,
 BarrageSkill::BarrageSkill() : BossSkill("弹幕", 7.0f) {
     fx_kind = "cone"; fx_radius = 200; fx_color = {150, 80, 255, 255};
 }
-std::string BarrageSkill::execute(Monster* boss, Player* player,
-                                  std::vector<Monster*>&, GameMap* map, double gt) {
-    if (windup_left > 0) {
-        boss->color = Color{180, 60, 60, 255};
-        return "";
-    }
-    float dt = 0.016f;
-    if (!fired) {
-        fired = true;
-        _last_tick_time = gt;
-    } else {
-        dt = (float)(gt - _last_tick_time);
-        _last_tick_time = gt;
-        if (dt <= 0.0f || dt > 0.1f) dt = 0.016f;  // 防抖兜底
-    }
+// G53: 波次推进 (首发立即, 之后按 wave_interval; 首波返回开场白)
+std::string BarrageSkill::_advance_waves(Monster* boss, Player* player, float dt) {
     std::string first_msg;
-    if (_wave_fired < waves) {
-        _wave_timer -= dt;
-        if (_wave_fired == 0 || _wave_timer <= 0.0f) {
-            _fire_wave(boss, player);
-            _wave_fired++;
-            _wave_timer = wave_interval;
-            if (_wave_fired == 1) first_msg = "地狱火魔释放弹幕！";
-        }
+    if (_wave_fired >= waves) return first_msg;
+    _wave_timer -= dt;
+    if (_wave_fired == 0 || _wave_timer <= 0.0f) {
+        _fire_wave(boss, player);
+        _wave_fired++;
+        _wave_timer = wave_interval;
+        if (_wave_fired == 1) first_msg = "地狱火魔释放弹幕！";
     }
+    return first_msg;
+}
+
+// G53: 弹丸推进 + 碰撞 (撞墙/寿命终止; 命中扣血+减速+命中点记录)
+void BarrageSkill::_advance_shots(Monster* boss, Player* player, GameMap* map,
+                                  float dt) {
     for (auto& s : shots) { s.x += s.vx * dt; s.y += s.vy * dt; s.life -= dt; }
     for (auto it = shots.begin(); it != shots.end();) {
         bool dead = it->life <= 0.0f;
@@ -269,6 +261,25 @@ std::string BarrageSkill::execute(Monster* boss, Player* player,
         }
         if (dead) it = shots.erase(it); else ++it;
     }
+}
+
+std::string BarrageSkill::execute(Monster* boss, Player* player,
+                                  std::vector<Monster*>&, GameMap* map, double gt) {
+    if (windup_left > 0) {
+        boss->color = Color{180, 60, 60, 255};
+        return "";
+    }
+    float dt = 0.016f;
+    if (!fired) {
+        fired = true;
+        _last_tick_time = gt;
+    } else {
+        dt = (float)(gt - _last_tick_time);
+        _last_tick_time = gt;
+        if (dt <= 0.0f || dt > 0.1f) dt = 0.016f;  // 防抖兜底
+    }
+    std::string first_msg = _advance_waves(boss, player, dt);
+    _advance_shots(boss, player, map, dt);
     if (_wave_fired >= waves && shots.empty()) { finished = true; mark_used(gt); }
     return first_msg;
 }

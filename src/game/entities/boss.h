@@ -142,6 +142,9 @@ public:
     void draw(float cam_x, float cam_y) const;
 private:
     void _fire_wave(Monster* boss, Player* player);
+    // G53: execute 拆出的两段 (波次推进 / 弹丸推进+碰撞)
+    std::string _advance_waves(Monster* boss, Player* player, float dt);
+    void _advance_shots(Monster* boss, Player* player, GameMap* map, float dt);
     int   _wave_fired = 0;      // 已发射波数
     float _wave_timer = 0.0f;   // 下一波倒计时
     double _last_tick_time = 0.0; // 上一 tick 时间 (compute dt)
