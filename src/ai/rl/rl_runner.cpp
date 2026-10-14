@@ -66,44 +66,122 @@ static void rl_run_test_mode(int test_episodes) {
 }
 
 // Train 模式: Q-learning (Q 表持久化, 支持续训, epsilon 退火)
+// ── G53: 训练结果打印 + Q 表落盘 (train/train_style 共用, 原各写一遍) ──
+
+// 前置声明: 定义在文件后部 (line ~218), episode helper 需要调用
+static mcts::SimulationState rl_mirror_scenario(int style_id);
+
+// 加载 Q 表并打印续训提示; 返回加载条目数
+static size_t rl_load_qtable(rl::QAgent& agent, const std::string& path) {
+    const size_t loaded = agent.load(path) ? agent.table_size() : 0;
+    if (loaded > 0)
+        printf("  [load] %s: %zu entries — 继续训练\n", path.c_str(), loaded);
+    return loaded;
+}
+
+// 胜率 + 末段低探索收敛水平 (两个训练模式共用同样的两行格式)
+static void rl_print_train_result(const char* tag, int wins, int episodes,
+                                  int tail_wins, int tail_start, double avg_r,
+                                  size_t table_size) {
+    printf("  [%s] %d/%d wins (%.1f%%), avg_r=%.1f, Q=%zu\n",
+        tag, wins, episodes, wins * 100.0 / episodes, avg_r, table_size);
+    printf("  [tail %d eps] %d/%d wins (%.1f%%) — 低探索收敛水平\n",
+        episodes - tail_start, tail_wins, episodes - tail_start,
+        tail_wins * 100.0 / (episodes - tail_start));
+}
+
+// Q 表落盘 (失败也打印, 不静默)
+static void rl_save_qtable(rl::QAgent& agent, const std::string& path) {
+    if (agent.save(path))
+        printf("  [save] %s: %zu entries\n", path.c_str(), agent.table_size());
+    else
+        printf("  [save] FAILED: %s\n", path.c_str());
+}
+
+// epsilon 退火: 训练进度 i/n 从 EPS_START 线性降到 EPS_END
+static float rl_epsilon_at(int i, int episodes) {
+    return (float)(EPS_START - (EPS_START - EPS_END) * (double)i / episodes);
+}
+
+// 跑一局训练 episode (退火 epsilon + 场景 + Q 更新); 返回是否胜利
+static bool rl_train_one_episode(rl::QAgent& q_agent, rl::CombatEnvironment& env,
+                                 int i, int train_episodes) {
+    // v0.9.29: epsilon 退火 — 后期低探索收敛 (突破 95%)
+    q_agent.set_epsilon(rl_epsilon_at(i, train_episodes));
+    auto initial = rl_make_scenario();
+    initial.rng.seed = 42 + i * 7919u;
+    auto obs = env.reset(initial);
+    while (!env.is_done()) {
+        uint32_t local_seed = 42 + i * 7331u + env.state().depth;
+        auto a = q_agent.select(env.state(), local_seed);
+        auto sr = env.step(a);
+        // v0.9.36 G32-E: bootstrap 只在下一状态合法动作里取 max (G32-E-B1)
+        q_agent.update(obs, a, sr.reward, sr.observation,
+                       mcts::get_possible_actions(env.state()),
+                       env.is_done());
+        obs = sr.observation;
+    }
+    return env.state().victory;
+}
+
+// 跑一局镜像训练 episode (同上用 mirror_reward 叠加风格奖励);
+// total_r 累加本局总回报
+static bool rl_mirror_one_episode(rl::QAgent& q_agent, rl::CombatEnvironment& env,
+                                  int style_i, int i, int episodes,
+                                  const PlayerHabitProfile& profile,
+                                  double& total_r) {
+    // v0.9.29: epsilon 退火 — 后期低探索收敛
+    q_agent.set_epsilon(rl_epsilon_at(i, episodes));
+    auto initial = rl_mirror_scenario(style_i);
+    initial.rng.seed = 42 + style_i * 7919u + i * 7331u;
+    auto obs = env.reset(initial);
+    while (!env.is_done()) {
+        uint32_t local_seed = 42 + style_i * 7331u + i * 7919u + env.state().depth;
+        auto a = q_agent.select(env.state(), local_seed);
+        auto sr = env.step(a);
+        // Mirror reward replaces default step reward
+        double base = sr.reward;
+        bool dodged = (a == mcts::CombatAction::MOVE_LEFT
+                    || a == mcts::CombatAction::MOVE_RIGHT
+                    || a == mcts::CombatAction::MOVE_UP
+                    || a == mcts::CombatAction::MOVE_DOWN);
+        double mirror_bonus = MirrorAgent::mirror_reward(
+            profile, (int)a, base, 0, dodged, false);
+        // v0.9.36 G32-E: bootstrap 只在下一状态合法动作里取 max (G32-E-B1)
+        q_agent.update(obs, a, base + mirror_bonus, sr.observation,
+                       mcts::get_possible_actions(env.state()),
+                       env.is_done());
+        obs = sr.observation;
+        total_r += base + mirror_bonus;
+    }
+    return env.state().victory;
+}
+
 static void rl_run_train_mode(int train_episodes) {
     rl::QAgent q_agent(0.1, 0.9, 0.1);
     rl::CombatEnvironment env;
-    const char* qpath = "saves/rl_qtable.json";
-    size_t loaded = q_agent.load(qpath) ? q_agent.table_size() : 0;
+    const std::string qpath = "saves/rl_qtable.json";
+    rl_load_qtable(q_agent, qpath);
     printf("═══ RL TRAIN: %d episodes (QAgent) ═══\n", train_episodes);
-    if (loaded > 0) printf("  [load] %s: %zu entries — 继续训练\n", qpath, loaded);
-    int wins = 0; int tail_wins = 0;
-    int tail_start = train_episodes - train_episodes / 10;  // 末段 10% 低探索统计
+
+    int wins = 0;
+    int tail_wins = 0;
+    const int tail_start = train_episodes - train_episodes / 10;  // 末段 10% 低探索统计
     for (int i = 0; i < train_episodes; i++) {
-        // v0.9.29: epsilon 退火 — 后期低探索收敛 (突破 95%)
-        q_agent.set_epsilon(EPS_START - (EPS_START - EPS_END) * (double)i / train_episodes);
-        auto initial = rl_make_scenario();
-        initial.rng.seed = 42 + i * 7919u;
-        auto obs = env.reset(initial);
-        while (!env.is_done()) {
-            uint32_t local_seed = 42 + i * 7331u + env.state().depth;
-            auto a = q_agent.select(env.state(), local_seed);
-            auto sr = env.step(a);
-            // v0.9.36 G32-E: bootstrap 只在下一状态合法动作里取 max (G32-E-B1)
-            q_agent.update(obs, a, sr.reward, sr.observation,
-                           mcts::get_possible_actions(env.state()),
-                           env.is_done());
-            obs = sr.observation;
-        }
-        if (env.state().victory) { wins++; if (i >= tail_start) tail_wins++; }
-        if (train_episodes >= 10 && (i+1) % (train_episodes/10) == 0)
-            printf("  [%d/%d] wins=%d Q-table=%zu\n", i+1, train_episodes, wins, q_agent.table_size());
+        const bool victory = rl_train_one_episode(q_agent, env, i, train_episodes);
+        if (victory) { wins++; if (i >= tail_start) tail_wins++; }
+        if (train_episodes >= 10 && (i + 1) % (train_episodes / 10) == 0)
+            printf("  [%d/%d] wins=%d Q-table=%zu\n",
+                   i + 1, train_episodes, wins, q_agent.table_size());
     }
+
     printf("QAgent after training: %d/%d wins (%.1f%%), Q-table size=%zu\n",
-           wins, train_episodes, wins*100.0/train_episodes, q_agent.table_size());
-    printf("  [tail %d eps] %d/%d wins (%.1f%%) — 低探索收敛水平\n",
-           train_episodes - tail_start, tail_wins, train_episodes - tail_start,
-           tail_wins*100.0/(train_episodes - tail_start));
-    if (q_agent.save(qpath))
-        printf("  [save] %s: %zu entries\n", qpath, q_agent.table_size());
-    else
-        printf("  [save] FAILED: %s\n", qpath);
+           wins, train_episodes, wins * 100.0 / train_episodes,
+           q_agent.table_size());
+    rl_print_train_result("tail", wins, train_episodes, tail_wins, tail_start,
+                          0.0, q_agent.table_size());
+    rl_save_qtable(q_agent, qpath);
+
     auto dist = q_agent.action_distribution();
     printf("Action Q-values:\n");
     for (auto& d : dist)
@@ -160,53 +238,23 @@ static void rl_mirror_train_style(int style_i, int episodes,
                                   const PlayerHabitProfile& profile) {
     rl::QAgent q_agent(0.15, 0.9, 0.12);
     rl::CombatEnvironment env;
-    const uint32_t seed = 42;
-    std::string qpath = std::string("saves/rl_mirror_q_") +
-                        profile.style_name() + ".json";
-    size_t loaded = q_agent.load(qpath) ? q_agent.table_size() : 0;
-    int wins = 0; double total_r = 0;
-    int tail_wins = 0;
-    int tail_start = episodes - episodes / 10;   // 末段 10% 低探索统计
-    if (loaded > 0)
-        printf("  [load] %s: %zu entries — 继续训练\n", qpath.c_str(), loaded);
+    const std::string qpath = std::string("saves/rl_mirror_q_") +
+                              profile.style_name() + ".json";
+    rl_load_qtable(q_agent, qpath);
 
+    int wins = 0;
+    double total_r = 0;
+    int tail_wins = 0;
+    const int tail_start = episodes - episodes / 10;   // 末段 10% 低探索统计
     for (int i = 0; i < episodes; i++) {
-        // v0.9.29: epsilon 退火 — 后期低探索收敛
-        q_agent.set_epsilon(EPS_START - (EPS_START - EPS_END) * (double)i / episodes);
-        auto initial = rl_mirror_scenario(style_i);
-        initial.rng.seed = seed + style_i * 7919u + i * 7331u;
-        auto obs = env.reset(initial);
-        while (!env.is_done()) {
-            uint32_t local_seed = seed + style_i * 7331u + i * 7919u + env.state().depth;
-            auto a = q_agent.select(env.state(), local_seed);
-            auto sr = env.step(a);
-            // Mirror reward replaces default step reward
-            double base = sr.reward;
-            bool dodged = (a == mcts::CombatAction::MOVE_LEFT
-                        || a == mcts::CombatAction::MOVE_RIGHT
-                        || a == mcts::CombatAction::MOVE_UP
-                        || a == mcts::CombatAction::MOVE_DOWN);
-            double mirror_bonus = MirrorAgent::mirror_reward(
-                profile, (int)a, base, 0, dodged, false);
-            // v0.9.36 G32-E: bootstrap 只在下一状态合法动作里取 max (G32-E-B1)
-            q_agent.update(obs, a, base + mirror_bonus, sr.observation,
-                           mcts::get_possible_actions(env.state()),
-                           env.is_done());
-            obs = sr.observation;
-            total_r += base + mirror_bonus;
-        }
-        if (env.state().victory) { wins++; if (i >= tail_start) tail_wins++; }
+        const bool victory = rl_mirror_one_episode(q_agent, env, style_i, i,
+                                                   episodes, profile, total_r);
+        if (victory) { wins++; if (i >= tail_start) tail_wins++; }
     }
-    printf("  [%s] %d/%d wins (%.1f%%), avg_r=%.1f, Q=%zu\n",
-        profile.style_name(), wins, episodes, wins*100.0/episodes,
-        total_r/episodes, q_agent.table_size());
-    printf("  [tail %d eps] %d/%d wins (%.1f%%) — 低探索收敛水平\n",
-           episodes - tail_start, tail_wins, episodes - tail_start,
-           tail_wins*100.0/(episodes - tail_start));
-    if (q_agent.save(qpath))
-        printf("  [save] %s: %zu entries\n", qpath.c_str(), q_agent.table_size());
-    else
-        printf("  [save] FAILED: %s\n", qpath.c_str());
+
+    rl_print_train_result(profile.style_name(), wins, episodes, tail_wins,
+                          tail_start, total_r / episodes, q_agent.table_size());
+    rl_save_qtable(q_agent, qpath);
 }
 
 void run_rl_mirror_mode(int episodes) {
