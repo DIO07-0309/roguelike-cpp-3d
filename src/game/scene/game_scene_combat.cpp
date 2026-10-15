@@ -82,20 +82,10 @@ void GameSceneCombat::grantKillXp(Monster* m) {
                                         _s.player.get(), _s.player->level);
 }
 
-void GameSceneCombat::applyBossReward(Monster* m) {
-    if (!(m->is_boss && is_boss_floor(_s.current_floor))) return;
-    LOG_INFO("Boss击杀! %s - 第%d层", m->name.c_str(), _s.current_floor);
-    _s._boss.notify_death(_s._gameplay.world_state, _s._gameplay.rels, _s._gameplay.quest_mgr);
-    _s.get_tree()->get_audio()->play_sfx("victory");
-    _s._presentation.trigger_shake(CombatFeelSystem::SHAKE_BOSS);
-    _s._presentation.trigger_freeze(CombatFeelSystem::BOSS_HIT);
-    BuildType bt = calculate_build(_s.player.get()).identify();
-    const BossDialogue* dd = _s._boss.narrative.find_death(
-        _s.current_floor, _s._gameplay.world_state, bt);
-    if (dd && dd->death) {
-        _s._presentation.room_msg = dd->death;
-        _s._presentation.room_msg_timer = 3.0f;
-    }
+// ── G53: applyBossReward 拆出的三段 ─────────────────────────
+
+// 击杀播报 + 世界 flag / 关系奖励 (F5/F10/F15 三个节点各自的副作用)
+void GameSceneCombat::_apply_boss_kill_flags() {
     if (_s.current_floor == 5) {
         _s._gameplay.world_state.set(WorldFlag::Boss1_Defeated);
         _s._gameplay.story.boss_dead(5);
@@ -114,12 +104,33 @@ void GameSceneCombat::applyBossReward(Monster* m) {
         _s._gameplay.story.boss_dead(15);
         for (auto& r : _s._gameplay.rels.all()) _s._gameplay.rels.add_respect(r.npc_id, 2);
     }
+    // 完美结局前置: 三个 Boss 全清 + 未走黑暗路线 + 神官信任≥3
     if (_s._gameplay.world_state.has(WorldFlag::All_Boss_Defeated)
         && !_s._gameplay.world_state.has(WorldFlag::Accepted_Curse)
         && !_s._gameplay.world_state.has(WorldFlag::Blood_Ritual)
         && !_s._gameplay.world_state.has(WorldFlag::Merchant_Killed)
         && _s._gameplay.world_state.counter("priest_trust") >= 3)
         _s._gameplay.world_state.set(WorldFlag::True_Ending_Ready);
+}
+
+// 击杀反馈: 播报/音效/屏震/冻结 + 遗言
+void GameSceneCombat::_play_boss_death_feedback(Monster* m) {
+    LOG_INFO("Boss击杀! %s - 第%d层", m->name.c_str(), _s.current_floor);
+    _s._boss.notify_death(_s._gameplay.world_state, _s._gameplay.rels, _s._gameplay.quest_mgr);
+    _s.get_tree()->get_audio()->play_sfx("victory");
+    _s._presentation.trigger_shake(CombatFeelSystem::SHAKE_BOSS);
+    _s._presentation.trigger_freeze(CombatFeelSystem::BOSS_HIT);
+    BuildType bt = calculate_build(_s.player.get()).identify();
+    const BossDialogue* dd = _s._boss.narrative.find_death(
+        _s.current_floor, _s._gameplay.world_state, bt);
+    if (dd && dd->death) {
+        _s._presentation.room_msg = dd->death;
+        _s._presentation.room_msg_timer = 3.0f;
+    }
+}
+
+// 掉落 + 治疗 + 随机遗物 + 额外物品
+void GameSceneCombat::_grant_boss_drops(Monster* m) {
     _s._drop_boss_reward(m);
     int heal_amt = (int)(get_effective_max_hp(_s.player.get()) * 0.30f);
     heal_player(_s.player.get(), heal_amt);
@@ -145,6 +156,13 @@ void GameSceneCombat::applyBossReward(Monster* m) {
         auto [btx, bty] = _s.game_map->pixel_to_tile(m->entity.position.x, m->entity.position.y);
         _s.ground_items.push_back({extra_item, btx + 3, bty});
     }
+}
+
+void GameSceneCombat::applyBossReward(Monster* m) {
+    if (!(m->is_boss && is_boss_floor(_s.current_floor))) return;
+    _play_boss_death_feedback(m);
+    _apply_boss_kill_flags();
+    _grant_boss_drops(m);
 }
 
 void GameSceneCombat::applyNormalLoot(Monster* m) {
