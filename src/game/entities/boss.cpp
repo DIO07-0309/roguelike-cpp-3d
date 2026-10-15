@@ -539,68 +539,115 @@ void BossAI::_combo_fallback_melee(Monster* self, Player* player, double gt,
     _combo_advance();
 }
 
+// ── G53: _run_combo_command 拆出的 9 个命令实现 ──────────────
+// 每个都是"冷却中退普攻 → 置状态 → 置蓄力/复位 → VFX"的同构流程,
+// 差异只在用哪个技能指针和哪个 VFX 名。
+
+void BossAI::_combo_run_normal(Monster* self, Player* player, double gt,
+                               std::vector<Effect>* effects) {
+    if (self->can_attack(gt)) {
+        self->attack_target(player, gt);
+        _spawn_boss_vfx(self, "charge", effects);
+    }
+    _combo_advance();
+}
+
+void BossAI::_combo_run_charge(Monster* self, Player* player, double gt,
+                               std::vector<Effect>* effects) {
+    if (!_charge->can_use(gt)) { _combo_fallback_melee(self, player, gt, effects); return; }
+    boss_state = BossState::CHARGE;
+    _charge->windup_left = _charge->windup_time;
+    _charge->dash_duration = 0.0f;
+    _spawn_boss_vfx(self, "charge", effects);
+}
+
+void BossAI::_combo_run_shockwave(Monster* self, Player* player, double gt,
+                                  std::vector<Effect>* effects) {
+    if (!_shockwave->can_use(gt)) { _combo_fallback_melee(self, player, gt, effects); return; }
+    boss_state = BossState::SHOCKWAVE;
+    _shockwave->windup_left = _shockwave->windup_time;
+    _spawn_boss_vfx(self, "shockwave", effects);
+}
+
+void BossAI::_combo_run_summon(Monster* self, Player* player, double gt,
+                               std::vector<Effect>* effects) {
+    if (!_summon->can_use(gt)) { _combo_fallback_melee(self, player, gt, effects); return; }
+    boss_state = BossState::SUMMON;
+    _spawn_boss_vfx(self, "summon", effects);
+}
+
+void BossAI::_combo_run_defend(Monster* self, std::vector<Effect>* effects) {
+    boss_state = BossState::DEFEND;
+    _spawn_boss_vfx(self, "shockwave", effects);
+}
+
+void BossAI::_combo_run_ranged(Monster* self, Player* player, double gt,
+                               std::vector<Effect>* effects) {
+    if (!_barrage->can_use(gt)) { _combo_fallback_melee(self, player, gt, effects); return; }
+    boss_state = BossState::RANGED_BARRAGE;
+    _barrage->windup_left = _barrage->windup_time;
+    _barrage->shots.clear();
+    _barrage->fired = false;
+    _barrage->finished = false;
+    _barrage->reset_waves();      // M4b: 波次复位
+    _spawn_boss_vfx(self, "charge", effects);
+}
+
+void BossAI::_combo_run_cone(Monster* self, Player* player, double gt,
+                             std::vector<Effect>* effects) {
+    if (!_cone->can_use(gt)) { _combo_fallback_melee(self, player, gt, effects); return; }
+    boss_state = BossState::CONE_ATTACK;
+    _cone->windup_left = _cone->windup_time;
+    _spawn_boss_vfx(self, "shockwave", effects);
+}
+
+void BossAI::_combo_run_blink(Monster* self, Player* player, GameMap* map,
+                              double gt, std::vector<Effect>* effects) {
+    if (!_blink->can_use(gt)) { _combo_fallback_melee(self, player, gt, effects); return; }
+    boss_state = BossState::BLINK;
+    _blink->windup_left = _blink->windup_time;
+    _blink->blinked = false;
+    _blink->plan_destination(self, player, map);
+    _spawn_boss_vfx(self, "summon", effects);
+}
+
+void BossAI::_combo_run_whirlwind(Monster* self, Player* player, double gt,
+                                  std::vector<Effect>* effects) {
+    if (!_whirlwind->can_use(gt)) { _combo_fallback_melee(self, player, gt, effects); return; }
+    boss_state = BossState::WHIRLWIND;
+    _whirlwind->spin_duration = 0.0f;
+    _spawn_boss_vfx(self, "charge", effects);
+}
+
 void BossAI::_run_combo_command(BossCommand cmd, Monster* self, Player* player,
                                 GameMap* map, double gt, std::vector<Effect>* effects) {
     switch (cmd) {
     case BossCommand::NORMAL:
-        if (self->can_attack(gt)) {
-            self->attack_target(player, gt);
-            _spawn_boss_vfx(self, "charge", effects);
-        }
-        _combo_advance();
+        _combo_run_normal(self, player, gt, effects);
         break;
     case BossCommand::CHARGE:
-        // 收官: 冷却判定 — 冷却中退普攻
-        if (!_charge->can_use(gt)) { _combo_fallback_melee(self, player, gt, effects); break; }
-        boss_state = BossState::CHARGE;
-        _charge->windup_left = _charge->windup_time;
-        _charge->dash_duration = 0.0f;
-        _spawn_boss_vfx(self, "charge", effects);
+        _combo_run_charge(self, player, gt, effects);
         break;
     case BossCommand::SHOCKWAVE:
-        if (!_shockwave->can_use(gt)) { _combo_fallback_melee(self, player, gt, effects); break; }
-        boss_state = BossState::SHOCKWAVE;
-        _shockwave->windup_left = _shockwave->windup_time;
-        _spawn_boss_vfx(self, "shockwave", effects);
+        _combo_run_shockwave(self, player, gt, effects);
         break;
     case BossCommand::SUMMON:
-        if (!_summon->can_use(gt)) { _combo_fallback_melee(self, player, gt, effects); break; }
-        boss_state = BossState::SUMMON;
-        _spawn_boss_vfx(self, "summon", effects);
+        _combo_run_summon(self, player, gt, effects);
         break;
     case BossCommand::DEFEND:
-        boss_state = BossState::DEFEND;
-        _spawn_boss_vfx(self, "shockwave", effects);
+        _combo_run_defend(self, effects);
         break;
     case BossCommand::RANGED:
-        if (!_barrage->can_use(gt)) { _combo_fallback_melee(self, player, gt, effects); break; }
-        boss_state = BossState::RANGED_BARRAGE;
-        _barrage->windup_left = _barrage->windup_time;
-        _barrage->shots.clear();
-        _barrage->fired = false;
-        _barrage->finished = false;
-        _barrage->reset_waves();      // M4b: 波次复位
-        _spawn_boss_vfx(self, "charge", effects);
+        _combo_run_ranged(self, player, gt, effects);
         break;
     case BossCommand::CONE:
-        if (!_cone->can_use(gt)) { _combo_fallback_melee(self, player, gt, effects); break; }
-        boss_state = BossState::CONE_ATTACK;
-        _cone->windup_left = _cone->windup_time;
-        _spawn_boss_vfx(self, "shockwave", effects);
+        _combo_run_cone(self, player, gt, effects);
         break;
     case BossCommand::BLINK:
-        if (!_blink->can_use(gt)) { _combo_fallback_melee(self, player, gt, effects); break; }
-        boss_state = BossState::BLINK;
-        _blink->windup_left = _blink->windup_time;
-        _blink->blinked = false;
-        _blink->plan_destination(self, player, map);
-        _spawn_boss_vfx(self, "summon", effects);
+        _combo_run_blink(self, player, map, gt, effects);
         break;
     case BossCommand::WHIRLWIND:
-        if (!_whirlwind->can_use(gt)) { _combo_fallback_melee(self, player, gt, effects); break; }
-        boss_state = BossState::WHIRLWIND;
-        _whirlwind->spin_duration = 0.0f;
-        _spawn_boss_vfx(self, "charge", effects);
+        _combo_run_whirlwind(self, player, gt, effects);
         break;
     default:
         _combo_advance();

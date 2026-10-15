@@ -312,6 +312,24 @@ void _barrage_hit_fx(Monster* self, std::vector<Effect>* effects);
                             double dt, double gt, std::vector<Effect>* effects);
     void _run_combo_command(BossCommand cmd, Monster* self, Player* player,
                             GameMap* map, double gt, std::vector<Effect>* effects);
+    // G53: _run_combo_command 拆出的单命令执行 (冷却中退普攻 + 蓄力 VFX)
+    void _combo_run_normal(Monster* self, Player* player, double gt,
+                           std::vector<Effect>* effects);
+    void _combo_run_charge(Monster* self, Player* player, double gt,
+                           std::vector<Effect>* effects);
+    void _combo_run_shockwave(Monster* self, Player* player, double gt,
+                              std::vector<Effect>* effects);
+    void _combo_run_summon(Monster* self, Player* player, double gt,
+                           std::vector<Effect>* effects);
+    void _combo_run_defend(Monster* self, std::vector<Effect>* effects);
+    void _combo_run_ranged(Monster* self, Player* player, double gt,
+                           std::vector<Effect>* effects);
+    void _combo_run_cone(Monster* self, Player* player, double gt,
+                         std::vector<Effect>* effects);
+    void _combo_run_blink(Monster* self, Player* player, GameMap* map,
+                           double gt, std::vector<Effect>* effects);
+    void _combo_run_whirlwind(Monster* self, Player* player, double gt,
+                              std::vector<Effect>* effects);
     void _select_combo();
     void _combo_advance();
     void _combo_on_skill_end();
