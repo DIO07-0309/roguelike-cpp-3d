@@ -164,6 +164,50 @@ void ChallengeRoomController::mark_cleared() {
     _phase = ChallengePhase::CLEARED;
 }
 
+// ── G53: tick 拆出的 COMBAT 段 ──────────────────────────────
+
+// 清场后推进: 先 roll boss 波 (pity), 再决定继续波次还是结算通关
+void ChallengeRoomController::_tick_combat_phase(
+    float, GameMap* map, Player* player,
+    std::vector<std::unique_ptr<Monster>>& monsters,
+    int floor, uint32_t dungeon_seed, int room_index,
+    std::vector<DroppedItem>& ground_items, int* pity_streak) {
+    int alive = 0;
+    for (auto& m : monsters) {
+        if (m && m->combat.is_alive && _room_contains(
+            (int)(m->entity.rect.x / 32), (int)(m->entity.rect.y / 32))) {
+            alive++;
+        }
+    }
+    _monsters_alive_this_wave = alive;
+    if (alive > 0) return;
+
+    _current_wave++;
+    if (_current_wave == _total_waves && !_boss_wave_decided) {
+        _boss_wave_decided = true;
+        int streak = pity_streak ? *pity_streak : 0;
+        _boss_wave_pending = has_boss_wave(dungeon_seed, room_index, streak);
+        int next = _boss_wave_pending ? 0 : streak + 1;
+        if (pity_streak) *pity_streak = next;   // 回写由 GameScene 落盘
+        LOG_INFO("[CHALLENGE] Boss wave roll: %s (pity %d/%d)",
+                 _boss_wave_pending ? "HIT" : "miss",
+                 next, kBossWavePityMisses);
+    }
+    WaveAdvance adv = decide_advance(_current_wave, _total_waves, _boss_wave_pending);
+    if (adv == WaveAdvance::WAIT || adv == WaveAdvance::BOSS_WAIT) {
+        _wave_timer = 3.0f;
+        _phase = ChallengePhase::WAIT_NEXT_WAVE;
+        return;
+    }
+    // 通关: 发奖 + 回归传送门 + 标记 CLEARED
+    _phase = ChallengePhase::REWARD;
+    _grant_rewards(*player, map, floor, ground_items, _boss_wave_pending);
+    _return_portal_tx = _room_rx + _room_rw / 2;
+    _return_portal_ty = _room_ry + _room_rh / 2;
+    _phase = ChallengePhase::CLEARED;
+    LOG_INFO("[CHALLENGE] All waves cleared!");
+}
+
 void ChallengeRoomController::tick(
     float dt, GameMap* map, Player* player,
     std::vector<std::unique_ptr<Monster>>& monsters,
@@ -187,42 +231,8 @@ void ChallengeRoomController::tick(
 
     // COMBAT: count alive monsters from current wave
     if (_phase == ChallengePhase::COMBAT) {
-        int alive = 0;
-        for (auto& m : monsters) {
-            if (m && m->combat.is_alive && _room_contains(
-                (int)(m->entity.rect.x / 32), (int)(m->entity.rect.y / 32))) {
-                alive++;
-            }
-        }
-        _monsters_alive_this_wave = alive;
-
-        if (alive <= 0) {
-            _current_wave++;
-            if (_current_wave == _total_waves && !_boss_wave_decided) {
-                _boss_wave_decided = true;
-                int streak = pity_streak ? *pity_streak : 0;
-                _boss_wave_pending =
-                    has_boss_wave(dungeon_seed, room_index, streak);
-                int next = _boss_wave_pending ? 0 : streak + 1;
-                if (pity_streak) *pity_streak = next;   // 回写由 GameScene 落盘
-                LOG_INFO("[CHALLENGE] Boss wave roll: %s (pity %d/%d)",
-                         _boss_wave_pending ? "HIT" : "miss",
-                         next, kBossWavePityMisses);
-            }
-            WaveAdvance adv =
-                decide_advance(_current_wave, _total_waves, _boss_wave_pending);
-            if (adv == WaveAdvance::WAIT || adv == WaveAdvance::BOSS_WAIT) {
-                _wave_timer = 3.0f;
-                _phase = ChallengePhase::WAIT_NEXT_WAVE;
-            } else {
-                _phase = ChallengePhase::REWARD;
-                _grant_rewards(*player, map, floor, ground_items, _boss_wave_pending);
-                _return_portal_tx = _room_rx + _room_rw / 2;
-                _return_portal_ty = _room_ry + _room_rh / 2;
-                _phase = ChallengePhase::CLEARED;
-                LOG_INFO("[CHALLENGE] All waves cleared!");
-            }
-        }
+        _tick_combat_phase(dt, map, player, monsters, floor, dungeon_seed,
+                           room_index, ground_items, pity_streak);
         return;
     }
 

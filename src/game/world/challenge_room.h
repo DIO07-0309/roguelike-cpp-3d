@@ -157,6 +157,12 @@ private:
         GameMap* map, int floor, int wave_index, int slot_index,
         uint32_t wave_seed, const struct GrowthCurve& gc,
         const struct ChallengeModifier& mod);
+    // G53: tick 拆出的 COMBAT 段 (清场判定 → boss波roll → 推进/通关)
+    void _tick_combat_phase(
+        float dt, GameMap* map, Player* player,
+        std::vector<std::unique_ptr<Monster>>& monsters,
+        int floor, uint32_t dungeon_seed, int room_index,
+        std::vector<DroppedItem>& ground_items, int* pity_streak);
     void _spawn_boss_wave(GameMap* map,
                           std::vector<std::unique_ptr<Monster>>& monsters,
                           int floor);
