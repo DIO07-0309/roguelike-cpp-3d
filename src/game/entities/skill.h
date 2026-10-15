@@ -131,6 +131,17 @@ public:
     std::string get_level_text() const override;
 protected:
     void _on_level_up() override;
+    // G53: execute 拆出的三段 (目标筛选 / 主伤害+进化 / 除法分裂+buff)
+    std::vector<Monster*> _pick_fireball_targets(
+        Player* caster, const std::vector<Monster*>& alive, float range_px);
+    int _deal_fireball_damage(Player* caster, const std::vector<Monster*>& chosen,
+                              float base, float power, bool is_heavy);
+    int _deal_fireball_split(Player* caster, const std::vector<Monster*>& alive,
+                             const std::vector<Monster*>& chosen, float range_px,
+                             float base, float power);
+    std::string _apply_fireball_triggers(Player* caster,
+                                         const std::vector<Monster*>& chosen,
+                                         bool is_heavy);
     int _target_count = 1;
     float _range = 6.0f;
 };

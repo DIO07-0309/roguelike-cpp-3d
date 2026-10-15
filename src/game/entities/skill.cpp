@@ -314,11 +314,89 @@ void FireballSkill::_on_level_up() {
     _recalc_cooldown();
 }
 
+// ── G53: FireballSkill::execute 拆出的三段 ──────────────────
+
+// 目标筛选: 存活 -> 按距离排序 -> 取前 _target_count 个在射程内的
+std::vector<Monster*> FireballSkill::_pick_fireball_targets(
+    Player* caster, const std::vector<Monster*>& alive, float range_px) {
+    float pcx = caster->entity.rect.x + caster->entity.rect.width/2;
+    float pcy = caster->entity.rect.y + caster->entity.rect.height/2;
+    std::vector<Monster*> chosen;
+    for (auto* t : alive) {
+        if ((int)chosen.size() >= _target_count) break;
+        float d = hypotf(t->entity.rect.x + t->entity.rect.width/2 - pcx,
+                         t->entity.rect.y + t->entity.rect.height/2 - pcy);
+        if (d <= range_px) chosen.push_back(t);
+    }
+    return chosen;
+}
+
+// 主目标伤害: poison 叠加 (重击+进化 E2 各一层)
+int FireballSkill::_deal_fireball_damage(
+    Player* caster, const std::vector<Monster*>& chosen,
+    float base, float power, bool is_heavy) {
+    int total = 0;
+    for (auto* t : chosen) {
+        int dmg = calculate_damage((int)(base * power),
+            t->combat.get_effective_defense(AttackType::MAGICAL), AttackType::MAGICAL);
+        t->combat.take_damage(dmg);
+        total += dmg;
+        if (is_heavy) apply_buff(t, "poison", 2);
+        // D3 Step3 E2: 燃烧地面 → 命中目标+poison
+        if (evolution_level >= 2) apply_buff(t, "poison", 1);
+    }
+    return total;
+}
+
+// D3 Step3 E3: 分裂火球 — 最多 3 个非主目标敌人各吃 35% 伤害
+int FireballSkill::_deal_fireball_split(
+    Player* caster, const std::vector<Monster*>& alive,
+    const std::vector<Monster*>& chosen, float range_px,
+    float base, float power) {
+    if (evolution_level < 3) return 0;
+    float acx = caster->entity.rect.x + caster->entity.rect.width/2;
+    float acy = caster->entity.rect.y + caster->entity.rect.height/2;
+    int total = 0;
+    int split_count = 0;
+    for (auto* t : alive) {
+        if (split_count >= 3) break;
+        bool already = false;
+        for (auto* c : chosen) if (c == t) { already = true; break; }
+        if (already) continue;
+        float d = hypotf(t->entity.rect.x + t->entity.rect.width/2 - acx,
+                         t->entity.rect.y + t->entity.rect.height/2 - acy);
+        if (d <= range_px * 1.5f) {
+            int s_dmg = (int)(calculate_damage((int)(base * power * 0.35f),
+                t->combat.get_effective_defense(AttackType::MAGICAL), AttackType::MAGICAL));
+            t->combat.take_damage(s_dmg);
+            total += s_dmg;
+            split_count++;
+        }
+    }
+    return total;
+}
+
+// Buff 触发规则: 只对 chosen[0] 判一次, 返回展示用文本
+std::string FireballSkill::_apply_fireball_triggers(
+    Player* caster, const std::vector<Monster*>& chosen, bool is_heavy) {
+    std::string extra;
+    for (auto& tr : triggers) {
+        if (tr.target == BuffTarget::ENEMY
+            && (tr.chance >= 1.0f || (float)(rng() % 1000) / 1000.0f < tr.chance)) {
+            int stacks = is_heavy ? (tr.stacks + 1) : tr.stacks;
+            apply_buff(chosen[0], tr.buff_id, stacks);
+            extra += " " + chosen[0]->name + get_buff_display_name(tr.buff_id) + "!";
+        }
+    }
+    return extra;
+}
+
 std::string FireballSkill::execute(Player* caster, std::vector<Monster*>& targets,
                                     GameMap*, bool is_heavy) {
     std::vector<Monster*> alive;
     for (auto* t : targets) if (t && t->combat.is_alive) alive.push_back(t);
 
+    // 按距离排序 (近的优先, 保证选目标确定性)
     float pcx = caster->entity.rect.x + caster->entity.rect.width/2;
     float pcy = caster->entity.rect.y + caster->entity.rect.height/2;
     std::sort(alive.begin(), alive.end(), [&](Monster* a, Monster* b) {
@@ -333,62 +411,19 @@ std::string FireballSkill::execute(Player* caster, std::vector<Monster*>& target
     // D3 Step3 E1: 半径+40%
     if (evolution_level >= 1) frng *= 1.4f;
     float range_px = frng * 32.0f;
-    std::vector<Monster*> chosen;
-    for (auto* t : alive) {
-        if ((int)chosen.size() >= _target_count) break;
-        float d = hypotf(t->entity.rect.x + t->entity.rect.width/2 - pcx,
-                         t->entity.rect.y + t->entity.rect.height/2 - pcy);
-        if (d <= range_px) chosen.push_back(t);
-    }
+
+    std::vector<Monster*> chosen = _pick_fireball_targets(caster, alive, range_px);
     if (chosen.empty()) return is_heavy ? "重·神罚没有击中任何目标" : "神罚没有击中任何目标";
 
     // G9.3: Crossbow MARKED synergy → +35% damage
     float synergy_mul = (caster->last_attack.primary_tag == AttackTag::MARKED) ? 1.35f : 1.0f;
-    int total = 0;
     float base = get_effective_attack(caster) * 2.5f;
     float power = get_power_multiplier() * synergy_mul;
-    for (auto* t : chosen) {
-        int dmg = calculate_damage((int)(base * power),
-            t->combat.get_effective_defense(AttackType::MAGICAL), AttackType::MAGICAL);
-        t->combat.take_damage(dmg);
-        total += dmg;
-        if (is_heavy) apply_buff(t, "poison", 2);
-        // D3 Step3 E2: 燃烧地面 → 命中目标+poison
-        if (evolution_level >= 2) apply_buff(t, "poison", 1);
-    }
 
-    // D3 Step3 E3: 分裂火球 — 对所有非主目标敌人施加35%伤害
-    if (evolution_level >= 3) {
-        int split_count = 0;
-        for (auto* t : alive) {
-            if (split_count >= 3) break;
-            bool already = false;
-            for (auto* c : chosen) if (c == t) { already = true; break; }
-            if (already) continue;
-            float d = hypotf(t->entity.rect.x + t->entity.rect.width/2 - pcx,
-                             t->entity.rect.y + t->entity.rect.height/2 - pcy);
-            if (d <= range_px * 1.5f) {
-                int s_dmg = (int)(calculate_damage((int)(base * power * 0.35f),
-                    t->combat.get_effective_defense(AttackType::MAGICAL), AttackType::MAGICAL));
-                t->combat.take_damage(s_dmg);
-                total += s_dmg;
-                split_count++;
-            }
-        }
-    }
+    int total = _deal_fireball_damage(caster, chosen, base, power, is_heavy);
+    total += _deal_fireball_split(caster, alive, chosen, range_px, base, power);
 
-    // Buff 触发规则
-    std::string extra;
-    if (!chosen.empty()) {
-        for (auto& tr : triggers) {
-            if (tr.target == BuffTarget::ENEMY
-                && (tr.chance >= 1.0f || (float)(rng() % 1000) / 1000.0f < tr.chance)) {
-                int stacks = is_heavy ? (tr.stacks + 1) : tr.stacks;
-                apply_buff(chosen[0], tr.buff_id, stacks);
-                extra += " " + chosen[0]->name + get_buff_display_name(tr.buff_id) + "!";
-            }
-        }
-    }
+    std::string extra = _apply_fireball_triggers(caster, chosen, is_heavy);
     std::string label = (is_heavy ? "重·" : "") + std::string("神罚Lv") + std::to_string(level);
     return label + " 命中 " + std::to_string(chosen.size())
            + " 目标，造成 " + std::to_string(total) + " 伤害" + extra
