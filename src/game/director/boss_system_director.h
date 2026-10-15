@@ -117,6 +117,10 @@ private:
     void notify_death_ev(const struct GameEvent&);
     bool _mirror_stats_logged = false;              // 验收: 战斗统计只导出一 次
     void _tick_domain_state(float dt, Monster* boss);  // F10.1
+    // G53: tick 拆出的两段 (Boss 上下文构建 / Arena 生成)
+    BossContext _build_boss_context(Monster* boss, Player* player,
+                                    StoryStage stage) const;
+    void _tick_arena_spawn(float dt, Monster* boss, Player* player);
     void _spawn_domain_core(Monster* boss);             // F10.2
     bool _enraged = false;                              // M4d-fix: 狂暴领域标记
     void _tick_core_phase(float dt, Monster* boss, float max_duration);  // M4d-fix

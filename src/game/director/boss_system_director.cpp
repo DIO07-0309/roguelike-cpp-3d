@@ -353,13 +353,11 @@ void BossSystemDirector::hook_phase_banner(
             });
 }
 
-void BossSystemDirector::tick(float dt, Monster* boss, Player* player, int floor,
-    float game_time, const WorldState& ws, const RelationshipSystem& rels,
-    StoryStage stage, std::vector<std::unique_ptr<Monster>>& monsters,
-    std::vector<Effect>* effects) {
-    if (!boss || !boss->is_boss) return;
+// ── G53: tick 拆出的两段 ────────────────────────────────────
 
-    // Build context for behavior evaluation
+// 构建行为评估上下文 (血量/距离/玩家状态/build/阶段)
+BossContext BossSystemDirector::_build_boss_context(Monster* boss, Player* player,
+                                                    StoryStage stage) const {
     BossContext ctx;
     ctx.hp_pct = (float)boss->combat.current_hp / boss->combat.max_hp;
     ctx.dist_tiles = hypotf(
@@ -372,6 +370,37 @@ void BossSystemDirector::tick(float dt, Monster* boss, Player* player, int floor
     ctx.last_stand       = evolution.last_stand_triggered;
     ctx.build = calculate_build(player).identify();
     ctx.stage = stage;
+    return ctx;
+}
+
+// Arena 生成 — 阶段驱动间隔加速 (M4b)
+void BossSystemDirector::_tick_arena_spawn(float dt, Monster* boss,
+                                           Player* player) {
+    if (!_arena_cfg || _arena_cfg->danger_type == "none") return;
+    _arena_spawn_timer += dt;
+    float effective_interval = _arena_cfg->spawn_interval * _arena_spawn_mult;
+    if (_arena_spawn_timer < effective_interval) return;
+    _arena_spawn_timer = 0.0f;
+
+    ArenaEvent ev;
+    ev.type     = ArenaEventType::SPAWN_ZONE;
+    ev.count    = 1;
+    ev.duration = _arena_cfg->zone_duration;
+    float bx = boss->entity.rect.x + boss->entity.rect.width / 2;
+    float by = boss->entity.rect.y + boss->entity.rect.height / 2;
+    float px = player->entity.rect.x + player->entity.rect.width / 2;
+    float py = player->entity.rect.y + player->entity.rect.height / 2;
+    arena.execute_event(ev, *_arena_cfg, bx, by, px, py);
+}
+
+void BossSystemDirector::tick(float dt, Monster* boss, Player* player, int floor,
+    float game_time, const WorldState& ws, const RelationshipSystem& rels,
+    StoryStage stage, std::vector<std::unique_ptr<Monster>>& monsters,
+    std::vector<Effect>* effects) {
+    if (!boss || !boss->is_boss) return;
+
+    // Build context for behavior evaluation
+    BossContext ctx = _build_boss_context(boss, player, stage);
 
     behavior.personality = boss_personality_for_floor(floor);
     behavior.memory.tick(dt, false);
@@ -389,22 +418,7 @@ void BossSystemDirector::tick(float dt, Monster* boss, Player* player, int floor
     cinematic.tick(dt);
 
     // ── G2.3 + M4b: Arena 生成 — 阶段驱动间隔加速 ──
-    if (_arena_cfg && _arena_cfg->danger_type != "none") {
-        _arena_spawn_timer += dt;
-        float effective_interval = _arena_cfg->spawn_interval * _arena_spawn_mult;
-        if (_arena_spawn_timer >= effective_interval) {
-            _arena_spawn_timer = 0.0f;
-            ArenaEvent ev;
-            ev.type     = ArenaEventType::SPAWN_ZONE;
-            ev.count    = 1;
-            ev.duration = _arena_cfg->zone_duration;
-            float bx = boss->entity.rect.x + boss->entity.rect.width / 2;
-            float by = boss->entity.rect.y + boss->entity.rect.height / 2;
-            float px = player->entity.rect.x + player->entity.rect.width / 2;
-            float py = player->entity.rect.y + player->entity.rect.height / 2;
-            arena.execute_event(ev, *_arena_cfg, bx, by, px, py);
-        }
-    }
+    _tick_arena_spawn(dt, boss, player);
     arena.tick(dt, player, monsters);
 
     // ══════════════════════════════════════════════════════
