@@ -2,6 +2,7 @@
 #include "weather_system.h"
 #include "core/logger.h"
 #include <cstring>
+#include <unordered_map>
 
 namespace Game {
 
@@ -111,6 +112,27 @@ void WeatherSystem::spawn_particles(float dt) {
     }
 }
 
+// G53: 每种天气的粒子外观表 (原 5 个 case 的 switch)
+// 未知类型不在表内 → 保持默认 (不额外设置颜色/速度)
+struct WeatherParticleStyle {
+    unsigned char r, g, b, a;
+    float fall_speed;   // y 方向速度 (向下为负)
+    float size;
+    float max_life;
+};
+
+static const std::unordered_map<WeatherType, WeatherParticleStyle>&
+weather_particle_styles() {
+    static const std::unordered_map<WeatherType, WeatherParticleStyle> styles = {
+        {WeatherType::RAIN,  {150, 200, 255, 220, -180.0f, 0.8f, 1.5f}},  // 雨滴蓝
+        {WeatherType::SNOW,  {255, 255, 255, 230,  -30.0f, 1.5f, 5.0f}},  // 雪白
+        {WeatherType::ASH,   { 80,  60,  50, 210,  -20.0f, 1.2f, 4.0f}},  // 灰烬棕
+        {WeatherType::DUST,  {180, 160, 140, 160,  -15.0f, 0.8f, 6.0f}},  // 灰尘灰
+        {WeatherType::SPORE, {120, 200, 100, 210,  -25.0f, 1.3f, 4.5f}},  // 孢子绿
+    };
+    return styles;
+}
+
 void WeatherSystem::spawn_single_particle() {
     // 找一个不活跃的粒子
     for (auto& p : _particles) {
@@ -125,51 +147,22 @@ void WeatherSystem::spawn_single_particle() {
             p.size = 1.0f;
             p.max_life = 3.0f;
             p.life = 0.0f;
-            
+
             // 根据天气类型设置颜色和速度
-            switch (_current_weather) {
-                case WeatherType::RAIN:
-                    p.color = Color{150, 200, 255, 220};  // 雨滴蓝
-                    p.velocity = {0, -180, 0};  // 快速下落
-                    p.size = 0.8f;
-                    p.max_life = 1.5f;
-                    break;
-                    
-                case WeatherType::SNOW:
-                    p.color = Color{255, 255, 255, 230};  // 雪白
-                    p.velocity = {0, -30, 0};  // 缓慢下落
-                    p.size = 1.5f;
-                    p.max_life = 5.0f;
-                    break;
-                    
-                case WeatherType::ASH:
-                    p.color = Color{80, 60, 50, 210};  // 灰烬棕
-                    p.velocity = {0, -20, 0};  // 缓慢下落
-                    p.size = 1.2f;
-                    p.max_life = 4.0f;
-                    break;
-                    
-                case WeatherType::DUST:
-                    p.color = Color{180, 160, 140, 160};  // 灰尘灰
-                    p.velocity = {0, -15, 0};  // 非常缓慢
-                    p.size = 0.8f;
-                    p.max_life = 6.0f;
-                    break;
-                    
-                case WeatherType::SPORE:
-                    p.color = Color{120, 200, 100, 210};  // 孢子绿
-                    p.velocity = {0, -25, 0};  // 缓慢下落
-                    p.size = 1.3f;
-                    p.max_life = 4.5f;
-                    break;
-                    
-                default: break;
+            const auto& styles = weather_particle_styles();
+            auto it = styles.find(_current_weather);
+            if (it != styles.end()) {
+                const WeatherParticleStyle& s = it->second;
+                p.color = Color{s.r, s.g, s.b, s.a};
+                p.velocity = {0, s.fall_speed, 0};
+                p.size = s.size;
+                p.max_life = s.max_life;
             }
-            
+
             // 添加随机横向漂移
             p.velocity.x += (_dist(_rng) - 0.5f) * 20.0f;
             p.velocity.z += (_dist(_rng) - 0.5f) * 20.0f;
-            
+
             return;
         }
     }
