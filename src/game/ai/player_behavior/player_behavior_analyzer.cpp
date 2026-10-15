@@ -8,21 +8,17 @@ int PlayerBehaviorAnalyzer::count_type(const std::vector<PlayerAction>& h,
     return n;
 }
 
-PlayerHabitProfile PlayerBehaviorAnalyzer::analyze(
-    const std::vector<PlayerAction>& history) {
-    PlayerHabitProfile p;
-    if (history.empty()) return p;
+// ── G53: analyze 拆出的统计段 ──────────────────────────────
 
-    float total_t = history.back().timestamp - history.front().timestamp;
-    if (total_t <= 0.1f) total_t = 1.0f;
-    p.total_actions = (int)history.size();
-
-    int atk  = count_type(history, PlayerActionType::ATTACK);
-    int sk   = count_type(history, PlayerActionType::SKILL);
-    int mov  = count_type(history, PlayerActionType::MOVE);
-    int dodge = count_type(history, PlayerActionType::DODGE);
-    int heal = count_type(history, PlayerActionType::HEAL);
-    int dmg  = count_type(history, PlayerActionType::TAKE_DAMAGE);
+// 频率类: 攻击/技能/治疗频率 + 闪避率 + 攻击性 + 技能偏好分布
+void PlayerBehaviorAnalyzer::_compute_frequencies(
+    const std::vector<PlayerAction>& h, PlayerHabitProfile& p, float total_t) {
+    int atk  = count_type(h, PlayerActionType::ATTACK);
+    int sk   = count_type(h, PlayerActionType::SKILL);
+    int mov  = count_type(h, PlayerActionType::MOVE);
+    int dodge = count_type(h, PlayerActionType::DODGE);
+    int heal = count_type(h, PlayerActionType::HEAL);
+    (void)mov;
 
     p.attack_frequency = (float)atk / total_t;
     p.skill_frequency  = (float)sk / total_t;
@@ -36,15 +32,18 @@ PlayerHabitProfile PlayerBehaviorAnalyzer::analyze(
 
     // Skill preference
     int sk_counts[4] = {};
-    for (auto& a : history)
+    for (auto& a : h)
         if (a.type == PlayerActionType::SKILL && a.skill_id >= 0 && a.skill_id < 4)
             sk_counts[a.skill_id]++;
     for (int i = 0; i < 4; i++)
         if (sk > 0) p.skill_preference[i] = (float)sk_counts[i] / (float)sk;
+}
 
-    // Movement: left/right bias
+// 移动类: 左右偏向 + 后撤率 (都基于 MOVE 总数归一)
+void PlayerBehaviorAnalyzer::_compute_movement(
+    const std::vector<PlayerAction>& h, PlayerHabitProfile& p) {
     int lr = 0, rl = 0, total_dir = 0;
-    for (auto& a : history) {
+    for (auto& a : h) {
         if (a.type != PlayerActionType::MOVE) continue;
         total_dir++;
         if (a.value == 0) lr++; else if (a.value == 1) rl++;
@@ -53,25 +52,32 @@ PlayerHabitProfile PlayerBehaviorAnalyzer::analyze(
 
     // Retreat rate: moves AWAY from target (moves up when player faces down = retreat)
     int retreat = 0;
-    for (auto& a : history)
+    for (auto& a : h)
         if (a.type == PlayerActionType::MOVE && a.value == 2) retreat++;
     if (total_dir > 0) p.retreat_rate = (float)retreat / (float)total_dir;
+}
 
+// 距离与伤害: 平均交战距离(像素) + 每层平均承伤
+void PlayerBehaviorAnalyzer::_compute_distance_damage(
+    const std::vector<PlayerAction>& h, PlayerHabitProfile& p) {
     // Average combat distance to nearest enemy (pixels) — 修复: 此前从未计算 (恒0)
     float dist_sum = 0.0f; int dist_n = 0;
-    for (auto& a : history)
+    for (auto& a : h)
         if (a.enemy_dist >= 0.0f) { dist_sum += a.enemy_dist; dist_n++; }
     if (dist_n > 0) p.average_distance = dist_sum / (float)dist_n * 32.0f;
 
     // Average damage taken per floor — 修正: 原为 atk/dmg 计数比率, 语义错误 (应为伤害量)
-    if (dmg > 0 && history.back().floor > 0) {
+    int dmg = count_type(h, PlayerActionType::TAKE_DAMAGE);
+    if (dmg > 0 && h.back().floor > 0) {
         float dmg_sum = 0.0f;
-        for (auto& a : history)
+        for (auto& a : h)
             if (a.type == PlayerActionType::TAKE_DAMAGE) dmg_sum += (float)a.value;
-        p.avg_damage_taken = dmg_sum / (float)history.back().floor;
+        p.avg_damage_taken = dmg_sum / (float)h.back().floor;
     }
+}
 
-    // Style classification
+// 风格分类 (四档阈值原样保留)
+void PlayerBehaviorAnalyzer::_classify_style(PlayerHabitProfile& p) {
     if (p.attack_frequency > 0.8f && p.dodge_rate < 0.15f)
         p.style = PlayerStyle::AGGRESSIVE;
     else if (p.dodge_rate > 0.3f && p.attack_frequency < 0.4f)
@@ -80,6 +86,21 @@ PlayerHabitProfile PlayerBehaviorAnalyzer::analyze(
         p.style = PlayerStyle::SNIPER;
     else if (p.skill_frequency > 0.15f)
         p.style = PlayerStyle::MAGE;
+}
+
+PlayerHabitProfile PlayerBehaviorAnalyzer::analyze(
+    const std::vector<PlayerAction>& history) {
+    PlayerHabitProfile p;
+    if (history.empty()) return p;
+
+    float total_t = history.back().timestamp - history.front().timestamp;
+    if (total_t <= 0.1f) total_t = 1.0f;
+    p.total_actions = (int)history.size();
+
+    _compute_frequencies(history, p, total_t);
+    _compute_movement(history, p);
+    _compute_distance_damage(history, p);
+    _classify_style(p);
 
     generate_counter_hints(p);
 
