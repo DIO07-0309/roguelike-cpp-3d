@@ -217,6 +217,8 @@ private:
     // G13: 卡死脱困 — 原地 ≥2s 四方向脱困, ≥8s 兜底传送; "" = 未进入脱困
     std::string _stuck_escape(const Player* p, const std::vector<Monster*>& monsters,
         const GameMap* map) const;
+    // G53: _stuck_escape 抽出的预算判定 (累计卡死超预算 → 强制结算)
+    bool _stuck_over_budget(float stuck_for) const;
     // G14b: 卡死进展信号 — 玩家移动>2格/怪HP变化/玩家HP变化/怪死亡 (任一=非卡死)
     bool _stuck_progress(const Player* p, const std::vector<Monster*>& monsters,
         int tx, int ty) const;

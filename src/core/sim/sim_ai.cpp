@@ -1053,6 +1053,14 @@ std::string DecisionAgent::_stuck_tp_or_pull(const Player* p,
 }
 
 // G13: 卡死脱困编排 — 返回脱困动作; "" = 未进入脱困 (交给常规评分)
+// G53: 累计卡死是否超预算 (超了置看门狗标志并返回 true)
+bool DecisionAgent::_stuck_over_budget(float stuck_for) const {
+    if (_stuck_total + stuck_for <= kStuckTotalBudget) return false;
+    sim_stuck_watchdog = 1;
+    LOG_INFO("[SIM] 卡死看门狗: 累计 %.0fs → 强制结算", _stuck_total + stuck_for);
+    return true;
+}
+
 std::string DecisionAgent::_stuck_escape(const Player* p,
     const std::vector<Monster*>& monsters, const GameMap* map) const {
     if (!p || !map) return "";
@@ -1074,11 +1082,7 @@ std::string DecisionAgent::_stuck_escape(const Player* p,
     }
     float stuck_for = std::max(0.0f, (float)_game_time - _stuck_since);
     if (stuck_for > sim_stuck_for_max) sim_stuck_for_max = stuck_for;   // G26
-    if (_stuck_total + stuck_for > kStuckTotalBudget) {   // 累计卡死超预算
-        sim_stuck_watchdog = 1;
-        LOG_INFO("[SIM] 卡死看门狗: 累计 %.0fs → 强制结算", _stuck_total + stuck_for);
-        return "none";
-    }
+    if (_stuck_over_budget(stuck_for)) return "none";
     std::string tp = _stuck_tp_or_pull(p, monsters, map, tx, ty, stuck_for);
     if (!tp.empty()) return tp;
     if (stuck_for <= 2.0f) return "";
