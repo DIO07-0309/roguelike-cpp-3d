@@ -170,7 +170,12 @@ private:
     // Q3.2: BFS 寻路辅助 — 返回第一步方向 (0-3, -1=不可达)
     int _bfs_toward(const Player* p, const std::vector<Monster*>& monsters,
                     const GameMap* map, bool avoid_hazard) const;
-    int _bfs_away(const Player* p, const Monster* t, const GameMap* map,
+    // G53: _bfs_toward 抽出的目标标记段 (卡墙怪的邻居也算可达目标)
+    static void _bfs_mark_monster_targets(
+        const GameMap* map, const std::vector<Monster*>& monsters,
+        int w, int h, std::vector<char>& is_target);
+    int _bfs_first_step(const GameMap* map, int sx, int sy, int w, int h,
+                       const std::vector<char>& is_target, bool avoid_hazard) const;    int _bfs_away(const Player* p, const Monster* t, const GameMap* map,
                   bool avoid_hazard) const;
     // Q3.2: 轴贪心兜底 — BFS 无路时直行逼近 (精确rect校验+避毒)
     int _greedy_step(const Player* p, const Monster* t, const GameMap* map) const;
@@ -256,6 +261,9 @@ public:
     // Q3.15 (A6 fix): 需要 game_time 计算真实剩余冷却 (原伪造常量导致根节点永久禁用普攻)
     static mcts::SimulationState build_sim_state(
         const Player* player, const std::vector<Monster*>& monsters, double game_time);
+
+    // G53: build_sim_state 抽出的怪物快照段 (type/hp/防御/位置/boss 标记)
+    static void _append_monster_snapshot(mcts::SimulationState& s, const Monster* m);
 };
 
 // ── Backward compat alias ──

@@ -73,6 +73,25 @@ static const double kStuckTotalBudget = 120.0;
 static const float  kTeleportCooldown = 1.0f;
 
 // G8.3: Build SimulationState snapshot from live game state
+// ── G53: build_sim_state 抽出的怪物快照段 ───────────────────
+
+// 把一只存活怪拍平成 6 字段快照 (type/hp/攻防/位置/boss 标记)
+void DecisionAgent::_append_monster_snapshot(mcts::SimulationState& s,
+                                             const Monster* m) {
+    mcts::MonsterSnapshot ms;
+    ms.type = m->name;
+    ms.hp = (float)m->combat.current_hp;
+    ms.max_hp = (float)m->combat.max_hp;
+    ms.x = m->entity.rect.x / 32.0f;
+    ms.y = m->entity.rect.y / 32.0f;
+    ms.attack = m->combat.attack;
+    ms.pdef = m->combat.physical_defense;
+    ms.mdef = m->combat.magical_defense;
+    ms.alive = true;      // 调用方已过滤 is_alive
+    ms.is_boss = m->is_boss;
+    s.monsters.push_back(ms);
+}
+
 mcts::SimulationState DecisionAgent::build_sim_state(
     const Player* player, const std::vector<Monster*>& monsters, double game_time) {
     mcts::SimulationState s;
@@ -103,21 +122,8 @@ mcts::SimulationState DecisionAgent::build_sim_state(
         if (b.stacks > 0)
             p.buffs.push_back({b.id, b.stacks, b.remaining});
 
-    for (auto* m : monsters) {
-        if (!m || !m->combat.is_alive) continue;
-        mcts::MonsterSnapshot ms;
-        ms.type = m->name;
-        ms.hp = (float)m->combat.current_hp;
-        ms.max_hp = (float)m->combat.max_hp;
-        ms.x = m->entity.rect.x / 32.0f;
-        ms.y = m->entity.rect.y / 32.0f;
-        ms.attack = m->combat.attack;
-        ms.pdef = m->combat.physical_defense;
-        ms.mdef = m->combat.magical_defense;
-        ms.alive = true;
-        ms.is_boss = m->is_boss;
-        s.monsters.push_back(ms);
-    }
+    for (auto* m : monsters)
+        if (m && m->combat.is_alive) _append_monster_snapshot(s, m);
     s.rng.seed = (uint32_t)(int)(player->entity.rect.x * 1000 + player->entity.rect.y);
     return s;
 }
@@ -542,18 +548,13 @@ int DecisionAgent::_bfs_to_stairs(const Player* p, const GameMap* map) const {
 }
 
 // Q3.2: BFS 寻路 — 从玩家所在格出发, 找最近可达的存活怪物, 返回第一步方向 (0-3, -1=不可达)
-int DecisionAgent::_bfs_toward(const Player* p,
-    const std::vector<Monster*>& monsters, const GameMap* map, bool avoid_hazard) const {
-    if (!map || !p) return -1;
-    int w = map->width, h = map->height;
-    auto [sx, sy] = map->pixel_to_tile(
-        p->entity.rect.x + p->entity.rect.width/2,
-        p->entity.rect.y + p->entity.rect.height/2);
-    // Q3.13: 钳制玩家瓦片 — 位置可能出图(边缘传送), 否则 first[] 越界写堆损坏
-    if (sx < 0) sx = 0; else if (sx >= w) sx = w - 1;
-    if (sy < 0) sy = 0; else if (sy >= h) sy = h - 1;
-    const int N = w * h;
-    std::vector<char> is_target((size_t)N, 0);
+// ── G53: _bfs_toward 抽出的两段 ─────────────────────────────
+
+// 标记怪物 tile 为 BFS 目标; 卡墙/异常位置的怪则标记其可走邻居,
+// 否则 BFS 永远踏不上怪 tile → is_target 不命中 → 怪不可达 → 死局
+void DecisionAgent::_bfs_mark_monster_targets(
+    const GameMap* map, const std::vector<Monster*>& monsters,
+    int w, int h, std::vector<char>& is_target) {
     for (auto* m : monsters) {
         if (!m || !m->combat.is_alive) continue;
         auto [tx, ty] = map->pixel_to_tile(
@@ -561,8 +562,7 @@ int DecisionAgent::_bfs_toward(const Player* p,
             m->entity.rect.y + m->entity.rect.height/2);
         // Q3.13: 越界怪跳过 — 击退/传送可使位置出图, 否则 is_target 越界写堆损坏
         if (tx < 0 || tx >= w || ty < 0 || ty >= h) continue;
-        // G14: 怪 tile 不可走(卡墙/位置异常) → 标记其可走邻居为可达目标,
-        //       否则 BFS 永远踏不上怪 tile → is_target 不命中 → 怪不可达 → 死局
+        // G14: 怪 tile 不可走 → 标记其可走邻居为可达目标
         if (_tile_rect_walkable(map, tx, ty)) {
             is_target[ty * w + tx] = 1;
         } else {
@@ -574,7 +574,15 @@ int DecisionAgent::_bfs_toward(const Player* p,
             }
         }
     }
-    std::vector<int> first((size_t)N, -2);  // 从起点出发的第一步方向, -1=起点, -2=未访问
+}
+
+// BFS 主循环: first[] 记从起点出发的第一步方向, 命中目标即返回
+int DecisionAgent::_bfs_first_step(const GameMap* map, int sx, int sy,
+                                   int w, int h,
+                                   const std::vector<char>& is_target,
+                                   bool avoid_hazard) const {
+    const int N = w * h;
+    std::vector<int> first((size_t)N, -2);  // -1=起点, -2=未访问
     std::queue<int> q;
     first[sy * w + sx] = -1;
     q.push(sy * w + sx);
@@ -594,6 +602,24 @@ int DecisionAgent::_bfs_toward(const Player* p,
         }
     }
     return -1;
+}
+
+int DecisionAgent::_bfs_toward(const Player* p,
+    const std::vector<Monster*>& monsters, const GameMap* map, bool avoid_hazard) const {
+    if (!map || !p) return -1;
+    int w = map->width, h = map->height;
+    auto [sx, sy] = map->pixel_to_tile(
+        p->entity.rect.x + p->entity.rect.width/2,
+        p->entity.rect.y + p->entity.rect.height/2);
+    // Q3.13: 钳制玩家瓦片 — 位置可能出图(边缘传送), 否则 first[] 越界写堆损坏
+    if (sx < 0) sx = 0; else if (sx >= w) sx = w - 1;
+    if (sy < 0) sy = 0; else if (sy >= h) sy = h - 1;
+
+    const int N = w * h;
+    std::vector<char> is_target((size_t)N, 0);
+    _bfs_mark_monster_targets(map, monsters, w, h, is_target);
+
+    return _bfs_first_step(map, sx, sy, w, h, is_target, avoid_hazard);
 }
 
 // Q3.2: BFS 远离 — 从目标怪所在格 BFS 整图, 返回玩家 4 邻居中距怪最远的方向 (0-3, -1=全堵)
