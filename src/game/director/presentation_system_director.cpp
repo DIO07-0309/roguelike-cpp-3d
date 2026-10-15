@@ -138,15 +138,8 @@ void PresentationSystemDirector::tick(float dt) {
     }
 }
 
-void PresentationSystemDirector::init_events() {
-    EventBus::inst().subscribe(GameEventType::PLAYER_LEVEL_UP,
-        [](const GameEvent& ev) {
-            (void)ev;  // reserved: 升级特效
-        }, "Presentation", this);
-    EventBus::inst().subscribe(GameEventType::MONSTER_DIED,
-        [](const GameEvent& ev) {
-            (void)ev;  // reserved: 击杀飘字/震动
-        }, "Presentation", this);
+// G53: 普攻进化 toast (Lv2 剑气 / Lv3 旋风斩)
+void PresentationSystemDirector::subscribe_attack_evolved_toast() {
     // G1: 普攻进化 — 弹 toast 消息
     EventBus::inst().subscribe(GameEventType::ATTACK_EVOLVED,
         [](const GameEvent& ev) {
@@ -161,6 +154,10 @@ void PresentationSystemDirector::init_events() {
                 pres->show_message(buf, 2.5f);
             }
         }, "Presentation", this);
+}
+
+// G53: 技能进化 toast + 首次进化教学 (跨 run 一次)
+void PresentationSystemDirector::subscribe_skill_evolved_toast() {
     // G1 Step3: 技能进化 — 弹 toast
     EventBus::inst().subscribe(GameEventType::SKILL_EVOLVED,
         [](const GameEvent& ev) {
@@ -183,6 +180,20 @@ void PresentationSystemDirector::init_events() {
                 }
             }
         }, "Presentation", this);
+}
+
+void PresentationSystemDirector::init_events() {
+    EventBus::inst().subscribe(GameEventType::PLAYER_LEVEL_UP,
+        [](const GameEvent& ev) {
+            (void)ev;  // reserved: 升级特效
+        }, "Presentation", this);
+    EventBus::inst().subscribe(GameEventType::MONSTER_DIED,
+        [](const GameEvent& ev) {
+            (void)ev;  // reserved: 击杀飘字/震动
+        }, "Presentation", this);
+
+    subscribe_attack_evolved_toast();
+    subscribe_skill_evolved_toast();
     // G1 Step4: Boss 规则激活 — 弹 toast
     EventBus::inst().subscribe(GameEventType::BOSS_RULE_ACTIVATED,
         [](const GameEvent& ev) {

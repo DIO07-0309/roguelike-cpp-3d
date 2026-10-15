@@ -132,8 +132,11 @@ public:
 
     // ── Tick (更新所有表现层计时器) ──
     void tick(float dt);
-    void init_events();  // D7 Step5: 订阅 EventBus
+        void init_events();  // D7 Step5: 订阅 EventBus
     void unregister_events();  // 场景析构时注销, 防止悬挂订阅
+    // G53: init_events 拆出的两条"进化 toast"订阅
+    void subscribe_attack_evolved_toast();
+    void subscribe_skill_evolved_toast();
 };
 
 // C1 helper
