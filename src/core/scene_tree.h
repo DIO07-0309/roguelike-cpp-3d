@@ -45,6 +45,14 @@ public:
 
 private:
     void _handle_input();
+    // G53: run 拆出的三段帧后处理
+    void _input_diag_tick(float dt);
+    void _render_to_target();
+    void _maybe_export_frame();
+    void _blit_to_screen();
+    // G53: 输入心跳诊断的累计状态 (原为 run 的局部变量, 提升为成员才能跨帧累计)
+    float _input_diag_timer = 0.0f;
+    long  _input_diag_frames = 0;
 
     // G10.9: 当前 blit 目标矩形 (窗口客户区 letterbox 矩形, 鼠标逆映射共用)
     Rectangle _blit_dst(Rectangle window_rect, bool fullscreen) const;

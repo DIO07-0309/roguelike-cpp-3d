@@ -143,12 +143,62 @@ void SceneTree::_handle_input() {
     if (_current_scene) _current_scene->_input(_input);
 }
 
+// ── G53: SceneTree::run 拆出的三段帧后处理 ──────────────────
+
+// P1-C9: 输入心跳诊断 (每2秒; 区分窗口失焦 / 按键消息不达 / 状态卡死)
+void SceneTree::_input_diag_tick(float dt) {
+    if (!_input_diag) return;
+    _input_diag_frames++;
+    _input_diag_timer += dt;
+    if (_input_diag_timer < 2.0) return;
+    int drained = 0;
+    while (GetKeyPressed() != 0) drained++;   // 排空 GLFW 按键队列
+    int mx = GetMouseX(), my = GetMouseY();
+    LOG_INFO("[INPUT-DIAG] f=%lld keys=%d focus=%d cursor=%d mouse=(%d,%d)",
+             (long long)_input_diag_frames, drained,
+             (int)IsWindowFocused(), (int)IsCursorOnScreen(), mx, my);
+    _input_diag_timer = 0.0;
+    _input_diag_frames = 0;
+}
+
+// 渲染到 960×640 逻辑缓冲 (letterbox 保持 3:2, 消除任意拉伸变形)
+void SceneTree::_render_to_target() {
+    BeginTextureMode(_target);
+    ClearBackground(BLACK);
+    if (_root) _root->_render();
+    EndTextureMode();
+}
+
+// M6-i.1: 自动截图取证 (--autoshot N — 第 N 帧把主 RT 导出 PNG)
+void SceneTree::_maybe_export_frame() {
+    extern int g_hd2d_autoshot;
+    extern std::string g_autoshot_path;
+    if (g_hd2d_autoshot <= 0 || --g_hd2d_autoshot != 0) return;
+    Image shot = LoadImageFromTexture(_target.texture);
+    const char* out = g_autoshot_path.empty()
+                        ? "saves/screenshot.png" : g_autoshot_path.c_str();
+    ExportImage(shot, out);
+    UnloadImage(shot);
+    // M6-n: 取证帧同时记录 FPS (性能回归基线; --autoshot 专用)
+    LOG_INFO("[autoshot] 主 RT 已导出 -> %s (%dx%d) FPS=%d",
+             out, _target.texture.width, _target.texture.height, GetFPS());
+}
+
+// 把逻辑缓冲 blit 到客户区 (含取证帧导出时机)
+void SceneTree::_blit_to_screen() {
+    BeginDrawing();
+    ClearBackground(BLACK);
+    // Source: entire texture (flipped vertically because OpenGL)
+    Rectangle src = {0, 0, (float)_target.texture.width,
+                     -(float)_target.texture.height};
+    Rectangle dst = _blit_dst({}, IsWindowFullscreen());
+    DrawTexturePro(_target.texture, src, dst, {0, 0}, 0.0f, WHITE);
+    _maybe_export_frame();
+    EndDrawing();
+}
+
 void SceneTree::run() {
     double last = GetTime();
-    // P1-C9 诊断: 输入心跳 (每2秒) — GLFW 原始按键队列/焦点/鼠标三态
-    // 定位 "进层后键盘失灵": 区分 (a)窗口失焦 (b)键盘消息不达 (c)状态卡死
-    double input_diag_timer = 0.0;
-    long input_diag_frames = 0;
     while (_running && !WindowShouldClose()) {
         double now = GetTime();
         double dt = now - last;
@@ -157,50 +207,10 @@ void SceneTree::run() {
         _handle_input();
         process_frame(dt);
 
-        // ── P1-C9: 输入心跳诊断 (--input-diag 时每2秒; 区分失焦/消息不达/状态卡死) ──
-        if (_input_diag) {
-            input_diag_frames++;
-            input_diag_timer += dt;
-            if (input_diag_timer >= 2.0) {
-                int drained = 0;
-                while (GetKeyPressed() != 0) drained++;   // 排空 GLFW 按键队列
-                int mx = GetMouseX(), my = GetMouseY();
-                LOG_INFO("[INPUT-DIAG] f=%lld keys=%d focus=%d cursor=%d mouse=(%d,%d)",
-                         (long long)input_diag_frames, drained,
-                         (int)IsWindowFocused(), (int)IsCursorOnScreen(), mx, my);
-                input_diag_timer = 0.0;
-                input_diag_frames = 0;
-            }
-        }
+        _input_diag_tick((float)dt);
 
-        // Batch 3H + G10.9: 渲染到 960×640 逻辑缓冲, blit 到客户区
-        // letterbox 保持 3:2 (消除任意拉伸变形), BILINEAR 平滑放大
-        BeginTextureMode(_target);
-        ClearBackground(BLACK);
-        if (_root) _root->_render();
-        EndTextureMode();
-
-        BeginDrawing();
-        ClearBackground(BLACK);
-        // Source: entire texture (flipped vertically because OpenGL)
-        Rectangle src = {0, 0, (float)_target.texture.width, -(float)_target.texture.height};
-        Rectangle dst = _blit_dst({}, IsWindowFullscreen());
-        DrawTexturePro(_target.texture, src, dst, {0, 0}, 0.0f, WHITE);
-        // M6-i.1: 自动截图取证 (--autoshot N — 第 N 帧把主 RT 导出 PNG;
-        // 绝对路径 saves/ 由 SaveManager mkdir 保证存在, 不依赖进程 CWD)
-        // G41: 文件名可由 g_autoshot_path 覆盖 (主题预览用; 空 = 原行为)
-        extern int g_hd2d_autoshot;
-        extern std::string g_autoshot_path;
-        if (g_hd2d_autoshot > 0 && --g_hd2d_autoshot == 0) {
-            Image shot = LoadImageFromTexture(_target.texture);
-            const char* out = g_autoshot_path.empty()
-                                ? "saves/screenshot.png" : g_autoshot_path.c_str();
-            ExportImage(shot, out);
-            UnloadImage(shot);
-            // M6-n: 取证帧同时记录 FPS (性能回归基线; --autoshot 专用)
-            LOG_INFO("[autoshot] 主 RT 已导出 -> %s (%dx%d) FPS=%d",
-                     out, _target.texture.width, _target.texture.height, GetFPS());
-        }
-        EndDrawing();
+        // Batch 3H + G10.9: 渲染到逻辑缓冲, blit 到客户区
+        _render_to_target();
+        _blit_to_screen();
     }
 }
