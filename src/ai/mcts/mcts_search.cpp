@@ -18,6 +18,50 @@ static int calc_damage(int atk, int def) {
     return std::max(1, dmg);
 }
 
+// ── G53: apply_action 拆出的动作段 ──────────────────────────
+
+// 打最近的怪 (range 内; 伤害带 ±20% swing, 用 lcg 保证同 seed 可复现)
+template <typename RngT>
+static void mcts_hit_nearest(SimulationState& state, float range, int dmg_base,
+                             RngT lcg) {
+    MonsterSnapshot* best = nullptr; float bd = 999;
+    for (auto& m : state.monsters) {
+        if (!m.alive) continue;
+        float d = dist(state.player, m);
+        if (d < range && d < bd) { bd = d; best = &m; }
+    }
+    if (best) {
+        int dmg = (int)(dmg_base * (0.8f + 0.4f * lcg()));
+        best->hp -= (float)dmg;
+        if (best->hp <= 0) best->alive = false;
+    }
+}
+
+// 技能: 槽位 → 1.5× 攻击力的范围 3 伤害 (共 4 槽)
+template <typename RngT>
+static void mcts_apply_skill(SimulationState& state, int slot, RngT lcg) {
+    int dmg = (int)(state.player.attack * 1.5f); // skill multiplier
+    mcts_hit_nearest(state, 3.0f, dmg, lcg);
+    state.player.skill_cooldowns[slot] = 3.0f;
+}
+
+// 怪物反击 (简化: 每只近战怪 40% 概率打一下)
+template <typename RngT>
+static void mcts_monster_retaliate(SimulationState& state, RngT lcg) {
+    for (auto& m : state.monsters) {
+        if (!m.alive) continue;
+        float d = dist(state.player, m);
+        if (d < 1.5f && lcg() < 0.4f) { // ~40% chance per monster per tick
+            int dmg = calc_damage(m.attack, state.player.pdef);
+            state.player.hp -= (float)dmg;
+            if (state.player.hp <= 0) {
+                state.player.alive = false;
+                state.terminal = true;
+            }
+        }
+    }
+}
+
 static void apply_action(SimulationState& state, CombatAction a, uint32_t& rng_seed) {
     auto& p = state.player;
     if (!p.alive) return;
@@ -28,44 +72,16 @@ static void apply_action(SimulationState& state, CombatAction a, uint32_t& rng_s
     };
 
     switch (a) {
-    case CombatAction::ATTACK: {
-        // Hit nearest monster
-        MonsterSnapshot* best = nullptr; float bd = 999;
-        for (auto& m : state.monsters) {
-            if (!m.alive) continue;
-            float d = dist(p, m);
-            if (d < 1.5f && d < bd) { bd = d; best = &m; }
-        }
-        if (best) {
-            int dmg = calc_damage(p.attack, best->pdef);
-            dmg = (int)(dmg * (0.8f + 0.4f * lcg())); // ±20% swing
-            best->hp -= (float)dmg;
-            if (best->hp <= 0) best->alive = false;
-        }
+    case CombatAction::ATTACK:
+        mcts_hit_nearest(state, 1.5f, p.attack, lcg);
         p.attack_cooldown = 0.5f;
         break;
-    }
     case CombatAction::SKILL_1:
     case CombatAction::SKILL_2:
     case CombatAction::SKILL_3:
-    case CombatAction::SKILL_4: {
-        int si = (int)a - (int)CombatAction::SKILL_1;
-        int dmg = (int)(p.attack * 1.5f); // skill multiplier
-        // Hit nearest monster
-        MonsterSnapshot* best = nullptr; float bd = 999;
-        for (auto& m : state.monsters) {
-            if (!m.alive) continue;
-            float d = dist(p, m);
-            if (d < 3.0f && d < bd) { bd = d; best = &m; }
-        }
-        if (best) {
-            dmg = (int)(dmg * (0.8f + 0.4f * lcg()));
-            best->hp -= (float)dmg;
-            if (best->hp <= 0) best->alive = false;
-        }
-        p.skill_cooldowns[si] = 3.0f;
+    case CombatAction::SKILL_4:
+        mcts_apply_skill(state, (int)a - (int)CombatAction::SKILL_1, lcg);
         break;
-    }
     case CombatAction::MOVE_UP:    p.y -= 1; break;
     case CombatAction::MOVE_DOWN:  p.y += 1; break;
     case CombatAction::MOVE_LEFT:  p.x -= 1; break;
@@ -78,16 +94,7 @@ static void apply_action(SimulationState& state, CombatAction a, uint32_t& rng_s
     for (int i = 0; i < 4; i++)
         if (p.skill_cooldowns[i] > 0) p.skill_cooldowns[i] -= 0.25f;
 
-    // Monster retaliates (simplified: nearest hits player)
-    for (auto& m : state.monsters) {
-        if (!m.alive) continue;
-        float d = dist(p, m);
-        if (d < 1.5f && lcg() < 0.4f) { // ~40% chance per monster per tick
-            int dmg = calc_damage(m.attack, p.pdef);
-            p.hp -= (float)dmg;
-            if (p.hp <= 0) { p.alive = false; state.terminal = true; }
-        }
-    }
+    mcts_monster_retaliate(state, lcg);
 
     state.depth++;
     // Check victory
