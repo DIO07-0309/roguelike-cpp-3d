@@ -35,6 +35,12 @@ private:
     void _sim_advance_event_ui(EventPresentation& ui);
     void _handle_event_desc_phase(const InputMap& input, EventPresentation& ui);
     void _handle_event_choice_phase(const InputMap& input, EventPresentation& ui);
+    // G53: handle_input 拆出的四段 (任务日志 / 挑战选择 / ESC保存退出 / Boss出场确认)
+    // 均返回 true 表示"已消费本帧输入", 调用方据此短路
+    bool _handle_quest_log_keys(const InputMap& input);
+    bool _handle_challenge_choice(const InputMap& input);
+    bool _handle_cancel_to_title(const InputMap& input);
+    bool _handle_boss_intro_confirm(const InputMap& input);
 
 private:
     GameScene& _s;

@@ -21,154 +21,175 @@
 // ============================================================
 // GameSceneInput — main entry
 // ============================================================
+// F7 截图 (定义在 handle_debug_keys 拆分段之后, 这里前置声明以便顶部调用)
+static void _debug_take_screenshot();
+
+// ── G53: handle_input 拆出的四段按键域 ──────────────────────
+
+// 任务日志 (F1): 开/关互斥背包
+bool GameSceneInput::_handle_quest_log_keys(const InputMap& input) {
+    if (IsKeyPressed(KEY_F1)) {
+        _s._quest_log_open = !_s._quest_log_open;
+        if (_s._quest_log_open) _s.inventory_open = false;
+        _s.get_tree()->get_audio()->play_sfx("ui_click", 0.35f);  // Q4.5
+        return true;
+    }
+    if (_s._quest_log_open) {
+        if (IsKeyPressed(KEY_F1) || _s._is_action_just_pressed(input,"cancel")) {
+            _s._quest_log_open = false;
+            _s.get_tree()->get_audio()->play_sfx("ui_click", 0.35f);  // Q4.5
+        }
+        return true;
+    }
+    return false;
+}
+
+// Batch 3I: 挑战房间选择 UI (两项游标 + 确认/取消)
+bool GameSceneInput::_handle_challenge_choice(const InputMap& input) {
+    if (!_s.challenge_choice_active) return false;
+    if (_s._is_action_just_pressed(input, "ui_up") || IsKeyPressed(KEY_UP)) {
+        _s.challenge_choice_cursor = (_s.challenge_choice_cursor + 1) % 2;
+        _s.get_tree()->get_audio()->play_sfx("ui_click", 0.35f);
+    }
+    if (_s._is_action_just_pressed(input, "ui_down") || IsKeyPressed(KEY_DOWN)) {
+        _s.challenge_choice_cursor = (_s.challenge_choice_cursor + 1) % 2;
+        _s.get_tree()->get_audio()->play_sfx("ui_click", 0.35f);
+    }
+    if (IsKeyPressed(KEY_E) || IsKeyPressed(KEY_SPACE)) {
+        if (_s.challenge_choice_cursor == 0) {
+            if (_s._challenge.consume_key_for_challenge(*_s.player)) {
+                _s.enter_challenge_arena();
+                _s.get_tree()->get_audio()->play_sfx("door_open", 0.6f);
+            } else {
+                _s._presentation.room_msg = "需要钥匙才能开启挑战。";
+                _s._presentation.room_msg_timer = 2.0f;
+            }
+        }
+        _s.challenge_choice_active = false;
+        _s.get_tree()->get_audio()->play_sfx("ui_click", 0.35f);
+    }
+    if (_s._is_action_just_pressed(input, "cancel") || IsKeyPressed(KEY_ESCAPE)) {
+        _s.challenge_choice_active = false;
+        _s.get_tree()->get_audio()->play_sfx("ui_click", 0.35f);
+    }
+    return true;
+}
+
+// ESC: 先关面板模态, 再存档回标题
+bool GameSceneInput::_handle_cancel_to_title(const InputMap& input) {
+    if (!_s._is_action_just_pressed(input,"cancel")) return false;
+    auto* tree = _s.get_tree();
+    // B3H-fix: 背包/赌局是全屏压暗模态, ESC 先关面板再走保存退出
+    if (_s.inventory_open || _s.gamble_open) {
+        _s.inventory_open = false;
+        _s.gamble_open = false;
+        tree->get_audio()->play_sfx("ui_click", 0.35f);
+        return true;
+    }
+    if (_s.state == GameState::PLAYING && _s.player->combat.is_alive) {
+        if (!_s.is_save_blocked()) {
+            _s.max_unlocked_floor = std::max(_s.max_unlocked_floor, _s.current_floor);
+            std::vector<bool> spr, spd;
+            if (_s.game_map) for (auto& sr : _s.game_map->special_rooms) {
+                spr.push_back(sr.triggered);
+                spd.push_back(sr.discovered);
+            }
+            std::unordered_map<std::string, int> rcm;
+            static const char* ALL_RULES[] = {
+                "rule_shadow_charge","rule_summon_priority","rule_arena_movement",
+                "rule_shield_patience","rule_rule_override", nullptr
+            };
+            for (int i = 0; ALL_RULES[i]; i++) {
+                int v = _s._gameplay.world_state.counter(ALL_RULES[i]);
+                if (v > 0) rcm[ALL_RULES[i]] = v;
+            }
+            // M1-D1: last-known 镜像记忆 — Boss 存活则更新缓存, 否则透传
+            {
+                std::vector<float> fresh_alpha, fresh_beta;
+                _s._boss.export_mirror_memory(fresh_alpha, fresh_beta);
+                if (!fresh_alpha.empty()) {
+                    _s._mirror_mem_alpha = fresh_alpha;
+                    _s._mirror_mem_beta = fresh_beta;
+                }
+            }
+            // G10.9-B2: 槽位化 + play_time; endings 不再入档 (Meta 落盘)
+            SaveManager::save_game(SaveManager::active_slot(),
+                _s.player.get(), _s.current_floor,
+                _s.max_unlocked_floor, _s._dungeon_seed, spr, spd, rcm,
+                _s._gameplay.quest_mgr.export_states(),
+                _s._mirror_mem_alpha, _s._mirror_mem_beta, (float)_s.game_time);
+            LOG_INFO("Save→第%d层", _s.current_floor);
+        }
+    }
+    auto ts = std::make_shared<TitleScene>();
+    ts->name = "TitleScene";
+    ts->has_save = SaveManager::save_exists();
+    tree->change_scene(ts);
+    return true;
+}
+
+// Boss 出场确认 (BOSS_INTRO 按 confirm): 创建 Boss + 全部接线 + 转 CINEMATIC
+bool GameSceneInput::_handle_boss_intro_confirm(const InputMap& input) {
+    if (_s.state != GameState::BOSS_INTRO) return false;
+    if (!_s._is_action_just_pressed(input,"confirm")) return false;
+
+    auto pos = _s.game_map->tile_to_pixel(_s.stairs_pos.first, _s.stairs_pos.second);
+    // D8: BossFactory 按 floor+seed 随机 Boss 类型
+    BossType btype = boss_type_for_floor(_s.boss_floor, _s._dungeon_seed);
+    auto* boss = boss_factory_create(btype, _s.stairs_pos.first, _s.stairs_pos.second,
+                                     _s.boss_floor);
+    _s.monsters.emplace_back(boss);
+
+    BuildType bt = calculate_build(_s.player.get()).identify();
+    _s._boss.init_on_spawn(boss, _s.boss_floor, _s._gameplay.world_state,
+                           bt, _s._gameplay.rels, _s.game_map.get(),
+                           _s.player.get());
+    // M4e: 跨对局镜像记忆注入 (空 vector 安全)
+    _s._boss.inject_mirror_memory(_s._mirror_mem_alpha, _s._mirror_mem_beta);
+    // M1 + v1.6-B1: 镜像播报接线 — 战术切换走消息; 阶段晋升走
+    // 醒目横幅 (它开始模仿你/看穿你 — 招牌时刻不该是小字)
+    _s._boss.connect_mirror_theater(
+        [&s = _s](const char* msg, float dur) {
+            if (msg) s._presentation.show_message(msg, dur);
+        });
+    _s._boss.hook_phase_banner(
+        [&s = _s](int phase, const char* reason) {
+            s._mirror_banner_phase = phase;
+            s._mirror_banner_timer = 3.0f;
+            if (reason) s._presentation.show_message(reason, 2.5f);
+        });
+    _s._presentation.boss_modifier_text = _s._boss.modifier_text;
+
+    _s.boss_cinematic_timer = 1.0f;
+    _s._boss_entrance_timer = 2.0f;
+    _s._boss_entered = false;
+    _s._boss_phase2_shown = false;
+    _s.state = GameState::BOSS_CINEMATIC;
+    _s._flow.on_boss_intro_confirm();
+    return true;
+}
+
 void GameSceneInput::handle_input(const InputMap& input) {
     if (!_s.player) return;
     auto* tree = _s.get_tree();
     if (!tree) return;
 
     // M6-i.1: 游戏内截图 (F7 — 最顶部, 任何 UI/状态都可用; Release 生效)
-    if (IsKeyPressed(KEY_F7)) {
-        TakeScreenshot("screenshot.png");
-        LOG_INFO("[M6-i.1 截图] screenshot.png 已保存 (工作目录)");
-    }
+    if (IsKeyPressed(KEY_F7)) _debug_take_screenshot();
 
     // D4 Step2: event UI intercept
     if (_s._is_event_running()) { handle_event_input(input); return; }
     // D4 Step4: dialogue UI intercept
     if (_s._dialogue.active) { handle_dialogue_input(input); return; }
     // D4 Step4: Quest log (F1 key)
-    if (IsKeyPressed(KEY_F1)) {
-        _s._quest_log_open = !_s._quest_log_open;
-        if (_s._quest_log_open) _s.inventory_open = false;
-        tree->get_audio()->play_sfx("ui_click", 0.35f);  // Q4.5
-        return;
-    }
-    if (_s._quest_log_open) {
-        if (IsKeyPressed(KEY_F1) || _s._is_action_just_pressed(input,"cancel")) {
-            _s._quest_log_open = false;
-            tree->get_audio()->play_sfx("ui_click", 0.35f);  // Q4.5
-        }
-        return;
-    }
+    if (_handle_quest_log_keys(input)) return;
 
     // Batch 3I: Challenge choice UI
-    if (_s.challenge_choice_active) {
-        if (_s._is_action_just_pressed(input, "ui_up") || IsKeyPressed(KEY_UP)) {
-            _s.challenge_choice_cursor = (_s.challenge_choice_cursor + 1) % 2;
-            _s.get_tree()->get_audio()->play_sfx("ui_click", 0.35f);
-        }
-        if (_s._is_action_just_pressed(input, "ui_down") || IsKeyPressed(KEY_DOWN)) {
-            _s.challenge_choice_cursor = (_s.challenge_choice_cursor + 1) % 2;
-            _s.get_tree()->get_audio()->play_sfx("ui_click", 0.35f);
-        }
-        if (IsKeyPressed(KEY_E) || IsKeyPressed(KEY_SPACE)) {
-            if (_s.challenge_choice_cursor == 0) {
-                if (_s._challenge.consume_key_for_challenge(*_s.player)) {
-                    _s.enter_challenge_arena();
-                    _s.get_tree()->get_audio()->play_sfx("door_open", 0.6f);
-                } else {
-                    _s._presentation.room_msg = "需要钥匙才能开启挑战。";
-                    _s._presentation.room_msg_timer = 2.0f;
-                }
-            }
-            _s.challenge_choice_active = false;
-            _s.get_tree()->get_audio()->play_sfx("ui_click", 0.35f);
-        }
-        if (_s._is_action_just_pressed(input, "cancel") || IsKeyPressed(KEY_ESCAPE)) {
-            _s.challenge_choice_active = false;
-            _s.get_tree()->get_audio()->play_sfx("ui_click", 0.35f);
-        }
-        return;
-    }
+    if (_handle_challenge_choice(input)) return;
 
-    if (_s._is_action_just_pressed(input,"cancel")) {
-        // B3H-fix: 背包/赌局是全屏压暗模态, ESC 先关面板再走保存退出
-        if (_s.inventory_open || _s.gamble_open) {
-            _s.inventory_open = false;
-            _s.gamble_open = false;
-            _s.get_tree()->get_audio()->play_sfx("ui_click", 0.35f);
-            return;
-        }
-        if (_s.state == GameState::PLAYING && _s.player->combat.is_alive) {
-            if (!_s.is_save_blocked()) {
-                _s.max_unlocked_floor = std::max(_s.max_unlocked_floor, _s.current_floor);
-                std::vector<bool> spr, spd;
-                if (_s.game_map) for (auto& sr : _s.game_map->special_rooms) {
-                    spr.push_back(sr.triggered);
-                    spd.push_back(sr.discovered);
-                }
-                std::unordered_map<std::string, int> rcm;
-                static const char* ALL_RULES[] = {
-                    "rule_shadow_charge","rule_summon_priority","rule_arena_movement",
-                    "rule_shield_patience","rule_rule_override", nullptr
-                };
-                for (int i = 0; ALL_RULES[i]; i++) {
-                    int v = _s._gameplay.world_state.counter(ALL_RULES[i]);
-                    if (v > 0) rcm[ALL_RULES[i]] = v;
-                }
-                // M1-D1: last-known 镜像记忆 — Boss 存活则更新缓存, 否则透传
-                {
-                    std::vector<float> fresh_alpha, fresh_beta;
-                    _s._boss.export_mirror_memory(fresh_alpha, fresh_beta);
-                    if (!fresh_alpha.empty()) {
-                        _s._mirror_mem_alpha = fresh_alpha;
-                        _s._mirror_mem_beta = fresh_beta;
-                    }
-                }
-                // G10.9-B2: 槽位化 + play_time; endings 不再入档 (Meta 落盘)
-                SaveManager::save_game(SaveManager::active_slot(),
-                    _s.player.get(), _s.current_floor,
-                    _s.max_unlocked_floor, _s._dungeon_seed, spr, spd, rcm,
-                    _s._gameplay.quest_mgr.export_states(),
-                    _s._mirror_mem_alpha, _s._mirror_mem_beta, (float)_s.game_time);
-                LOG_INFO("Save→第%d层", _s.current_floor);
-            }
-        }
-        auto ts = std::make_shared<TitleScene>();
-        ts->name = "TitleScene";
-        ts->has_save = SaveManager::save_exists();
-        tree->change_scene(ts);
-        return;
-    }
-    if (_s.state == GameState::BOSS_INTRO) {
-        if (_s._is_action_just_pressed(input,"confirm")) {
-            auto pos = _s.game_map->tile_to_pixel(_s.stairs_pos.first, _s.stairs_pos.second);
-            // D8: BossFactory 按 floor+seed 随机 Boss 类型
-BossType btype = boss_type_for_floor(_s.boss_floor, _s._dungeon_seed);
-auto* boss = boss_factory_create(btype, _s.stairs_pos.first, _s.stairs_pos.second,
-                                  _s.boss_floor);
-            _s.monsters.emplace_back(boss);
+    if (_handle_cancel_to_title(input)) return;
 
-            BuildType bt = calculate_build(_s.player.get()).identify();
-            _s._boss.init_on_spawn(boss, _s.boss_floor, _s._gameplay.world_state,
-                                    bt, _s._gameplay.rels, _s.game_map.get(),
-                                    _s.player.get());
-            // M4e: 跨对局镜像记忆注入 (空 vector 安全)
-            _s._boss.inject_mirror_memory(_s._mirror_mem_alpha,
-                                          _s._mirror_mem_beta);
-            // M1 + v1.6-B1: 镜像播报接线 — 战术切换走消息; 阶段晋升走
-            // 醒目横幅 (它开始模仿你/看穿你 — 招牌时刻不该是小字)
-            _s._boss.connect_mirror_theater(
-                [&s = _s](const char* msg, float dur) {
-                    if (msg) s._presentation.show_message(msg, dur);
-                });
-            _s._boss.hook_phase_banner(
-                [&s = _s](int phase, const char* reason) {
-                    s._mirror_banner_phase = phase;
-                    s._mirror_banner_timer = 3.0f;
-                    if (reason) s._presentation.show_message(reason, 2.5f);
-                });
-            _s._presentation.boss_modifier_text = _s._boss.modifier_text;
-
-            _s.boss_cinematic_timer = 1.0f;
-            _s._boss_entrance_timer = 2.0f;
-            _s._boss_entered = false;
-            _s._boss_phase2_shown = false;
-            _s.state = GameState::BOSS_CINEMATIC;
-            _s._flow.on_boss_intro_confirm();
-        }
-        return;
-    }
+    if (_handle_boss_intro_confirm(input)) return;
 
     if (_s.state != GameState::PLAYING) return;
 
@@ -176,8 +197,6 @@ auto* boss = boss_factory_create(btype, _s.stairs_pos.first, _s.stairs_pos.secon
         _s._show_relic_panel = !_s._show_relic_panel;
         tree->get_audio()->play_sfx("ui_click", 0.35f);  // Q4.5
     }
-
-    // M6-i.1: 游戏内截图已挪 handle_input 顶部 (任何状态可用)
 
 #ifdef _DEBUG
     handle_debug_keys();
