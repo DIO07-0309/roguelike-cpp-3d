@@ -50,6 +50,8 @@ private:
     void _render_to_target();
     void _maybe_export_frame();
     void _blit_to_screen();
+    // G53: 构造函数拆出的窗口图标设置
+    void _set_window_icon();
     // G53: 输入心跳诊断的累计状态 (原为 run 的局部变量, 提升为成员才能跨帧累计)
     float _input_diag_timer = 0.0f;
     long  _input_diag_frames = 0;

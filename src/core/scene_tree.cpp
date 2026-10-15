@@ -12,6 +12,14 @@ bool g_window_hidden = false;
 bool g_autocontinue = false;
 int  g_goto_floor = 0;
 
+// G53: 窗口图标 (与 exe 图标同源: 剑与门)
+void SceneTree::_set_window_icon() {
+    Image icon = LoadImage("assets/brand/roguelike.png");
+    if (icon.width <= 0) return;
+    SetWindowIcon(icon);
+    UnloadImage(icon);
+}
+
 SceneTree::SceneTree(int w, int h, const char* title) {
     // G10.9-fix2: 放弃 FLAG_WINDOW_HIGHDPI
     // 探针实证 (tools/dpi_probe v4-v7): raylib5.0+GLFW+HIGHDPI 下窗口/FBO/绘图

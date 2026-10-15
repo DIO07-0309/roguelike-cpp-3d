@@ -200,6 +200,9 @@ private:
     int _arbitrate_ml(const MirrorBattleState& st);
     int _arbitrate_chain(const MirrorBattleState& st);
     int _arbitrate_rl(const MirrorBattleState& st);
+    // G53: predict_next_action 拆出的两段 (克隆层 / 规则兜底)
+    PlayerActionType _predict_via_clone(const MirrorBattleState& st) const;
+    PlayerActionType _predict_via_rules(const MirrorBattleState& st) const;
     int _arbitrate_clone(const MirrorBattleState& st);
     MlPredictor _ml_predictor;                       // M3: G5 插槽, 默认关闭
     std::unique_ptr<MirrorDebugStats> _debug_stats;  // 验收: AI 调用链统计

@@ -160,6 +160,37 @@ static PlayerActionType chain_symbol_to_action(int s) {
 // M4.5-A + v1.6-B1.1: 战术链预测内联在 predict_next_action — 缓存 action+confidence
 // 供 HUD 只读消费; 避免独立静态 helper 与 mutable 缓存分离
 
+// G53: 克隆层预测 (exact/fuzzy/profile 三级降级), 未命中返回 NONE
+PlayerActionType MirrorAgent::_predict_via_clone(const MirrorBattleState& st) const {
+    if (_phase < 2 || !_clone) return PlayerActionType::NONE;
+    ClonePrediction p = _clone->predict(st.dist_tiles, st.player_hp_pct,
+                                        st.player_skills_ready);
+    _debug_stats->on_predict(p.level);   // 验收: 记录降级链等级
+    if (p.level > 2 || p.confidence < clone_confidence_threshold())
+        return PlayerActionType::NONE;
+    PlayerActionType t = intent_to_action(p.best);
+    if (t == PlayerActionType::NONE) return PlayerActionType::NONE;
+    _last_pred_action = t;
+    _last_pred_conf   = p.confidence;
+    return t;
+}
+
+// G53: 规则兜底 (画像阈值推导; 固定低置信 0.35)
+PlayerActionType MirrorAgent::_predict_via_rules(const MirrorBattleState& st) const {
+    _debug_stats->on_predict(-1);            // 验收: 记录规则兜底
+    PlayerActionType fallback = PlayerActionType::ATTACK;
+    if (st.dist_tiles < 3.0f && _profile.attack_frequency > 0.6f)
+        fallback = PlayerActionType::ATTACK;
+    else if (st.player_hp_pct < _profile.hp_counter_threshold / 100.0f
+        && _profile.heal_frequency > 0.01f)
+        fallback = PlayerActionType::HEAL;
+    else if (_profile.predict_skill_spam && _phase >= 2)
+        fallback = PlayerActionType::SKILL;
+    _last_pred_action = fallback;
+    _last_pred_conf   = 0.35f;               // 规则兜底固定低置信
+    return fallback;
+}
+
 PlayerActionType MirrorAgent::predict_next_action(
     const MirrorBattleState& st) const {
     // M4.5-A: 战术链层先行 — 预测玩家下一步战术动作 (网型序列优于单步克隆)
@@ -178,32 +209,9 @@ PlayerActionType MirrorAgent::predict_next_action(
         }
     }
     // M1: behavior-clone layer (exact/fuzzy/profile), rules as fallback
-    if (_phase >= 2 && _clone) {
-        ClonePrediction p = _clone->predict(st.dist_tiles, st.player_hp_pct,
-                                            st.player_skills_ready);
-        _debug_stats->on_predict(p.level);   // 验收: 记录降级链等级
-        if (p.level <= 2 && p.confidence >= clone_confidence_threshold()) {
-            PlayerActionType t = intent_to_action(p.best);
-            if (t != PlayerActionType::NONE) {
-                _last_pred_action = t;
-                _last_pred_conf   = p.confidence;
-                return t;
-            }
-        }
-    }
-    // Rule-based fallback (existing profile logic)
-    _debug_stats->on_predict(-1);            // 验收: 记录规则兜底
-    PlayerActionType fallback = PlayerActionType::ATTACK;
-    if (st.dist_tiles < 3.0f && _profile.attack_frequency > 0.6f)
-        fallback = PlayerActionType::ATTACK;
-    else if (st.player_hp_pct < _profile.hp_counter_threshold / 100.0f
-        && _profile.heal_frequency > 0.01f)
-        fallback = PlayerActionType::HEAL;
-    else if (_profile.predict_skill_spam && _phase >= 2)
-        fallback = PlayerActionType::SKILL;
-    _last_pred_action = fallback;
-    _last_pred_conf   = 0.35f;               // 规则兜底固定低置信
-    return fallback;
+    PlayerActionType clone_act = _predict_via_clone(st);
+    if (clone_act != PlayerActionType::NONE) return clone_act;
+    return _predict_via_rules(st);
 }
 
 // ── M4e: 在线自适应 — Thompson 采样决策 ──
