@@ -62,6 +62,33 @@ public:
         const std::vector<Monster*>& monsters,
         const GameMap* map, bool stairs_active, bool boss_intro_active);
 
+    // ── G53: best_action 拆出的阶段 ──
+    std::string _stairs_phase_action(const Player* player,
+        const std::vector<Monster*>& monsters, const GameMap* map);
+    // G53: _stairs_phase_action 再拆的三段
+    bool _stairs_at_untapped_room(const Player* player, const GameMap* map) const;
+    bool _loot_watchdog_tick(const Player* player);
+    std::string _stairs_descend_step(const Player* player, const GameMap* map);
+    // G53: best_action 的普攻+技能评分段
+    void _score_combat_actions(const Player* player,
+        const std::vector<Monster*>& monsters, float& best_score,
+        std::string& best);
+    // G53: 生存段 (治疗优先接管, 否则喝药水); 返回非空 = 本帧立即执行
+    std::string _survival_action(const Player* player,
+        const std::vector<Monster*>& monsters, std::string& best,
+        float& best_score);
+    std::string _mcts_action(const std::vector<Monster*>& monsters);
+    std::string _pick_heal_action(const Player* player);
+    std::string _pick_potion_action(const Player* player,
+        const std::vector<Monster*>& monsters);
+    std::string _select_move_action(const Player* player,
+        const std::vector<Monster*>& monsters, const GameMap* map,
+        float best_score);
+    // G53: best_action 尾部 (pickup -> move -> 随机兜底) 合成一步
+    std::string _resolve_action_tail(const Player* player,
+        const std::vector<Monster*>& monsters, const GameMap* map,
+        std::string best, float best_score);
+
     // ── Event decision (G7.4) ──
     bool accept_event(float risk_pct, const std::string& effect_desc,
                       const Player* player) const;

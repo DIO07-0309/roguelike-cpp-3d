@@ -1162,92 +1162,175 @@ int DecisionAgent::_pick_stable_bfs_step(const Player* p,
 //  G7.4: Best action selection (evaluate → pick max)
 // ═══════════════════════════════════════════════════════════
 
-std::string DecisionAgent::best_action(const Player* player,
-    const std::vector<Monster*>& monsters,
-    const GameMap* map, bool stairs_active, bool boss_intro_active) {
-    if (!player) return "";
+// ── G53: best_action 拆出的五个阶段 ─────────────────────────
 
-    if (boss_intro_active) return "confirm";
-    if (stairs_active) {
-        sim_stairs[0]++;
-        // Q3.2: 清层后先搜刮未触发特殊房 (原逻辑直接下楼 → 整层资源全丢)
-        // P1-C3-fix: 层级搜刮预算 15s — 超时放弃本层余下搜刮直奔楼梯.
-        // 全量数据: 无限搜刮 → TWall 16.8% 爬不完; 15s 预算 → TWall 7.8%.
-        // (25s 实验更差: 混沌重排下不单调 — 以结构指标定参: 死锁根除+节奏资源平衡)
-        if (_stairs_since < 0) _stairs_since = (float)_game_time;
-        bool budget_ok = (float)_game_time - _stairs_since < 15.0f;
-        bool can_move = false;
-        std::string move_act;
-        if (map && !_loot_abandoned && budget_ok) {
-            for (auto& sr : map->special_rooms) {
-                if (sr.triggered) continue;
-                float ddx = player->entity.rect.x + player->entity.rect.width/2 - (sr.cx * 32 + 16);
-                float ddy = player->entity.rect.y + player->entity.rect.height/2 - (sr.cy * 32 + 16);
-                if (sqrtf(ddx*ddx + ddy*ddy) < 1.0f * 32.0f) return "pickup";
-            }
-            int rs = _bfs_toward_room(player, map);
-            if (rs >= 0) {
-                const char* dl[] = {"move_up","move_down","move_left","move_right"};
-                float mdxs[4] = {0,0,-32,32}, mdys[4] = {-32,32,0,0};
-                for (int try_d = 0; try_d < 4; try_d++) {
-                    int d2 = (try_d == 0) ? rs : (rs + try_d) % 4;
-                    Rectangle er = player->entity.rect;
-                    er.x += mdxs[d2]; er.y += mdys[d2];
-                    if (map->is_rect_walkable(er)) { can_move = true; move_act = dl[d2]; break; }
+// 玩家是否站在某个"未触发"特殊房上 (站上即 pickup)
+bool DecisionAgent::_stairs_at_untapped_room(const Player* player,
+                                             const GameMap* map) const {
+    for (auto& sr : map->special_rooms) {
+        if (sr.triggered) continue;
+        float ddx = player->entity.rect.x + player->entity.rect.width/2 - (sr.cx * 32 + 16);
+        float ddy = player->entity.rect.y + player->entity.rect.height/2 - (sr.cy * 32 + 16);
+        if (sqrtf(ddx*ddx + ddy*ddy) < 1.0f * 32.0f) return true;
+    }
+    return false;
+}
+
+// 搜刮看门狗: 返回 true = 还可以继续搜刮; false = 已放弃 (直奔楼梯)
+// Q3.2-fix: 搜刮被半格偏移卡死 → 原地 ≥2s 放弃搜刮直奔楼梯
+bool DecisionAgent::_loot_watchdog_tick(const Player* player) {
+    int ct0 = (int)(player->entity.rect.x + player->entity.rect.width / 2) / 32;
+    int ct1 = (int)(player->entity.rect.y + player->entity.rect.height / 2) / 32;
+    if (abs(ct0 - _loot_last_tx) + abs(ct1 - _loot_last_ty) >= 2) {
+        _loot_last_tx = ct0; _loot_last_ty = ct1; _loot_stuck_since = -1;
+        return true;
+    }
+    if (_loot_stuck_since < 0) { _loot_stuck_since = (float)_game_time; return true; }
+    if ((float)_game_time - _loot_stuck_since > 2.0f) {
+        sim_stuck_loot_wd++;        // M2-C: 搜刮看门狗强制下楼计数
+        _loot_abandoned = true;     // P1-C3: 锁定放弃, 走楼梯不再回头
+        return false;
+    }
+    return true;
+}
+
+// 迈向楼梯: 有路返回第一步方向; 无路返回 "descend" 碰运气
+std::string DecisionAgent::_stairs_descend_step(const Player* player,
+                                                const GameMap* map) {
+    // P1-C3: 人必须先走到楼梯格 (原直接 "descend" 但
+    // _check_floor_transition 只认"站在楼梯上按 E" → 站原地按 E 600s)
+    int sstep = _bfs_to_stairs(player, map);
+    if (sstep >= 0) {
+        const char* dl[] = {"move_up","move_down","move_left","move_right"};
+        sim_stairs[2]++;
+        return dl[sstep];
+    }
+    sim_stairs[1]++;
+    return "descend";
+}
+
+// 楼梯阶段: 搜刮未触发特殊房 (15s 预算 + 看门狗) → 走到楼梯 → descend
+std::string DecisionAgent::_stairs_phase_action(
+    const Player* player, const std::vector<Monster*>& monsters,
+    const GameMap* map) {
+    sim_stairs[0]++;
+    // Q3.2: 清层后先搜刮未触发特殊房 (原逻辑直接下楼 → 整层资源全丢)
+    // P1-C3-fix: 层级搜刮预算 15s — 超时放弃本层余下搜刮直奔楼梯.
+    // 全量数据: 无限搜刮 → TWall 16.8% 爬不完; 15s 预算 → TWall 7.8%.
+    // (25s 实验更差: 混沌重排下不单调 — 以结构指标定参: 死锁根除+节奏资源平衡)
+    if (_stairs_since < 0) _stairs_since = (float)_game_time;
+    const bool budget_ok = (float)_game_time - _stairs_since < 15.0f;
+    if (map && !_loot_abandoned && budget_ok) {
+        if (_stairs_at_untapped_room(player, map)) return "pickup";
+        int rs = _bfs_toward_room(player, map);
+        if (rs >= 0) {
+            const char* dl[] = {"move_up","move_down","move_left","move_right"};
+            float mdxs[4] = {0,0,-32,32}, mdys[4] = {-32,32,0,0};
+            for (int try_d = 0; try_d < 4; try_d++) {
+                int d2 = (try_d == 0) ? rs : (rs + try_d) % 4;
+                Rectangle er = player->entity.rect;
+                er.x += mdxs[d2]; er.y += mdys[d2];
+                if (map->is_rect_walkable(er)) {
+                    if (!_loot_watchdog_tick(player)) break;
+                    sim_stairs[2]++;
+                    return dl[d2];
                 }
             }
         }
-        if (can_move) {
-            // Q3.2-fix: 搜刮被半格偏移卡死 → 原地 ≥2s 放弃搜刮直奔楼梯
-            int ct0 = (int)(player->entity.rect.x + player->entity.rect.width / 2) / 32;
-            int ct1 = (int)(player->entity.rect.y + player->entity.rect.height / 2) / 32;
-            if (abs(ct0 - _loot_last_tx) + abs(ct1 - _loot_last_ty) >= 2) {
-                _loot_last_tx = ct0; _loot_last_ty = ct1; _loot_stuck_since = -1;
-            } else if (_loot_stuck_since < 0) {
-                _loot_stuck_since = (float)_game_time;
-            } else if ((float)_game_time - _loot_stuck_since > 2.0f) {
-                sim_stuck_loot_wd++;   // M2-C: 搜刮看门狗强制下楼计数
-                _loot_abandoned = true;  // P1-C3: 锁定放弃, 走楼梯不再回头
-            }
-            if (!_loot_abandoned) { sim_stairs[2]++; return move_act; }
-        }
-        // P1-C3: 搜刮完毕/放弃 → 人必须先走到楼梯格 (原直接 "descend" 但
-        // _check_floor_transition 只认"站在楼梯上按 E" → 站原地按 E 600s)
-        // 在格 → descend; 有路 → 迈向楼梯的第一步; 无路 → descend 碰运气
-        {
-            int sstep = _bfs_to_stairs(player, map);
-            if (sstep >= 0) {
-                const char* dl[] = {"move_up","move_down","move_left","move_right"};
-                sim_stairs[2]++;
-                return dl[sstep];
-            }
-        }
-        sim_stairs[1]++;
-        return "descend";
     }
+    return _stairs_descend_step(player, map);
+}
 
-    // ── G8.3: MCTS path (combat-only, enemies present) ──
-    if (g_use_mcts && !monsters.empty()) {
-        auto sim = build_sim_state(player, monsters, _game_time);
-        if (sim.alive_monsters() > 0) {
-            mcts::MCTS mcts(g_mcts_iters);
-            mcts::CombatAction ca = mcts.search(sim);
-            return mcts::action_name(ca);
+// G8.3: MCTS 路径 (仅战斗且有怪; 无存活怪则返回空走评分路径)
+std::string DecisionAgent::_mcts_action(const std::vector<Monster*>& monsters) {
+    if (!g_use_mcts || monsters.empty()) return "";
+    auto sim = build_sim_state(nullptr, monsters, _game_time);
+    if (sim.alive_monsters() <= 0) return "";
+    mcts::MCTS mcts(g_mcts_iters);
+    mcts::CombatAction ca = mcts.search(sim);
+    return mcts::action_name(ca);
+}
+
+// 治疗决策: HP 低于阈值时找第一个可用的真·治疗槽
+std::string DecisionAgent::_pick_heal_action(const Player* player) {
+    if (_hp_ratio(player) >= _prefer_heal) return "";
+    for (int si = 0; si < 4; si++) {
+        int slot = _skill_priority[si];
+        // Q3.1: 只有真·治疗槽才触发 — 火系玩家初始无自愈时不得锁死 skill_3
+        // Q3.2: 冷却中不得锁死 — 否则站桩等CD被环境伤害磨死
+        if (slot < (int)player->skills.active_skills.size() &&
+            dynamic_cast<SelfHealSkill*>(player->skills.active_skills[slot].get()) &&
+            player->skills.active_skills[slot]->can_use(_game_time)) {
+            // Q3.15 (P1-2 fix): _skill_priority 已按优先序排列, 首个可用即最优 —
+            // 原 continue 遍历使最低优先级槽反向覆盖
+            return "skill_" + std::to_string(slot + 1);
         }
     }
+    return "";
+}
 
-    // Q3.2: 卡死逃脱 — 原地 ≥2s 且无近距怪 → 直线脱困 (先于一切评分)
-    // Q3.10: 仅怪物血量总和变动视为战斗 (毒/环境只影响自身HP, 不得掩盖卡死)
-    // P0-M2: 锚点半径卡死判定 — 原同 tile 判定被"两 tile 来回震荡"永久重置
-    // (BFS 路径记忆在墙前 L/R 横跳 896s 不触发传送 → 900s 死局)
-    // G13: 抽为 _stuck_escape — 原实现在此 return "none" 且无条件不重置计时,
-    //      传送一旦失败即永久空转, 烧完 36000 帧 → TIMEOUT_WALL 假结果
-    std::string stuck_action = _stuck_escape(player, monsters, map);
-    if (!stuck_action.empty()) return stuck_action;
+// 药水决策: 残血且本帧无技能治疗可发 → 喝治疗药水 (1s CD 防连灌)
+std::string DecisionAgent::_pick_potion_action(
+    const Player* player, const std::vector<Monster*>& monsters) {
+    // M4.4: Boss战阈值 0.35→0.55 (冻结 1.5s 后血量会被秒杀, 必须提前喝)
+    // M4.4: Boss蓄力瞬间不喝 — 优先 _evaluate_move 的躲招 (1.4 分 > 药水收益)
+    // P1-C2: 中毒时阈值 0.35→0.55 — 毒 tick 3-6/0.5s, 35% 线才喝必然被追上
+    // (基线 33.6% DOT 死亡: 喝 30HP 的同时毒继续吃血, 提前 20% 喝才有净回血)
+    float potion_line = _prefer_heal;
+    auto* boss = _find_nearest(player, monsters);
+    if (boss && boss->is_boss) potion_line = 0.55f;
+    else if (_player_poison_stacks(player) > 0) potion_line = 0.55f;
+    if (_hp_ratio(player) >= potion_line) return "";
+    if (_game_time - _last_potion_time <= 1.0f) return "";
+    if (boss && boss->is_boss && _boss_winding_up(boss)) return "";
+    for (const auto& it : player->inventory.items) {
+        const auto* c = dynamic_cast<const ConsumableItem*>(it.get());
+        if (c && c->effect_type == "heal") {
+            _last_potion_time = _game_time;
+            return "use_potion";
+        }
+    }
+    return "";
+}
 
-    float best_score = 0;
-    std::string best = "";
+// 移动决策: 四向评分取优 + 方向迟滞 + CLOSED 门改为先开门
+std::string DecisionAgent::_select_move_action(
+    const Player* player, const std::vector<Monster*>& monsters,
+    const GameMap* map, float best_score) {
+    float move_scores[4];
+    for (int d = 0; d < 4; d++)
+        move_scores[d] = _evaluate_move(d, player, monsters, map);
+    int best_dir = 0;
+    for (int d = 1; d < 4; d++)
+        if (move_scores[d] > move_scores[best_dir]) best_dir = d;
+    // Q3.2: 方向迟滞 — 当前方向仍接近最优(±0.03)时保持, 避免对角逼近时逐帧翻转抖动
+    if (_current_dir >= 0 && move_scores[_current_dir] >= move_scores[best_dir] - 0.03f)
+        best_dir = _current_dir;
+    if (move_scores[best_dir] <= best_score) return "";
 
+    const char* dirs[] = {"move_up","move_down","move_left","move_right"};
+    std::string best = dirs[best_dir];
+    _current_dir = best_dir;
+    _mem_step = best_dir;
+    auto* mem_t = _find_nearest(player, monsters);
+    _mem_target = mem_t ? mem_t->instance_id : 0;
+    // Sim: 目标 tile 是 CLOSED 门 → 先开门再走
+    if (map && best != "pickup") {
+        float mdx[] = {0, 0, -1, 1}, mdy[] = {-1, 1, 0, 0};
+        auto [cx, cy] = map->pixel_to_tile(
+            player->entity.rect.x + player->entity.rect.width/2,
+            player->entity.rect.y + player->entity.rect.height/2);
+        int ntx = cx + (int)mdx[best_dir], nty = cy + (int)mdy[best_dir];
+        if (map->door_state_at(ntx, nty) == DoorState::CLOSED)
+            best = "pickup";
+    }
+    return best;
+}
+
+// 普攻 + 技能评分 (按 _skill_priority 优先序; 只比较, 不决定最终动作)
+void DecisionAgent::_score_combat_actions(
+    const Player* player, const std::vector<Monster*>& monsters,
+    float& best_score, std::string& best) {
     // Attack
     float atk_score = _evaluate_attack(player, monsters);
     if (atk_score > best_score) { best_score = atk_score; best = "attack"; }
@@ -1261,87 +1344,76 @@ std::string DecisionAgent::best_action(const Player* player,
             best = "skill_" + std::to_string(slot + 1);
         }
     }
+}
 
+// 生存段: 治疗优先接管 (只在没有技能动作或已经是技能动作时),
+// 否则喝药水; 返回非空 = 本帧应立即执行该动作
+std::string DecisionAgent::_survival_action(
+    const Player* player, const std::vector<Monster*>& monsters,
+    std::string& best, float& best_score) {
     // Heal decision (G7.4: HP below threshold → prioritize heal)
-    if (_hp_ratio(player) < _prefer_heal) {
-        for (int si = 0; si < 4; si++) {
-            int slot = _skill_priority[si];
-            // Q3.1: 只有真·治疗槽才触发 — 火系玩家初始无自愈时不得锁死 skill_3
-            // Q3.2: 冷却中不得锁死 — 否则站桩等CD被环境伤害磨死
-            if (slot < (int)player->skills.active_skills.size() &&
-                dynamic_cast<SelfHealSkill*>(player->skills.active_skills[slot].get()) &&
-                player->skills.active_skills[slot]->can_use(_game_time)) {
-                best_score = 3.0f; // override other actions
-                best = "skill_" + std::to_string(slot + 1);
-                break; // Q3.15 (P1-2 fix): _skill_priority 已按优先序排列, 首个可用即最优 —
-                       // 原 continue 遍历使最低优先级槽反向覆盖
-            }
+    if (best.empty() || best[0] == 's') {
+        if (std::string heal_act = _pick_heal_action(player); !heal_act.empty()) {
+            best = heal_act;
+            best_score = 3.0f;   // override other actions
+            return "";           // 治疗不立即返回, 仍可能被 pickup/move 覆盖
         }
     }
+    // Q3.3: 药水 — 残血且本帧无技能治疗可发 → 喝治疗药水
+    if (best.empty() || best[0] != 's')
+        return _pick_potion_action(player, monsters);
+    return "";
+}
 
-    // Q3.3: 药水 — 残血且本帧无可发自愈技能 → 喝治疗药水 (1s CD 防连灌)
-    // M4.4: Boss战阈值 0.35→0.55 (冻结 1.5s 后血量会被秒杀, 必须提前喝)
-    // M4.4: Boss蓄力瞬间不喝 — 优先 _evaluate_move 的躲招 (1.4 分 > 药水收益)
-    // P1-C2: 中毒时阈值 0.35→0.55 — 毒 tick 3-6/0.5s, 35% 线才喝必然被追上
-    // (基线 33.6% DOT 死亡: 喝 30HP 的同时毒继续吃血, 提前 20% 喝才有净回血)
-    float potion_line = _prefer_heal;
-    auto* boss = _find_nearest(player, monsters);
-    if (boss && boss->is_boss) potion_line = 0.55f;
-    else if (_player_poison_stacks(player) > 0) potion_line = 0.55f;
-    if ((best.empty() || best[0] != 's') && _hp_ratio(player) < potion_line &&
-        _game_time - _last_potion_time > 1.0f &&
-        !(boss && boss->is_boss && _boss_winding_up(boss))) {
-        for (const auto& it : player->inventory.items) {
-            const auto* c = dynamic_cast<const ConsumableItem*>(it.get());
-            if (c && c->effect_type == "heal") {
-                _last_potion_time = _game_time;
-                return "use_potion";
-            }
-        }
-    }
-
-    // Pickup
+// 尾部: pickup -> move -> 随机兜底 (任一环节可能覆盖 best)
+std::string DecisionAgent::_resolve_action_tail(
+    const Player* player, const std::vector<Monster*>& monsters,
+    const GameMap* map, std::string best, float best_score) {
     float pu_score = _evaluate_pickup(player, map, monsters);
     if (pu_score > best_score) {
-        best_score = pu_score; best = "pickup";
+        best = "pickup";
+        best_score = pu_score;
         _last_pickup_attempt = (float)_game_time;   // G14b: 记录拾取尝试时刻
     }
-
-    // Movement (pick best direction)
-    float move_scores[4];
-    for (int d = 0; d < 4; d++)
-        move_scores[d] = _evaluate_move(d, player, monsters, map);
-    int best_dir = 0;
-    for (int d = 1; d < 4; d++)
-        if (move_scores[d] > move_scores[best_dir]) best_dir = d;
-    // Q3.2: 方向迟滞 — 当前方向仍接近最优(±0.03)时保持, 避免对角逼近时逐帧翻转抖动
-    if (_current_dir >= 0 && move_scores[_current_dir] >= move_scores[best_dir] - 0.03f)
-        best_dir = _current_dir;
-    if (move_scores[best_dir] > best_score) {
-        const char* dirs[] = {"move_up","move_down","move_left","move_right"};
-        best = dirs[best_dir];
-        _current_dir = best_dir;
-        _mem_step = best_dir;
-        auto* mem_t = _find_nearest(player, monsters);
-        _mem_target = mem_t ? mem_t->instance_id : 0;
-        // Sim: 目标 tile 是 CLOSED 门 → 先开门再走
-        if (map && best != "pickup") {
-            float mdx[] = {0, 0, -1, 1}, mdy[] = {-1, 1, 0, 0};
-            auto [cx, cy] = map->pixel_to_tile(
-                player->entity.rect.x + player->entity.rect.width/2,
-                player->entity.rect.y + player->entity.rect.height/2);
-            int ntx = cx + (int)mdx[best_dir], nty = cy + (int)mdy[best_dir];
-            if (map->door_state_at(ntx, nty) == DoorState::CLOSED)
-                best = "pickup";
-        }
-    }
-
+    if (std::string move_act = _select_move_action(player, monsters, map, best_score);
+        !move_act.empty())
+        best = move_act;
     // If nothing better — move randomly
     if (best.empty()) {
         const char* rand_dirs[] = {"move_up","move_down","move_left","move_right"};
         best = rand_dirs[rng() % 4];
     }
     return best;
+}
+
+std::string DecisionAgent::best_action(const Player* player,
+    const std::vector<Monster*>& monsters,
+    const GameMap* map, bool stairs_active, bool boss_intro_active) {
+    if (!player) return "";
+
+    if (boss_intro_active) return "confirm";
+    if (stairs_active)
+        return _stairs_phase_action(player, monsters, map);
+
+    // ── G8.3: MCTS path (combat-only, enemies present) ──
+    if (std::string mcts_act = _mcts_action(monsters); !mcts_act.empty())
+        return mcts_act;
+
+    // G13: _stuck_escape 是"原地 ≥2s 且无近距怪 → 直线脱困", 必须先于一切评分
+    // (详细语义与失败史见 _stuck_escape 实现处注释)
+    std::string stuck_action = _stuck_escape(player, monsters, map);
+    if (!stuck_action.empty()) return stuck_action;
+
+    float best_score = 0;
+    std::string best = "";
+
+    _score_combat_actions(player, monsters, best_score, best);
+
+    if (std::string survival_act = _survival_action(player, monsters, best, best_score);
+        !survival_act.empty())
+        return survival_act;
+
+    return _resolve_action_tail(player, monsters, map, best, best_score);
 }
 
 // ═══════════════════════════════════════════════════════════
