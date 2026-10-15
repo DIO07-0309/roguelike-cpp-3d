@@ -453,6 +453,58 @@ static std::vector<WeaponAttackResult> _melee_normal(
 // tick_specials — called each frame by GameScene
 // ═══════════════════════════════════════════════════════════════
 
+// ── G53: tick_specials 拆出的两个武器特殊技 ──────────────────
+
+// 双截棍: 自动追踪 tracked 目标 (tracked 死/离场则重捕最近的)
+void WeaponExecutor::_tick_nunchaku_special(
+    Player* player, const std::vector<Monster*>& targets,
+    const std::vector<Monster*>& rt, Vector2 origin, float mult,
+    std::vector<WeaponAttackResult>& results) {
+    auto& sp = player->weapon.runtime().special;
+    // Q3.13: 校验 tracked 仍在本帧存活怪物列表中 (instance_id 查找,
+    // 跨层残留安全 — 旧 id 不会匹配新层任何怪)
+    Monster* trg = nullptr;
+    if (sp.tracked_instance != 0) {
+        auto it = std::find_if(targets.begin(), targets.end(),
+            [id = sp.tracked_instance](Monster* m) {
+                return m && m->instance_id == id;
+            });
+        if (it != targets.end() && (*it)->combat.is_alive) trg = *it;
+    }
+    if (trg) {
+        Vector2 hp = { trg->entity.rect.x + trg->entity.rect.width / 2,
+                       trg->entity.rect.y + trg->entity.rect.height / 2 };
+        auto ar = _resolve_one(player, trg, hp, mult);
+        ar.from_special = true;
+        results.push_back(ar);
+    } else if (!rt.empty()) {
+        // Re-acquire nearest target
+        auto hits = hit_detect_circle(origin, sp.range_px, rt);
+        if (!hits.empty()) {
+            sp.tracked_instance = hits[0].target->instance_id;
+            auto ar = _resolve_one(player, hits[0].target, hits[0].hit_point, mult);
+            ar.from_special = true;
+            results.push_back(ar);
+        }
+    }
+}
+
+// 长矛: 扇形快速连击 (全部按 MAGICAL 伤害类型走雷电强化)
+void WeaponExecutor::_tick_spear_special(
+    Player* player, const std::vector<Monster*>& rt,
+    Vector2 origin, float mult,
+    std::vector<WeaponAttackResult>& results) {
+    auto& sp = player->weapon.runtime().special;
+    auto hits = hit_detect_sector(origin, sp.direction,
+        sp.range_px, sp.width_param, rt);
+    for (auto& h : hits) {
+        auto ar = _resolve_one(player, h.target, h.hit_point, mult,
+            AttackType::MAGICAL);
+        ar.from_special = true;
+        results.push_back(ar);
+    }
+}
+
 std::vector<WeaponAttackResult> WeaponExecutor::tick_specials(
     Player* player,
     const std::vector<Monster*>& targets,
@@ -472,43 +524,9 @@ std::vector<WeaponAttackResult> WeaponExecutor::tick_specials(
     float mult = sp.current_multiplier();
 
     if (wt == WeaponType::NUNCHAKU) {
-        // Auto-track: hit the tracked target with auto-aim
-        // Q3.13: 校验 tracked 仍在本帧存活怪物列表中 (instance_id 查找, 跨层残留安全)
-        Monster* trg = nullptr;
-        if (sp.tracked_instance != 0) {
-            auto it = std::find_if(targets.begin(), targets.end(),
-                [id = sp.tracked_instance](Monster* m) {
-                    return m && m->instance_id == id;
-                });
-            if (it != targets.end() && (*it)->combat.is_alive) trg = *it;
-        }
-        if (trg) {
-            Vector2 hp = { trg->entity.rect.x + trg->entity.rect.width / 2,
-                           trg->entity.rect.y + trg->entity.rect.height / 2 };
-            auto ar = _resolve_one(player, trg, hp, mult);
-            ar.from_special = true;
-            results.push_back(ar);
-        } else if (!rt.empty()) {
-            // Re-acquire nearest target
-            auto hits = hit_detect_circle(origin, sp.range_px, rt);
-            if (!hits.empty()) {
-                sp.tracked_instance = hits[0].target->instance_id;
-                auto ar = _resolve_one(player, hits[0].target, hits[0].hit_point, mult);
-                ar.from_special = true;
-                results.push_back(ar);
-            }
-        }
-    }
-    else if (wt == WeaponType::SPEAR) {
-        // Sector rapid hits: magic-typed lightning-enhanced strikes
-        auto hits = hit_detect_sector(origin, sp.direction,
-            sp.range_px, sp.width_param, rt);
-        for (auto& h : hits) {
-            auto ar = _resolve_one(player, h.target, h.hit_point, mult,
-                AttackType::MAGICAL);
-            ar.from_special = true;
-            results.push_back(ar);
-        }
+        _tick_nunchaku_special(player, targets, rt, origin, mult, results);
+    } else if (wt == WeaponType::SPEAR) {
+        _tick_spear_special(player, rt, origin, mult, results);
     }
 
     return results;

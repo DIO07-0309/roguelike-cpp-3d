@@ -40,4 +40,15 @@ public:
         const std::vector<Monster*>& targets,
         float dt,
         const GameMap* map = nullptr);
+
+private:
+    // G53: tick_specials 拆出的两个武器特殊技
+    static void _tick_nunchaku_special(
+        Player* player, const std::vector<Monster*>& targets,
+        const std::vector<Monster*>& rt, Vector2 origin, float mult,
+        std::vector<WeaponAttackResult>& results);
+    static void _tick_spear_special(
+        Player* player, const std::vector<Monster*>& rt,
+        Vector2 origin, float mult,
+        std::vector<WeaponAttackResult>& results);
 };
