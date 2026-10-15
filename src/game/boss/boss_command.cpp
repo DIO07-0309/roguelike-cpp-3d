@@ -62,79 +62,105 @@ BossAction boss_default_action(BossCommand c) {
     return a;
 }
 
+// ── G53: boss_execute_command 拆出的 5 个命令实现 ────────────
+
+// 冲撞: 朝玩家位移 4 帧量 + 命中伤害
+static void _cmd_charge(Monster* self, Player* player,
+                        std::vector<Effect>* effects) {
+    float dx = player->entity.rect.x - self->entity.rect.x;
+    float dy = player->entity.rect.y - self->entity.rect.y;
+    float len = sqrtf(dx*dx + dy*dy);
+    if (len > 0) {
+        self->entity.position.x += dx / len * 120.0f * 0.016f * 4;
+        self->entity.position.y += dy / len * 120.0f * 0.016f * 4;
+        self->entity.sync_rect();
+    }
+    if (CheckCollisionRecs(self->entity.rect, player->entity.rect)) {
+        int dmg = calculate_damage((int)(self->combat.get_effective_attack() * 1.8f),
+            player->combat.get_effective_defense(AttackType::PHYSICAL));
+        player->combat.take_damage(dmg);
+    }
+    _cmd_vfx(self, "charge", effects);
+}
+
+// 冲击波: 100px 内魔伤
+static void _cmd_shockwave(Monster* self, Player* player,
+                           std::vector<Effect>* effects) {
+    float dist = hypotf(
+        player->entity.rect.x - self->entity.rect.x,
+        player->entity.rect.y - self->entity.rect.y);
+    if (dist < 100) {
+        int dmg = calculate_damage((int)(self->combat.get_effective_attack() * 1.5f),
+            player->combat.get_effective_defense(AttackType::MAGICAL), AttackType::MAGICAL);
+        player->combat.take_damage(dmg);
+    }
+    _cmd_vfx(self, "shockwave", effects);
+}
+
+// 召唤: boss 周围 ±3 格内可走点放 2 只小怪
+static void _cmd_summon(Monster* self, Player*, GameMap* map,
+                        std::vector<Monster*>* all, std::vector<Effect>* effects) {
+    if (all && map) {
+        for (int i = 0; i < 2; i++) {
+            int off_x = (rng() % 7) - 3, off_y = (rng() % 7) - 3;
+            float sx = self->entity.position.x + off_x * 32;
+            float sy = self->entity.position.y + off_y * 32;
+            auto [tx, ty] = map->pixel_to_tile(sx, sy);
+            if (map->is_walkable(tx, ty)) {
+                auto* m = spawn_monster(sx, sy, (rng()%3==0)?"orc":"slime");
+                if (m) all->push_back(m);
+            }
+        }
+    }
+    _cmd_vfx(self, "summon", effects);
+}
+
+// 防御: def_pct +60% + 蓝色脉冲
+static void _cmd_defend(Monster* self, Player*,
+                        std::vector<Effect>* effects) {
+    self->combat.modifiers["def_pct"] =
+        (self->combat.modifiers.count("def_pct") ? self->combat.modifiers["def_pct"] : 0) + 0.6f;
+    if (effects) {
+        Effect s; s.kind="pulse";
+        s.world_x=self->entity.rect.x+self->entity.rect.width/2;
+        s.world_y=self->entity.rect.y+self->entity.rect.height/2;
+        s.radius=35; s.duration=0.15f; s.elapsed=0; s.color={60,140,255,140};
+        effects->push_back(s);
+    }
+}
+
+// 后撤: 远离玩家 1 帧量
+static void _cmd_retreat(Monster* self, Player* player) {
+    float dx = self->entity.rect.x - player->entity.rect.x;
+    float dy = self->entity.rect.y - player->entity.rect.y;
+    float len = sqrtf(dx*dx + dy*dy);
+    if (len > 1) {
+        self->entity.position.x += dx/len * 120.0f * 0.016f;
+        self->entity.position.y += dy/len * 120.0f * 0.016f;
+        self->entity.sync_rect();
+    }
+}
+
 void boss_execute_command(BossCommand cmd, Monster* self, Player* player,
     GameMap* map, std::vector<Monster*>* all, std::vector<Effect>* effects,
     double) {
     if (!self || !player) return;
     switch (cmd) {
-    case BossCommand::CHARGE: {
-        float dx = player->entity.rect.x - self->entity.rect.x;
-        float dy = player->entity.rect.y - self->entity.rect.y;
-        float len = sqrtf(dx*dx + dy*dy);
-        if (len > 0) {
-            self->entity.position.x += dx / len * 120.0f * 0.016f * 4;
-            self->entity.position.y += dy / len * 120.0f * 0.016f * 4;
-            self->entity.sync_rect();
-        }
-        if (CheckCollisionRecs(self->entity.rect, player->entity.rect)) {
-            int dmg = calculate_damage((int)(self->combat.get_effective_attack() * 1.8f),
-                player->combat.get_effective_defense(AttackType::PHYSICAL));
-            player->combat.take_damage(dmg);
-        }
-        _cmd_vfx(self, "charge", effects);
+    case BossCommand::CHARGE:
+        _cmd_charge(self, player, effects);
         break;
-    }
-    case BossCommand::SHOCKWAVE: {
-        float dist = hypotf(
-            player->entity.rect.x - self->entity.rect.x,
-            player->entity.rect.y - self->entity.rect.y);
-        if (dist < 100) {
-            int dmg = calculate_damage((int)(self->combat.get_effective_attack() * 1.5f),
-                player->combat.get_effective_defense(AttackType::MAGICAL), AttackType::MAGICAL);
-            player->combat.take_damage(dmg);
-        }
-        _cmd_vfx(self, "shockwave", effects);
+    case BossCommand::SHOCKWAVE:
+        _cmd_shockwave(self, player, effects);
         break;
-    }
-    case BossCommand::SUMMON: {
-        if (all && map) {
-            for (int i = 0; i < 2; i++) {
-                int off_x = (rng() % 7) - 3, off_y = (rng() % 7) - 3;
-                float sx = self->entity.position.x + off_x * 32;
-                float sy = self->entity.position.y + off_y * 32;
-                auto [tx, ty] = map->pixel_to_tile(sx, sy);
-                if (map->is_walkable(tx, ty)) {
-                    auto* m = spawn_monster(sx, sy, (rng()%3==0)?"orc":"slime");
-                    if (m) all->push_back(m);
-                }
-            }
-        }
-        _cmd_vfx(self, "summon", effects);
+    case BossCommand::SUMMON:
+        _cmd_summon(self, player, map, all, effects);
         break;
-    }
-    case BossCommand::DEFEND: {
-        self->combat.modifiers["def_pct"] =
-            (self->combat.modifiers.count("def_pct") ? self->combat.modifiers["def_pct"] : 0) + 0.6f;
-        if (effects) {
-            Effect s; s.kind="pulse";
-            s.world_x=self->entity.rect.x+self->entity.rect.width/2;
-            s.world_y=self->entity.rect.y+self->entity.rect.height/2;
-            s.radius=35; s.duration=0.15f; s.elapsed=0; s.color={60,140,255,140};
-            effects->push_back(s);
-        }
+    case BossCommand::DEFEND:
+        _cmd_defend(self, player, effects);
         break;
-    }
-    case BossCommand::RETREAT: {
-        float dx = self->entity.rect.x - player->entity.rect.x;
-        float dy = self->entity.rect.y - player->entity.rect.y;
-        float len = sqrtf(dx*dx + dy*dy);
-        if (len > 1) {
-            self->entity.position.x += dx/len * 120.0f * 0.016f;
-            self->entity.position.y += dy/len * 120.0f * 0.016f;
-            self->entity.sync_rect();
-        }
+    case BossCommand::RETREAT:
+        _cmd_retreat(self, player);
         break;
-    }
     case BossCommand::PHASE:
     case BossCommand::LAST_STAND:
     case BossCommand::CAST:   // CAST → SHOCKWAVE as fallback
