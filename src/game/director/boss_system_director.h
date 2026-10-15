@@ -67,7 +67,13 @@ public:
     // ── F15: Mirror Boss ──
     std::unique_ptr<MirrorAgent> _mirror_agent;
     MirrorCombatDirector _mirror_combat;
-    void _init_mirror_boss(Monster* boss, const class Player* player);
+    // G53: init_on_spawn 拆出的两段 (modifier/evolution 派生 / 状态复位)
+    void _init_boss_derived(Monster* boss, const WorldState& ws, BuildType bt,
+                            const RelationshipSystem& rels, GameMap* map,
+                            int floor);
+    void _init_boss_state(BuildType bt, const WorldState& ws,
+                          const RelationshipSystem& rels, int floor);
+    void _init_mirror_boss(Monster* boss, const Player* player);
     // G52: 从 BossDef 读 behavior_type 并初始化 domain/mirror 子系统
     void _init_behavior_from_def(Monster* boss, const class Player* player);
     // M4e: 跨对局记忆 — 导出/注入 (空 vector 安全)

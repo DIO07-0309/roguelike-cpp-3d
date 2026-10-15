@@ -129,11 +129,12 @@ void BossSystemDirector::_init_behavior_from_def(Monster* boss, const Player* pl
     }
 }
 
-void BossSystemDirector::init_on_spawn(Monster* boss, int floor,
-    const WorldState& ws, BuildType bt, const RelationshipSystem& rels,
-    GameMap* map, const Player* player) {
-    if (!boss) return;
+// ── G53: init_on_spawn 拆出的两段 ───────────────────────────
 
+// modifier/evolution 派生: 数值缩放 + 即时副作用 (禁阶段/召小怪) + 技能修正
+void BossSystemDirector::_init_boss_derived(
+    Monster* boss, const WorldState& ws, BuildType bt,
+    const RelationshipSystem& rels, GameMap* map, int floor) {
     // D5 Step1: BossModifier (HP/伤害缩放 + 文本)
     modifier_hook = BossNarrative::calc_modifier(floor, ws, bt, rels);
     modifier_text = modifier_hook.modifier_text ? modifier_hook.modifier_text : "";
@@ -153,6 +154,18 @@ void BossSystemDirector::init_on_spawn(Monster* boss, int floor,
             (rng() % 100 < 80) && map->is_walkable(etx, ety);
     }
 
+    if (auto* bai = dynamic_cast<BossAI*>(boss->ai))
+        boss_apply_skill_modifiers(bai, evolution);
+
+    // Build combined modifier text for intro
+    if (!modifier_text.empty() && evolution.evolution_name)
+        modifier_text = modifier_text + " [" + evolution.evolution_name + "]";
+}
+
+// 状态复位: behavior / encounter / cinematic / timeline / replay_mem
+void BossSystemDirector::_init_boss_state(
+    BuildType bt, const WorldState& ws, const RelationshipSystem& rels,
+    int floor) {
     // D5 Step3: Behavior / Step5: Encounter / Step6: Cinematic + Timeline
     behavior = BossBehaviorState{};
     behavior.personality = boss_personality_for_floor(floor);
@@ -169,19 +182,21 @@ void BossSystemDirector::init_on_spawn(Monster* boss, int floor,
     replay_mem.saved_priest = ws.has(WorldFlag::Saved_Priest);
     dmg_done = 0;
     dmg_taken = 0;
+}
+
+void BossSystemDirector::init_on_spawn(Monster* boss, int floor,
+    const WorldState& ws, BuildType bt, const RelationshipSystem& rels,
+    GameMap* map, const Player* player) {
+    if (!boss) return;
+
+    _init_boss_derived(boss, ws, bt, rels, map, floor);
+    _init_boss_state(bt, ws, rels, floor);
 
     // G2.3: Arena 配置从 BossAI 读取 (boss_factory_create 已设置)
     if (auto* bai = dynamic_cast<BossAI*>(boss->ai))
         _arena_cfg = bai->_arena_cfg;
     else
         _arena_cfg = nullptr;
-
-    if (auto* bai = dynamic_cast<BossAI*>(boss->ai))
-        boss_apply_skill_modifiers(bai, evolution);
-
-    // Build combined modifier text for intro
-    if (!modifier_text.empty() && evolution.evolution_name)
-        modifier_text = modifier_text + " [" + evolution.evolution_name + "]";
 
     // F10.1: behavior_type + domain 配置 (数据驱动)
     _init_behavior_from_def(boss, player);
