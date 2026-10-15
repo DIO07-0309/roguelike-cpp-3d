@@ -170,9 +170,33 @@ static float _weapon_angle(WeaponType wt, bool attacking, float p, Direction dir
 
 // G9.4: 武器握持 — 手腕锚点 + 待机/挥砍角度 + 朝向镜像
 // 素材朝向: 刀/剑尖朝下(柄在顶), 矛尖朝上(柄在底), 弩弓臂朝上(托在底)
-static void _draw_player_weapon(Player* self, Direction dir,
-                                float hx, float hy, float hw, float hh,
-                                bool wall_ahead) {   // G10.6-B C1
+
+// G53: 每类武器的精灵尺寸 (长/宽/高 — 决定旋转锚点前必须知道)
+static void _weapon_sprite_size(WeaponType wt, float& w, float& h) {
+    const bool is_spear    = wt == WeaponType::SPEAR;
+    const bool is_crossbow = wt == WeaponType::CROSSBOW;
+    w = is_spear ? 10.0f : (is_crossbow ? 16.0f : 12.0f);
+    h = is_spear ? 26.0f
+      : (is_crossbow ? 13.0f
+      : (wt == WeaponType::DAGGER ? 14.0f : 18.0f));
+}
+
+// G53: 手腕锚点的横向偏移 (身体中心 + 朝向偏移; 朝墙时减半防穿模)
+static float _weapon_hand_offset(Direction dir, float hw, bool wall_ahead) {
+    float ox = 0.0f;
+    switch (dir) {
+        case Direction::DOWN:  ox = hw * 0.30f;  break;
+        case Direction::UP:    ox = -hw * 0.30f; break;
+        case Direction::LEFT:  ox = -hw * 0.42f; break;
+        case Direction::RIGHT: ox = hw * 0.42f;  break;
+    }
+    if (wall_ahead) ox *= 0.5f;   // G10.6-B C1
+    return ox;
+}
+
+// G9.4: 绘制武器精灵 (挥砍角度 + 柄部锚点 + 待机姿态)
+void _draw_player_weapon(Player* self, Direction dir, float hx, float hy,
+                         float hw, float hh, bool wall_ahead) {
     const char* wkey = weapon_sprite_key(self->weapon.weapon_type());
     if (!wkey) return;
     SpriteDef wdef;
@@ -187,25 +211,13 @@ static void _draw_player_weapon(Player* self, Direction dir,
     }
 
     WeaponType wt = self->weapon.weapon_type();
-    bool is_spear = wt == WeaponType::SPEAR;
-    bool is_crossbow = wt == WeaponType::CROSSBOW;
-    bool is_nunchaku = wt == WeaponType::NUNCHAKU;
-    bool bottom_grip = is_spear || is_crossbow;
-    float w = is_spear ? 10.0f : (is_crossbow ? 16.0f : 12.0f);
-    float h = is_spear ? 26.0f
-             : (is_crossbow ? 13.0f
-             : (wt == WeaponType::DAGGER ? 14.0f : 18.0f));
+    float w = 0.0f, h = 0.0f;
+    _weapon_sprite_size(wt, w, h);
+    const bool bottom_grip = (wt == WeaponType::SPEAR || wt == WeaponType::CROSSBOW);
 
-    // 手腕锚点 (身体中心 + 朝向偏移) — G10.6-B C1: 朝墙时横向偏移减半
+    // 手腕锚点 (身体中心 + 朝向偏移)
     float cx = hx + hw / 2, cy = hy + hh * 0.55f;
-    float ox = 0.0f;
-    switch (dir) {
-        case Direction::DOWN:  ox = hw * 0.30f;  break;
-        case Direction::UP:    ox = -hw * 0.30f; break;
-        case Direction::LEFT:  ox = -hw * 0.42f; break;
-        case Direction::RIGHT: ox = hw * 0.42f;  break;
-    }
-    if (wall_ahead) ox *= 0.5f;
+    float ox = _weapon_hand_offset(dir, hw, wall_ahead);
 
     // 角度: 每类武器独立待机姿态 + 攻击轨迹 (见 _weapon_angle)
     float p = 0.0f;
@@ -217,7 +229,8 @@ static void _draw_player_weapon(Player* self, Direction dir,
     Vector2 origin = bottom_grip ? Vector2{w / 2, h - 2} : Vector2{w / 2, 2};
     float dst_y = bottom_grip ? cy - h + 2 : cy - 2;
     Rectangle src = SpriteRenderer::frame_rect(wdef, 0);
-    // raylib: 绘制位置 = dest - origin → dest 补偿 origin 后, 主体归位且旋转真正绕柄部
+    // raylib: 绘制位置 = dest - origin → dest 补偿 origin 后,
+    // 主体归位且旋转真正绕柄部
     Rectangle dst = {cx + ox - w / 2 + origin.x, dst_y + origin.y, w, h};
     DrawTexturePro(wtex, src, dst, origin, angle, WHITE);
 }
