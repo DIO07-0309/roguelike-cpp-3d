@@ -277,6 +277,42 @@ static void _draw_combo_indicator(int count, float timer, float hx, float hy,
     DrawText(buf, (int)(hx + hw/2 - 4), (int)(hy - 18), fsize, cc);
 }
 
+// G53: 玩家身体绘制 + 翻滚残影 (素材精灵路径; 无素材走程序化占位)
+Rectangle Player::_draw_player_body_with_ghosts(float hx, float hy, float hw,
+                                                float hh, float p) {
+    // M4f.4: 数据驱动素材精灵 (元素形象), 未配置回退程序化占位
+    SpriteDef fdef;
+    Texture2D ftex = ResourceManager::inst().sprite_by_key(
+        _player_sprite_key(element.type), fdef);
+    if (ftex.id <= 0) {
+        _draw_procedural_player(hx, hy, hw, hh,
+                                _combo_body_color(combo.count), direction);
+        return {hx, hy, hw, hh};
+    }
+    // G9.4: 重击绕脚底回弹旋转  ·  B3: 翻滚倾斜叠加 (同一脚底 origin 路径)
+    float rot = (combo.is_heavy() && p > 0.0f)
+        ? 6.0f * sinf(p * 6.2831853f) : 0.0f;
+    rot += dodge.tilt_deg();
+    Rectangle src = SpriteRenderer::frame_rect(fdef, 0);
+    // raylib: 绘制位置 = dest - origin, 旋转绕 dest 进行。
+    // 平时 origin 归零 → 精灵贴满碰撞盒; 重击旋转时 dest 补偿 origin → 绕脚底旋转
+    Vector2 origin = {hw / 2, hh};
+    Rectangle dst = {hx + origin.x, hy + origin.y, hw, hh};
+    if (rot == 0.0f) { dst.x -= origin.x; dst.y -= origin.y; origin = {0, 0}; }
+    DrawTexturePro(ftex, src, dst, origin, rot, WHITE);
+    if (rot == 0.0f) _draw_facing_eyes(hx, hy, hw, hh, direction);
+    // B3: 残影 — 起翻时记录的 rect 左上偏移回贴同贴图, alpha 随龄衰减
+    for (const auto& g : dodge.ghosts()) {
+        float ga = 120.0f * (1.0f - g.age / DodgeComponent::kGhostLife);
+        if (ga <= 0.0f) continue;
+        Rectangle gd = {hx + (g.pos.x - entity.position.x),
+                        hy + (g.pos.y - entity.position.y), hw, hh};
+        DrawTexturePro(ftex, src, gd, {0, 0}, 0.0f,
+                       {255, 255, 255, (unsigned char)ga});
+    }
+    return {hx, hy, hw, hh};
+}
+
 void Player::draw_no_cam(float cam_x, float cam_y, const GameMap* view_map) {
     Rectangle dr = entity.draw_rect(cam_x, cam_y);
 
@@ -306,38 +342,9 @@ void Player::draw_no_cam(float cam_x, float cam_y, const GameMap* view_map) {
     hy = pose.y;
 
     // 阴影
-    DrawEllipse(hx + hw/2, hy + hh + 2, hw/2 - 2, 3, {0, 0, 0, 100});
+    DrawEllipse(hw/2 + hx, hh + hy + 2, hw/2 - 2, 3, {0, 0, 0, 100});
 
-    // M4f.4: 数据驱动素材精灵 (元素形象), 未配置回退程序化占位
-    SpriteDef fdef;
-    Texture2D ftex = ResourceManager::inst().sprite_by_key(
-        _player_sprite_key(element.type), fdef);
-    if (ftex.id > 0) {
-        // G9.4: 重击绕脚底回弹旋转  ·  B3: 翻滚倾斜叠加 (同一脚底 origin 路径)
-        float rot = (combo.is_heavy() && p > 0.0f)
-            ? 6.0f * sinf(p * 6.2831853f) : 0.0f;
-        rot += dodge.tilt_deg();
-        Rectangle src = SpriteRenderer::frame_rect(fdef, 0);
-        // raylib: 绘制位置 = dest - origin, 旋转绕 dest 进行。
-        // 平时 origin 归零 → 精灵贴满碰撞盒; 重击旋转时 dest 补偿 origin → 绕脚底旋转
-        Vector2 origin = {hw / 2, hh};
-        Rectangle dst = {hx + origin.x, hy + origin.y, hw, hh};
-        if (rot == 0.0f) { dst.x -= origin.x; dst.y -= origin.y; origin = {0, 0}; }
-        DrawTexturePro(ftex, src, dst, origin, rot, WHITE);
-        if (rot == 0.0f) _draw_facing_eyes(hx, hy, hw, hh, direction);
-        // B3: 残影 — 起翻时记录的 rect 左上偏移回贴同贴图, alpha 随龄衰减
-        for (const auto& g : dodge.ghosts()) {
-            float ga = 120.0f * (1.0f - g.age / DodgeComponent::kGhostLife);
-            if (ga <= 0.0f) continue;
-            Rectangle gd = {hx + (g.pos.x - entity.position.x),
-                            hy + (g.pos.y - entity.position.y), hw, hh};
-            DrawTexturePro(ftex, src, gd, {0, 0}, 0.0f,
-                           {255, 255, 255, (unsigned char)ga});
-        }
-    } else {
-        _draw_procedural_player(hx, hy, hw, hh,
-                                _combo_body_color(combo.count), direction);
-    }
+    _draw_player_body_with_ghosts(hx, hy, hw, hh, p);
 
     // G9.4: 装备武器握持效果 (徒手/无素材时静默)
     _draw_player_weapon(this, direction, hx, hy, hw, hh, wall_ahead);

@@ -91,6 +91,9 @@ public:
     // 渲染
     void draw_no_cam(float cam_x, float cam_y,
                      const struct GameMap* view_map = nullptr);  // G10.6-B C1: 朝墙姿态衰减用
+    // G53: draw_no_cam 拆出的两段 (缩放+前倾后的绘制盒 / 幽灵残影)
+    Rectangle _draw_player_body_with_ghosts(float hx, float hy, float hw, float hh,
+                                            float p);
 
     // D2: 连击状态
     ComboState combo;
