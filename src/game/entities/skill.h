@@ -119,6 +119,13 @@ public:
     std::string get_level_text() const override;
 protected:
     void _on_level_up() override;
+    // G53: execute 拆出的三段 (buff触发 / 多段伤害 / E3 重击冲击波)
+    std::string _apply_slash_triggers(const std::vector<Monster*>& hit,
+                                      int evolution_level, bool is_heavy);
+    int _deal_slash_damage(Player* caster, const std::vector<Monster*>& hit,
+                           float base, float power, int hits_per);
+    int _deal_shockwave(Player* caster, const std::vector<Monster*>& targets,
+                        int cone_range, float base, float power);
     int _cone_range = 1;
 };
 

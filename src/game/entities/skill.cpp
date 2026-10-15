@@ -213,17 +213,11 @@ void SlashSkill::_on_level_up() {
     _recalc_cooldown();
 }
 
-std::string SlashSkill::execute(Player* caster, std::vector<Monster*>& targets,
-                                 GameMap*, bool is_heavy) {
-    int cr = _cone_range;
-    float dmg_bonus = 1.0f;
-    // D3 Step3 E1: 范围+30%
-    if (evolution_level >= 1) cr = (int)(cr * 1.3f);
-    // D2 Step2: Heavy → 范围+40%, 伤害+30%
-    if (is_heavy) { cr = (int)(cr * 1.4f); if (cr < 2) cr = 2; dmg_bonus = 1.3f; }
-    auto hit = get_targets_in_cone(caster, targets, cr);
-    if (hit.empty()) return is_heavy ? "重·斩击挥空了" : "斩击挥空了（无目标）";
+// ── G53: SlashSkill::execute 拆出的三段 ─────────────────────
 
+// buff 触发 + E2 流血 (返回展示文本)
+std::string SlashSkill::_apply_slash_triggers(const std::vector<Monster*>& hit,
+                                              int evolution_lv, bool is_heavy) {
     std::string extra;
     for (auto* t : hit) {
         for (auto& tr : triggers) {
@@ -235,13 +229,15 @@ std::string SlashSkill::execute(Player* caster, std::vector<Monster*>& targets,
             }
         }
         // D3 Step3 E2: 100%附加 bleed
-        if (evolution_level >= 2) { apply_buff(t, "bleed", 1); extra += " 流血!"; }
+        if (evolution_lv >= 2) { apply_buff(t, "bleed", 1); extra += " 流血!"; }
     }
+    return extra;
+}
 
+// 多段伤害: 每个目标 hits_per 次 (level>=3 时二连击)
+int SlashSkill::_deal_slash_damage(Player* caster, const std::vector<Monster*>& hit,
+                                   float base, float power, int hits_per) {
     int total = 0;
-    float base = get_effective_attack(caster) * 1.5f * dmg_bonus;
-    float power = get_power_multiplier();
-    int hits_per = (level >= 3) ? 2 : 1;
     for (auto* t : hit) {
         for (int i = 0; i < hits_per; i++) {
             int dmg = calculate_damage((int)(base * power),
@@ -250,33 +246,63 @@ std::string SlashSkill::execute(Player* caster, std::vector<Monster*>& targets,
             total += dmg;
         }
     }
+    return total;
+}
+
+// D3 Step3 E3: Heavy 冲击波 — 朝向前方直线敌人再吃 70% 二次伤害
+int SlashSkill::_deal_shockwave(Player* caster,
+                                const std::vector<Monster*>& targets,
+                                int cone_range, float base, float power) {
+    float cx = caster->entity.rect.x + caster->entity.rect.width/2;
+    float cy = caster->entity.rect.y + caster->entity.rect.height/2;
+    int total = 0;
+    for (auto* t : targets) {
+        if (!t || !t->combat.is_alive) continue;
+        float tx = t->entity.rect.x + t->entity.rect.width/2;
+        float ty = t->entity.rect.y + t->entity.rect.height/2;
+        float dx = tx - cx, dy = ty - cy;
+        float dist = sqrtf(dx*dx+dy*dy);
+        if (dist > cone_range * 48.0f) continue;
+        // 检查是否在朝向方向
+        bool in_dir = false;
+        switch (caster->direction) {
+            case Direction::DOWN:  in_dir = (dy > 0  && fabsf(dx) < fabsf(dy)); break;
+            case Direction::UP:    in_dir = (dy < 0  && fabsf(dx) < fabsf(dy)); break;
+            case Direction::RIGHT: in_dir = (dx > 0  && fabsf(dy) < fabsf(dx)); break;
+            case Direction::LEFT:  in_dir = (dx < 0  && fabsf(dy) < fabsf(dx)); break;
+        }
+        if (!in_dir) continue;
+        int wave_dmg = (int)(calculate_damage((int)(base * power * 0.7f),
+            t->combat.get_effective_defense(AttackType::PHYSICAL)));
+        t->combat.take_damage(wave_dmg);
+        total += wave_dmg;
+    }
+    return total;
+}
+
+std::string SlashSkill::execute(Player* caster, std::vector<Monster*>& targets,
+                                 GameMap*, bool is_heavy) {
+    int cr = _cone_range;
+    float dmg_bonus = 1.0f;
+    // D3 Step3 E1: 范围+30%
+    if (evolution_level >= 1) cr = (int)(cr * 1.3f);
+    // D2 Step2: Heavy → 范围+40%, 伤害+30%
+    if (is_heavy) { cr = (int)(cr * 1.4f); if (cr < 2) cr = 2; dmg_bonus = 1.3f; }
+    auto hit = get_targets_in_cone(caster, targets, cr);
+    if (hit.empty()) return is_heavy ? "重·斩击挥空了" : "斩击挥空了（无目标）";
+
+    std::string extra = _apply_slash_triggers(hit, evolution_level, is_heavy);
+
+    float base = get_effective_attack(caster) * 1.5f * dmg_bonus;
+    float power = get_power_multiplier();
+    int hits_per = (level >= 3) ? 2 : 1;
+    int total = _deal_slash_damage(caster, hit, base, power, hits_per);
 
     // D3 Step3 E3: Heavy冲击波 — 向前方直线敌人施加70%二次伤害
     if (evolution_level >= 3 && is_heavy) {
-        float cx = caster->entity.rect.x + caster->entity.rect.width/2;
-        float cy = caster->entity.rect.y + caster->entity.rect.height/2;
-        for (auto* t : targets) {
-            if (!t || !t->combat.is_alive) continue;
-            float tx = t->entity.rect.x + t->entity.rect.width/2;
-            float ty = t->entity.rect.y + t->entity.rect.height/2;
-            float dx = tx - cx, dy = ty - cy; float dist = sqrtf(dx*dx+dy*dy);
-            if (dist > cr * 48.0f) continue;
-            // 检查是否在朝向方向
-            bool in_dir = false;
-            switch (caster->direction) {
-                case Direction::DOWN:  in_dir = (dy > 0  && fabsf(dx) < fabsf(dy)); break;
-                case Direction::UP:    in_dir = (dy < 0  && fabsf(dx) < fabsf(dy)); break;
-                case Direction::RIGHT: in_dir = (dx > 0  && fabsf(dy) < fabsf(dx)); break;
-                case Direction::LEFT:  in_dir = (dx < 0  && fabsf(dy) < fabsf(dx)); break;
-            }
-            if (in_dir) {
-                int wave_dmg = (int)(calculate_damage((int)(base * power * 0.7f),
-                    t->combat.get_effective_defense(AttackType::PHYSICAL)));
-                t->combat.take_damage(wave_dmg);
-                total += wave_dmg;
-                extra += " 冲击波!";
-            }
-        }
+        int wave = _deal_shockwave(caster, targets, cr, base, power);
+        total += wave;
+        if (wave > 0) extra += " 冲击波!";
     }
 
     std::string d = (is_heavy ? "重·" : "") + std::string("斩击Lv") + std::to_string(level)
