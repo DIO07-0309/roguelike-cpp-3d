@@ -119,6 +119,9 @@ private:
     void _tick_behavior_skill(Monster* boss, Player* player, double gt,
                               std::vector<Effect>* effects);
     void _tick_behavior_retreat(Monster* boss, Player* player, float dt, float dist);
+    // G53: init 拆出的两段 (武器槽装配 / 技能镜像)
+    void _init_weapon_slots(const WeaponDef* wdef);
+    void _init_mirror_skills(const Player* player);
     // M2: 识别玩家本帧实际动作 (攻击/技能/闪避/喝药) — 供在线准确率反馈
     PlayerActionType _detect_player_action(Player* player, double gt,
                                            float dx, float dy, float* last_hp);

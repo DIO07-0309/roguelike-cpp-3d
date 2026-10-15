@@ -207,18 +207,10 @@ static void mirror_init_learning(std::vector<MirrorSkillDef>& skills,
     }
 }
 
-void MirrorCombatDirector::init(const Player* player, Monster* boss,
-                                 BossAI* bai, MirrorAgent* agent) {
-    if (!player || !boss || !bai) return;
-    _boss = boss; _bai = bai;
-    _agent = agent;   // M4e: 在线自适应反馈通道
-    _combo_stage = 0; _combo_timer = 0; _last_attack = -99.0f;
-    _skill_idx = 0; _skill_cd_timer = 0;
-    _behavior_state = 0; _decision_timer = 0;
-    _preferred_dist = agent ? agent->recommend_distance() : 200.0f;
+// ── G53: init 拆出的两段 ────────────────────────────────────
 
-    // 复制武器3段数据
-    const WeaponDef* wdef = player->weapon.current_def();
+// 武器槽装配: 近战=玩家武器 (射程钳 96px), 远程=CROSSBOW (射程钳 220px)
+void MirrorCombatDirector::_init_weapon_slots(const WeaponDef* wdef) {
     _total_stages = wdef ? wdef->stage_count : 1;
     for (int i = 0; i < _total_stages && i < 3; i++) {
         if (wdef) {
@@ -259,8 +251,10 @@ void MirrorCombatDirector::init(const Player* player, Monster* boss,
         }
     }
     _slot_is_ranged = false;
+}
 
-    // 复制技能数据 (类型由名字识别)
+// 技能镜像: 复制玩家主动技 (类型由名字识别, range/dmg_mult 由识别器回填)
+void MirrorCombatDirector::_init_mirror_skills(const Player* player) {
     _skills.clear();
     for (auto& sk : player->skills.active_skills) {
         MirrorSkillDef ms;
@@ -271,6 +265,22 @@ void MirrorCombatDirector::init(const Player* player, Monster* boss,
         _skills.push_back(ms);
     }
     _attack_cd = 1.2f;
+}
+
+void MirrorCombatDirector::init(const Player* player, Monster* boss,
+                                 BossAI* bai, MirrorAgent* agent) {
+    if (!player || !boss || !bai) return;
+    _boss = boss; _bai = bai;
+    _agent = agent;   // M4e: 在线自适应反馈通道
+    _combo_stage = 0; _combo_timer = 0; _last_attack = -99.0f;
+    _skill_idx = 0; _skill_cd_timer = 0;
+    _behavior_state = 0; _decision_timer = 0;
+    _preferred_dist = agent ? agent->recommend_distance() : 200.0f;
+
+    // 复制武器3段数据
+    _init_weapon_slots(player->weapon.current_def());
+
+    _init_mirror_skills(player);
 
     // ── M1: "它真的在学我" ──
     mirror_init_learning(_skills, _skill_idx, _skill_cd_timer,
