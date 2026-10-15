@@ -187,13 +187,12 @@ void BossSystemDirector::init_on_spawn(Monster* boss, int floor,
     _init_behavior_from_def(boss, player);
 }
 
-void BossSystemDirector::_init_mirror_boss(Monster* boss, const Player* player) {
-    if (!boss || !player) return;
-    // Analyze player behavior
-    const auto& history = g_behavior.history();
-    if (history.empty()) return;
+// ── G53: _init_mirror_boss 拆出的三段 ───────────────────────
 
-    PlayerHabitProfile profile = PlayerBehaviorAnalyzer::analyze(history);
+// AI 层装配: agent + clone / chain / RL / 战术规则 (优先级链逐层装入)
+void BossSystemDirector::_build_mirror_agent_layers(
+    const std::vector<PlayerAction>& history,
+    const PlayerHabitProfile& profile) {
     _mirror_agent = std::make_unique<MirrorAgent>();
     _mirror_agent->init(profile);
 
@@ -241,12 +240,19 @@ void BossSystemDirector::_init_mirror_boss(Monster* boss, const Player* player) 
     if (mirror::install_tactical_predictor_if_enabled(*_mirror_agent)) {
         LOG_INFO("[MIRROR] TacticalPolicy active (--tactical-mirror)");
     }
+}
 
+// 数值护栏: HP=玩家×2.5 (封顶 2000 下限 200), ATK=max(玩家ATK×0.85, PDEF×0.85)
+// 但不超过玩家 8 击线 — 防止高养成存档把 Echo 放大成一击秒杀的万攻战神
+void BossSystemDirector::_apply_mirror_stat_guards(Monster* boss,
+                                                   const Player* player,
+                                                   int& p_hp, int& p_atk,
+                                                   int& p_pdef) {
     // ── 数值: HP=玩家×2.5, ATK=玩家×0.85 (Q3.10: 原 ×5/×1.2 → ×3/×1.0 仍不可胜,
     //   自愈 10% 太频 + 单段 135 太高 → 再削) ──
-    int p_hp = get_effective_max_hp(player);
-    int p_atk = player->combat.get_effective_attack();
-    int p_pdef = player->combat.get_effective_defense(AttackType::PHYSICAL);
+    p_hp = get_effective_max_hp(player);
+    p_atk = player->combat.get_effective_attack();
+    p_pdef = player->combat.get_effective_defense(AttackType::PHYSICAL);
     // G10.7-fix: 数值膨胀护栏 — 镜像公式对高养成存档会把 Echo 放大成
     // 万攻战神 (实测 atk=11119 单击 3883, 任何 build 被一击秒杀)。
     // 威胁模型: 玩家应在 6-8 击内死亡 (PDEF 后 12% maxHP/击), 而非一击。
@@ -254,57 +260,72 @@ void BossSystemDirector::_init_mirror_boss(Monster* boss, const Player* player) 
     const int kMirrorHpCap = 2000;
     int hp_target = (int)(p_hp * 2.5f);
     if (hp_target > kMirrorHpCap) hp_target = kMirrorHpCap;
-    if (hp_target < 200) hp_target = 200;          // 下限: 不让小号把 Echo 削成纸
+    if (hp_target < 200) hp_target = 200;   // 下限: 不让小号把 Echo 削成纸
     boss->combat.max_hp   = hp_target;
     boss->combat.current_hp = boss->combat.max_hp;
     // ATK = max(玩家ATK×0.85, PDEF×0.85) — 但不得超过 6击致死线 (12% maxHP 经防前 raw)
     int min_atk = (int)(p_pdef * 0.85f);
     int atk_target = std::max((int)(p_atk * 0.85f), min_atk);
-    int atk_cap = std::max(20, p_hp / 8);          // raw 上限 ≈ 玩家 8 击线
+    int atk_cap = std::max(20, p_hp / 8);   // raw 上限 ≈ 玩家 8 击线
     if (atk_target > atk_cap) atk_target = atk_cap;
     boss->combat.attack   = atk_target;
     boss->combat.physical_defense = player->combat.physical_defense + 5;
     boss->combat.magical_defense  = player->combat.magical_defense + 3;
     boss->attack_cooldown = 1.2f;  // 镜像攻击间隔
+}
 
-    // ── 镜像武器: 读取玩家武器类型/范围/连招 ──
+// 武器镜像: 把玩家当前武器的段数/倍率/范围/形状抄给 BossAI
+// (无武器 → 拳头 fallback: 1 段, 1.5 格范围)
+void BossSystemDirector::_setup_mirror_weapon(Monster* boss,
+                                              const Player* player) {
     auto* bai = dynamic_cast<BossAI*>(boss->ai);
-    if (!bai) return;
     bai->_is_mirror = true;
     int wtype = (int)player->weapon.weapon_type();
     bai->_mirror_weapon_type = wtype;
     const WeaponDef* wdef = player->weapon.current_def();
-    if (wdef) {
-        bai->_mirror_max_stages = wdef->stage_count;
-        for (int i = 0; i < bai->_mirror_max_stages && i < 3; i++) {
-            bai->_mirror_stage_mults[i] = wdef->stages[i].damage_multiplier;
-            if (i == 0) {
-                bai->_mirror_active_range = wdef->stages[i].range * TILE_SIZE;
-                bai->_mirror_width = wdef->stages[i].width;
-                bai->_mirror_hit_shape = (int)wdef->stages[i].hit_shape;
-            }
-        }
-        bai->_mirror_weapon_range = bai->_mirror_active_range / TILE_SIZE;
-    } else {
+    if (!wdef) {
         // 拳头 fallback
         bai->_mirror_max_stages = 1;
         bai->_mirror_stage_mults[0] = 1.0f;
         bai->_mirror_weapon_range = 1.5f;
         bai->_mirror_active_range = 48.0f;
+        return;
     }
+    bai->_mirror_max_stages = wdef->stage_count;
+    for (int i = 0; i < bai->_mirror_max_stages && i < 3; i++) {
+        bai->_mirror_stage_mults[i] = wdef->stages[i].damage_multiplier;
+        if (i == 0) {
+            bai->_mirror_active_range = wdef->stages[i].range * TILE_SIZE;
+            bai->_mirror_width = wdef->stages[i].width;
+            bai->_mirror_hit_shape = (int)wdef->stages[i].hit_shape;
+        }
+    }
+    bai->_mirror_weapon_range = bai->_mirror_active_range / TILE_SIZE;
+}
+
+void BossSystemDirector::_init_mirror_boss(Monster* boss, const Player* player) {
+    if (!boss || !player) return;
+    // Analyze player behavior
+    const auto& history = g_behavior.history();
+    if (history.empty()) return;
+
+    PlayerHabitProfile profile = PlayerBehaviorAnalyzer::analyze(history);
+    _build_mirror_agent_layers(history, profile);
+
+    // ── 数值 + 武器镜像 ──
+    int p_hp = 0, p_atk = 0, p_pdef = 0;
+    _apply_mirror_stat_guards(boss, player, p_hp, p_atk, p_pdef);
+    _setup_mirror_weapon(boss, player);
 
     // ── 初始化 MirrorCombatDirector (替代旧BossAI补丁) ──
-    _mirror_combat.init(player, boss, bai, _mirror_agent.get());
+    _mirror_combat.init(player, boss, dynamic_cast<BossAI*>(boss->ai),
+                        _mirror_agent.get());
     // G10.7-fix: 数值护栏可观测 — 实机一查便知 Echo 最终面板
     LOG_INFO("[MIRROR] Echo stats: HP=%d ATK=%d (player HP=%d ATK=%d PDEF=%d, caps hp<=2000 atk<=HP/8)",
              boss->combat.max_hp, boss->combat.attack,
              p_hp, p_atk, p_pdef);
     _mirror_agent->begin_battle();   // 验收: 每场战斗重置 AI 调用链统计
     _mirror_stats_logged = false;
-
-    int mirror_hp = boss->combat.max_hp;
-    int mirror_atk = boss->combat.attack;
-    (void)mirror_hp; (void)mirror_atk;
 }
 
 // M4e: 导出镜像跨对局记忆 (供保存)

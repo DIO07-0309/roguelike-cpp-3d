@@ -121,6 +121,12 @@ private:
     BossContext _build_boss_context(Monster* boss, Player* player,
                                     StoryStage stage) const;
     void _tick_arena_spawn(float dt, Monster* boss, Player* player);
+    // G53: _init_mirror_boss 拆出的三段 (AI 层装配 / 数值护栏 / 武器镜像)
+    void _build_mirror_agent_layers(const std::vector<PlayerAction>& history,
+                                    const PlayerHabitProfile& profile);
+    void _apply_mirror_stat_guards(Monster* boss, const Player* player,
+                                   int& p_hp, int& p_atk, int& p_pdef);
+    void _setup_mirror_weapon(Monster* boss, const Player* player);
     void _spawn_domain_core(Monster* boss);             // F10.2
     bool _enraged = false;                              // M4d-fix: 狂暴领域标记
     void _tick_core_phase(float dt, Monster* boss, float max_duration);  // M4d-fix
