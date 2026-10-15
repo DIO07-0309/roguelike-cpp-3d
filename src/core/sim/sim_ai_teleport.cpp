@@ -25,6 +25,55 @@ bool _tile_valid_for_landing(const GameMap* map, int tx, int ty) {
 }
 } // namespace
 
+// ── G53: sim_ai_teleport_target 拆出的三个 tier ─────────────
+
+// Tier 1: 同房间 melee 安全距离 (r=2 优先, 再 r=1 的环) —
+//         能打到但不被围 (48-80px)
+template <typename TryFn>
+static bool _teleport_tier1(int mtx, int mty, int monster_room,
+                            const RoomManager* rooms, TryFn try_tile) {
+    if (monster_room < 0) return false;
+    for (int r = 2; r >= 1; r--) {
+        for (int dy = -r; dy <= r; dy++)
+            for (int dx = -r; dx <= r; dx++) {
+                if (abs(dx) != r && abs(dy) != r) continue;  // ring only
+                int x = mtx + dx, y = mty + dy;
+                if (rooms->room_at(x, y) != monster_room) continue;
+                if (try_tile(x, y)) return true;
+            }
+    }
+    return false;
+}
+
+// Tier 2: 同房间任意合法格 (怪物脚下 + r=1 全方块, 适配小房间)
+template <typename TryFn>
+static bool _teleport_tier2(int mtx, int mty, int monster_room,
+                            const RoomManager* rooms, TryFn try_tile) {
+    if (monster_room < 0) return false;
+    if (try_tile(mtx, mty)) return true;
+    for (int dy = -1; dy <= 1; dy++)
+        for (int dx = -1; dx <= 1; dx++) {
+            if (dx == 0 && dy == 0) continue;
+            int x = mtx + dx, y = mty + dy;
+            if (rooms->room_at(x, y) != monster_room) continue;
+            if (try_tile(x, y)) return true;
+        }
+    return false;
+}
+
+// Tier 3: 不限房间, 怪物附近 r<=2 的环 (最后手段)
+template <typename TryFn>
+static bool _teleport_tier3(int mtx, int mty, TryFn try_tile) {
+    for (int r = 1; r <= 2; r++)
+        for (int dy = -r; dy <= r; dy++)
+            for (int dx = -r; dx <= r; dx++) {
+                if (abs(dx) != r && abs(dy) != r) continue;
+                int x = mtx + dx, y = mty + dy;
+                if (try_tile(x, y)) return true;
+            }
+    return false;
+}
+
 TeleportResult sim_ai_teleport_target(const TeleportQuery& q) {
     TeleportResult out;
     if (!q.target || !q.map || !q.rooms) return out;
@@ -39,9 +88,6 @@ TeleportResult sim_ai_teleport_target(const TeleportQuery& q) {
     //         attack range without face-tanking multiple monsters.
     // Tier 2: same-room any valid tile (fallback for tiny rooms).
     // Tier 3: any valid walkable tile (last resort).
-    TeleportResult fallback;
-    fallback.found = false;
-
     auto try_tile = [&](int x, int y) -> bool {
         if (x < 0 || y < 0 || x >= q.map->width || y >= q.map->height) return false;
         if (!_tile_valid_for_landing(q.map, x, y)) return false;
@@ -50,35 +96,8 @@ TeleportResult sim_ai_teleport_target(const TeleportQuery& q) {
         return true;
     };
 
-    if (monster_room >= 0) {
-        // Tier 1: ring r=2 then r=1.5-approx (dist 48-80px) preferred
-        for (int r = 2; r >= 1; r--) {
-            for (int dy = -r; dy <= r; dy++)
-                for (int dx = -r; dx <= r; dx++) {
-                    if (abs(dx) != r && abs(dy) != r) continue;  // ring only
-                    int x = mtx + dx, y = mty + dy;
-                    if (q.rooms->room_at(x, y) != monster_room) continue;
-                    if (try_tile(x, y)) return out;
-                }
-        }
-        // Tier 2: monster tile itself or r=1 full square (tiny rooms)
-        if (try_tile(mtx, mty)) return out;
-        for (int dy = -1; dy <= 1; dy++)
-            for (int dx = -1; dx <= 1; dx++) {
-                if (dx == 0 && dy == 0) continue;
-                int x = mtx + dx, y = mty + dy;
-                if (q.rooms->room_at(x, y) != monster_room) continue;
-                if (try_tile(x, y)) return out;
-            }
-    }
-
-    // Tier 3: any valid walkable tile near monster (r<=2 rings)
-    for (int r = 1; r <= 2; r++)
-        for (int dy = -r; dy <= r; dy++)
-            for (int dx = -r; dx <= r; dx++) {
-                if (abs(dx) != r && abs(dy) != r) continue;
-                int x = mtx + dx, y = mty + dy;
-                if (try_tile(x, y)) { fallback = out; fallback.found = true; return fallback; }
-            }
+    if (_teleport_tier1(mtx, mty, monster_room, q.rooms, try_tile)) return out;
+    if (_teleport_tier2(mtx, mty, monster_room, q.rooms, try_tile)) return out;
+    if (_teleport_tier3(mtx, mty, try_tile)) return out;
     return out;  // honest failure
 }
