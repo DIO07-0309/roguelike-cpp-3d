@@ -210,22 +210,8 @@ static void mirror_init_learning(std::vector<MirrorSkillDef>& skills,
 // ── G53: init 拆出的两段 ────────────────────────────────────
 
 // 武器槽装配: 近战=玩家武器 (射程钳 96px), 远程=CROSSBOW (射程钳 220px)
-void MirrorCombatDirector::_init_weapon_slots(const WeaponDef* wdef) {
-    _total_stages = wdef ? wdef->stage_count : 1;
-    for (int i = 0; i < _total_stages && i < 3; i++) {
-        if (wdef) {
-            _stage_mults[i]  = wdef->stages[i].damage_multiplier;
-            // G10.7-fix: Echo 近战射程钳 96px — 镜像 Boss 不得复制玩家长枪
-            // 224px 矩形判定在屏幕上形成"超视距瞬杀"体感 (用户实测反馈)
-            float mr = wdef->stages[i].range * 32.0f;
-            _stage_ranges[i] = (mr > 96.0f) ? 96.0f : mr;
-        } else {
-            _stage_mults[i]  = 1.0f;
-            _stage_ranges[i] = 48.0f;  // 拳头范围
-        }
-    }
-
-    // ── M4.3: 武器槽初始化 — 近战=玩家武器, 远程=CROSSBOW ──
+// G53: 近战槽装配 (玩家武器, 拳头兜底)
+void MirrorCombatDirector::_init_melee_slot(const WeaponDef* wdef) {
     _slot_melee.type   = (int)(wdef ? wdef->type : WeaponType::FIST);
     _slot_melee.total_stages = _total_stages;
     _slot_melee.cd = 1.2f;
@@ -233,6 +219,10 @@ void MirrorCombatDirector::_init_weapon_slots(const WeaponDef* wdef) {
         _slot_melee.mults[i]  = _stage_mults[i];
         _slot_melee.ranges[i] = _stage_ranges[i];
     }
+}
+
+// G53: 远程槽装配 (CROSSBOW)
+void MirrorCombatDirector::_init_ranged_slot() {
     const auto crossbows = get_weapon_defs_for_type(WeaponType::CROSSBOW);
     const WeaponDef* bow = crossbows.empty() ? nullptr : crossbows[0];
     _slot_ranged.type = (int)WeaponType::CROSSBOW;
@@ -250,6 +240,26 @@ void MirrorCombatDirector::_init_weapon_slots(const WeaponDef* wdef) {
             _slot_ranged.ranges[i] = 220.0f;
         }
     }
+}
+
+void MirrorCombatDirector::_init_weapon_slots(const WeaponDef* wdef) {
+    _total_stages = wdef ? wdef->stage_count : 1;
+    for (int i = 0; i < _total_stages && i < 3; i++) {
+        if (wdef) {
+            _stage_mults[i]  = wdef->stages[i].damage_multiplier;
+            // G10.7-fix: Echo 近战射程钳 96px — 镜像 Boss 不得复制玩家长枪
+            // 224px 矩形判定在屏幕上形成"超视距瞬杀"体感 (用户实测反馈)
+            float mr = wdef->stages[i].range * 32.0f;
+            _stage_ranges[i] = (mr > 96.0f) ? 96.0f : mr;
+        } else {
+            _stage_mults[i]  = 1.0f;
+            _stage_ranges[i] = 48.0f;  // 拳头范围
+        }
+    }
+
+    // M4.3: 武器槽初始化 — 近战=玩家武器, 远程=CROSSBOW
+    _init_melee_slot(wdef);
+    _init_ranged_slot();
     _slot_is_ranged = false;
 }
 
@@ -341,6 +351,34 @@ void MirrorCombatDirector::_tick_behavior_retreat(
     boss->entity.sync_rect();
 }
 
+// G53: tick 拆出的 M4.1 战术状态机一段 (画像 + 态势 + 冷却 + 武器槽同步)
+void MirrorCombatDirector::_tick_tactical_state(float dt, const Player* player,
+                                                float dist) {
+    if (!_agent) return;
+    float php = player->combat.max_hp > 0
+        ? (float)player->combat.current_hp / player->combat.max_hp : 0.0f;
+    _update_tactic(_agent->profile(), dist, php);
+    _tick_tactic_timer(dt);
+    // M4.3: 战术 -> 武器槽同步 (2.5s 防抖)
+    _sync_weapon_slot();
+}
+
+// G53: tick 拆出的 M4e/M2 玩家反馈一段 (闪避检测 + 动作识别)
+void MirrorCombatDirector::_tick_player_feedback(Player* player, double game_time) {
+    // M4e: 玩家闪避检测 (单帧位移>200px) -> 最近决策视为落空
+    float pdx = player->entity.rect.x - _last_player_x;
+    float pdy = player->entity.rect.y - _last_player_y;
+    if (_agent && (pdx * pdx + pdy * pdy) > 200.0f * 200.0f)
+        _agent->report_outcome(false, 0.0f);   // 已反馈过则内部自动跳过
+    _last_player_x = player->entity.rect.x;
+    _last_player_y = player->entity.rect.y;
+    // M2: 玩家实际动作识别 -> 在线准确率反馈
+    if (!_agent) return;
+    PlayerActionType actual = _detect_player_action(player, game_time,
+                                                    pdx, pdy, &_last_player_hp);
+    if (actual != PlayerActionType::NONE) _agent->observe_actual(actual);
+}
+
 bool MirrorCombatDirector::tick(float dt, Monster* boss, Player* player,
                                  double game_time, MirrorAgent* agent,
                                  std::vector<Effect>* effects) {
@@ -351,29 +389,9 @@ bool MirrorCombatDirector::tick(float dt, Monster* boss, Player* player,
         player->entity.rect.y - boss->entity.rect.y);
 
     // M4.1: 战术状态机 — 画像 + 态势驱动 (带切换冷却)
-    if (_agent) {
-        float php = player->combat.max_hp > 0
-            ? (float)player->combat.current_hp / player->combat.max_hp : 0.0f;
-        _update_tactic(_agent->profile(), dist, php);
-        _tick_tactic_timer(dt);
-        // M4.3: 战术 → 武器槽同步 (2.5s 防抖)
-        _sync_weapon_slot();
-    }
-
-    // M4e: 玩家闪避检测 (单帧位移>200px) → 最近决策视为落空
-    float pdx = player->entity.rect.x - _last_player_x;
-    float pdy = player->entity.rect.y - _last_player_y;
-    if (_agent && (pdx * pdx + pdy * pdy) > 200.0f * 200.0f)
-        _agent->report_outcome(false, 0.0f);   // 已反馈过则内部自动跳过
-    _last_player_x = player->entity.rect.x;
-    _last_player_y = player->entity.rect.y;
-
-    // M2: 玩家实际动作识别 → 在线准确率反馈
-    if (_agent) {
-        PlayerActionType actual = _detect_player_action(player, game_time,
-                                                        pdx, pdy, &_last_player_hp);
-        if (actual != PlayerActionType::NONE) _agent->observe_actual(actual);
-    }
+    _tick_tactical_state(dt, player, dist);
+    // M4e/M2: 闪避检测 + 动作识别反馈
+    _tick_player_feedback(player, game_time);
 
     // 每0.5s做一次AI决策
     _decision_timer += dt;
@@ -399,6 +417,19 @@ bool MirrorCombatDirector::tick(float dt, Monster* boss, Player* player,
 // ============================================================
 // 武器连招 — 模拟玩家3段攻击
 // ============================================================
+// G53: _weapon_attack 抽出的命中脉冲 VFX
+void MirrorCombatDirector::_spawn_hit_vfx(Player* player, bool combo_end,
+                                          std::vector<Effect>* effects) {
+    if (!effects) return;
+    Effect ef;
+    ef.kind = "pulse"; ef.duration = 0.25f; ef.elapsed = 0;
+    ef.world_x = player->entity.rect.x + player->entity.rect.width / 2;
+    ef.world_y = player->entity.rect.y + player->entity.rect.height / 2;
+    ef.radius = combo_end ? 40.0f : 24.0f;
+    ef.color = combo_end ? Color{200, 50, 40, 180} : Color{160, 80, 60, 140};
+    effects->push_back(ef);
+}
+
 void MirrorCombatDirector::_weapon_attack(Monster* boss, Player* player,
                                            double gt, std::vector<Effect>* effects) {
     if (gt - _last_attack < _attack_cd) return;
@@ -432,17 +463,7 @@ void MirrorCombatDirector::_weapon_attack(Monster* boss, Player* player,
         _combo_stage = 0;
         _last_attack += 0.4f;  // 收招硬直
     }
-
-    // VFX
-    if (effects) {
-        Effect ef;
-        ef.kind = "pulse"; ef.duration = 0.25f; ef.elapsed = 0;
-        ef.world_x = player->entity.rect.x + player->entity.rect.width / 2;
-        ef.world_y = player->entity.rect.y + player->entity.rect.height / 2;
-        ef.radius = combo_end ? 40.0f : 24.0f;
-        ef.color = combo_end ? Color{200, 50, 40, 180} : Color{160, 80, 60, 140};
-        effects->push_back(ef);
-    }
+    _spawn_hit_vfx(player, combo_end, effects);
 }
 
 // ============================================================

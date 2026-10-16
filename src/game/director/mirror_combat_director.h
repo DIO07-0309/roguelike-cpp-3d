@@ -89,6 +89,9 @@ private:
     float _freeze_timer = 0.0f;
     void _weapon_attack(Monster* boss, Player* player, double gt,
                         std::vector<Effect>* effects);
+    // G53: _weapon_attack 抽出的命中脉冲 VFX
+    void _spawn_hit_vfx(Player* player, bool combo_end,
+                        std::vector<Effect>* effects);
     void _mirror_skill(Monster* boss, Player* player, double gt,
                        int skill_idx, std::vector<Effect>* effects);
     // G52: _mirror_skill 按技能类型拆出的 5 个助手 (需访问私有成员, 故为静态成员)
@@ -119,8 +122,13 @@ private:
     void _tick_behavior_skill(Monster* boss, Player* player, double gt,
                               std::vector<Effect>* effects);
     void _tick_behavior_retreat(Monster* boss, Player* player, float dt, float dist);
+    // G53: tick 拆出的两段 (M4.1 战术状态机 / M4e+M2 玩家反馈)
+    void _tick_tactical_state(float dt, const Player* player, float dist);
+    void _tick_player_feedback(Player* player, double game_time);
     // G53: init 拆出的两段 (武器槽装配 / 技能镜像)
     void _init_weapon_slots(const WeaponDef* wdef);
+    void _init_melee_slot(const WeaponDef* wdef);
+    void _init_ranged_slot();
     void _init_mirror_skills(const Player* player);
     // M2: 识别玩家本帧实际动作 (攻击/技能/闪避/喝药) — 供在线准确率反馈
     PlayerActionType _detect_player_action(Player* player, double gt,
