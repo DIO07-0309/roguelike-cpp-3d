@@ -242,6 +242,9 @@ private:
     // P1-A3: heal_only — 危急模式只找回血房 (FOUNTAIN/ALTAR/SHRINE)
     int _bfs_toward_room(const Player* p, const GameMap* map,
                           bool heal_only = false) const;
+    // G53: _bfs_toward_room 抽出的目标标记 (返回标记到的未触发房间数)
+    int _bfs_mark_room_targets(const GameMap* map, int w, int h, bool heal_only,
+                               std::vector<char>& is_target) const;
     // P1-A2: BFS 至最近地面物品 (注入的 _ground), -1=不可达
     int _bfs_toward_loot(const Player* p, const GameMap* map) const;
     // P1-A2: 站位 1 格内最近地面物品距离 (px), -1=无

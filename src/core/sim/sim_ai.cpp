@@ -395,19 +395,11 @@ bool DecisionAgent::_needs_recovery(const Player* p) const {
 // Q3.2: BFS 至最近未触发的特殊房 — 战斗间隙搜刮资源 (圣物/装备/泉水)
 // P1-A3-fix2: heal_only 模式 — 危急回血时只找回血房 (FOUNTAIN/ALTAR/SHRINE),
 // 放弃宝箱/商店等 — 血线告急时多进一个房 = 多一分被围死的风险
-int DecisionAgent::_bfs_toward_room(const Player* p, const GameMap* map,
-                                    bool heal_only) const {
-    if (!map || !p) return -1;
-    int w = map->width, h = map->height;
-    auto [sx, sy] = map->pixel_to_tile(
-        p->entity.rect.x + p->entity.rect.width/2,
-        p->entity.rect.y + p->entity.rect.height/2);
-    // Q3.13: 钳制玩家瓦片 — 否则 first[] 越界写堆损坏
-    if (sx < 0) sx = 0; else if (sx >= w) sx = w - 1;
-    if (sy < 0) sy = 0; else if (sy >= h) sy = h - 1;
-    const int N = w * h;
-    std::vector<char> is_target((size_t)N, 0);
-    size_t pending = 0;
+// G53: _bfs_toward_room 抽出的目标标记 (未触发特殊房 → is_target, 返回目标数)
+int DecisionAgent::_bfs_mark_room_targets(const GameMap* map, int w, int h,
+                                          bool heal_only,
+                                          std::vector<char>& is_target) const {
+    int pending = 0;
     for (auto& sr : map->special_rooms) {
         if (sr.triggered) continue;
         // Q3.13: 房间坐标越界保护 (数据驱动异常时不得写堆)
@@ -421,25 +413,23 @@ int DecisionAgent::_bfs_toward_room(const Player* p, const GameMap* map,
         is_target[sr.cy * w + sr.cx] = 1;
         pending++;
     }
-    if (pending == 0) return -1;
-    std::vector<int> first((size_t)N, -2);
-    std::queue<int> q;
-    first[sy * w + sx] = -1;
-    q.push(sy * w + sx);
-    while (!q.empty()) {
-        int cur = q.front(); q.pop();
-        int cx = cur % w, cy = cur / w;
-        if (is_target[cur]) return (first[cur] >= 0) ? first[cur] : -1;
-        for (int d = 0; d < 4; d++) {
-            int nx = cx + kBfsDx[d], ny = cy + kBfsDy[d];
-            if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
-            int ni = ny * w + nx;
-            if (first[ni] != -2 || !_tile_rect_walkable(map, nx, ny)) continue;
-            first[ni] = (cur == sy * w + sx) ? d : first[cur];
-            q.push(ni);
-        }
-    }
-    return -1;
+    return pending;
+}
+
+int DecisionAgent::_bfs_toward_room(const Player* p, const GameMap* map,
+                                    bool heal_only) const {
+    if (!map || !p) return -1;
+    int w = map->width, h = map->height;
+    auto [sx, sy] = map->pixel_to_tile(
+        p->entity.rect.x + p->entity.rect.width/2,
+        p->entity.rect.y + p->entity.rect.height/2);
+    // Q3.13: 钳制玩家瓦片 — 否则 first[] 越界写堆损坏
+    if (sx < 0) sx = 0; else if (sx >= w) sx = w - 1;
+    if (sy < 0) sy = 0; else if (sy >= h) sy = h - 1;
+    const int N = w * h;
+    std::vector<char> is_target((size_t)N, 0);
+    if (_bfs_mark_room_targets(map, w, h, heal_only, is_target) == 0) return -1;
+    return _bfs_first_step(map, sx, sy, w, h, is_target, false);
 }
 
 // P1-A2: BFS 至最近地面物品 (注入的 _ground 快照), 返回第一步方向 (0-3, -1=无/不可达)
