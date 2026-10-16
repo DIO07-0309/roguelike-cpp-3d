@@ -85,6 +85,30 @@ static void _skip_unknown_buff_value(const char*& p) {
     else { while (*p && *p != ',' && *p != '}' && *p != '\n') p++; }
 }
 
+// G53: buff 字符串类字段写入 (id/display_name/short_name 三选一)
+static void _read_buff_named_string(const std::string& key, const char*& p,
+                                    BuffDef& out) {
+    std::string* dst = (key == "id") ? &out.id
+                    : (key == "display_name") ? &out.display_name
+                    : &out.short_name;
+    *dst = _read_string(p);
+}
+
+// G53: hud_color 数组解析 ("hud_color":[r,g,b]) — 返回错误串, ""=成功
+static std::string _read_buff_color_array(const char*& p, BuffDef& out) {
+    p = _skip_ws(p);
+    if (*p != '[') return "expected '['";
+    p++;
+    out.hud_color_r = (unsigned char)_read_int(p);
+    p = _skip_ws(p); if (*p == ',') p++;
+    out.hud_color_g = (unsigned char)_read_int(p);
+    p = _skip_ws(p); if (*p == ',') p++;
+    out.hud_color_b = (unsigned char)_read_int(p);
+    p = _skip_ws(p);
+    if (*p == ']') p++;
+    return "";
+}
+
 static std::string _parse_buff_obj(const char*& p, BuffDef& out) {
     p = _skip_ws(p);
     if (*p != '{') return "expected '{'";
@@ -101,27 +125,15 @@ static std::string _parse_buff_obj(const char*& p, BuffDef& out) {
 
         // 字符串类字段 (id/display_name/short_name)
         if (key == "id" || key == "display_name" || key == "short_name") {
-            std::string* dst = (key == "id") ? &out.id
-                            : (key == "display_name") ? &out.display_name
-                            : &out.short_name;
-            *dst = _read_string(p);
+            _read_buff_named_string(key, p, out);
         }
         else if (key == "duration")      out.duration = _read_float(p);
         else if (key == "max_stacks")    out.max_stacks = _read_int(p);
         else if (key == "tick_interval") out.tick_interval = _read_float(p);
         else if (key == "tick_damage")   out.tick_damage = _read_int(p);
         else if (key == "hud_color") {
-            // "hud_color": [r,g,b]
-            p = _skip_ws(p);
-            if (*p != '[') return "expected '['";
-            p++;
-            out.hud_color_r = (unsigned char)_read_int(p);
-            p = _skip_ws(p); if (*p == ',') p++;
-            out.hud_color_g = (unsigned char)_read_int(p);
-            p = _skip_ws(p); if (*p == ',') p++;
-            out.hud_color_b = (unsigned char)_read_int(p);
-            p = _skip_ws(p);
-            if (*p == ']') p++;
+            std::string err = _read_buff_color_array(p, out);
+            if (!err.empty()) return err;
         } else {
             _skip_unknown_buff_value(p);
         }

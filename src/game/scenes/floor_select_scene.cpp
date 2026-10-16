@@ -161,6 +161,37 @@ void FloorSelectScene::_render() {
     }
 }
 
+// G53: 确认进入 — 校验解锁 (第15层需已通14) -> 读档或新局 -> 切场景
+void FloorSelectScene::_handle_confirm() {
+    int floor = cursor + 1;
+    if (!(floor <= max_unlocked || (floor == 15 && max_unlocked >= 14))) return;
+    auto gs = std::make_shared<GameScene>();
+    gs->name = "GameScene";
+    // G10.9-B2: 读活跃槽 (endings 从 meta 恢复, 不再传档内数据)
+    auto* data = SaveManager::load_save();
+    if (data && data->player) {
+        // G20c: 必须透传存档 seed 与特殊房间状态。此前传默认值 0,
+        // enter_floor 把「seed=0」判定为新楼层 -> 走 rng() 重滚地牢, 玩家进的是
+        // 与存档不符的陌生地图; 随后任意一次自动存档又用新 seed 覆盖旧档,
+        // 存档布局从此漂移。其余三个读档入口 (main --autocontinue /
+        // slot_select CONTINUE x2) 都是透传的, 唯独这一处漏了。
+        gs->load_saved_game(floor, max_unlocked, std::move(data->player),
+                            data->dungeon_seed, data->special_triggered,
+                            data->special_discovered, data->rule_counters,
+                            data->quest_states, data->play_time);
+        // M4e: 跨对局镜像记忆
+        gs->set_mirror_memory(data->mirror_prior_alpha, data->mirror_prior_beta);
+        delete data;
+    } else {
+        // 无存档: 创建新玩家
+        delete data;
+        gs->new_game();
+        gs->enter_floor(floor);
+    }
+    get_tree()->change_scene(gs);
+    LOG_INFO("选关进入第%d层", floor);
+}
+
 void FloorSelectScene::_input(const InputMap& input) {
     if (input.is_action_just_pressed("cancel")) {
         get_tree()->change_scene(std::make_shared<TitleScene>());
@@ -170,35 +201,5 @@ void FloorSelectScene::_input(const InputMap& input) {
     if (input.is_action_just_pressed("move_right")) cursor = std::min(MAX_FLOORS - 1, cursor + 1);
     if (input.is_action_just_pressed("move_up"))    cursor = std::max(0, cursor - 5);
     if (input.is_action_just_pressed("move_down"))  cursor = std::min(MAX_FLOORS - 1, cursor + 5);
-    if (input.is_action_just_pressed("confirm")) {
-        int floor = cursor + 1;
-        if (floor <= max_unlocked || (floor == 15 && max_unlocked >= 14)) {
-            auto gs = std::make_shared<GameScene>();
-            gs->name = "GameScene";
-            // G10.9-B2: 读活跃槽 (endings 从 meta 恢复, 不再传档内数据)
-            auto* data = SaveManager::load_save();
-            if (data && data->player) {
-            // G20c: 必须透传存档 seed 与特殊房间状态。此前传默认值 0,
-            // enter_floor 把「seed=0」判定为新楼层 → 走 rng() 重滚地牢, 玩家进的是
-            // 与存档不符的陌生地图; 随后任意一次自动存档又用新 seed 覆盖旧档,
-            // 存档布局从此漂移。其余三个读档入口 (main --autocontinue /
-            // slot_select CONTINUE x2) 都是透传的, 唯独这一处漏了。
-            gs->load_saved_game(floor, max_unlocked, std::move(data->player),
-                                data->dungeon_seed, data->special_triggered,
-                                data->special_discovered, data->rule_counters,
-                                data->quest_states, data->play_time);
-                // M4e: 跨对局镜像记忆
-                gs->set_mirror_memory(data->mirror_prior_alpha,
-                                      data->mirror_prior_beta);
-                delete data;
-            } else {
-                // 无存档: 创建新玩家
-                delete data;
-                gs->new_game();
-                gs->enter_floor(floor);
-            }
-            get_tree()->change_scene(gs);
-            LOG_INFO("选关进入第%d层", floor);
-        }
-    }
+    if (input.is_action_just_pressed("confirm")) _handle_confirm();
 }

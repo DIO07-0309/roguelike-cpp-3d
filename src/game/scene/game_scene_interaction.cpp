@@ -62,6 +62,24 @@ void GameSceneInteraction::_set_event_complete_text(std::string& complete_text,
         complete_text = reward_text;
 }
 
+// G53: 事件 UI — ENTER->DESC 相位推进 (抽描述文本)
+void GameSceneInteraction::_event_ui_to_desc(EventPresentation& ui) {
+    ui.phase = EventPhase::DESC;
+    ui.timer = 0;
+    auto pool = event_text_pool((int)ui.current - 1);
+    if (!pool.empty()) ui.desc_text = pool[rng() % pool.size()];
+}
+
+// G53: 事件 UI — ANIM->REWARD 相位推进 (执行事件 + 结算文本)
+void GameSceneInteraction::_event_ui_to_reward(EventPresentation& ui) {
+    ui.phase = EventPhase::REWARD;
+    ui.timer = 1.5f;
+    DungeonEvent ev; ev.type = ui.current; ev.triggered = false;
+    ui.reward_text = execute_event(ev, _s.player.get(), _s.current_floor);
+    _apply_event_reward_flags(ev, ui.selected);
+    _set_event_complete_text(ui.complete_text, ui.reward_text);
+}
+
 void GameSceneInteraction::tick_event_ui(float dt) {
     auto& ui = _s._event_ui;
     if (!ui.active) return;
@@ -71,22 +89,10 @@ void GameSceneInteraction::tick_event_ui(float dt) {
 
     switch (ui.phase) {
     case EventPhase::ENTER:
-        if (ui.timer <= 0) {
-            ui.phase = EventPhase::DESC;
-            ui.timer = 0;
-            auto pool = event_text_pool((int)ui.current - 1);
-            if (!pool.empty()) ui.desc_text = pool[rng() % pool.size()];
-        }
+        if (ui.timer <= 0) _event_ui_to_desc(ui);
         break;
     case EventPhase::ANIM:
-        if (ui.timer <= 0) {
-            ui.phase = EventPhase::REWARD;
-            ui.timer = 1.5f;
-            DungeonEvent ev; ev.type = ui.current; ev.triggered = false;
-            ui.reward_text = execute_event(ev, _s.player.get(), _s.current_floor);
-            _apply_event_reward_flags(ev, ui.selected);
-            _set_event_complete_text(ui.complete_text, ui.reward_text);
-        }
+        if (ui.timer <= 0) _event_ui_to_reward(ui);
         break;
     case EventPhase::REWARD:
         if (ui.timer <= 0) {

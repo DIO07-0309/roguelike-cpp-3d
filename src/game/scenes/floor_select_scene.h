@@ -11,6 +11,8 @@ public:
     const char* get_bgm_name() const override { return "select"; }
 
 private:
+    // G53: _input 拆出的确认进入 (校验解锁 + 读档/新局 + 切场景)
+    void _handle_confirm();
     // G13: 拆 _render, 满足函数 ≤40 行红线
     void _render_header(int sw);                 // 深空渐变底 + 标题带
     void _render_floor_grid(int sw);             // 5×3 楼层格

@@ -7,6 +7,7 @@ struct InputMap;
 class GameScene;
 enum class EventType;
 struct DungeonEvent;
+struct EventPresentation;
 
 // 从 GameScene 提取的事件 + NPC/对话模块
 class GameSceneInteraction {
@@ -26,6 +27,9 @@ public:
     void draw_quest_log(int sw, int sh);
 
 private:
+    // G53: tick_event_ui 拆出的相位推进 (ENTER->DESC / ANIM->REWARD)
+    void _event_ui_to_desc(EventPresentation& ui);
+    void _event_ui_to_reward(EventPresentation& ui);
     // G53: tick_event_ui 拆出的两段 (事件副作用 / 结果文本归类)
     void _apply_event_reward_flags(const DungeonEvent& ev, int selected);
     void _set_event_complete_text(std::string& complete_text,
