@@ -18,6 +18,27 @@ namespace {
     }
 } // namespace
 
+// G53: 读取单层权重 (维度护栏 + bias/weight), false=读失败
+bool DqnNet::_read_layer(FILE* f, Layer& L) {
+    uint32_t in_dim = 0, out_dim = 0;
+    if (!(read_u32(f, in_dim) && read_u32(f, out_dim))) return false;
+    if (in_dim == 0 || out_dim == 0 || in_dim > 4096 || out_dim > 4096) return false;
+    L.in_dim = (int)in_dim;
+    L.out_dim = (int)out_dim;
+    L.bias.resize(out_dim);
+    L.weight.resize((size_t)out_dim * in_dim);
+    return read_exact(f, L.bias.data(), out_dim * sizeof(float))
+        && read_exact(f, L.weight.data(), L.weight.size() * sizeof(float));
+}
+
+// G53: 层间维度必须首尾相接, 否则前向会读到越界权重
+bool DqnNet::_layers_are_chained(const std::vector<Layer>& layers) {
+    for (size_t k = 1; k < layers.size(); k++) {
+        if (layers[k].in_dim != layers[k - 1].out_dim) return false;
+    }
+    return true;
+}
+
 bool DqnNet::load(const std::string& path) {
     FILE* f = fopen(path.c_str(), "rb");
     if (!f) return false;
@@ -34,29 +55,14 @@ bool DqnNet::load(const std::string& path) {
     std::vector<Layer> layers;
     layers.reserve(n_layers);
     for (uint32_t li = 0; li < n_layers && ok; li++) {
-        uint32_t in_dim = 0, out_dim = 0;
-        ok = read_u32(f, in_dim) && read_u32(f, out_dim);
-        if (!ok || in_dim == 0 || out_dim == 0 || in_dim > 4096 || out_dim > 4096) {
-            ok = false;
-            break;
-        }
         Layer L;
-        L.in_dim = (int)in_dim;
-        L.out_dim = (int)out_dim;
-        L.bias.resize(out_dim);
-        L.weight.resize((size_t)out_dim * in_dim);
-        ok = read_exact(f, L.bias.data(), out_dim * sizeof(float))
-             && read_exact(f, L.weight.data(), L.weight.size() * sizeof(float));
+        ok = _read_layer(f, L);
         if (ok) layers.push_back(std::move(L));
     }
     fclose(f);
 
     if (!ok || layers.empty()) return false;
-
-    // 层间维度必须首尾相接, 否则前向会读到越界权重
-    for (size_t k = 1; k < layers.size(); k++) {
-        if (layers[k].in_dim != layers[k - 1].out_dim) return false;
-    }
+    if (!_layers_are_chained(layers)) return false;
     _layers = std::move(layers);
     return true;
 }

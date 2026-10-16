@@ -41,6 +41,8 @@ private:
     bool _handle_challenge_choice(const InputMap& input);
     bool _handle_cancel_to_title(const InputMap& input);
     bool _handle_boss_intro_confirm(const InputMap& input);
+    // G53: _handle_cancel_to_title 拆出的"保存当前对局"
+    void _save_current_run();
 
 private:
     GameScene& _s;

@@ -13,6 +13,7 @@
 // 推理语义: 网络只输出 10 维 Q 值, **不做动作选择**。argmax 与合法性 mask
 // 由调用方负责 (见 DqnPolicy) —— 与 Python 侧 masked_argmax 保持同一套规则。
 #include <cstdint>
+#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -41,6 +42,10 @@ private:
         std::vector<float> bias;
         std::vector<float> weight;   // out_dim * in_dim, 行优先
     };
+    // G53: load 拆出的单层读取 (维度护栏 + bias/weight), false=读失败
+    static bool _read_layer(FILE* f, Layer& L);
+    // G53: load 拆出的层间维度校验 (必须首尾相接)
+    static bool _layers_are_chained(const std::vector<Layer>& layers);
     std::vector<Layer> _layers;
 };
 

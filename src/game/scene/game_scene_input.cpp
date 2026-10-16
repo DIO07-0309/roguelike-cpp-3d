@@ -76,6 +76,40 @@ bool GameSceneInput::_handle_challenge_choice(const InputMap& input) {
 }
 
 // ESC: 先关面板模态, 再存档回标题
+// G53: 保存当前对局 — 收集特殊房/规则计数/镜像记忆 -> save_game
+void GameSceneInput::_save_current_run() {
+    if (_s.is_save_blocked()) return;
+    _s.max_unlocked_floor = std::max(_s.max_unlocked_floor, _s.current_floor);
+    std::vector<bool> spr, spd;
+    if (_s.game_map) for (auto& sr : _s.game_map->special_rooms) {
+        spr.push_back(sr.triggered);
+        spd.push_back(sr.discovered);
+    }
+    std::unordered_map<std::string, int> rcm;
+    static const char* ALL_RULES[] = {
+        "rule_shadow_charge","rule_summon_priority","rule_arena_movement",
+        "rule_shield_patience","rule_rule_override", nullptr
+    };
+    for (int i = 0; ALL_RULES[i]; i++) {
+        int v = _s._gameplay.world_state.counter(ALL_RULES[i]);
+        if (v > 0) rcm[ALL_RULES[i]] = v;
+    }
+    // M1-D1: last-known 镜像记忆 — Boss 存活则更新缓存, 否则透传
+    std::vector<float> fresh_alpha, fresh_beta;
+    _s._boss.export_mirror_memory(fresh_alpha, fresh_beta);
+    if (!fresh_alpha.empty()) {
+        _s._mirror_mem_alpha = fresh_alpha;
+        _s._mirror_mem_beta = fresh_beta;
+    }
+    // G10.9-B2: 槽位化 + play_time; endings 不再入档 (Meta 落盘)
+    SaveManager::save_game(SaveManager::active_slot(),
+        _s.player.get(), _s.current_floor,
+        _s.max_unlocked_floor, _s._dungeon_seed, spr, spd, rcm,
+        _s._gameplay.quest_mgr.export_states(),
+        _s._mirror_mem_alpha, _s._mirror_mem_beta, (float)_s.game_time);
+    LOG_INFO("Save→第%d层", _s.current_floor);
+}
+
 bool GameSceneInput::_handle_cancel_to_title(const InputMap& input) {
     if (!_s._is_action_just_pressed(input,"cancel")) return false;
     auto* tree = _s.get_tree();
@@ -86,41 +120,8 @@ bool GameSceneInput::_handle_cancel_to_title(const InputMap& input) {
         tree->get_audio()->play_sfx("ui_click", 0.35f);
         return true;
     }
-    if (_s.state == GameState::PLAYING && _s.player->combat.is_alive) {
-        if (!_s.is_save_blocked()) {
-            _s.max_unlocked_floor = std::max(_s.max_unlocked_floor, _s.current_floor);
-            std::vector<bool> spr, spd;
-            if (_s.game_map) for (auto& sr : _s.game_map->special_rooms) {
-                spr.push_back(sr.triggered);
-                spd.push_back(sr.discovered);
-            }
-            std::unordered_map<std::string, int> rcm;
-            static const char* ALL_RULES[] = {
-                "rule_shadow_charge","rule_summon_priority","rule_arena_movement",
-                "rule_shield_patience","rule_rule_override", nullptr
-            };
-            for (int i = 0; ALL_RULES[i]; i++) {
-                int v = _s._gameplay.world_state.counter(ALL_RULES[i]);
-                if (v > 0) rcm[ALL_RULES[i]] = v;
-            }
-            // M1-D1: last-known 镜像记忆 — Boss 存活则更新缓存, 否则透传
-            {
-                std::vector<float> fresh_alpha, fresh_beta;
-                _s._boss.export_mirror_memory(fresh_alpha, fresh_beta);
-                if (!fresh_alpha.empty()) {
-                    _s._mirror_mem_alpha = fresh_alpha;
-                    _s._mirror_mem_beta = fresh_beta;
-                }
-            }
-            // G10.9-B2: 槽位化 + play_time; endings 不再入档 (Meta 落盘)
-            SaveManager::save_game(SaveManager::active_slot(),
-                _s.player.get(), _s.current_floor,
-                _s.max_unlocked_floor, _s._dungeon_seed, spr, spd, rcm,
-                _s._gameplay.quest_mgr.export_states(),
-                _s._mirror_mem_alpha, _s._mirror_mem_beta, (float)_s.game_time);
-            LOG_INFO("Save→第%d层", _s.current_floor);
-        }
-    }
+    if (_s.state == GameState::PLAYING && _s.player->combat.is_alive)
+        _save_current_run();
     auto ts = std::make_shared<TitleScene>();
     ts->name = "TitleScene";
     ts->has_save = SaveManager::save_exists();

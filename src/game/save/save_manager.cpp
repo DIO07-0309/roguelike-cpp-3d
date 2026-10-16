@@ -574,10 +574,24 @@ static void _fill_save_meta(const SaveTokens& tk, SaveData* d, int floor, int ma
 // ---- 反序列化 ----
 // G10.9-B2: 槽位化读取 — load_game(slot) 为新入口, load_save() 转发活跃槽
 // G13: 各字段解析拆到文件内 static 辅助, load_game 只做编排 (顺序即语义)
+// G53: 从 token 重建完整玩家 (基础属性 + 遗物/技能/背包/装备/Buff)
+static std::unique_ptr<Player> _build_player_full(const SaveTokens& tk) {
+    auto p = _build_player_from(tk);
+    _parse_relics(tk, p.get());
+    _parse_skill_list(tk, "act", p.get());   // 主动 (G3.2: SkillFactory)
+    _parse_skill_list(tk, "pas", p.get());   // 被动 (G3.2: SkillFactory)
+    p->attack_evo.level = tk.getV("atl", 1); // G1 Step7 (须早于 apply_all_passives)
+    p->skills.apply_all_passives(p.get());
+    _parse_inventory(tk, p.get());
+    _parse_equipment(tk, p.get());
+    _parse_buffs(tk, p.get());
+    return p;
+}
+
 SaveData* SaveManager::load_game(int slot_id) {
     if (!slot_exists(slot_id)) return nullptr;
     // G19-fix: 读档即绑定活跃槽。旧实现只在 NEW_GAME 分支调 set_active_slot,
-    // CONTINUE / --autocontinue 两条读档路径漏了 → 读档 A 之后任何
+    // CONTINUE / --autocontinue 两条读档路径漏了 -> 读档 A 之后任何
     // save_game(active_slot()) 都写进另一个槽, 把它覆盖掉 (用户深档被清)。
     // 收口在 load_game 一处, 三条读档路径同时修齐, 后续新增路径不会漏。
     set_active_slot(slot_id);
@@ -595,15 +609,7 @@ SaveData* SaveManager::load_game(int slot_id) {
     const int mhp   = tk.getV("mhp", PLAYER_MAX_HP);
     const int chp   = tk.getV("chp", mhp);
 
-    auto p = _build_player_from(tk);
-    _parse_relics(tk, p.get());
-    _parse_skill_list(tk, "act", p.get());   // 主动 (G3.2: SkillFactory)
-    _parse_skill_list(tk, "pas", p.get());   // 被动 (G3.2: SkillFactory)
-    p->attack_evo.level = tk.getV("atl", 1); // G1 Step7 (须早于 apply_all_passives)
-    p->skills.apply_all_passives(p.get());
-    _parse_inventory(tk, p.get());
-    _parse_equipment(tk, p.get());
-    _parse_buffs(tk, p.get());
+    auto p = _build_player_full(tk);
 
     auto* d = new SaveData;
     _fill_save_meta(tk, d, floor, maxf);

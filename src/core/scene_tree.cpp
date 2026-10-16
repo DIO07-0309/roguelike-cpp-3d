@@ -20,30 +20,26 @@ void SceneTree::_set_window_icon() {
     UnloadImage(icon);
 }
 
+// G53: DPI 缩放 — DPI-unaware + 系统缩放 150% 时 SetWindowSize(1440,960)
+// 系统坐标 -> OS 拉伸到物理 2160x1440; 960x640 逻辑纹理 blit 到 1440x960
+// 绘图空间 (1.5x)。对应 G10.9-fix2 "方案 B"。
+void SceneTree::_apply_dpi_scale(int w, int h) {
+    Vector2 dpi = GetWindowScaleDPI();
+    if (dpi.x > 1.01f) SetWindowSize((int)(w * dpi.x), (int)(h * dpi.y));
+}
+
+// G10.9-fix2: 放弃 FLAG_WINDOW_HIGHDPI
+// 探针实证 (tools/dpi_probe v4-v7): raylib5.0+GLFW+HIGHDPI 下窗口/FBO/绘图
+// 三空间互不同步 (窗口物理 960x640, FBO 1440x960, TakeScreenshot 2160x1440,
+// GetScreenWidth 恒报 960x640 旧值) — blit 矩形无法正确计算, 只见左上。
+// 方案 B: 不开 HIGHDPI (DPI-unaware 窗口, OS 位图拉伸保证完整可见) +
+// RESIZABLE + letterbox blit (dst 全程 GetScreen* 逻辑坐标, 自洽一致)
 SceneTree::SceneTree(int w, int h, const char* title) {
-    // G10.9-fix2: 放弃 FLAG_WINDOW_HIGHDPI
-    // 探针实证 (tools/dpi_probe v4-v7): raylib5.0+GLFW+HIGHDPI 下窗口/FBO/绘图
-    // 三空间互不同步 (窗口物理 960x640, FBO 1440x960, TakeScreenshot 2160x1440,
-    // GetScreenWidth 恒报 960x640 旧值) — blit 矩形无法正确计算, 只见左上。
-    // 方案 B: 不开 HIGHDPI (DPI-unaware 窗口, OS 位图拉伸保证完整可见) +
-    // RESIZABLE + letterbox blit (dst 全程 GetScreen* 逻辑坐标, 自洽一致)
     SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_MSAA_4X_HINT);
     InitWindow(w, h, title);
-    // DPI-unaware + 系统缩放 150%: SetWindowSize(1440,960) 系统坐标 → OS 拉伸
-    // 到物理 2160x1440 显示; 960x640 逻辑纹理 blit 到 1440x960 绘图空间 (1.5x)
-    {
-        Vector2 dpi = GetWindowScaleDPI();
-        if (dpi.x > 1.01f) SetWindowSize((int)(w * dpi.x), (int)(h * dpi.y));
-    }
+    _apply_dpi_scale(w, h);
     SetWindowMinSize(w / 2, h / 2);
-    // G10.7-B1: 窗口图标 — 与 exe 图标同源 (剑与门, assets/brand/roguelike.png)
-    {
-        Image icon = LoadImage("assets/brand/roguelike.png");
-        if (icon.width > 0) {
-            SetWindowIcon(icon);
-            UnloadImage(icon);
-        }
-    }
+    _set_window_icon();   // G10.7-B1: 窗口图标 (与 exe 同源, 剑与门)
     InitAudioDevice();
     // raylib 5.0 把 InitAudioDevice 改为 void, 失败需用 IsAudioDeviceReady 探测
     if (!IsAudioDeviceReady())
