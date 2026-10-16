@@ -121,7 +121,7 @@ F15 镜像 Boss 读你的行为画像（攻防倾向/走位偏好/技能习惯�
 ## CHANGELOG
 
 - P8（汉中 3D 城市管线，开发版，未发布）：**M10-M16 检查点终检交付（8/8 台账收口）** —— 窗扩面 OSM143+地标5 / 河滨 2273 栋廉价窗 / 屋顶 14m 低配 / 公交 300m 推导 328 站 / 绿篱补全 95.05% / 万家灯火+路面 shader / 4K 英雄贴图+CJK 站牌字集 + 终检双 build。面数 **2,413,344 → 2,670,559**（+257,215，红线 2,950,000，余 279,441，T10 门开）；探针 `MANIFEST_ALL_DONE day=26 night=26 turn=120 gate=PASS`（+P8 新增 13 张）；断言双 PASS、`T8FACES_ALL_PASS`、frame 1.390s L0；交付 5 件 SHA256 见 `deliverables/hanzhong/report.md` §10（$tmp `5b6762a`）。
-- G53（开发版，未发布）：**函数长度债收敛第五批** —— 存档 / 模拟报表 / RL 训练 / 输入 / 资源 / 结局 共 12 个函数拆分，全仓超规 **68→52**。
+- G53（开发版，未发布）：**函数长度债全部清零** —— 分两阶段共拆分 30+ 个函数，全仓超规 **68→0**（`tools/fn_length_scan.py` 阈 >40 报 0）。阶段一：存档 / 模拟报表 / RL 训练 / 输入 / 资源 / 结局 共 12 个函数拆分，**68→52**。
 
   | 函数 | 前 | 后 | 手法 |
   |---|---|---|---|
@@ -145,6 +145,25 @@ F15 镜像 Boss 读你的行为画像（攻防倾向/走位偏好/技能习惯�
   - **转义地狱**：用 Python 生成含大量 C++ 引号的代码，反斜杠层数错两轮（`\\"` 多一层）导致 `stray '\' in program`；靠一次精确字符串替换修正。教训：生成含转义的代码必须先打印目标行肉眼核对。
 
   部分重构刻意保留的行为差异（不是 bug）：`DqnNet::load` 因 `Layer` 是私有嵌套类型，自由函数无法声明其形参，提取收益仅 5 行，判定不值得动头文件，保持 42 行原状。
+
+  阶段二（52→0，收官）：把余下全部超规函数逐一拆分，其中含几个 100+ 行的硬骨头。
+
+  | 函数 | 前 | 后 | 手法 |
+  |---|---|---|---|
+  | `MonsterAI::_think_and_cast` | 143 | 36 | 按「目标选择 / 施法前置 / 技能执行」拆段 |
+  | `DecisionAgent::best_action` | 179 | 30 | 拆 8 个阶段 helper（威胁评估 / 候选打分 / 抉择） |
+  | `GameSceneInput::handle_input` | 164 | 35 | 按输入域拆（任务日志 / 挑战 / ESC / Boss 确认） |
+  | `BossSystemDirector::_init_mirror_boss` | 119 | 26 | 拆 AI 层装配 / 数值护栏 / 武器镜像 |
+  | `build_sim_state` + `_bfs_toward` | 47 + 52 | 34 + 25 | 抽 AStarState 与该状态机分步 |
+  | `DamageSystem::applyBossReward` | 64 | 7 | 数据表化 + 分支抽出 |
+  | `SceneTree::run` / `SceneTree` | 61 / 44 | 19 / 32 | 帧后处理三段 + DPI/图标两助手 |
+  | `BossSystemDirector::tick` / `MirrorCombatDirector::tick` | 52 / 52 | ~35 / ~28 | 各抽镜像 boss 段 / 战术+反馈两段 |
+  | `MirrorCombatDirector::_weapon_attack` / `_init_weapon_slots` | 44 / 42 | ~28 / ~20 | 抽 VFX / 近战+远程槽装配 |
+  | `GameSceneInput::_handle_cancel_to_title` | 51 | 20 | 抽 `_save_current_run` |
+  | `SaveManager::load_game` | 43 | 33 | 抽 `_build_player_full` |
+  | `DqnNet::load` | 42 | 30 | 抽**私有静态成员** `_read_layer` / `_layers_are_chained`，用得上私有嵌套 `Layer`（推翻阶段一「不值得拆」的判断） |
+
+  阶段二自查到的风险（已修正）：脚本字符串替换把 `LoadImage` 的路径引号吃掉；把日志的 `→` 误写成 `->`（已改回，保证日志逐字符一致）；一次 `git add` 误入并行 session 的 README/plans/specs，已 `reset` 拆出只提交本批改动。
 
 - G52（开发版，未发布）：**函数长度债收敛第四批** —— Boss 链路 / Mirror 链路 / RL 入口共 6 个函数拆分，全仓超规 **75→68**。
 
