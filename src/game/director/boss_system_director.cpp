@@ -205,6 +205,45 @@ void BossSystemDirector::init_on_spawn(Monster* boss, int floor,
 // ── G53: _init_mirror_boss 拆出的三段 ───────────────────────
 
 // AI 层装配: agent + clone / chain / RL / 战术规则 (优先级链逐层装入)
+// G53: 克隆表装配 (离线 build + 跨局记忆合并)
+void BossSystemDirector::_attach_clone_table(
+    const std::vector<PlayerAction>& history, const PlayerHabitProfile& profile) {
+    auto clone = std::make_unique<BehaviorCloneTable>();
+    clone->build(history);
+    clone->set_profile(profile);
+    // B3-M: Mirror 闭环 — 读本局之前的跨局克隆记忆 (表每次都是新建,
+    // 同局重复注入天然不叠加; sim/只读模式下零接触, 保确定性红线)
+    if (!MetaSystem::g_readonly && mirror::MirrorMemoryStore::load_into(*clone)) {
+        LOG_INFO("[MIRROR] cross-run clone memory merged");
+    }
+    _mirror_agent->set_clone_table(std::move(clone));
+    LOG_INFO("[MIRROR] CloneTable built: %zu entries from %zu actions",
+             _mirror_agent->clone_table()->entries(), history.size());
+}
+
+// G53: 战术链序列记忆装配 (与克隆表同步离线 build + 注入, F15 enter)
+void BossSystemDirector::_attach_chain_table(const std::vector<PlayerAction>& history) {
+    auto chain = std::make_unique<TacticalChainTable>();
+    chain->build(history);
+    _mirror_agent->set_chain_table(std::move(chain));
+    LOG_INFO("[MIRROR] ChainTable built: %zu triples from %zu actions",
+             _mirror_agent->chain_table()->entries(), history.size());
+}
+
+// G53: RL 决策层装配 (按玩家风格加载离线训练 Q 表; 文件缺失则降级)
+void BossSystemDirector::_attach_rl_policy(const PlayerHabitProfile& profile) {
+    auto rl_q = std::make_unique<rl::QAgent>();
+    std::string rl_path = std::string("saves/rl_mirror_q_") +
+                          profile.style_name() + ".json";
+    if (!rl_q->load(rl_path)) {
+        LOG_INFO("[MIRROR] RL policy missing (skip): %s", rl_path.c_str());
+        return;
+    }
+    size_t rl_entries = rl_q->table_size();
+    _mirror_agent->set_rl_policy(std::move(rl_q));
+    LOG_INFO("[MIRROR] RL policy loaded: %s (%zu entries)", rl_path.c_str(), rl_entries);
+}
+
 void BossSystemDirector::_build_mirror_agent_layers(
     const std::vector<PlayerAction>& history,
     const PlayerHabitProfile& profile) {
@@ -212,46 +251,18 @@ void BossSystemDirector::_build_mirror_agent_layers(
     _mirror_agent->init(profile);
 
     // M1-fix (M4 验收发现): 克隆表从未在运行时注入 — 补上真实链路:
-    // F1-F14 采集流 → state→意图分布 → MirrorAgent 预测与仲裁
-    auto clone = std::make_unique<BehaviorCloneTable>();
-    clone->build(history);
-    clone->set_profile(profile);
-    // B3-M: Mirror 闭环 — 读本局之前的跨局克隆记忆 (表每次都是新建,
-    // 同局重复注入天然不叠加; sim/只读模式下零接触, 保确定性红线)
-    if (!MetaSystem::g_readonly &&
-        mirror::MirrorMemoryStore::load_into(*clone)) {
-        LOG_INFO("[MIRROR] cross-run clone memory merged");
-    }
-    _mirror_agent->set_clone_table(std::move(clone));
-    LOG_INFO("[MIRROR] CloneTable built: %zu entries from %zu actions",
-             _mirror_agent->clone_table()->entries(), history.size());
-
-    // M4.4: 战术链序列记忆 — 与克隆表同步离线 build + 注入 (F15 enter)
-    auto chain = std::make_unique<TacticalChainTable>();
-    chain->build(history);
-    _mirror_agent->set_chain_table(std::move(chain));
-    LOG_INFO("[MIRROR] ChainTable built: %zu triples from %zu actions",
-             _mirror_agent->chain_table()->entries(), history.size());
-
-    // v0.9.30: RL 决策层 — 按玩家风格加载离线训练 Q 表 (F15.4 RL self-play 产物)
-    // 文件缺失 → 不注入 (降级现有仲裁链, 安全)
-    auto rl_q = std::make_unique<rl::QAgent>();
-    std::string rl_path = std::string("saves/rl_mirror_q_") +
-                          profile.style_name() + ".json";
-    if (rl_q->load(rl_path)) {
-        size_t rl_entries = rl_q->table_size();
-        _mirror_agent->set_rl_policy(std::move(rl_q));
-        LOG_INFO("[MIRROR] RL policy loaded: %s (%zu entries)",
-                 rl_path.c_str(), rl_entries);
-    } else {
-        LOG_INFO("[MIRROR] RL policy missing (skip): %s", rl_path.c_str());
-    }
+    // F1-F14 采集流 -> state->意图分布 -> MirrorAgent 预测与仲裁
+    _attach_clone_table(history, profile);
+    // M4.4: 战术链序列记忆 — 与克隆表同步离线 build + 注入
+    _attach_chain_table(history);
+    // v0.9.30: RL 决策层 — 按玩家风格加载离线训练 Q 表 (F15.4 self-play 产物)
+    _attach_rl_policy(profile);
 
     // v0.9.36 G32-E: 战术规则策略层 — 默认关闭 (命令行 --tactical-mirror 开启)
-    // 接入位置放在 RL 层之后: 仲裁链优先级是 ML → 战术链 → RL → 克隆 → Thompson,
-    // 而 set_ml_predictor 填的是**最高优先级**的 ML 槽, 故装上后会盖过
-    // 下面所有层。这是刻意的 — 规则策略比学习型策略可靠(G32-D 实测 60% vs
-    // 37%), 故让它作为 ML 槽的替代实现而非叠加层。
+    // 接入位置放在 RL 层之后: 仲裁链优先级是 ML -> 战术链 -> RL -> 克隆 -> Thompson,
+    // 而 set_ml_predictor 填的是最高优先级的 ML 槽, 故装上后会盖过下面所有层。
+    // 这是刻意的 — 规则策略比学习型策略可靠(G32-D 实测 60% vs 37%),
+    // 故让它作为 ML 槽的替代实现而非叠加层。
     if (mirror::install_tactical_predictor_if_enabled(*_mirror_agent)) {
         LOG_INFO("[MIRROR] TacticalPolicy active (--tactical-mirror)");
     }
@@ -429,6 +440,27 @@ void BossSystemDirector::_tick_arena_spawn(float dt, Monster* boss,
     arena.execute_event(ev, *_arena_cfg, bx, by, px, py);
 }
 
+// G53: 镜像 boss 一段 (动态阶段 + 战斗接管 + 结束统计)
+void BossSystemDirector::_tick_mirror_boss(float dt, Monster* boss, Player* player,
+                                           float game_time, std::vector<Effect>* effects) {
+    // M2: 动态阶段触发 — 准确率/观察数/时间/濒危, 不再纯计时
+    MirrorBattleState mst;
+    mst.boss_hp_pct = boss->combat.max_hp > 0
+        ? (float)boss->combat.current_hp / boss->combat.max_hp : 1.0f;
+    mst.player_hp_pct = player->combat.max_hp > 0
+        ? (float)player->combat.current_hp / player->combat.max_hp : 1.0f;
+    _mirror_agent->tick_phase(dt, mst);
+    _mirror_combat.tick(dt, boss, player, game_time, _mirror_agent.get(),
+                        effects);   // F15-fix: 传递特效通道 — 镜像攻击可见
+    // 验收: 战斗结束导出 AI 调用链统计 (任一阵亡, 只记一次)
+    if (!_mirror_stats_logged &&
+        (boss->combat.current_hp <= 0 || player->combat.current_hp <= 0)) {
+        LOG_INFO("[MIRROR-ACC] battle ended — %s",
+                 _mirror_agent->debug_stats()->summary().c_str());
+        _mirror_stats_logged = true;
+    }
+}
+
 void BossSystemDirector::tick(float dt, Monster* boss, Player* player, int floor,
     float game_time, const WorldState& ws, const RelationshipSystem& rels,
     StoryStage stage, std::vector<std::unique_ptr<Monster>>& monsters,
@@ -442,7 +474,7 @@ void BossSystemDirector::tick(float dt, Monster* boss, Player* player, int floor
     behavior.memory.tick(dt, false);
     evaluate_boss_decision(floor, ctx, ws, rels, behavior, dt);
 
-    // Behavior→Command
+    // Behavior->Command
     current_cmd = boss_decision_to_command((int)behavior.current);
 
     // Encounter tick + M4b: 注入遭遇阶段 (驱动连招模板切换)
@@ -453,50 +485,38 @@ void BossSystemDirector::tick(float dt, Monster* boss, Player* player, int floor
     // Cinematic tick
     cinematic.tick(dt);
 
-    // ── G2.3 + M4b: Arena 生成 — 阶段驱动间隔加速 ──
+    // G2.3 + M4b: Arena 生成 — 阶段驱动间隔加速
     _tick_arena_spawn(dt, boss, player);
     arena.tick(dt, player, monsters);
 
-    // ══════════════════════════════════════════════════════
     // F10.1: Domain boss arena state machine
-    // ══════════════════════════════════════════════════════
     if (_behavior_type == "domain") {
         _tick_domain_state(dt, boss);
         boss->combat.domain_invulnerable = boss_invulnerable;
     }
     // F15: Mirror boss — MirrorCombatDirector 接管全部战斗决策
     else if (_behavior_type == "mirror" && _mirror_agent) {
-        // M2: 动态阶段触发 — 准确率/观察数/时间/濒危, 不再纯计时
-        MirrorBattleState mst;
-        mst.boss_hp_pct = boss->combat.max_hp > 0
-            ? (float)boss->combat.current_hp / boss->combat.max_hp : 1.0f;
-        mst.player_hp_pct = player->combat.max_hp > 0
-            ? (float)player->combat.current_hp / player->combat.max_hp : 1.0f;
-        _mirror_agent->tick_phase(dt, mst);
-        _mirror_combat.tick(dt, boss, player, game_time, _mirror_agent.get(),
-                            effects);   // F15-fix: 传递特效通道 — 镜像攻击可见
-        // 验收: 战斗结束导出 AI 调用链统计 (任一阵亡, 只记一次)
-        if (!_mirror_stats_logged &&
-            (boss->combat.current_hp <= 0 || player->combat.current_hp <= 0)) {
-            LOG_INFO("[MIRROR-ACC] battle ended — %s",
-                     _mirror_agent->debug_stats()->summary().c_str());
-            _mirror_stats_logged = true;
-        }
+        _tick_mirror_boss(dt, boss, player, game_time, effects);
     }
 }
 
 // ── F10.1: Domain state machine tick ──
+// G53: 进入领域相位收尾 (计时归零 + 无敌 + 生核 + 事件)
+void BossSystemDirector::_enter_domain_phase(Monster* boss, int cycle) {
+    domain_timer = 0.0f;
+    boss_invulnerable = true;
+    _spawn_domain_core(boss);
+    EventBus::inst().emit(GameEventType::BOSS_DOMAIN_ENTER,
+        boss, cycle, 0.0f, "domain_enter");
+}
+
 void BossSystemDirector::_tick_domain_state(float dt, Monster* boss) {
     switch (arena_state) {
     case BossArenaState::INTRO:
         domain_timer += dt;
         if (domain_timer >= 1.5f) {
-            domain_timer = 0.0f;
             arena_state = BossArenaState::DOMAIN_PHASE;
-            boss_invulnerable = true;
-            _spawn_domain_core(boss);
-            EventBus::inst().emit(GameEventType::BOSS_DOMAIN_ENTER,
-                boss, 0, 0.0f, "domain_enter");
+            _enter_domain_phase(boss, 0);
         }
         break;
 
@@ -511,14 +531,10 @@ void BossSystemDirector::_tick_domain_state(float dt, Monster* boss) {
     case BossArenaState::VULNERABLE_PHASE:
         domain_timer += dt;
         if (domain_timer >= _enraged_vulnerable_duration()) {
-            domain_timer = 0.0f;
             boss->combat.vulnerable_dmg_mult = 1.0f;
             arena_state = _enraged
                 ? BossArenaState::ENRAGED_PHASE : BossArenaState::DOMAIN_PHASE;
-            boss_invulnerable = true;
-            _spawn_domain_core(boss);
-            EventBus::inst().emit(GameEventType::BOSS_DOMAIN_ENTER,
-                boss, domain_cycle_count, 0.0f, "domain_enter");
+            _enter_domain_phase(boss, domain_cycle_count);
         }
         break;
 

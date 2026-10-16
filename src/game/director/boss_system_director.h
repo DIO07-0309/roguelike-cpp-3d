@@ -127,9 +127,19 @@ private:
     BossContext _build_boss_context(Monster* boss, Player* player,
                                     StoryStage stage) const;
     void _tick_arena_spawn(float dt, Monster* boss, Player* player);
+    // G53: tick 拆出的镜像 boss 段 (阶段判定 + 战斗接管 + 结束统计)
+    void _tick_mirror_boss(float dt, Monster* boss, Player* player,
+                           float game_time, std::vector<Effect>* effects);
+    // G53: _tick_domain_state 抽出的进入领域相位收尾 (计时/无敌/生核/事件)
+    void _enter_domain_phase(Monster* boss, int cycle);
     // G53: _init_mirror_boss 拆出的三段 (AI 层装配 / 数值护栏 / 武器镜像)
     void _build_mirror_agent_layers(const std::vector<PlayerAction>& history,
                                     const PlayerHabitProfile& profile);
+    // G53: _build_mirror_agent_layers 拆出的三层装配 (克隆表 / 战术链 / RL)
+    void _attach_clone_table(const std::vector<PlayerAction>& history,
+                             const PlayerHabitProfile& profile);
+    void _attach_chain_table(const std::vector<PlayerAction>& history);
+    void _attach_rl_policy(const PlayerHabitProfile& profile);
     void _apply_mirror_stat_guards(Monster* boss, const Player* player,
                                    int& p_hp, int& p_atk, int& p_pdef);
     void _setup_mirror_weapon(Monster* boss, const Player* player);
