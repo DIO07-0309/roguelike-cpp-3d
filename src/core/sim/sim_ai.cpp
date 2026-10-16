@@ -613,21 +613,9 @@ int DecisionAgent::_bfs_toward(const Player* p,
 }
 
 // Q3.2: BFS 远离 — 从目标怪所在格 BFS 整图, 返回玩家 4 邻居中距怪最远的方向 (0-3, -1=全堵)
-int DecisionAgent::_bfs_away(const Player* p, const Monster* t,
-    const GameMap* map, bool avoid_hazard) const {
-    if (!map || !p || !t) return -1;
-    int w = map->width, h = map->height;
-    auto [mx, my] = map->pixel_to_tile(
-        t->entity.rect.x + t->entity.rect.width/2,
-        t->entity.rect.y + t->entity.rect.height/2);
-    auto [sx, sy] = map->pixel_to_tile(
-        p->entity.rect.x + p->entity.rect.width/2,
-        p->entity.rect.y + p->entity.rect.height/2);
-    // Q3.13: 钳制怪物/玩家瓦片 — 否则 dist[] 越界写堆损坏
-    if (mx < 0) mx = 0; else if (mx >= w) mx = w - 1;
-    if (my < 0) my = 0; else if (my >= h) my = h - 1;
-    if (sx < 0) sx = 0; else if (sx >= w) sx = w - 1;
-    if (sy < 0) sy = 0; else if (sy >= h) sy = h - 1;
+// G53: _bfs_away 抽出的 BFS 距离场 (从怪出发, -1=不可达)
+std::vector<int> DecisionAgent::_bfs_dist_from(const GameMap* map, int mx, int my,
+                                               int w, int h, bool avoid_hazard) const {
     const int N = w * h;
     std::vector<int> dist((size_t)N, -1);
     std::queue<int> q;
@@ -646,6 +634,13 @@ int DecisionAgent::_bfs_away(const Player* p, const Monster* t,
             q.push(ni);
         }
     }
+    return dist;
+}
+
+// G53: _bfs_away 抽出的"选玩家邻居中距离场最大者"
+int DecisionAgent::_pick_farthest_step(const GameMap* map, int sx, int sy,
+                                       int w, int h, const std::vector<int>& dist,
+                                       bool avoid_hazard) const {
     int best = -1, best_dist = -1;
     for (int d = 0; d < 4; d++) {
         int nx = sx + kBfsDx[d], ny = sy + kBfsDy[d];
@@ -655,6 +650,25 @@ int DecisionAgent::_bfs_away(const Player* p, const Monster* t,
         if (dist[ny * w + nx] > best_dist) { best_dist = dist[ny * w + nx]; best = d; }
     }
     return best;
+}
+
+int DecisionAgent::_bfs_away(const Player* p, const Monster* t,
+    const GameMap* map, bool avoid_hazard) const {
+    if (!map || !p || !t) return -1;
+    int w = map->width, h = map->height;
+    auto [mx, my] = map->pixel_to_tile(
+        t->entity.rect.x + t->entity.rect.width/2,
+        t->entity.rect.y + t->entity.rect.height/2);
+    auto [sx, sy] = map->pixel_to_tile(
+        p->entity.rect.x + p->entity.rect.width/2,
+        p->entity.rect.y + p->entity.rect.height/2);
+    // Q3.13: 钳制怪物/玩家瓦片 — 否则 dist[] 越界写堆损坏
+    if (mx < 0) mx = 0; else if (mx >= w) mx = w - 1;
+    if (my < 0) my = 0; else if (my >= h) my = h - 1;
+    if (sx < 0) sx = 0; else if (sx >= w) sx = w - 1;
+    if (sy < 0) sy = 0; else if (sy >= h) sy = h - 1;
+    std::vector<int> dist = _bfs_dist_from(map, mx, my, w, h, avoid_hazard);
+    return _pick_farthest_step(map, sx, sy, w, h, dist, avoid_hazard);
 }
 
 // Q3.2: 轴贪心兜底 — BFS 无路时按主轴直行, 用真实rect校验, 每步避开毒池
@@ -907,18 +921,17 @@ float DecisionAgent::_evaluate_move(int dir, const Player* p,
     return _eval_move_approach(dir, p, t, monsters, map);
 }
 
-float DecisionAgent::_evaluate_pickup(const Player* p, const GameMap* map,
-    const std::vector<Monster*>& monsters) const {
-    if (!map) return 0;
-    // G26-fix: 只保留 1.5s 冷却节流, 删除"累计 3 次永久放弃".
-    // 原 _pickup_fail_streak 在评估时 ++, 无法区分成功/失败 — 出生点簇拥 ≥3 件
-    // 物品时, 3 次"成功拾取"被记成 3 次失败 → 开局 ~4.5s 拾取永久禁用.
-    // 拾取是特殊房间唯一的触发路径 (InteractionHandler::try_interact 才置
-    // room->triggered) → 房间永不触发 → _bfs_toward_room 永远有目标 → 搜刮分支
-    // 永久空转, AI 永不朝怪移动 (seed42: atk=0%/pick=0%/desc=0%, 怪恒定
-    // 220-407px 外, 120s 累计卡死 → STUCK_RECOVERED).
-    // 1.5s 冷却本身已是正确的节流器; 重复发 pickup 只是无害 no-op.
-    if (_game_time - _last_pickup_attempt < 1.5f) return 0;
+// G26-fix: _evaluate_pickup 只保留 1.5s 冷却节流, 删除"累计 3 次永久放弃".
+// 原 _pickup_fail_streak 在评估时 ++, 无法区分成功/失败 — 出生点簇拥 >=3 件
+// 物品时, 3 次"成功拾取"被记成 3 次失败 -> 开局 ~4.5s 拾取永久禁用.
+// 拾取是特殊房间唯一的触发路径 (InteractionHandler::try_interact 才置
+// room->triggered) -> 房间永不触发 -> _bfs_toward_room 永远有目标 -> 搜刮分支
+// 永久空转, AI 永不朝怪移动 (seed42: atk=0%/pick=0%/desc=0%).
+// 1.5s 冷却本身已是正确的节流器; 重复发 pickup 只是无害 no-op.
+
+// G53: _evaluate_pickup 抽出的最近威胁度 (0=安全, 越大越危险)
+float DecisionAgent::_pickup_threat(const Player* p,
+                                    const std::vector<Monster*>& monsters) const {
     float threat = 0.0f;
     for (auto* m : monsters) {
         if (!m || !m->combat.is_alive) continue;
@@ -926,30 +939,38 @@ float DecisionAgent::_evaluate_pickup(const Player* p, const GameMap* map,
                           m->entity.rect.y + m->entity.rect.height/2 - (p->entity.rect.y + p->entity.rect.height/2));
         threat = std::max(threat, 1.0f - md / (6.0f * 32.0f));
     }
-    // P1-A2: 地面物品拾取判定 (原 AI 对 ground_items 全盲 → picks=0 → 无药无武器)
-    // 拾取半径与 InteractionHandler::pickup_item 对齐 (PICKUP_RANGE=2.0 * TILE_SIZE)
+    return threat;
+}
+
+// G53: _evaluate_pickup 抽出的特殊房落点得分 (站房间上 <=1 格才给分, 随威胁衰减)
+// Q3.1: 只有站在房间上才给分; Q3.2: 已拾取房间不再给分 — 否则 loot 完站桩等死
+float DecisionAgent::_pickup_room_score(const Player* p, const GameMap* map,
+                                        float threat) const {
+    for (auto& sr : map->special_rooms) {
+        if (sr.triggered) continue;
+        float dx = p->entity.rect.x + p->entity.rect.width/2 - (sr.cx * 32 + 16);
+        float dy = p->entity.rect.y + p->entity.rect.height/2 - (sr.cy * 32 + 16);
+        if (sqrtf(dx*dx+dy*dy) < 1.0f * 32.0f) return 1.5f * (1.0f - threat);
+    }
+    return 0;
+}
+
+float DecisionAgent::_evaluate_pickup(const Player* p, const GameMap* map,
+    const std::vector<Monster*>& monsters) const {
+    if (!map) return 0;
+    if (_game_time - _last_pickup_attempt < 1.5f) return 0;
+    float threat = _pickup_threat(p, monsters);
+    // P1-A2: 地面物品拾取判定 (原 AI 对 ground_items 全盲 -> picks=0)
+    // 半径与 InteractionHandler::pickup_item 对齐 (PICKUP_RANGE=2.0*TILE_SIZE)
     float loot_d = _near_loot_dist(p);
     if (loot_d < 0) return 0;
     if (loot_d < 2.0f * 32.0f) {
-        // P1-A2-fix: 被围殴 (threat>0.55, 怪 <2 格) 时拾取消分 → 还手保命
+        // P1-A2-fix: 被围殴 (threat>0.55) 时拾取消分 -> 还手保命
         float loot_w = (threat > 0.55f) ? 0.0f : 1.6f;
         if (loot_w > 0 && _hp_ratio(p) < 0.5f) loot_w *= 1.8f;  // 残血药水加权
         if (loot_w > 0) return loot_w * (1.0f - 0.6f * threat);
     }
-    for (auto& sr : map->special_rooms) {
-        if (sr.triggered) continue; // Q3.2: 已拾取房间不再给分 — 否则 loot 完站桩等死
-        float dx = p->entity.rect.x + p->entity.rect.width/2 - (sr.cx * 32 + 16);
-        float dy = p->entity.rect.y + p->entity.rect.height/2 - (sr.cy * 32 + 16);
-        // Q3.1: 只有站在房间上(≤1格)才给分 — 且随最近威胁衰减, 被围殴时不得锁死拾取
-        // Q3.2: 残血时给 2.0 保底分 (泉水满血优先), 威胁权重减半
-        if (sqrtf(dx*dx+dy*dy) < 1.0f * 32.0f) {
-            // Q3.1: 只有站在房间上(≤1格)才给分 — 且随最近威胁衰减, 被围殴时不得锁死拾取
-            float threat_w = threat;
-            float base_w  = 1.5f;
-            return base_w * (1.0f - threat_w);
-        }
-    }
-    return 0;
+    return _pickup_room_score(p, map, threat);
 }
 
 // G13: 四方向轮换脱困 — 走不了或有危险就转下一向
@@ -1083,15 +1104,18 @@ std::string DecisionAgent::_stuck_escape(const Player* p,
         return "attack";
     }
     // G14: 卡死时优先 BFS 朝怪定向移动 — 原盲目旋转只让 AI 原地打转
+    return _stuck_bfs_or_rotate(p, monsters, map);
+}
+
+// G53: 卡死时 BFS 朝怪定向移动, 无路则旋转兜底
+std::string DecisionAgent::_stuck_bfs_or_rotate(
+    const Player* p, const std::vector<Monster*>& monsters, const GameMap* map) const {
     int bstep = _bfs_toward(p, monsters, map, true);
-    if (bstep >= 0) {
-        sim_stuck_bfs_hit++;
-        bstep = _pick_stable_bfs_step(p, monsters, map, bstep);
-        const char* dl[] = {"move_up", "move_down", "move_left", "move_right"};
-        return dl[bstep];
-    }
-    sim_stuck_bfs_fail++;
-    return _rotation_escape(p, map);
+    if (bstep < 0) { sim_stuck_bfs_fail++; return _rotation_escape(p, map); }
+    sim_stuck_bfs_hit++;
+    bstep = _pick_stable_bfs_step(p, monsters, map, bstep);
+    const char* dl[] = {"move_up", "move_down", "move_left", "move_right"};
+    return dl[bstep];
 }
 
 // G14: 卡死采样诊断 — AI tile + 最近怪距离 + 存活怪数 + 邻居统计 (环形缓冲 64)

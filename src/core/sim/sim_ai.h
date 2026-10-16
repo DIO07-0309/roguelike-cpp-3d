@@ -150,6 +150,11 @@ private:
 
     float _evaluate_pickup(const Player* p, const GameMap* map,
                            const std::vector<Monster*>& monsters) const;
+    // G53: _evaluate_pickup 抽出的威胁度 与 特殊房落点得分
+    float _pickup_threat(const Player* p,
+                         const std::vector<Monster*>& monsters) const;
+    float _pickup_room_score(const Player* p, const GameMap* map,
+                             float threat) const;
 
     // Helpers
     Monster* _find_nearest(const Player* player,
@@ -175,7 +180,13 @@ private:
         const GameMap* map, const std::vector<Monster*>& monsters,
         int w, int h, std::vector<char>& is_target);
     int _bfs_first_step(const GameMap* map, int sx, int sy, int w, int h,
-                       const std::vector<char>& is_target, bool avoid_hazard) const;    int _bfs_away(const Player* p, const Monster* t, const GameMap* map,
+                       const std::vector<char>& is_target, bool avoid_hazard) const;
+    // G53: _bfs_away 抽出的 BFS 距离场 (从怪出发) 与"最远邻居"选择
+    std::vector<int> _bfs_dist_from(const GameMap* map, int mx, int my, int w,
+                                    int h, bool avoid_hazard) const;
+    int _pick_farthest_step(const GameMap* map, int sx, int sy, int w, int h,
+                            const std::vector<int>& dist, bool avoid_hazard) const;
+    int _bfs_away(const Player* p, const Monster* t, const GameMap* map,
                   bool avoid_hazard) const;
     // Q3.2: 轴贪心兜底 — BFS 无路时直行逼近 (精确rect校验+避毒)
     int _greedy_step(const Player* p, const Monster* t, const GameMap* map) const;
@@ -219,6 +230,9 @@ private:
         const GameMap* map) const;
     // G53: _stuck_escape 抽出的预算判定 (累计卡死超预算 → 强制结算)
     bool _stuck_over_budget(float stuck_for) const;
+    // G53: _stuck_escape 抽出的"卡死时朝怪 BFS, 失败则旋转"兜底
+    std::string _stuck_bfs_or_rotate(const Player* p,
+        const std::vector<Monster*>& monsters, const GameMap* map) const;
     // G14b: 卡死进展信号 — 玩家移动>2格/怪HP变化/玩家HP变化/怪死亡 (任一=非卡死)
     bool _stuck_progress(const Player* p, const std::vector<Monster*>& monsters,
         int tx, int ty) const;
