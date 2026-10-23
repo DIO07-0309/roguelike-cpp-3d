@@ -8,6 +8,7 @@
 #include "core/win_center.h"     // G10.7-B1: gui_sanitize_stdio
 #include "game/audio/audio_server.h"   // Q3.1: --sim 静音
 #include "game/rendering3d/hd2d_renderer.h"  // M6-HD2D: --hd2d
+#include "game/rendering3d/part_voxelizer.h" // A13: --voxel-avatar
 #include "core/logger.h"
 #include "scenes/game_scene.h"
 #include "scenes/title_scene.h"
@@ -190,10 +191,14 @@ static bool _parse_sim_flags(const std::string& arg, int& i, CliFlags& f) {
     return true;
 }
 
-// 表现层开关 (hd2d / anim-time)
+// 表现层开关 (hd2d / anim-time / voxel-avatar)
 static bool _parse_render_flags(const std::string& arg, int& i) {
     if (arg == "--hd2d") {
         g_hd2d_mode = true;
+    } else if (arg == "--voxel-avatar") {          // A13: 玩家部件走体素 3D 件 (默认已开, 兼容保留)
+        voxel::g_voxel_avatar = true;
+    } else if (arg == "--no-voxel-avatar") {       // A13: 关闭体素化身, 回退纸偶
+        voxel::g_voxel_avatar = false;
     } else if (arg == "--anim-time" && i + 1 < __argc) {
         g_anim_time_override = (float)atof(__argv[++i]);
     } else {

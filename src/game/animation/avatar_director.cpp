@@ -5,6 +5,7 @@
 #include "core/logger.h"
 #include "game/entities/player.h"
 #include "game/entities/monster.h"
+#include "game/rendering3d/part_voxelizer.h"
 #include "raylib.h"
 
 void AvatarDirector::ensure_player(Player* player) {
@@ -33,6 +34,19 @@ void AvatarDirector::ensure_defs() {
     else LOG_WARN("A6: actor_avatars.json invalid, all fallback (%s)", conf_err.c_str());
 }
 
+// A13-M2: 怪物挂体素件 — 逐件向共享库取 (同类怪只建一次); 空槽/失败件回退纸偶
+void AvatarDirector::_attach_voxel(SkeletonAvatar& avatar, const std::string& skeleton_path) {
+    if (!voxel::g_voxel_avatar) return;   // --no-voxel-avatar: 全局回退纸偶
+    const std::string key = voxel_parts_key_from_skeleton(skeleton_path);
+    if (key.empty()) return;
+    std::vector<Mesh> meshes;
+    for (const auto& part : avatar.part_defs()) {
+        const std::string slot = voxel_slot_from_path(part.file);
+        meshes.push_back(_voxel_lib.get(key, slot, part.file, part.pivot_x, part.pivot_y));
+    }
+    avatar.set_borrowed_voxel_parts(std::move(meshes));
+}
+
 void AvatarDirector::tick_monsters(const std::vector<std::unique_ptr<Monster>>& monsters) {
     ensure_defs();
     if (_actor_avatars.empty()) return;    // 白名单空 = 零开销全回退
@@ -45,11 +59,13 @@ void AvatarDirector::tick_monsters(const std::vector<std::unique_ptr<Monster>>& 
             if (it == _actor_avatars.end()) continue;
             auto avatar = std::make_unique<SkeletonAvatar>();
             std::string avatar_err;
-            if (avatar->try_init(it->second.skeleton, it->second.anim, avatar_err))
+            if (avatar->try_init(it->second.skeleton, it->second.anim, avatar_err)) {
+                _attach_voxel(*avatar, it->second.skeleton);
                 LOG_INFO("A6: monster avatar active (%s)", it->first.c_str());
-            else
+            } else {
                 LOG_WARN("A6: monster avatar inactive (%s): %s",
                          it->first.c_str(), avatar_err.c_str());
+            }
             m->set_skeleton_avatar(std::move(avatar));   // 成功/失败都缓存不重试
         }
         auto* avatar = m->skeleton_avatar();

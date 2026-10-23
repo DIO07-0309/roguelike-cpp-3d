@@ -3,12 +3,33 @@
 
 #include <cmath>
 
-SkeletonAvatar::~SkeletonAvatar() { release_textures(); }
+SkeletonAvatar::~SkeletonAvatar() { release_textures(); release_voxel(); }
 
 void SkeletonAvatar::release_textures() {
     for (auto& t : _tex)
         if (t.id > 0) UnloadTexture(t);
     _tex.clear();
+}
+
+void SkeletonAvatar::release_voxel() {
+    if (_voxel_owned)
+        for (auto& m : _voxel)
+            if (m.vertexCount > 0) UnloadMesh(m);
+    _voxel.clear();
+}
+
+// A13: 接管体素网格所有权 (先释放旧批; 空 vector = 纸偶回退)
+void SkeletonAvatar::set_voxel_parts(std::vector<Mesh> meshes) {
+    release_voxel();
+    _voxel_owned = true;
+    _voxel = std::move(meshes);
+}
+
+// A13-M2: 借用网格 (共享库生命周期由持有者管理)
+void SkeletonAvatar::set_borrowed_voxel_parts(std::vector<Mesh> meshes) {
+    release_voxel();
+    _voxel_owned = false;
+    _voxel = std::move(meshes);
 }
 
 bool SkeletonAvatar::try_init(const std::string& skel_path, const std::string& anim_path,
@@ -91,6 +112,7 @@ std::vector<AvatarPartDraw> SkeletonAvatar::part_draws(const OverlayTf& overlay,
         const auto& part = _sk.parts[index];
         parts.push_back(buildAvatarPart(part, bones[part.bone], _tex[index],
                                         _sk.pixels_per_unit, flip_x));
+        if (index < _voxel.size()) parts.back().voxel = _voxel[index];  // A13
     }
     return parts;
 }

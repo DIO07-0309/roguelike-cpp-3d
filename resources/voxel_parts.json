@@ -1,0 +1,12 @@
+{
+  "ink_max_luminance": 0.25,
+  "alpha_min": 0.5,
+  "parts": {
+    "leg":    { "base": 8.0,  "growth": 0.8,  "cap": 18.0, "ink": 7.0,  "y_offset": 0.0,  "hem": [] },
+    "torso":  { "base": 9.0,  "growth": 0.75, "cap": 20.0, "ink": 10.0, "y_offset": 0.0,  "hem": [] },
+    "head":   { "base": 9.0,  "growth": 0.9,  "cap": 22.0, "ink": 10.0, "y_offset": -1.2, "hem": [] },
+    "arm":    { "base": 6.0,  "growth": 0.7,  "cap": 11.0, "ink": 7.0,  "y_offset": -2.4, "hem": [] },
+    "weapon": { "base": 4.0,  "growth": 0.3,  "cap": 8.0,  "ink": 4.0,  "y_offset": -1.6, "hem": [] },
+    "cape":   { "base": 4.0,  "growth": 0.35, "cap": 10.0, "ink": 5.0,  "y_offset": 9.6,  "hem": [[2, 3.0], [6, 2.0]] }
+  }
+}

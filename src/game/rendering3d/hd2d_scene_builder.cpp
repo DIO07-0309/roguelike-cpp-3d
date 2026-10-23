@@ -16,6 +16,7 @@
 #include "entities/item.h"                    // M6-v2a: item_icon_key
 #include "systems/weapon_component.h"         // M6-v2b: WeaponType/range_indicator
 #include "world/npc_system.h"                 // M6-v2a: npc_sprite_key
+#include "game/rendering3d/model_cache.h"     // A14: 真 3D 模型缓存 (NPC/道具)
 #include "world/biome.h"                      // A2.1: get_biome_for_floor (mote 风格)
 #include "entities/boss.h"                    // M6-v2b: BossAI 技能预警只读
 #include "systems/weather_system.h"           // 天气系统
@@ -28,6 +29,27 @@
 #include <cmath>
 
 namespace hd2d {
+
+// A14: 真 3D 模型共享缓存 (进程内单例 — 同一模型只加载/上传一次)
+static ModelCache& _model_cache() {
+    static ModelCache cache;
+    return cache;
+}
+
+// A14: 摆一个真 3D 模型 (脚底贴地; 相机在 +Z 侧 → 模型正面朝 +Z, yaw=0 即面向镜头)
+static void _append_model(std::shared_ptr<ModelAsset> model, Vector3 world_pos, float sort_y,
+                          float yaw_deg, float blob_width,
+                          std::vector<HD2DDrawItem>& out) {
+    HD2DDrawItem item;
+    item.kind = HD2DDrawItem::Kind::MODEL3D;
+    item.world_pos = world_pos;
+    item.sort_y = sort_y;
+    item.model = model;
+    item.model_yaw = yaw_deg;
+    item.blob_width = blob_width;
+    item.tint = WHITE;
+    out.push_back(item);
+}
 
 // ── tile 颜色回退: 贴图缺席时的纯色地形 ──
 static Color _tile_color(TileType t, bool visible_now) {
@@ -1073,6 +1095,12 @@ static void _build_npcs(const hd2d::SceneView& view, std::vector<HD2DDrawItem>& 
                 continue;
             }
         }
+        // A14: 真 3D 低模 (模型名 = 楼层素材名 npc_1/2/3/blacksmith); 缺失 → 纸片回退
+        if (auto model = _model_cache().get(skey)) {
+            _append_model(model, {wx, 0, wz}, (float)npc.tile_y * TILE_SIZE,
+                          0.0f, 18.0f, out);
+            continue;
+        }
         HD2DDrawItem item;
         item.kind = HD2DDrawItem::Kind::ENTITY_BILLBOARD;
         item.world_pos = {wx, 0, wz};
@@ -1136,20 +1164,117 @@ static void _emit_room_icon(ResourceManager& res, const SpecialRoom& sr,
 }
 
 // M6-v2h: 特殊房间地板 (嵌纹 + 中心图标) — 未触发才画 (2D 同条件)
+// A14: 特殊房间实物低模 (宝箱/祭坛/泉水) — 定义在 _build_special_rooms 之后
+static void _emit_room_prop(const SpecialRoom& sr, std::vector<HD2DDrawItem>& out);
+
+// A14: 挑战房装饰 — 四角立柱火盆 + 上墙挂旗 + 传送门石框 (按挑战阶段三态)
+// 阶段: INACTIVE/UNLOCKED=沉睡(灰) / ARMED..REWARD=封印(红) / CLEARED/PORTAL_ACTIVE=激活(青)
+static const char* _challenge_gate_model(int phase) {
+    if (phase >= 7) return "room_challenge_gate_active";
+    if (phase >= 2) return "room_challenge_gate_sealed";
+    return "room_challenge_gate";
+}
+
+static void _emit_challenge_decor(const hd2d::SceneView& view, const SpecialRoom& sr,
+                                  std::vector<HD2DDrawItem>& out) {
+    const int phase = view.challenge_ctrl ? (int)view.challenge_ctrl->phase() : 0;
+    const bool cleared = phase >= 7;
+    const int left = sr.rx + 1, right = sr.rx + sr.rw - 2;
+    const int top = sr.ry + 1, bottom = sr.ry + sr.rh - 2;
+    const int corners[4][2] = {{left, top}, {right, top}, {left, bottom}, {right, bottom}};
+    for (const auto& corner : corners) {
+        auto model = _model_cache().get(cleared ? "room_challenge_pillar_used"
+                                                : "room_challenge_pillar");
+        if (!model) continue;
+        _append_model(model, {(float)corner[0] * TILE_SIZE + TILE_SIZE * 0.5f, 0,
+                              (float)corner[1] * TILE_SIZE + TILE_SIZE * 0.5f},
+                      (float)corner[1] * TILE_SIZE, 0.0f, 16.0f, out);
+    }
+    const int banners[2][2] = {{sr.rx + 2, sr.ry + 1}, {sr.rx + sr.rw - 3, sr.ry + 1}};
+    for (const auto& tile : banners) {
+        auto model = _model_cache().get(cleared ? "room_challenge_banner_used"
+                                                : "room_challenge_banner");
+        if (!model) continue;
+        _append_model(model, {(float)tile[0] * TILE_SIZE + TILE_SIZE * 0.5f,
+                              cleared ? 0.0f : 20.0f,
+                              (float)tile[1] * TILE_SIZE + TILE_SIZE * 0.5f - 10.0f},
+                      (float)tile[1] * TILE_SIZE, 0.0f, 12.0f, out);
+    }
+    // 门框朝向房间中心
+    const int portal_x = sr.portal_tx > 0 ? sr.portal_tx : sr.cx;
+    const int portal_y = sr.portal_ty > 0 ? sr.portal_ty : sr.cy;
+    const float dir_x = (float)(sr.cx - portal_x);
+    const float dir_z = (float)(sr.cy - portal_y);
+    float yaw = 0.0f;
+    if (std::fabs(dir_x) > std::fabs(dir_z)) yaw = (dir_x > 0.0f) ? 90.0f : -90.0f;
+    else if (dir_z < 0.0f) yaw = 180.0f;
+    auto gate = _model_cache().get(_challenge_gate_model(phase));
+    if (gate) {
+        _append_model(gate, {(float)portal_x * TILE_SIZE + TILE_SIZE * 0.5f, 0,
+                             (float)portal_y * TILE_SIZE + TILE_SIZE * 0.5f},
+                      (float)portal_y * TILE_SIZE, yaw, 30.0f, out);
+    }
+}
+
 static void _build_special_rooms(const hd2d::SceneView& view, std::vector<HD2DDrawItem>& out) {
     const GameMap* map = view.game_map;
     if (!map) return;
     auto& res = ResourceManager::inst();
     for (const auto& sr : map->special_rooms) {
-        if (sr.type == SpecialRoomType::CHALLENGE) continue;   // 传送门另有绘制
-        if (sr.triggered) continue;
+        if (sr.type == SpecialRoomType::CHALLENGE) {
+            _emit_challenge_decor(view, sr, out);   // A14: 挑战房装饰 + 三态门框
+            continue;
+        }
+        if (sr.triggered) {
+            _emit_room_prop(sr, out);   // A14: 用后保留残迹 (开箱/灰坛/枯泉), 不再整个消失
+            continue;
+        }
         _emit_room_inlay_decals(*map, sr, out);
         _emit_room_icon(res, sr, out);
+        _emit_room_prop(sr, out);   // A14: 宝箱/祭坛/泉水 真 3D 实物
     }
+}
+
+// A14: 特殊房间实物低模 (宝箱/祭坛/泉水) — 与房间中心图标并存 (图标=贴地提示)
+// 已触发 (used) 时改用残迹模型: 开盖空箱 / 灰暗熄灭祭坛 / 干涸开裂泉水
+static void _emit_room_prop(const SpecialRoom& sr, std::vector<HD2DDrawItem>& out) {
+    const char* model_name = nullptr;
+    const char* used_name = nullptr;
+    switch (sr.type) {
+        case SpecialRoomType::TREASURE:   model_name = "chest";        used_name = "chest_open";        break;
+        case SpecialRoomType::ALTAR:      model_name = "altar";        used_name = "altar_used";        break;
+        case SpecialRoomType::FOUNTAIN:   model_name = "spring";       used_name = "spring_dry";        break;
+        case SpecialRoomType::SHOP:       model_name = "room_shop";    used_name = "room_shop_used";    break;
+        case SpecialRoomType::BLACKSMITH: model_name = "room_forge";   used_name = "room_forge_used";   break;
+        case SpecialRoomType::LIBRARY:    model_name = "room_library"; used_name = "room_library_used"; break;
+        case SpecialRoomType::GAMBLER:    model_name = "room_gambler"; used_name = "room_gambler_used"; break;
+        case SpecialRoomType::SHRINE:     model_name = "room_shrine";  used_name = "room_shrine_used";  break;
+        case SpecialRoomType::SECRET:     model_name = "room_secret";  used_name = "room_secret_used";  break;
+        default: return;
+    }
+    auto model = _model_cache().get(sr.triggered ? used_name : model_name);
+    if (!model) model = _model_cache().get(model_name);   // 残迹缺失 → 回退未使用态
+    if (!model) return;
+    const float wx = (float)sr.cx * TILE_SIZE + TILE_SIZE * 0.5f;
+    const float wz = (float)sr.cy * TILE_SIZE + TILE_SIZE * 0.5f;
+    _append_model(model, {wx, 0, wz}, (float)sr.cy * TILE_SIZE, 0.0f, 26.0f, out);
 }
 
 // ── M6-v2a: 挑战传送门 → 竖立脉冲光环 (2D 双层圆的 3D 对应物) ──
 // 与 2D 分支 (game_scene._render 2222-2237) 同条件: DUNGEON 入口 / ARENA 返回
+// A14: 竞技场返回门的凯旋门装饰 (激活门框 + 两侧火盆立柱 + 挂旗)
+static void _emit_return_portal_decor(float px, float pz, std::vector<HD2DDrawItem>& out) {
+    if (auto gate = _model_cache().get("room_challenge_gate_active"))
+        _append_model(gate, {px, 0, pz}, pz, 0.0f, 30.0f, out);
+    for (int side = -1; side <= 1; side += 2) {
+        if (auto pillar = _model_cache().get("room_challenge_pillar"))
+            _append_model(pillar, {px + (float)side * 46.0f, 0, pz}, pz, 0.0f, 16.0f, out);
+        if (auto banner = _model_cache().get("room_challenge_banner"))
+            _append_model(banner, {px + (float)side * 30.0f, 20.0f, pz - 14.0f}, pz,
+                          0.0f, 12.0f, out);
+    }
+}
+
 static void _build_portals(const hd2d::SceneView& view, std::vector<HD2DDrawItem>& out) {
     if (!view.challenge_ctrl) return;   // G12-4: 无挑战系统的场景跳过
     const auto& challenge = *view.challenge_ctrl;
@@ -1170,14 +1295,17 @@ static void _build_portals(const hd2d::SceneView& view, std::vector<HD2DDrawItem
     }
     if (challenge.phase() == ChallengePhase::CLEARED && view.in_challenge_arena &&
         challenge.return_portal_tx() >= 0) {
+        const float px = (float)challenge.return_portal_tx() * TILE_SIZE + TILE_SIZE * 0.5f;
+        const float pz = (float)challenge.return_portal_ty() * TILE_SIZE + TILE_SIZE * 0.5f;
         HD2DDrawItem item;
         item.kind = HD2DDrawItem::Kind::PORTAL_RING;
-        item.world_pos = {(float)challenge.return_portal_tx() * TILE_SIZE + TILE_SIZE * 0.5f, 0,
-                          (float)challenge.return_portal_ty() * TILE_SIZE + TILE_SIZE * 0.5f};
+        item.world_pos = {px, 0, pz};
         item.height = 18.0f;
         item.size = 0.16f;
         item.portal_entry = false;
         out.push_back(item);
+        // A14: 凯旋门 — 返回门也走装饰 (激活门框 + 两侧火盆立柱 + 挂旗)
+        _emit_return_portal_decor(px, pz, out);
     }
 }
 

@@ -24,6 +24,7 @@
 #include "skill_evolution.h"   // G1 Step3
 #include "rule_chain.h"         // G1 Step4
 #include "data/boss_defs.h"     // G1 Step6
+#include "data/mesh_asset.h"    // A14: 真 3D 模型存在性 (2D 层让位判断)
 #include "core/replay/state_hash.h"  // G4.5
 #include "systems/weapon_executor.h"  // G9.1
 #include "systems/first_hint.h"       // G10.8-B4: 首遇提示
@@ -3707,7 +3708,9 @@ void GameScene::_draw_npcs(int ptx, int pty) {
             nn = lk.name;
             break;
         }
-        _draw_npc_sprite(i, nx, ny);
+        // A14: HD2D 下若该 NPC 有真 3D 模型, 交给 3D 层画 (模型缺失仍走纸片)
+        if (!g_hd2d_mode || !mesh_asset_exists(npc_sprite_key(current_floor)))
+            _draw_npc_sprite(i, nx, ny);
         // G9: NPC name label
         if (g_font_loaded) {
             float tw = MeasureTextEx(g_font_small, nn, 10, 1).x;

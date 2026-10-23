@@ -9,6 +9,7 @@
 #include "systems/weather_system.h"         // 天气系统
 #include "core/logger.h"                    // P1-C9: 3D 激活日志
 #include "rlgl.h"                           // M6-v2a: rl 原语 (贴图地板/墙)
+#include "raymath.h"                        // A14: 矩阵 (平移/旋转/缩放)
 #include "core/scene_tree.h"                // M6-v2c: main_target (bloom 源)
 #include "scenes/game_scene.h"
 #include "world/game_map.h"
@@ -16,6 +17,7 @@
 #include "entities/monster.h"
 #include <algorithm>
 #include <cmath>                            // A1.1: tanf/sqrtf/fabsf (outline 换算)
+#include <cstring>
 #include <cstring>                          // M6-v2g: strcmp (biome 预设)
 
 bool g_hd2d_mode = false;
@@ -424,6 +426,7 @@ void HD2DRenderer::_classify_draw_items() {
     _fx_quad_buf.clear(); _fx_ring_buf.clear(); _fx_beam_buf.clear();
     _fx_explosion_buf.clear(); _lava_floor_buf.clear(); _floor_buf.clear();
     _wall_buf.clear(); _ambient_mote_buf.clear(); _fx_particle_buf.clear();
+    _model_buf.clear();
     for (const auto& item : _draw_items) {
         switch (item.kind) {
             case HD2DDrawItem::Kind::FLOOR_DECAL:     _decal_buf.push_back(&item); break;
@@ -449,6 +452,7 @@ void HD2DRenderer::_classify_draw_items() {
             case HD2DDrawItem::Kind::WALL_BLOCK:      _wall_buf.push_back(&item); break;
             case HD2DDrawItem::Kind::AMBIENT_MOTE:    _ambient_mote_buf.push_back(&item); break;
             case HD2DDrawItem::Kind::FX_PARTICLE:     _fx_particle_buf.push_back(&item); break;
+            case HD2DDrawItem::Kind::MODEL3D:        _model_buf.push_back(&item); break;   // A14
             default: break;
         }
     }
@@ -477,6 +481,7 @@ void HD2DRenderer::_draw_scene() {
     }
     for (const auto* it : _link_buf)       _draw_entity_link(*it);
     for (const auto* it : _portal_buf)     _draw_portal_ring(*it);
+    for (const auto* it : _model_buf)      _draw_model(*it);        // A14: 不透明模型先画
     for (const auto* it : _billboard_buf)  _draw_billboard(*it);
     for (const auto* it : _door_buf)       _draw_door_panel(*it);
     for (const auto* it : _icon_buf)       _draw_room_icon(*it);
@@ -688,7 +693,8 @@ void HD2DRenderer::_wall_top_quad(float u0, float u1, float v0, float v1,
 // ── Billboard: 面向相机的精灵, 脚点落地, 帧矩形裁剪 (v2a: flip_x 接线) ──
 void HD2DRenderer::_draw_billboard(const HD2DDrawItem& item) {
     if (item.pro_mode) {
-        _part_color.draw(item, _camera);
+        if (item.voxel_mesh.vertexCount > 0) hd2d::drawPartMesh(item, _camera);  // A13: 体素件
+        else _part_color.draw(item, _camera);
         if (item.blob_width > 0) _draw_blob_shadow(item.world_pos, item.blob_width);
         return;
     }
@@ -718,6 +724,22 @@ void HD2DRenderer::_draw_billboard(const HD2DDrawItem& item) {
 }
 
 // ── M6-n 回退: 4 向偏移深色底稿 (仅 outline shader 加载失败时) ──
+// A14: 真 3D 模型绘制 — 顶点色网格 (与体素件共用材质)
+// 世界变换: 平移(脚底) * 绕Y旋转 * 缩放; 模型自带朝向, 不走广告牌基
+void HD2DRenderer::_draw_model(const HD2DDrawItem& item) {
+    if (!item.model || item.model->mesh.vertexCount <= 0) return;
+    Matrix transform = MatrixTranslate(item.world_pos.x, item.world_pos.y, item.world_pos.z);
+    if (item.model_yaw != 0.0f)
+        transform = MatrixMultiply(transform, MatrixRotateY(item.model_yaw * DEG2RAD));
+    if (item.model_scale != 1.0f) {
+        const float scale = item.model_scale;
+        transform = MatrixMultiply(transform, MatrixScale(scale, scale, scale));
+    }
+    hd2d::partMeshMaterial().maps[MATERIAL_MAP_DIFFUSE].color = item.tint;
+    DrawMesh(item.model->mesh, hd2d::partMeshMaterial(), transform);
+    if (item.blob_width > 0) _draw_blob_shadow(item.world_pos, item.blob_width);
+}
+
 void HD2DRenderer::_draw_outline_fallback(const HD2DDrawItem& item,
                                           const Rectangle& src, Vector3 pos, float w, float h) {
     Color edge{24, 24, 27, 220};

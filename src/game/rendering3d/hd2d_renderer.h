@@ -2,6 +2,7 @@
 #include "raylib.h"
 #include "hd2d_part_geometry.h"
 #include "hd2d_scene_view.h"     // G12-4: 只读场景视图 (解耦 GameScene)
+#include "model_cache.h"         // A14: 真 3D 模型资产
 #include <vector>
 #include <memory>
 
@@ -38,7 +39,8 @@ struct HD2DDrawItem {
                       FX_PARTICLE,                   // A10: 3D 粒子
                       FX_RING_3D,                    // A10: 3D 光环
                       FX_BEAM_3D,                    // A10: 3D 光束
-                      FX_EXPLOSION_3D };            // A10: 3D 爆炸
+                      FX_EXPLOSION_3D,            // A10: 3D 爆炸
+                      MODEL3D };                   // A14: 真 3D 模型 (NPC/道具低模)
     Kind kind = Kind::FLOOR_TILE;
     int tile_x = 0;                 // 世界 tile 坐标 (32px/格)
     int tile_y = 0;
@@ -66,11 +68,16 @@ struct HD2DDrawItem {
     int door_axis = 0;            // M6-n: 门朝向 0=贴东西墙(面板朝±Z) 1=贴南北墙(朝±X)
     bool outline = false;         // M6-n: 实体描边 (玩家/怪; 4向偏移深色底)
     bool pro_mode = false;
+    Mesh voxel_mesh = {};          // A13: 体素网格 (vertexCount>0 时替代纸偶四边形; 借用不释放)
     float rot_deg = 0.0f;
     Vector2 pivot_uv_px = {0, 0};
     Vector2 part_offset = {0, 0};
     float blob_width = 0.0f;
     MoteStyle mote_style = MoteStyle::DUST;  // A2.1: AMBIENT_MOTE 群系性格
+    // ── A14: 真 3D 模型 (低模硬表面) ──
+    std::shared_ptr<ModelAsset> model;  // MODEL3D: 已上传网格 (空 = 走纸片回退)
+    float model_yaw = 0.0f;             // 模型朝向 (度, 绕 Y)
+    float model_scale = 1.0f;
 };
 
 // 单房间切片: 960x640 目标 → 3D 透视相机 + 地形 + billboard
@@ -168,6 +175,7 @@ private:
     // G42: 最后两处"遍历找单一种类" — 氛围粒子与 FX 粒子批
     std::vector<const HD2DDrawItem*> _ambient_mote_buf;
     std::vector<const HD2DDrawItem*> _fx_particle_buf;
+    std::vector<const HD2DDrawItem*> _model_buf;   // A14: 真 3D 模型桶
 
     // 切片内简单光照 (无 shader 依赖版: 环境光 + 方向光)
     Vector3 _light_dir = {0.35f, -1.0f, 0.25f};
@@ -240,6 +248,7 @@ private:
     void _wall_top_quad(float u0, float u1, float v0, float v1,
                         Vector3 pos, float e, float h, Color tint);  // A3.2: 同贴图顶面
     void _draw_billboard(const HD2DDrawItem& item);
+    void _draw_model(const HD2DDrawItem& item);   // A14: 真 3D 模型 (顶点色网格)
     void _draw_outline_fallback(const HD2DDrawItem& item, const Rectangle& src,
                                 Vector3 pos, float w, float h);
     void _draw_billboard_outline(const HD2DDrawItem& item, const Rectangle& src,

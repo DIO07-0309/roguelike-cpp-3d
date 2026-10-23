@@ -41,4 +41,9 @@ private:
 enum class PartPass { Color, Shadow };
 void drawPartQuad(const HD2DDrawItem& item, const Camera3D& camera,
                   PartPass pass = PartPass::Color);
+// A13: 体素网格路径 — 与四边形同基/同缩放/同旋转, 厚度沿视线方向 (前脸朝相机)
+void drawPartMesh(const HD2DDrawItem& item, const Camera3D& camera,
+                  PartPass pass = PartPass::Color);
+// A14: 顶点色网格共用材质 (体素件与真 3D 模型一致: 材质色只承担 tint)
+Material& partMeshMaterial();
 }

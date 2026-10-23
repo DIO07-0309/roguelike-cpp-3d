@@ -3,6 +3,8 @@
 
 #include <cmath>
 #include "entities/player.h"
+#include "data/voxel_part_defs.h"
+#include "game/rendering3d/part_voxelizer.h"
 #include "world/game_map.h"
 
 namespace {
@@ -30,8 +32,30 @@ bool wall_ahead(const GameMap* map, Vector2 center, Direction dir) {
 } // namespace
 
 bool PlayerAvatar::try_init(const std::string& anim_dir, std::string& err) {
-    return _core.try_init(anim_dir + "/player_skeleton.json",
-                          anim_dir + "/player_anim.json", err);
+    if (!_core.try_init(anim_dir + "/player_skeleton.json",
+                        anim_dir + "/player_anim.json", err)) return false;
+    if (voxel::g_voxel_avatar) _setup_voxel_parts();   // A13: 失败仅回退纸偶
+    return true;
+}
+
+// A13: 逐部件体素化 (贴图 px 网格, pivot = 贴图内左下原点锚点); 任一失败 → 放弃整批
+void PlayerAvatar::_setup_voxel_parts() {
+    std::string load_err;
+    const auto config = load_voxel_parts_file("resources/voxel_parts.json", load_err);
+    if (!config) return;
+    std::vector<Mesh> meshes;
+    for (const auto& part : _core.part_defs()) {
+        Image image = LoadImage(part.file.c_str());
+        if (image.width <= 0 || image.height <= 0) {
+            for (auto& m : meshes)
+                if (m.vertexCount > 0) UnloadMesh(m);
+            return;
+        }
+        meshes.push_back(voxel::build_part_mesh(image, *config, voxel_slot_from_path(part.file),
+                                                part.pivot_x, part.pivot_y));
+        UnloadImage(image);
+    }
+    _core.set_voxel_parts(std::move(meshes));
 }
 
 void PlayerAvatar::update(float dt, const Player& pl) {

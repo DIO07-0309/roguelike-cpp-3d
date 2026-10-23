@@ -3,6 +3,7 @@
 #include <memory>
 #include <vector>
 #include "game/animation/player_avatar.h"
+#include "game/animation/voxel_mesh_library.h"
 #include "data/actor_avatar_defs.h"
 
 class Player;
@@ -29,8 +30,11 @@ public:
 
 private:
     void ensure_defs();
+    // A13-M2: 怪物挂体素件 (网格按类共享; 失败/无槽位 → 该件留空回退纸偶)
+    void _attach_voxel(SkeletonAvatar& avatar, const std::string& skeleton_path);
 
     std::unique_ptr<PlayerAvatar> _player_avatar;
     std::map<std::string, ActorAvatarDef> _actor_avatars;
     bool _actor_avatars_loaded = false;
+    VoxelMeshLibrary _voxel_lib;   // A13-M2: 怪物体素网格共享缓存 (玩家仍走自有路径)
 };

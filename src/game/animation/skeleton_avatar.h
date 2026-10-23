@@ -16,6 +16,7 @@ struct AvatarPartDraw {
     float rot_deg = 0;
     bool flip_x = false;
     bool element_tinted = false;   // G12-5: 该件按玩家元素核心染色 (披风)
+    Mesh voxel = {};               // A13: 体素网格 (vertexCount>0 时走 3D 件; 借用, 不释放)
 };
 
 AvatarPartDraw buildAvatarPart(const PartDef& part, const WorldBone& bone,
@@ -43,14 +44,23 @@ public:
                   float face, int alpha) const;
     void draw_at(Vector2 feet, float face, int alpha) const;  // identity overlay 单排绘制
 
+    // A13: 体素化网格 (与 parts 一一对应; 空 = 纸偶回退); 所有权归本类, 析构时释放
+    void set_voxel_parts(std::vector<Mesh> meshes);
+    // A13-M2: 借用网格 (共享库缓存), 析构/重设时只清引用不 UnloadMesh
+    void set_borrowed_voxel_parts(std::vector<Mesh> meshes);
+    const std::vector<PartDef>& part_defs() const { return _sk.parts; }
+
     ~SkeletonAvatar();
 
 private:
     void release_textures();
+    void release_voxel();
     SkeletonDef _sk;
     AnimSetDef _set;
     AvatarAnimator _an;
     std::vector<Texture2D> _tex;   // 与 _sk.parts 一一对应
+    std::vector<Mesh> _voxel;      // A13: 体素网格, 与 _sk.parts 一一对应 (可空)
+    bool _voxel_owned = true;      // A13-M2: false = 借自共享库, release 时不释放网格
     bool _active = false;
     int _last_hp = -1;
     float _facing = 1.f;
