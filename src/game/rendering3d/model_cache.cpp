@@ -71,6 +71,12 @@ Mesh build_gpu_mesh(const MeshAsset& asset, int& triangle_count) {
 
 }  // namespace
 
+// A16-Player: 公开入口 — 复用上方匿名命名空间的 build_gpu_mesh
+Mesh build_gpu_mesh_asset(const MeshAsset& asset) {
+    int triangle_count = 0;
+    return build_gpu_mesh(asset, triangle_count);
+}
+
 std::shared_ptr<ModelAsset> ModelCache::get(const std::string& name) {
     auto found = _cache.find(name);
     if (found != _cache.end()) return found->second;

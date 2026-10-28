@@ -5,6 +5,8 @@
 #include "entities/player.h"
 #include "data/voxel_part_defs.h"
 #include "game/rendering3d/part_voxelizer.h"
+#include "game/rendering3d/model_cache.h"   // A16-Player: build_gpu_mesh_asset
+#include "data/mesh_asset.h"                // A16-Player: load_mesh_asset_file
 #include "world/game_map.h"
 
 namespace {
@@ -34,7 +36,37 @@ bool wall_ahead(const GameMap* map, Vector2 center, Direction dir) {
 bool PlayerAvatar::try_init(const std::string& anim_dir, std::string& err) {
     if (!_core.try_init(anim_dir + "/player_skeleton.json",
                         anim_dir + "/player_anim.json", err)) return false;
-    if (voxel::g_voxel_avatar) _setup_voxel_parts();   // A13: 失败仅回退纸偶
+    if (voxel::g_voxel_avatar) {
+        // A16-Player: 优先手工低模部件; 任一缺失/损坏 → 回退 A13 体素 (再失败 → 纸偶)
+        if (!_setup_lowpoly_parts())
+            _setup_voxel_parts();
+    }
+    return true;
+}
+
+// A16-Player: 逐部件加载手工低模 mesh (assets/models/player_part_<slot>.json),
+// 按 _core.part_defs() 顺序 (8 个, 与骨骼一一对应) 生成 mesh; 任一失败 → 释放并返回 false
+bool PlayerAvatar::_setup_lowpoly_parts() {
+    std::vector<Mesh> meshes;
+    meshes.reserve(_core.part_defs().size());
+    for (const auto& part : _core.part_defs()) {
+        const std::string slot = voxel_slot_from_path(part.file);
+        if (slot.empty()) {
+            for (auto& m : meshes)
+                if (m.vertexCount > 0) UnloadMesh(m);
+            return false;
+        }
+        std::string err;
+        const std::string path = "assets/models/player_part_" + slot + ".json";
+        const auto asset = load_mesh_asset_file(path, err);
+        if (!asset) {
+            for (auto& m : meshes)
+                if (m.vertexCount > 0) UnloadMesh(m);
+            return false;
+        }
+        meshes.push_back(build_gpu_mesh_asset(*asset));
+    }
+    _core.set_voxel_parts(std::move(meshes));
     return true;
 }
 

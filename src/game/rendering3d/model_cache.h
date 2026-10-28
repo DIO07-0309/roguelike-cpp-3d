@@ -7,6 +7,12 @@
 
 #include "raylib.h"
 
+struct MeshAsset;
+
+// A16-Player: 从 MeshAsset 构建可绘制的 raylib Mesh (顶点色, 面展开, GPU 上传)
+// 供玩家低模部件等需要独立 raylib Mesh 的调用方使用 (模型缓存内部也复用此逻辑)
+Mesh build_gpu_mesh_asset(const MeshAsset& asset);
+
 struct ModelAsset {
     Mesh mesh{};          // 已上传 GPU (vertexCount>0 = 有效)
     float height = 0.0f;  // 包围盒 Y 跨度 (脚底贴地用)

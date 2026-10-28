@@ -23,6 +23,7 @@ public:
 private:
     OverlayTf _overlay(const Player& pl) const;
     void _setup_voxel_parts();   // A13: 构建各部件体素网格 (默认接入; --no-voxel-avatar 关; 失败静默回退)
+    bool _setup_lowpoly_parts(); // A16-Player: 构建手工低模部件 (优先于体素; 任一失败 → false 回退体素)
 
     SkeletonAvatar _core;   // 组合优于继承: 通用骨骼核心 (数据+贴图+animator)
 };
