@@ -29,16 +29,32 @@ std::string InteractionHandler::try_interact(Player* player, GameMap* map,
     }
 
     // 否则拾取物品
-    return pickup_item(player, ground_items);
+    return pickup_item(player, map, ground_items);
 }
 
-std::string InteractionHandler::pickup_item(Player* player,
+// A15-fix2: 同格掉落物在世界坐标里完全重合, 只捡一件看起来就是「捡了还在」→ 整格一次捡走
+static void _collect_same_tile(const std::vector<DroppedItem>& items, GameMap* map,
+                               int tx, int ty, std::vector<int>& out) {
+    for (int i = static_cast<int>(items.size()) - 1; i >= 0; --i) {
+        const auto& d = items[i];
+        if (!d.item || d.tile_x != tx || d.tile_y != ty) continue;
+        if (map && !map->isVisible(d.tile_x, d.tile_y)) continue;
+        if (map && !map->is_walkable(d.tile_x, d.tile_y)) continue;   // A15-fix3
+        out.push_back(i);
+    }
+}
+
+std::string InteractionHandler::pickup_item(Player* player, GameMap* map,
                                              std::vector<DroppedItem>& ground_items) {
     DroppedItem* best = nullptr;
     float best_dist = PICKUP_RANGE * TILE_SIZE;
     Rectangle pr = player->entity.rect;
 
     for (auto& d : ground_items) {
+        // A15-fix: 视野外物品不参与拾取 (绘制有 isVisible 门控, 否则按 E 隔墙/暗处捡)
+        if (map && !map->isVisible(d.tile_x, d.tile_y)) continue;
+        if (map && !map->is_walkable(d.tile_x, d.tile_y)) continue;   // A15-fix3: 墙格不参与
+        if (!d.item) continue;                 // 空掉落 (生成器可返回 null) 不可捡
         float px = d.tile_x * TILE_SIZE + TILE_SIZE / 2;
         float py = d.tile_y * TILE_SIZE + TILE_SIZE / 2;
         float dist = sqrtf(powf(pr.x + pr.width / 2 - px, 2)
@@ -48,14 +64,17 @@ std::string InteractionHandler::pickup_item(Player* player,
 
     if (!best) return "";
 
-    if (player->inventory.add(best->item, player)) {
-        std::string desc = best->item->get_description();
-        auto it = std::find_if(ground_items.begin(), ground_items.end(),
-            [&](auto& d) { return &d == best; });
-        if (it != ground_items.end()) ground_items.erase(it);
-        return "拾取: " + desc;
+    std::vector<int> stack;                    // 下标自高到低 (helper 保证), erase 安全
+    _collect_same_tile(ground_items, map, best->tile_x, best->tile_y, stack);
+    std::string msg;
+    for (int idx : stack) {
+        auto& d = ground_items[idx];
+        if (!player->inventory.add(d.item, player)) break;   // 背包满
+        if (!msg.empty()) msg += "、";
+        msg += d.item->get_description();
+        ground_items.erase(ground_items.begin() + idx);
     }
-    return "";
+    return msg.empty() ? "" : "拾取: " + msg;
 }
 
 std::string InteractionHandler::check_special_discovery(Player* player, GameMap* map) {

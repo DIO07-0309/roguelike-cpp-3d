@@ -21,7 +21,13 @@ const char* kModelNames[] = {"npc_1", "npc_2", "npc_3", "npc_blacksmith",
                              "room_challenge_pillar", "room_challenge_pillar_used",
                              "room_challenge_banner", "room_challenge_banner_used",
                              "room_challenge_gate", "room_challenge_gate_sealed",
-                             "room_challenge_gate_active"};
+                             "room_challenge_gate_active",
+                             "item_potion_red", "item_potion_blue", "item_charm",
+                             "item_armor", "item_robe", "item_dagger", "item_sword",
+                             "item_spear", "item_nunchaku", "item_crossbow",
+                             "arena_barrel", "arena_totem", "arena_rock",
+                             "arena_spike", "arena_pool",
+                              "guard_alert", "guard_interacted", "guard_banner"};
 
 std::string repo_path(const std::string& relative) {
     return relative;   // ctest 工作目录 = 仓库根 (tests/CMakeLists: WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})

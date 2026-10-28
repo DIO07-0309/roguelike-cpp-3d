@@ -154,7 +154,8 @@ void GameSceneCombat::_grant_boss_drops(Monster* m) {
     auto extra_item = generate_random_item();
     if (extra_item) {
         auto [btx, bty] = _s.game_map->pixel_to_tile(m->entity.position.x, m->entity.position.y);
-        _s.ground_items.push_back({extra_item, btx + 3, bty});
+        auto [dx, dy] = _s.game_map->nearest_walkable(btx + 3, bty);   // A15-fix3: 不落墙里
+        _s.ground_items.push_back({extra_item, dx, dy});
     }
 }
 
@@ -170,8 +171,8 @@ void GameSceneCombat::applyNormalLoot(Monster* m) {
     float drop_chance = m->is_elite ? LOOT_DROP_CHANCE * 1.5f : LOOT_DROP_CHANCE;
     drop_chance *= g_growth.gold_scale(_s.current_floor);
     if ((float)(rng() % 1000) / 1000.0f < drop_chance) {
-        auto [tx, ty] = _s.game_map->pixel_to_tile(m->entity.position.x, m->entity.position.y);
-        _s.ground_items.push_back({generate_random_item(), tx, ty});
+    auto [tx, ty] = _s.game_map->pixel_to_tile(m->entity.position.x, m->entity.position.y);
+    if (auto loot = generate_random_item()) _s.ground_items.push_back({loot, tx, ty});
     }
 }
 

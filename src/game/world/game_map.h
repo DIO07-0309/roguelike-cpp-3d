@@ -61,6 +61,10 @@ public:
     void set_tile(int x, int y, TileType type);
 
     bool is_walkable(int tx, int ty) const;
+
+    // A15-fix3: 掉落/生成点归一 — 目标格不可走时取最近可走格 (半径 ≤6 环扫, 确定性顺序)
+    // 掉落点用 tx+2 这类盲偏移会落进墙里: 模型被墙体包住看不见, 但 FOV 认为墙格可见 → 可捡
+    std::pair<int,int> nearest_walkable(int tx, int ty) const;
     bool is_rect_walkable(Rectangle rect) const;
     // P1-C7: Sim 决策层可走判定 — 单一入口统一 _tile_rect_walkable /
     //        _sim_tile_passable / is_rect_walkable 三套语义分歧.

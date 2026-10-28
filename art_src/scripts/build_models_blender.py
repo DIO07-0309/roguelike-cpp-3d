@@ -25,6 +25,8 @@ for _name in (
     "blender_models_rooms_a",
     "blender_models_rooms_b",
     "blender_models_challenge",
+    "blender_models_items",
+    "blender_models_arena",
     "blender_scene",
 ):
     if _name in sys.modules:
@@ -36,6 +38,8 @@ import blender_models_props as prop_models  # noqa: E402
 import blender_models_rooms_a as rooms_a  # noqa: E402
 import blender_models_rooms_b as rooms_b  # noqa: E402
 import blender_models_challenge as challenge  # noqa: E402
+import blender_models_items as item_models  # noqa: E402
+import blender_models_arena as arena_models  # noqa: E402
 import blender_scene  # noqa: E402
 
 BUILDERS = {
@@ -68,6 +72,25 @@ BUILDERS = {
     "room_challenge_gate": lambda: challenge.build_challenge_gate("dormant"),
     "room_challenge_gate_sealed": lambda: challenge.build_challenge_gate("sealed"),
     "room_challenge_gate_active": lambda: challenge.build_challenge_gate("active"),
+    "item_potion_red": item_models.build_potion_red,
+    "item_potion_blue": item_models.build_potion_blue,
+    "item_charm": item_models.build_charm,
+    "item_armor": item_models.build_armor,
+    "item_robe": item_models.build_robe,
+    "item_dagger": item_models.build_dagger,
+    "item_sword": item_models.build_sword,
+    "item_spear": item_models.build_spear,
+    "item_nunchaku": item_models.build_nunchaku,
+    "item_crossbow": item_models.build_crossbow,
+    "arena_barrel": arena_models.build_arena_barrel,
+    "arena_totem": arena_models.build_arena_totem,
+    "arena_rock": arena_models.build_arena_rock,
+    "arena_spike": arena_models.build_arena_spike,
+    "arena_pool": arena_models.build_arena_pool,
+    # A15-Guard: 守卫互动 NPC（警戒 + 已交互休息）+ 配套旗帜道具
+    "guard_alert": npc_models.build_guard_alert,
+    "guard_interacted": npc_models.build_guard_interacted,
+    "guard_banner": npc_models.build_guard_banner,
 }
 
 GRID_COLUMNS = 6
@@ -118,9 +141,9 @@ def _arrange_scene():
 
 
 def _layout(objects, names, columns, spacing_x, spacing_y):
-    """把指定模型按网格摆位, 其余移出画面"""
+    """把指定模型按网格摆位, 其余沉到地下 (z=-1000, 俯视相机永远拍不到)"""
     for obj in objects:
-        obj.location = (999, 0, 0)
+        obj.location = (0, 0, -1000)
     for index, name in enumerate(names):
         obj = next(item for item in objects if item.name == name)
         column = index % columns
@@ -138,11 +161,13 @@ def main():
     camera, objects = _arrange_scene()
     preview_dir = os.path.join(REPO, "art_src", "preview")
     os.makedirs(preview_dir, exist_ok=True)
-    # 全家福 (22 件: 4 NPC + 6 道具两态 + 12 房间两态)
+    # 全家福 (44 件: 4 NPC + 6 道具 + 12 房间 + 7 挑战房 + 10 掉落物 + 5 竞技场)
+    total_count = len(BUILDERS)
+    total_rows = (total_count + GRID_COLUMNS - 1) // GRID_COLUMNS
     blender_scene.frame_camera(
         camera,
-        (0, GRID_SPACING_Y * 1.5, 20),
-        distance=330.0,
+        (0, GRID_SPACING_Y * (total_rows - 1) * 0.5, 20),
+        distance=max(330.0, GRID_SPACING_Y * total_rows * 1.7),
         azimuth=18.0,
         elevation=26.0,
     )
@@ -172,6 +197,13 @@ def main():
         camera, (0, 0, 24), distance=95.0, azimuth=26.0, elevation=28.0
     )
     blender_scene.render_to(os.path.join(preview_dir, "blender_preview_closeup.png"))
+    # 掉落物 + 竞技场道具 (15 件)
+    gear_names = [name for name in BUILDERS if name.startswith(("item_", "arena_"))]
+    _layout(objects, gear_names, 5, 34.0, 36.0)
+    blender_scene.frame_camera(
+        camera, (0, 36, 14), distance=300.0, azimuth=24.0, elevation=30.0
+    )
+    blender_scene.render_to(os.path.join(preview_dir, "blender_preview_items.png"))
     save_blend()
     total = sum(value[2] for value in results.values())
     print("TOTAL TRIS:", total)

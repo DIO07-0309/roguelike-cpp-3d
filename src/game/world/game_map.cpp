@@ -6,6 +6,8 @@
 #include "game/rendering/door_renderer.h"     // Door sprites + anim
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>                   // std::abs (nearest_walkable)
+#include <algorithm>                 // std::max
 #include <cstring>                   // M6-i.1: strcmp (biome 短名映射)
 #include <unordered_map>
 
@@ -55,6 +57,24 @@ void GameMap::set_tile(int x, int y, TileType t) {
 bool GameMap::is_walkable(int tx, int ty) const {
     if (!_in_bounds(tx, ty)) return false;
     return _tiles[ty][tx].is_walkable;
+}
+
+std::pair<int, int> GameMap::nearest_walkable(int tx, int ty) const {
+    // 越界先夹进地图 (盲偏移可能直接出界), 再按环找可走格
+    if (width > 0 && height > 0) {
+        tx = std::min(std::max(tx, 0), width - 1);
+        ty = std::min(std::max(ty, 0), height - 1);
+    }
+    if (is_walkable(tx, ty)) return {tx, ty};
+    for (int r = 1; r <= 6; ++r) {
+        for (int dy = -r; dy <= r; ++dy) {
+            for (int dx = -r; dx <= r; ++dx) {
+                if (std::max(std::abs(dx), std::abs(dy)) != r) continue;   // 只看当前环
+                if (is_walkable(tx + dx, ty + dy)) return {tx + dx, ty + dy};
+            }
+        }
+    }
+    return {tx, ty};   // 兜底: 原样返回 (调用方仍受拾取/绘制门控保护)
 }
 
 // P1-C7: Sim 决策层可走判定 — 单一入口统一三套 walkable 语义 (见 game_map.h 注释)

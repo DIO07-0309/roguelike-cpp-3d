@@ -169,7 +169,7 @@ private:
     void _grant_rewards(Player& player, GameMap* map, int floor,
                         std::vector<DroppedItem>& ground_items, bool boss_cleared);
     // rarity_floor 以 int 传 Rarity 秩, 避免本头文件包含 item.h (后者牵连 raylib.h)
-    int _grant_items(Player& player, std::vector<DroppedItem>& ground_items,
+    int _grant_items(Player& player, GameMap* map, std::vector<DroppedItem>& ground_items,
                      int count, int rarity_floor, int retry_cap);
     bool _room_contains(int tx, int ty) const;
     uint32_t _deterministic_seed(uint32_t dungeon_seed, int room_index, int wave_index) const;

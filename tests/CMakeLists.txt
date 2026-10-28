@@ -110,6 +110,8 @@ add_roguelike_test(door_seal_test world/door_seal_test.cpp)   # Batch 1: INVARIA
 add_roguelike_test(door_interact_test world/door_interact_test.cpp)  # Batch 2B: R1 接触开门 + CLOSED 语义
 add_roguelike_test(room_encounter_test world/room_encounter_test.cpp) # Batch 2C: Room Encounter 状态机
 add_roguelike_test(entity_center_test world/entity_center_test.cpp)  # Entity 视觉/碰撞中心不变量
+add_roguelike_test(drop_tile_test world/drop_tile_test.cpp)          # A15-fix3: 掉落点归一 (不落墙里)
+add_roguelike_test(guard_npc_test world/guard_npc_test.cpp)          # A15-Guard: 守卫 NPC 接入不变量
 add_roguelike_test(door_renderer_test world/door_renderer_test.cpp)  # Door sprites + anim
 add_roguelike_test(minimap_test     ui/minimap_test.cpp)
 add_roguelike_test(boss_defs_test   boss/boss_defs_test.cpp)   # B4-T1: golem boss def 加载器契约

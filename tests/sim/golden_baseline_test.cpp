@@ -63,15 +63,21 @@ const nlohmann::json* run_at(const nlohmann::json& report, size_t i) {
 // ⚠ 注: `--sim-build none` 实际会跑成"1 局指定 + 3 局随机 build"
 //   (SimRunner 的 all_builds/随机分支行为), 故 4 局 build 不同 —
 //   这不影响确定性, 但意味着改 build 相关逻辑会让前 3 局结果变化。
+// ═ A15-Guard 基线更新 (2026-10-28) ═
+//   F1 新增守卫互动 NPC (可对话), spawn_floor_npcs 在 sim 主循环同样执行,
+//   守卫占位使固定 seed 的随机 build 局 (run1-3) 结果漂移 — 玩法被有意改变。
+//   归因验证: 临时移除守卫配置后 seed 4242 完全恢复旧基线 (run1=4/14/196/spear,
+//   run2=5/18/145/dagger, run3=2/4/45/sword), 故确系守卫接入所致, 非环境漂移。
+//   run0 (指定 build 局) 不受影响。
 TEST(GoldenBaseline, FixedSeedOutcomeIsMatchesBaseline) {
     const nlohmann::json r = run_sim_report(4, 4242u);
     ASSERT_TRUE(r.contains("runs")) << "report 缺少 runs 字段";
     ASSERT_GE(r["runs"].size(), 4u) << "sim 未产出 4 局";
 
-    const int    base_floor[] = {2, 4, 5, 2};
-    const int    base_kills[] = {8, 14, 18, 4};
-    const long   base_dmg[]   = {183, 196, 145, 45};
-    const char*  base_weapon[] = {"crossbow_rare", "spear_legendary",
+    const int    base_floor[] = {2, 3, 4, 4};
+    const int    base_kills[] = {8, 13, 15, 14};
+    const long   base_dmg[]   = {183, 59, 72, 363};
+    const char*  base_weapon[] = {"crossbow_rare", "sword_common",
                                   "dagger_rare", "sword_common"};
 
     for (size_t i = 0; i < 4u; ++i) {

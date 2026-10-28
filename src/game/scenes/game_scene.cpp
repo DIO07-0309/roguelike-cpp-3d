@@ -565,7 +565,8 @@ void GameScene::_spawn_normal_floor(int floor, const DungeonGenerator& gen,
                 (int)wdef->base_damage);
             weapon->weapon_def_id = "sword_common";
             auto [wtx, wty] = rooms[0];
-            ground_items.push_back({weapon, wtx + 2, wty});
+            auto [dx, dy] = game_map->nearest_walkable(wtx + 2, wty);
+            ground_items.push_back({weapon, dx, dy});
         }
     }
     state = GameState::PLAYING;
@@ -1575,7 +1576,8 @@ void GameScene::_flow_auto_reward() {
         player->entity.rect.x + player->entity.rect.width/2,
         player->entity.rect.y + player->entity.rect.height/2);
     auto p = std::make_shared<ConsumableItem>("探索发现", Rarity::RARE, "heal", 25);
-    ground_items.push_back({p, tx + 2, ty + 1});
+    auto [dx, dy] = game_map->nearest_walkable(tx + 2, ty + 1);   // A15-fix3: 不落墙里
+    ground_items.push_back({p, dx, dy});
     _presentation.room_msg = "你在角落发现了一件物品。";
     _presentation.room_msg_timer = 2.0f;
     _gameplay.flow.mark_reward();
@@ -2830,7 +2832,8 @@ void GameScene::_drop_boss_reward(Monster* boss) {
     weapon->weapon_def_id = boss_weapons[bf_idx];
     ground_items.push_back({weapon, tx, ty});
     auto potion = std::make_shared<ConsumableItem>("神谕药剂", Rarity::LEGENDARY, "heal", 80);
-    ground_items.push_back({potion, tx + 2, ty});
+    auto [px, py] = game_map->nearest_walkable(tx + 2, ty);        // A15-fix3: 不落墙里
+    ground_items.push_back({potion, px, py});
 }
 
 // ============================================================
@@ -3554,7 +3557,8 @@ void GameScene::_npc_avatars_tick() {
     if (defs.empty()) return;
     const float dt = GetFrameTime();
     for (int i = 0; i < _npc_count; i++) {
-        if (_npc_state[i].finished) continue;
+        // A15-Guard: 守卫对话后仍保留 (切 guard_interacted)
+        if (_npc_state[i].finished && !is_guard_floor(_npc_state[i].id / 10)) continue;
         const int id = _npc_state[i].id;
         auto found = _npc_avatars.find(id);
         if (found == _npc_avatars.end()) {
@@ -3693,11 +3697,12 @@ void GameScene::_draw_player_entity() {
 void GameScene::_draw_npcs(int ptx, int pty) {
     // D4 Step4: NPC — sprite (floor-based lookup) + name label
     static const struct { int floor; const char* name; } _npc_lookup[] = {
-        {2,"埃德加"},{3,"瑞卡"},{4,"卡利安"},{6,"卡兹"},{7,"泰伦斯"},
+        {1,"守卫·罗兰"},{2,"埃德加"},{3,"瑞卡"},{4,"卡利安"},{6,"卡兹"},{7,"泰伦斯"},
         {8,"维拉"},{9,"索拉斯"},{11,"迷失灵魂"},{12,"眠者"},{14,"守望者"}
     };
     for (int i = 0; i < _npc_count; i++) {
-        if (_npc_state[i].finished) continue;
+        // A15-Guard: 守卫对话后保留显示
+        if (_npc_state[i].finished && !is_guard_floor(_npc_state[i].id / 10)) continue;
         // Phase 1: NPC tile 不可见 → 跳过渲染
         if (game_map && !game_map->isVisible(_npc_tile_x[i], _npc_tile_y[i])) continue;
         float nx = _npc_tile_x[i] * TILE_SIZE + TILE_SIZE/2 - _cam_x;
@@ -3709,7 +3714,8 @@ void GameScene::_draw_npcs(int ptx, int pty) {
             break;
         }
         // A14: HD2D 下若该 NPC 有真 3D 模型, 交给 3D 层画 (模型缺失仍走纸片)
-        if (!g_hd2d_mode || !mesh_asset_exists(npc_sprite_key(current_floor)))
+        // A15-Guard: 模型名按个体对话状态 (守卫警戒/已交互)
+        if (!g_hd2d_mode || !mesh_asset_exists(npc_model_key(current_floor, _npc_state[i].finished)))
             _draw_npc_sprite(i, nx, ny);
         // G9: NPC name label
         if (g_font_loaded) {
@@ -3730,8 +3736,9 @@ void GameScene::_draw_npc_sprite(int i, float nx, float ny) {
         npc_sk->draw_at({nx, ny + s * 0.5f}, 1.f, 255);
     } else {
         SpriteDef sdef;
-        Texture2D stex = ResourceManager::inst().sprite_by_key(
-            npc_sprite_key(current_floor), sdef);
+        // A15-Guard: 守卫楼层无 2D 素材, 纸片/头像回退 npc_1 (HD2D 下 3D 层画真模型)
+        const char* sprite_key = is_guard_floor(current_floor) ? "npc_1" : npc_sprite_key(current_floor);
+        Texture2D stex = ResourceManager::inst().sprite_by_key(sprite_key, sdef);
         if (stex.id > 0) {
             SpriteRenderer::draw_sprite(stex, sdef, 0, {sx, sy, s, s});
         } else {
@@ -3855,6 +3862,12 @@ void GameScene::_render_hd2d_monster_labels() {
     }
 }
 
+// A15-fix: 投影在屏幕内才算数 (相机背后/出屏点 Raylib 会返回任意大 x → 气泡跑最右)
+static bool _hint_on_screen(Vector2 s) {
+    return s.x >= 0.0f && s.x <= (float)GetScreenWidth()
+        && s.y >= 0.0f && s.y <= (float)GetScreenHeight();
+}
+
 // E 交互气泡 (NPC 对话 / 地面物品拾取; 玩家相邻时显示)
 void GameScene::_render_hd2d_interact_hints() {
     auto& hd2d = HD2DRenderer::inst();
@@ -3872,14 +3885,27 @@ void GameScene::_render_hd2d_interact_hints() {
         Vector2 s = hd2d.world_to_screen(
             {(float)npc.tile_x * TILE_SIZE + TILE_SIZE * 0.5f, 0,
              (float)npc.tile_y * TILE_SIZE + TILE_SIZE * 0.5f}, 56.0f);
-        if (s.x >= 0) _draw_interact_hint("E 对话", s.x, s.y - 16);
+        if (_hint_on_screen(s)) _draw_interact_hint("E 对话", s.x, s.y - 16);
     }
+    // A15-fix: 提示与 pickup_item 同源 — 可见格 + 欧氏距离 < PICKUP_RANGE (原切比雪夫≤1 会漏/谎报)
+    std::vector<std::pair<int, int>> hinted_tiles;   // 同格只画一个气泡 (整格会被一起捡走)
     for (auto& d : ground_items) {
-        if (abs(d.tile_x - ptx) > 1 || abs(d.tile_y - pty) > 1) continue;
-        Vector2 s = hd2d.world_to_screen(
-            {(float)d.tile_x * TILE_SIZE + TILE_SIZE * 0.5f, 0,
-             (float)d.tile_y * TILE_SIZE + TILE_SIZE * 0.5f}, 20.0f);
-        if (s.x >= 0) _draw_interact_hint("E 拾取", s.x, s.y - 4);
+        if (!d.item) continue;
+        if (game_map && !game_map->isVisible(d.tile_x, d.tile_y)) continue;
+        if (game_map && !game_map->is_walkable(d.tile_x, d.tile_y)) continue;   // A15-fix3: 墙格不提示
+        if (!player) continue;
+        float icx = d.tile_x * TILE_SIZE + TILE_SIZE * 0.5f;
+        float icy = d.tile_y * TILE_SIZE + TILE_SIZE * 0.5f;
+        float px = player->entity.rect.x + player->entity.rect.width/2;
+        float py = player->entity.rect.y + player->entity.rect.height/2;
+        if (std::hypot(px - icx, py - icy) >= PICKUP_RANGE * TILE_SIZE) continue;
+        bool dup = false;
+        for (auto& t : hinted_tiles)
+            if (t.first == d.tile_x && t.second == d.tile_y) { dup = true; break; }
+        if (dup) continue;
+        hinted_tiles.push_back({d.tile_x, d.tile_y});
+        Vector2 s = hd2d.world_to_screen({icx, 0, icy}, 20.0f);
+        if (_hint_on_screen(s)) _draw_interact_hint("E 拾取", s.x, s.y - 4);
     }
 }
 
@@ -3980,8 +4006,9 @@ void GameScene::_fill_echo_buffs(CharacterPanelData& echo) const {
 std::vector<NpcView> GameScene::npc_views() const {
     std::vector<NpcView> out;
     for (int i = 0; i < _npc_count; i++) {
-        if (_npc_state[i].finished) continue;
-        out.push_back({_npc_tile_x[i], _npc_tile_y[i], false, _npc_state[i].id});
+        // A15-Guard: 守卫对话后保留显示 (切 guard_interacted); 其余 NPC 完成后照旧移除
+        if (_npc_state[i].finished && !is_guard_floor(_npc_state[i].id / 10)) continue;
+        out.push_back({_npc_tile_x[i], _npc_tile_y[i], _npc_state[i].finished, _npc_state[i].id});
     }
     return out;
 }

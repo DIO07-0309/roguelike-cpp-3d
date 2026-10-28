@@ -369,7 +369,7 @@ void ChallengeRoomController::grant_rewards_for_test(Player& player, GameMap* ma
     _grant_rewards(player, map, floor, ground_items, boss_wave_pending);
 }
 
-int ChallengeRoomController::_grant_items(Player& player,
+int ChallengeRoomController::_grant_items(Player& player, GameMap* map,
                                           std::vector<DroppedItem>& ground_items,
                                           int count, int rarity_floor, int retry_cap) {
     int granted = 0;
@@ -382,8 +382,13 @@ int ChallengeRoomController::_grant_items(Player& player,
         }
         DroppedItem di;
         di.item = std::move(item);
+        // A15-fix3: 房间中心可能是墙/关闭的门/祭坛 → 归一, 否则模型被墙包住却仍可捡
         di.tile_x = _room_rx + _room_rw / 2;
         di.tile_y = _room_ry + _room_rh / 2;
+        if (map) {
+            auto [sx, sy] = map->nearest_walkable(di.tile_x, di.tile_y);
+            di.tile_x = sx; di.tile_y = sy;
+        }
         ground_items.push_back(std::move(di));
     }
     return granted;
@@ -394,10 +399,10 @@ void ChallengeRoomController::_grant_rewards(Player& player, GameMap* map, int f
                                               bool boss_wave_pending) {
     RewardPlan plan = decide_reward_plan(floor, boss_wave_pending);
     size_t drops_before = ground_items.size();   // 地面积已含其他来源掉落, 只计增量
-    int granted = _grant_items(player, ground_items, plan.base_item_count,
+    int granted = _grant_items(player, map, ground_items, plan.base_item_count,
                                plan.base_rarity_floor, plan.base_retry_cap);
     if (boss_wave_pending)
-        granted += _grant_items(player, ground_items, plan.bonus_item_count,
+        granted += _grant_items(player, map, ground_items, plan.bonus_item_count,
                                 plan.bonus_rarity_floor, plan.bonus_retry_cap);
     RewardManager::grant_gold(player, plan.gold);
     _last_reward = {granted,

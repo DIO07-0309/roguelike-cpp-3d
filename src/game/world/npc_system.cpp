@@ -133,11 +133,25 @@ static const NPCData NPC_F12 = {
     "愿你的梦——比我的更长久。"
 };
 
+// A15-Guard: 守卫 (F1) — 可对话互动 NPC, 对话后由警戒(guard_alert)转休息(guard_interacted)
+static const NPCData NPC_GUARD = {
+    NPCType::SCHOLAR, "门卫·罗兰", "守卫",
+    {
+      "站住！这里不是谁都能进的。……哦，是新来的冒险者？",
+      "这扇门之后是更深的牢狱。我在此值守——确保只有准备好的人下去。",
+      "看你身上还带着伤。进去之前，先在营火边歇歇吧。",
+      "记住：地牢不相信眼泪。它只相信利刃和意志。去吧。",
+      nullptr },
+    { "又见面了。下面的路还好走吗？",
+      "别勉强。回来歇歇，再战不迟。" },
+    "愿你的刀比你更清醒。"
+};
+
 // ---- 查询接口 ----
 const NPCData* get_npc_config(int floor, int slot) {
     struct Entry { int floor; int slot; const NPCData* data; };
     static const Entry MAP[] = {
-        {2,0,&NPC_F2}, {3,0,&NPC_F3}, {4,0,&NPC_F4},
+        {1,0,&NPC_GUARD}, {2,0,&NPC_F2}, {3,0,&NPC_F3}, {4,0,&NPC_F4},
         {6,0,&NPC_F6}, {7,0,&NPC_F7}, {8,0,&NPC_F8},
         {9,0,&NPC_F9}, {11,0,&NPC_F11}, {12,0,&NPC_F12},
         {14,0,&NPC_F14},
@@ -150,10 +164,23 @@ const NPCData* get_npc_config(int floor, int slot) {
 // G9.4: 楼层 → 精灵 key (与 game_scene 楼层名表一致)
 const char* npc_sprite_key(int floor) {
     switch (floor) {
+        case 1:                  return "guard_alert";   // A15-Guard: F1 守卫警戒
         case 2: case 7: case 12: return "npc_1";
         case 3: case 6: case 9:  return "npc_2";
         case 4: case 8: case 11: return "npc_3";
         case 14:                 return "npc_blacksmith";
         default:                 return "npc_1";
     }
+}
+
+// A15-Guard: 守卫楼层判断
+bool is_guard_floor(int floor) {
+    return floor == GUARD_FLOOR;
+}
+
+// A15-Guard: 该层 NPC 的 3D 模型名 — 守卫楼层按对话状态切警戒/已交互, 其余不变
+const char* npc_model_key(int floor, bool finished) {
+    if (is_guard_floor(floor))
+        return finished ? "guard_interacted" : "guard_alert";
+    return npc_sprite_key(floor);
 }

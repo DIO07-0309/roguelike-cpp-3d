@@ -1015,13 +1015,96 @@ static void _build_effects(const hd2d::SceneView& view, std::vector<HD2DDrawItem
 }
 
 
-// ── M6-v2a: 地面物品 → 贴地小 billboard (图标与 2D 同源) ──
+// ── A15: icon key → 掉落物 3D 模型名 (皮锁鳞板符 → item_armor; 冰霜暗影 → item_robe) ──
+struct GroundItemModelMap { const char* icon_key; const char* model_name; };
+static const GroundItemModelMap kGroundItemModels[] = {
+    {"weapon_dagger", "item_dagger"},
+    {"weapon_sword", "item_sword"},
+    {"weapon_spear", "item_spear"},
+    {"weapon_nunchaku", "item_nunchaku"},
+    {"weapon_crossbow", "item_crossbow"},
+    {"item_charm", "item_charm"},
+    {"item_armor_leather", "item_armor"},
+    {"item_armor_chain", "item_armor"},
+    {"item_armor_iron", "item_armor"},
+    {"item_armor_scale", "item_armor"},
+    {"item_armor_plate", "item_armor"},
+    {"item_armor_rune", "item_armor"},
+    {"item_armor_ice", "item_robe"},
+    {"item_armor_robe", "item_robe"},
+    {"item_potion_red", "item_potion_red"},
+    {"item_potion_blue", "item_potion_blue"},
+};
+
+static const char* _ground_item_model_name(const char* ikey) {
+    if (!ikey) return nullptr;
+    for (const auto& kv : kGroundItemModels)
+        if (strcmp(kv.icon_key, ikey) == 0) return kv.model_name;
+    return nullptr;
+}
+
+// A15: ArenaObjectType → 模型名 (五型全有资产; 缺失 → nullptr 走 billboard)
+static const char* _arena_model_name(ArenaObjectType type) {
+    switch (type) {
+        case ArenaObjectType::EXPLOSIVE_BARREL: return "arena_barrel";
+        case ArenaObjectType::HEALING_TOTEM:     return "arena_totem";
+        case ArenaObjectType::POISON_POOL:       return "arena_pool";
+        case ArenaObjectType::ROCK:              return "arena_rock";
+        case ArenaObjectType::SPIKE:            return "arena_spike";
+    }
+    return nullptr;
+}
+
+// A15: 掉落物确定性散摆 yaw (tile 坐标 hash, 同格恒定, 非视觉随机)
+static float _scatter_yaw(int tile_x, int tile_y) {
+    unsigned h = (unsigned)tile_x * 73856093u ^ (unsigned)tile_y * 19349663u;
+    return (float)(h % 360u);
+}
+
+// A15: 桶引信红色脉冲 tint (timer>0); 非桶/未点燃 → 白 (模型与 billboard 共用)
+static Color _arena_pulse_tint(const ArenaObject& ao) {
+    if (ao.type != ArenaObjectType::EXPLOSIVE_BARREL || ao.timer <= 0.0f) return WHITE;
+    float pulse = 0.6f + 0.4f * sinf((float)HD2DRenderer::inst().anim_time() * 14.0f);
+    return Color{(unsigned char)255, (unsigned char)(150 * pulse),
+                 (unsigned char)(100 * pulse), 255};
+}
+
+// A15: 掉落物 → 真 3D 模型; false = 无映射/缺资产, 调用方回退 billboard
+static bool _try_ground_item_model(const DroppedItem& d, const char* ikey,
+                                   std::vector<HD2DDrawItem>& out) {
+    const char* mname = _ground_item_model_name(ikey);
+    if (!mname) return false;
+    auto model = _model_cache().get(mname);
+    if (!model) return false;
+    const float wx = (float)d.tile_x * TILE_SIZE + TILE_SIZE * 0.5f;
+    const float wz = (float)d.tile_y * TILE_SIZE + TILE_SIZE * 0.5f;
+    _append_model(model, {wx, 0, wz}, (float)d.tile_y * TILE_SIZE,
+                  _scatter_yaw(d.tile_x, d.tile_y), 9.0f, out);
+    return true;
+}
+
+// A15-fix: 兜底可见 —— 无 icon key / 缺贴图 / 模型缺失的物品也必须画出来
+// (否则会出现「看不见却能按 E 捡走」, 且它更近时还会抢走你看得见那件的拾取)
+static void _emit_item_fallback(const DroppedItem& d, std::vector<HD2DDrawItem>& out) {
+    auto model = _model_cache().get("item_potion_red");
+    if (!model) return;
+    const float wx = (float)d.tile_x * TILE_SIZE + TILE_SIZE * 0.5f;
+    const float wz = (float)d.tile_y * TILE_SIZE + TILE_SIZE * 0.5f;
+    _append_model(model, {wx, 0, wz}, (float)d.tile_y * TILE_SIZE,
+                  _scatter_yaw(d.tile_x, d.tile_y), 9.0f, out);
+    out.back().tint = d.item ? d.item->color : Color{200, 200, 200, 255};
+}
+
+// ── M6-v2a: 地面物品 → 3D 模型优先 / billboard 回退 / 兜底可见 ──
 static void _build_ground_items(const hd2d::SceneView& view, std::vector<HD2DDrawItem>& out) {
     auto& res = ResourceManager::inst();
     for (const auto& d : view.dropped) {
+        if (!d.item) continue;
         if (view.game_map && !view.game_map->isVisible(d.tile_x, d.tile_y)) continue;
+        // A15-fix3: 墙/关闭门格上的掉落不画 — 模型会被墙体包住, 但 FOV 认为可见 → 会变成「空地上有 E」
+        if (view.game_map && !view.game_map->is_walkable(d.tile_x, d.tile_y)) continue;
         const char* ikey = item_icon_key(d.item.get());
-        if (!ikey) continue;
+        if (ikey && _try_ground_item_model(d, ikey, out)) continue;
         HD2DDrawItem item;
         item.kind = HD2DDrawItem::Kind::ENTITY_BILLBOARD;
         item.world_pos = {(float)d.tile_x * TILE_SIZE + TILE_SIZE * 0.5f, 0,
@@ -1029,62 +1112,99 @@ static void _build_ground_items(const hd2d::SceneView& view, std::vector<HD2DDra
         item.size = 24.0f;                     // 拾取物小一号
         item.sort_y = (float)d.tile_y * TILE_SIZE;
         SpriteDef def;
-        item.texture = res.sprite_by_key(ikey, def);
-        if (item.texture.id <= 0) continue;     // 图标缺素材不画 (2D 有几何回退, 3D 跳过)
-        item.tex_src = SpriteRenderer::frame_rect(def, 0);
-        item.tint = WHITE;
-        out.push_back(item);
+        if (ikey) item.texture = res.sprite_by_key(ikey, def);
+        if (item.texture.id > 0) {
+            item.tex_src = SpriteRenderer::frame_rect(def, 0);
+            item.tint = WHITE;
+            out.push_back(item);
+            continue;
+        }
+        _emit_item_fallback(d, out);           // 无图标/缺贴图 → 通用彩色小件
     }
 }
 
-// ── M6-k: Arena 物件 → billboard/贴地 (爆炸桶/图腾/毒池/岩石/尖刺) ──
+// A15: Arena billboard 回退 (程序化贴图; POOL/SPIKE 贴地 decal)
+static void _emit_arena_billboard(const ArenaObject& ao, std::vector<HD2DDrawItem>& out) {
+    auto& res = ResourceManager::inst();
+    int type_idx = static_cast<int>(ao.type);
+    char key[32];
+    snprintf(key, sizeof(key), "arena_prop_%d", type_idx);
+    Texture2D tex = res.procedural_arena_prop(key, type_idx, Color{100, 100, 100, 255});
+    if (tex.id <= 0) return;
+    HD2DDrawItem item;
+    item.world_pos = {(float)ao.tile_x * TILE_SIZE + TILE_SIZE * 0.5f, 0,
+                      (float)ao.tile_y * TILE_SIZE + TILE_SIZE * 0.5f};
+    item.tile_x = ao.tile_x;
+    item.tile_y = ao.tile_y;
+    item.size = 28.0f;
+    item.sort_y = (float)ao.tile_y * TILE_SIZE;
+    item.texture = tex;
+    item.tex_src = {0, 0, 32, 32};
+    if (ao.type == ArenaObjectType::POISON_POOL ||
+        ao.type == ArenaObjectType::SPIKE) {
+        item.kind = HD2DDrawItem::Kind::FLOOR_DECAL;
+        item.world_pos.y = 0.08f;
+        item.size = TILE_SIZE;
+    } else {
+        item.kind = HD2DDrawItem::Kind::ENTITY_BILLBOARD;
+    }
+    item.tint = _arena_pulse_tint(ao);
+    out.push_back(item);
+}
+
+// A15: Arena 道具 → 真 3D 模型; false = 缺资产, 回退 billboard (桶脉冲 tint 保留)
+static bool _try_arena_model(const ArenaObject& ao, std::vector<HD2DDrawItem>& out) {
+    const char* mname = _arena_model_name(ao.type);
+    if (!mname) return false;
+    auto model = _model_cache().get(mname);
+    if (!model) return false;
+    const float wx = (float)ao.tile_x * TILE_SIZE + TILE_SIZE * 0.5f;
+    const float wz = (float)ao.tile_y * TILE_SIZE + TILE_SIZE * 0.5f;
+    const bool flat = (ao.type == ArenaObjectType::POISON_POOL ||
+                       ao.type == ArenaObjectType::SPIKE);
+    _append_model(model, {wx, flat ? 0.08f : 0.0f, wz},
+                  (float)ao.tile_y * TILE_SIZE, 0.0f, flat ? 0.0f : 16.0f, out);
+    out.back().tint = _arena_pulse_tint(ao);
+    return true;
+}
+
+// ── M6-k: Arena 物件 → 3D 模型优先 / billboard 回退 (桶/图腾/毒池/岩石/尖刺) ──
 static void _build_arena_objects(const hd2d::SceneView& view, std::vector<HD2DDrawItem>& out) {
     const GameMap* map = view.game_map;
     if (!map) return;
-    auto& res = ResourceManager::inst();
     static bool logged = false;
     if (!logged) { logged = true; LOG_INFO("[M6k] arena_objects count=%d", (int)map->arena_objects.size()); }
     for (const auto& ao : map->arena_objects) {
         if (!ao.active) continue;
         if (!map->isVisible(ao.tile_x, ao.tile_y)) continue;
-        int type_idx = static_cast<int>(ao.type);
-        char key[32];
-        snprintf(key, sizeof(key), "arena_prop_%d", type_idx);
-        Color base = {100, 100, 100, 255};
-        Texture2D tex = res.procedural_arena_prop(key, type_idx, base);
-        if (tex.id <= 0) continue;
-        HD2DDrawItem item;
-        item.world_pos = {(float)ao.tile_x * TILE_SIZE + TILE_SIZE * 0.5f, 0,
-                          (float)ao.tile_y * TILE_SIZE + TILE_SIZE * 0.5f};
-        item.tile_x = ao.tile_x;
-        item.tile_y = ao.tile_y;
-        item.size = 28.0f;
-        item.sort_y = (float)ao.tile_y * TILE_SIZE;
-        item.texture = tex;
-        item.tex_src = {0, 0, 32, 32};
-        if (ao.type == ArenaObjectType::POISON_POOL ||
-            ao.type == ArenaObjectType::SPIKE) {
-            item.kind = HD2DDrawItem::Kind::FLOOR_DECAL;
-            item.world_pos.y = 0.08f;
-            item.size = TILE_SIZE;
-        } else {
-            item.kind = HD2DDrawItem::Kind::ENTITY_BILLBOARD;
-        }
-        item.tint = WHITE;
-        if (ao.type == ArenaObjectType::EXPLOSIVE_BARREL && ao.timer > 0.0f) {
-            float pulse = 0.6f + 0.4f * sinf((float)HD2DRenderer::inst().anim_time() * 14.0f);
-            item.tint = {255, (unsigned char)(150 * pulse), (unsigned char)(100 * pulse), 255};
-        }
-        out.push_back(item);
+        if (_try_arena_model(ao, out)) continue;
+        _emit_arena_billboard(ao, out);
     }
 }
 
 // ── M6-v2a: 未完成 NPC → billboard (npc_sprite_key 楼层映射) ──
+// A15-Guard: 守卫楼层 → 在守卫旁立一面旗帜 (guard_banner); 优先右侧, 不可走则左/下
+static void _emit_guard_banner(const hd2d::SceneView& view, const NpcView& npc,
+                               std::vector<HD2DDrawItem>& out) {
+    if (!is_guard_floor(view.current_floor)) return;
+    int fx = npc.tile_x + 2, fy = npc.tile_y;
+    if (view.game_map && !view.game_map->is_walkable(fx, fy)) {
+        if (view.game_map->is_walkable(npc.tile_x - 2, npc.tile_y)) { fx = npc.tile_x - 2; fy = npc.tile_y; }
+        else if (view.game_map->is_walkable(npc.tile_x, npc.tile_y + 2)) { fx = npc.tile_x; fy = npc.tile_y + 2; }
+    }
+    if (auto banner = _model_cache().get("guard_banner")) {
+        _append_model(banner, {(float)fx * TILE_SIZE + TILE_SIZE * 0.5f, 0,
+                               (float)fy * TILE_SIZE + TILE_SIZE * 0.5f},
+                      (float)fy * TILE_SIZE, 0.0f, 16.0f, out);
+    }
+}
+
 static void _build_npcs(const hd2d::SceneView& view, std::vector<HD2DDrawItem>& out) {
     auto& res = ResourceManager::inst();
-    const char* skey = npc_sprite_key(view.current_floor);
     for (const auto& npc : view.npc_views) {
         if (view.game_map && !view.game_map->isVisible(npc.tile_x, npc.tile_y)) continue;
+        // A15-Guard: 按 NPC 个体选模型 — 守卫楼层按对话状态切 guard_alert/guard_interacted
+        const char* skey = npc_model_key(view.current_floor, npc.finished);
         const float wx = (float)npc.tile_x * TILE_SIZE + TILE_SIZE * 0.5f;
         const float wz = (float)npc.tile_y * TILE_SIZE + TILE_SIZE * 0.5f;
         if (auto* skav = view.npc_avatar(npc.npc_id); skav && skav->active()) {
@@ -1099,20 +1219,23 @@ static void _build_npcs(const hd2d::SceneView& view, std::vector<HD2DDrawItem>& 
         if (auto model = _model_cache().get(skey)) {
             _append_model(model, {wx, 0, wz}, (float)npc.tile_y * TILE_SIZE,
                           0.0f, 18.0f, out);
-            continue;
+        } else {
+            HD2DDrawItem item;
+            item.kind = HD2DDrawItem::Kind::ENTITY_BILLBOARD;
+            item.world_pos = {wx, 0, wz};
+            item.size = 34.0f;
+            item.sort_y = (float)npc.tile_y * TILE_SIZE;
+            item.outline = true;
+            SpriteDef def;
+            item.texture = res.sprite_by_key(skey, def);
+            if (item.texture.id > 0) {
+                item.tex_src = SpriteRenderer::frame_rect(def, 0);
+                item.tint = WHITE;
+                out.push_back(item);
+            }
         }
-        HD2DDrawItem item;
-        item.kind = HD2DDrawItem::Kind::ENTITY_BILLBOARD;
-        item.world_pos = {wx, 0, wz};
-        item.size = 34.0f;
-        item.sort_y = (float)npc.tile_y * TILE_SIZE;
-        item.outline = true;
-        SpriteDef def;
-        item.texture = res.sprite_by_key(skey, def);
-        if (item.texture.id <= 0) continue;
-        item.tex_src = SpriteRenderer::frame_rect(def, 0);
-        item.tint = WHITE;
-        out.push_back(item);
+        // A15-Guard: 守卫旁立旗
+        _emit_guard_banner(view, npc, out);
     }
 }
 

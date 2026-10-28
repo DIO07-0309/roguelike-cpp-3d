@@ -18,8 +18,9 @@ public:
     std::string try_interact(Player* player, GameMap* map,
                              std::vector<DroppedItem>& ground_items);
 
-    // 拾取最近的物品
-    std::string pickup_item(Player* player, std::vector<DroppedItem>& ground_items);
+    // 拾取最近的物品 (map 非空时只捡可见格 — 与绘制门控对齐, 防隔墙/暗处捡)
+    std::string pickup_item(Player* player, GameMap* map,
+                            std::vector<DroppedItem>& ground_items);
 
     // 检测玩家是否首次步入特殊房间 (返回发现提示, 空串=无)
     std::string check_special_discovery(Player* player, GameMap* map);

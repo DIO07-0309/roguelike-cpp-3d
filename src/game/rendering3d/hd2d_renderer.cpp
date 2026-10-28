@@ -1362,9 +1362,12 @@ void HD2DRenderer::_draw_entity_link(const HD2DDrawItem& item) {
 // ── M6-v2a: 世界→屏幕投影 (GetWorldToScreen 封装; 相机就绪后有效) ──
 Vector2 HD2DRenderer::world_to_screen(Vector3 world_pos, float y_offset) const {
     if (!_ready) return {-1, -1};
-    Vector2 s = GetWorldToScreen(
-        {world_pos.x, world_pos.y + y_offset, world_pos.z}, _camera);
-    return s;
+    Vector3 pos = {world_pos.x, world_pos.y + y_offset, world_pos.z};
+    // A15-fix: 相机背后的点必须剔除 —— 除法翻转会把它们投影到屏幕内 (气泡飘到最右/名条错位)
+    const Vector3 fwd = Vector3Normalize(Vector3Subtract(_camera.target, _camera.position));
+    const Vector3 to_p = Vector3Subtract(pos, _camera.position);
+    if (Vector3DotProduct(fwd, to_p) <= 0.0f) return {-1, -1};
+    return GetWorldToScreen(pos, _camera);
 }
 
 // ── M6-v2g: bloom 三档手调 preset (监狱/深渊/火山) ──

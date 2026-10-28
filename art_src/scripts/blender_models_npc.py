@@ -683,3 +683,133 @@ def build_npc_blacksmith():
         ),
     ]
     return join_parts([obj] + extra, "npc_blacksmith")
+
+
+# A15-Guard: 守卫互动 NPC（警戒 + 已交互休息）+ 配套场景道具
+# 使用现有调色板: CLOTH_BLUE / CLOTH_BLUE_DARK; METAL / METAL_DARK; GOLD
+CLOTH_BLUE_DARK = (46, 76, 120)
+IRON = METAL  # 铁色盔甲（复用 METAL）
+IRON_DARK = METAL_DARK
+GOLD_LIGHT = (242, 208, 110)
+
+
+def build_guard_alert():
+    # 警戒状态: 站立持盾, 深蓝制服 + 铁色盔甲 + 头盔 (露脸)
+    obj = _common(
+        "guard_alert",
+        SKIN,
+        HAIR_DARK,
+        CLOTH_BLUE,  # 制服主色 (深蓝)
+        CLOTH_BLUE_DARK,  # 制服暗色
+        CLOTH_WHITE,  # 领口/装饰
+        TROUSER,
+        BOOT,
+        (46, 76, 120),  # 腰带 (深蓝)
+        GOLD,  # 带扣 (金)
+    )
+    extra = [
+        # 头盔壳: 罩住头顶, 下缘 >39 露出眼睛 (z~38.4)
+        part_sphere(
+            "guard_helmet",
+            (0, 0.8, 43.2),
+            6.0,
+            IRON_DARK,
+            segments=16,
+            rings=10,
+            scale=(1.08, 1.05, 0.68),
+        ),
+        # 眉甲 (前额横条)
+        part_box("guard_brim", (0, -4.6, 39.8), (10.4, 2.0, 1.6), IRON_DARK, bevel=0.4),
+        # 盔顶金色冠饰
+        part_box("guard_crest", (0, 0.6, 47.4), (1.6, 4.6, 2.4), GOLD, bevel=0.3),
+        # 肩甲 (左右, 罩臂根)
+        part_box(
+            "guard_pauldron_l",
+            (-7.0, -0.2, 30.6),
+            (4.6, 6.4, 3.0),
+            IRON_DARK,
+            bevel=0.7,
+        ),
+        part_box(
+            "guard_pauldron_r", (7.0, -0.2, 30.6), (4.6, 6.4, 3.0), IRON_DARK, bevel=0.7
+        ),
+        # 胸甲 (金边护胸)
+        part_box(
+            "guard_cuirass", (0, -3.2, 26.4), (11.0, 2.2, 9.4), IRON_DARK, bevel=0.8
+        ),
+        part_box(
+            "guard_cuirass_trim", (0, -4.4, 30.6), (7.4, 0.8, 1.4), GOLD, bevel=0.3
+        ),
+        # 盾牌 (左手持, 身前)
+        part_box(
+            "guard_shield", (-10.2, -5.0, 23.0), (2.0, 7.0, 13.0), IRON_DARK, bevel=0.7
+        ),
+        part_box(
+            "guard_shield_boss", (-10.2, -8.4, 23.0), (1.6, 1.8, 4.6), GOLD, bevel=0.5
+        ),
+    ]
+    return join_parts([obj] + extra, "guard_alert")
+
+
+def build_guard_interacted():
+    # 已交互休息: 放松站姿手持书卷, 服色暗色系, 头盔略松 (下移)
+    obj = _common(
+        "guard_interacted",
+        SKIN,
+        HAIR_DARK,
+        CLOTH_BLUE_DARK,  # 制服暗色 (已交互)
+        CLOTH_BLUE,  # 制服主色
+        CLOTH_WHITE,
+        TROUSER,
+        BOOT,
+        (46, 76, 120),
+        GOLD,
+    )
+    extra = [
+        # 头盔壳 (下移, 更休闲)
+        part_sphere(
+            "guard_helmet_relax",
+            (0, 0.8, 41.6),
+            6.0,
+            IRON_DARK,
+            segments=16,
+            rings=10,
+            scale=(1.08, 1.05, 0.62),
+        ),
+        part_box(
+            "guard_brim_relax", (0, -4.6, 39.0), (10.4, 2.0, 1.4), IRON_DARK, bevel=0.4
+        ),
+        # 肩甲
+        part_box(
+            "guard_pauldron_l",
+            (-7.0, -0.2, 30.6),
+            (4.6, 6.4, 3.0),
+            IRON_DARK,
+            bevel=0.7,
+        ),
+        part_box(
+            "guard_pauldron_r", (7.0, -0.2, 30.6), (4.6, 6.4, 3.0), IRON_DARK, bevel=0.7
+        ),
+        # 手持书卷 (右手, 身前)
+        part_box(
+            "guard_scroll", (8.2, -5.4, 20.0), (2.6, 4.4, 5.6), GOLD_LIGHT, bevel=0.5
+        ),
+        part_box(
+            "guard_scroll_band", (8.2, -5.6, 22.2), (2.8, 4.6, 0.9), GOLD, bevel=0.3
+        ),
+    ]
+    return join_parts([obj] + extra, "guard_interacted")
+
+
+def build_guard_banner():
+    # 守卫旗帜: 深蓝布面 + 金色边框, 挂在高杆上 (场景道具)
+    # pole center z=20, depth 40 → 底部贴地 z=0, 顶 z=40
+    pole = part_cylinder("guard_pole", (0, 0, 20.0), 0.9, 40.0, IRON_DARK, vertices=12)
+    flag = part_box(
+        "guard_flag", (0, 0.2, 33.0), (14.0, 0.5, 8.0), CLOTH_BLUE, bevel=0.3
+    )
+    trim = part_box(
+        "guard_flag_trim", (0, 0.2, 33.0), (14.6, 0.2, 8.6), GOLD, bevel=0.1
+    )
+    finial = part_sphere("guard_finial", (0, 0, 41.0), 1.4, GOLD, segments=12, rings=8)
+    return join_parts([pole, flag, trim, finial], "guard_banner")

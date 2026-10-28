@@ -244,7 +244,8 @@ void GameSceneInteraction::spawn_floor_npcs(int floor, const std::vector<std::pa
         int npc_id = floor * 10 + slot;
         const int npc_index_before = _s._npc_count;
         NPCState* st = _s._find_or_create_npc_state(npc_id);
-        if (!st || st->finished) continue;
+        // A15-Guard: 守卫对话后仍要占位显示 (guard_interacted); 其余 NPC 完成后跳过
+        if (!st || (st->finished && !is_guard_floor(floor))) continue;
         // P1-B-fix(B): 写"本 NPC 自己"的槽 — 原写 _npc_count-1 恰是"最后创建"的槽,
         // 已存在的 NPC (met 跨局残留) 会把位置写到别人槽上 → 落位错乱/越界触发对话
         int npc_index = (npc_index_before < _s._npc_count) ? _s._npc_count - 1 : -1;
@@ -316,8 +317,10 @@ void GameSceneInteraction::draw_dialogue(int sw, int sh) {
     // G9.4: NPC 对话头像 (target_npc->id → 楼层 → 精灵)
     if (d.target_npc) {
         SpriteDef sdef;
-        Texture2D stex = ResourceManager::inst().sprite_by_key(
-            npc_sprite_key(d.target_npc->id / 10), sdef);
+        const int head_floor = d.target_npc->id / 10;
+        // A15-Guard: 守卫楼层无 2D 素材, 头像回退 npc_1
+        const char* head_key = is_guard_floor(head_floor) ? "npc_1" : npc_sprite_key(head_floor);
+        Texture2D stex = ResourceManager::inst().sprite_by_key(head_key, sdef);
         if (stex.id > 0)
             SpriteRenderer::draw_sprite(stex, sdef, 0,
                 {pr.x + pw - 90, pr.y + 18, 56, 56});

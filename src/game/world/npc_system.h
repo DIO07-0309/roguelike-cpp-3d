@@ -52,3 +52,9 @@ const NPCData* get_npc_config(int floor, int slot);  // slot=0或1
 
 // G9.4: NPC 楼层 → 精灵 key (素材覆盖10层, 未知楼层回退 npc_1)
 const char* npc_sprite_key(int floor);
+
+// A15-Guard: 守卫互动 NPC 接入 — 守卫楼层 (F1), 两状态 (警戒 guard_alert / 已交互 guard_interacted)
+constexpr int GUARD_FLOOR = 1;
+bool is_guard_floor(int floor);
+// 该层 NPC 的 3D 模型名: 守卫楼层按对话状态切 guard_alert/guard_interacted, 其余 = npc_sprite_key
+const char* npc_model_key(int floor, bool finished);
