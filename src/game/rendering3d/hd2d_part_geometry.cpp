@@ -58,6 +58,29 @@ std::array<Vector2, 4> partUVs(const HD2DDrawItem& item) {
     return {{{left, top}, {left, bottom}, {right, bottom}, {right, top}}};
 }
 
+// A16-Player: 绕单位轴 axis_u 的 Rodrigues 旋转 (v' = v*c + (axis×v)*s + axis*(axis·v)*(1-c))
+Vector3 rotateAboutAxis(Vector3 v, Vector3 axis_u, float cosine, float sine) {
+    const Vector3 axv = {axis_u.y * v.z - axis_u.z * v.y,
+                         axis_u.z * v.x - axis_u.x * v.z,
+                         axis_u.x * v.y - axis_u.y * v.x};
+    const float d = axis_u.x * v.x + axis_u.y * v.y + axis_u.z * v.z;
+    return Vector3{v.x * cosine + axv.x * sine + axis_u.x * d * (1.0f - cosine),
+                   v.y * cosine + axv.y * sine + axis_u.y * d * (1.0f - cosine),
+                   v.z * cosine + axv.z * sine + axis_u.z * d * (1.0f - cosine)};
+}
+
+// A16-Player: 朝向 — 绕广告牌 up 轴 (col_z) 旋转 col_x/col_y, 角色保持直立
+void applyFacingYaw(Vector3 col_x, Vector3 col_y, Vector3 col_z, float facing_yaw,
+                    Vector3& out_x, Vector3& out_y) {
+    const float yaw = facing_yaw * DEG2RAD;
+    const float cy = std::cos(yaw), sy = std::sin(yaw);
+    const float inv_len = 1.0f / (std::sqrt(col_z.x * col_z.x + col_z.y * col_z.y
+                                            + col_z.z * col_z.z) + 1e-6f);
+    const Vector3 axis_u = {col_z.x * inv_len, col_z.y * inv_len, col_z.z * inv_len};
+    out_x = rotateAboutAxis(col_x, axis_u, cy, sy);
+    out_y = rotateAboutAxis(col_y, axis_u, cy, sy);
+}
+
 // A13: 体素网格 → 广告牌基矩阵 — 网格轴 x=贴图横向, y=厚度(+背离相机), z=贴图向上
 // 与四边形路径同源: kx/kz 缩放, rot_deg 平面内旋转, flip_x 绕 pivot 镜像
 bool partMeshMatrix(const HD2DDrawItem& item, const Camera3D& camera, Matrix& out) {
@@ -83,27 +106,8 @@ bool partMeshMatrix(const HD2DDrawItem& item, const Camera3D& camera, Matrix& ou
     // 方向映射: 0=下(朝相机), +90=右, -90=左, 180=上(背对相机)
     Vector3 facing_x = col_x;
     Vector3 facing_y = col_y;
-    if (item.facing_yaw != 0.0f) {
-        const float yaw = item.facing_yaw * DEG2RAD;
-        const float cy = std::cos(yaw), sy = std::sin(yaw);
-        const Vector3 axis = {col_z.x, col_z.y, col_z.z};
-        const float inv_len = 1.0f / (std::sqrt(axis.x * axis.x + axis.y * axis.y
-                                                + axis.z * axis.z) + 1e-6f);
-        const Vector3 axis_u = {axis.x * inv_len, axis.y * inv_len, axis.z * inv_len};
-        // Rodrigues: v' = v*cos + (axis×v)*sin + axis*(axis·v)*(1-cos)
-        const auto rot_about = [&](Vector3 v) {
-            const Vector3 axv = {axis_u.y * v.z - axis_u.z * v.y,
-                                 axis_u.z * v.x - axis_u.x * v.z,
-                                 axis_u.x * v.y - axis_u.y * v.x};
-            const float d = axis_u.x * v.x + axis_u.y * v.y + axis_u.z * v.z;
-            return Vector3{
-                v.x * cy + axv.x * sy + axis_u.x * d * (1.0f - cy),
-                v.y * cy + axv.y * sy + axis_u.y * d * (1.0f - cy),
-                v.z * cy + axv.z * sy + axis_u.z * d * (1.0f - cy)};
-        };
-        facing_x = rot_about(col_x);
-        facing_y = rot_about(col_y);
-    }
+    if (item.facing_yaw != 0.0f)
+        applyFacingYaw(col_x, col_y, col_z, item.facing_yaw, facing_x, facing_y);
     const Vector3 world = Vector3Add(item.world_pos,
         Vector3Add(Vector3Scale(right, item.part_offset.x),
                    Vector3Scale(up, item.part_offset.y)));

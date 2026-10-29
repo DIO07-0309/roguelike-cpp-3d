@@ -1,11 +1,11 @@
 # A16-Player: 玩家完整骨骼动画低模 — 部件建模 (在 Blender 内运行)
-# 与 A13 体素 / A14 低模同一管线约定, 但部件 mesh 用"广告牌局部空间":
-#   原点 = 骨骼锚点 (部件 pivot), x = 宽度(右), y = 深度(负=朝相机), z = 高度(上)
-#   缩放: 引擎 partMeshMatrix 按 kx=ppu*sx / kz=ppu*sy 映射到相机 right/up/normal
+# 广告牌局部空间: 原点 = 骨骼锚点 (部件 pivot), x = 宽度(右), y = 深度(负=朝相机), z = 高度(上)
 # 导出格式与 mesh_asset 加载器一致: {"name","vertices":[[x,y,z,r,g,b]...],"faces":[[i,j,k]...]}
 # 构建坐标系 (Blender): X=宽(右), Y=深(前面=+Y 朝相机), Z=高(上); 锚点在原点。
 # 导出映射: mesh = (co.x, -co.y, co.z) → 前面(+Y)→mesh.y 负=朝相机。
-# 朝向约定: 每个部件的主朝向(正面)对齐 Blender +Y 轴, 即面向相机; 高度沿 Z 轴。
+# 精细版 v4 (借鉴 A14 NPC 人形手法): 颅骨+下颌+颊/鼻/眼白瞳孔/眉/嘴 + 分层头发(顶盖/刘海/后脑/侧发/发缕)
+#   + 红发带; 蓝灰胸甲(锥台+V形甲片) + 白腹甲 + 金腰带 + 贴合圆肩甲 + 红肩饰;
+#   细长腿+护膝+白靴口+深靴; 外露臂+白袖口; 红柄金护手银刃剑; 白披风+领+金扣。
 import json
 import math
 import os
@@ -23,18 +23,22 @@ from blender_lib import (
     join_parts,
 )
 
-# ── 玩家调色板 (严格采样自 assets/sprites/player_part_*.png) ──
-SKIN = (149, 166, 183)  # 皮肤 / 亮甲
-ARMOR = (99, 111, 133)  # 主甲 (蓝灰)
-ARMOR_LIGHT = (169, 181, 198)  # 甲高光
-DARK = (63, 38, 49)  # 暗部 / 头发 / 皮革
-BOOT = (70, 66, 84)  # 深靴 / 手套
-STEEL = (205, 220, 222)  # 钢刃 / 亮缘
-STEEL_DARK = (165, 180, 190)  # 钢暗面
-GOLD = (175, 129, 88)  # 金饰
-GEM = (154, 48, 62)  # 红宝石
-CAPE = (226, 228, 234)  # 披风基白 (元素染色)
-CAPE_SHADOW = (190, 195, 205)  # 披风阴面
+# ── 玩家调色板 (采样自 assets/sprites/player_part_*.png) ──
+SKIN = (149, 166, 183)  # 皮肤 (浅蓝灰)
+SKIN_DARK = (120, 136, 155)  # 皮肤暗部 (颊/耳窝)
+HAIR = (212, 224, 230)  # 银白头发
+RED = (166, 44, 60)  # 红发饰/肩饰/剑柄
+ARMOR = (92, 108, 138)  # 蓝灰主甲
+ARMOR_LIGHT = (138, 156, 186)  # 甲高光
+WHITE = (228, 232, 240)  # 白布甲/披风基白 (元素染色)
+BOOT = (68, 64, 82)  # 深靴/手套
+DARK = (58, 36, 46)  # 暗部/瞳孔
+STEEL = (208, 222, 226)  # 银刃
+STEEL_DARK = (168, 184, 194)  # 刃暗面
+GOLD = (182, 136, 92)  # 金饰
+GEM = (170, 42, 58)  # 红宝石
+EYE_WHITE = (235, 238, 244)  # 眼白
+MOUTH = (150, 120, 120)  # 唇
 
 
 def _shade_part(normal):
@@ -66,7 +70,6 @@ def export_part_json(obj, path, name):
         )
         jitter = _hash_jitter(polygon.index, COLOR_JITTER)
         normal = polygon.normal
-        # Blender 法线 → mesh 局部: (nx, -ny, nz)
         shade = _shade_part((normal.x, -normal.y, normal.z))
         shaded = tuple(
             max(0, min(255, int((channel + jitter) * shade))) for channel in color
@@ -96,112 +99,218 @@ def export_part_json(obj, path, name):
 
 
 def build_player_part_leg():
-    """腿: 髋锚点 z=0, 向下 z∈[-22,-1], x∈[-6,6]
-    大腿锥台 + 膝盖圆盘 + 小腿 + 靴(前端朝相机前伸)。"""
+    """腿: 髋锚点 z=0, 向下 z∈[-23,0], x∈[-5,5]
+    细长大腿锥台 + 护膝 + 小腿 + 白靴口 + 深靴(前端前伸)。"""
     parts = [
         part_cylinder(
-            "thigh", (0, 0, -6), 4.5, 10, ARMOR, vertices=10, radius_top=3.2, bevel=0.4
-        ),
-        # 膝盖装甲圆盘 (正面朝相机 +Y)
-        part_cylinder(
-            "knee", (0, 0, -11), 3.6, 2.2, ARMOR_LIGHT, vertices=10, bevel=0.3
+            "thigh", (0, 0, -7), 3.4, 13, ARMOR, vertices=10, radius_top=3.0, bevel=0.5
         ),
         part_cylinder(
-            "shin", (0, 0, -15.5), 3.0, 8, BOOT, vertices=10, radius_top=2.4, bevel=0.4
+            "knee", (0, 0.4, -13.5), 2.9, 2.2, ARMOR_LIGHT, vertices=10, bevel=0.4
         ),
-        # 靴: 前端(+Y)朝相机, 靴头前伸
-        part_box("boot", (0, 2.0, -20.5), (10, 11, 4), DARK, bevel=0.6),
-        part_box("boot_toe", (0, 6.5, -21.5), (6, 3, 2.5), BOOT, bevel=0.5),
+        part_cylinder(
+            "shin", (0, 0, -17.5), 2.6, 6, BOOT, vertices=10, radius_top=2.2, bevel=0.5
+        ),
+        part_cylinder(
+            "boot_cuff", (0, 0, -19.5), 3.0, 1.6, WHITE, vertices=10, bevel=0.3
+        ),
+        part_box("boot", (0, 1.6, -21.5), (8, 10, 4), BOOT, bevel=0.6),
+        part_box("boot_toe", (0, 5.6, -22.5), (5, 3, 2.4), DARK, bevel=0.5),
     ]
     return join_parts(parts, "player_part_leg")
 
 
 def build_player_part_torso():
-    """躯干: 锚点 z=0 中间, z∈[-10,10], x∈[-13,15]
-    胸甲(上宽下窄) + 腹部 + 腰带 + 护胸饰板 + 双肩甲。"""
+    """躯干: 锚点 z=0 中间, z∈[-9,12], x∈[-12,12]
+    蓝灰胸甲(锥台) + V形亮甲片 + 白腹甲 + 金腰带 + 贴合圆肩甲 + 红肩饰。"""
     parts = [
-        part_box("chest", (1, 0, 4), (26, 10, 12), ARMOR, bevel=1.0, taper=0.85),
-        part_box("abdomen", (0, 0, -6), (20, 9, 8), ARMOR_LIGHT, bevel=0.8),
-        part_box("belt", (0, 0, 0), (24, 2.2, 2.2), DARK, bevel=0.4),
-        part_box("plate", (1, 5.0, 4), (13, 1.6, 8), SKIN, bevel=0.5),
-        # 双肩甲 (正面朝相机)
-        part_box("r_shoulder", (-9, -4, 7), (6, 5, 5), ARMOR, bevel=0.6),
-        part_box("l_shoulder", (11, -4, 7), (6, 5, 5), ARMOR, bevel=0.6),
+        # 胸甲主体 (蓝灰, 上宽下窄, 圆润)
+        part_box("chest", (0, 0, 4), (21, 10, 13), ARMOR, bevel=1.3, taper=0.78),
+        # 胸前 V 形亮甲片 (分层, 微凸)
+        part_box(
+            "chest_plate",
+            (0, 4.6, 4.5),
+            (14, 1.4, 9),
+            ARMOR_LIGHT,
+            bevel=0.6,
+            taper=0.82,
+        ),
+        # 腹部白布甲 (收窄)
+        part_box("abdomen", (0, 0, -6), (16, 8, 6), WHITE, bevel=0.7, taper=0.95),
+        # 金腰带
+        part_box("belt", (0, 0, -2.5), (18, 2.2, 2.0), GOLD, bevel=0.5),
+        # 贴合圆肩甲 (蓝灰, 半嵌入胸甲上缘)
+        part_sphere(
+            "r_shoulder",
+            (-9.5, -2, 8),
+            2.8,
+            ARMOR,
+            segments=12,
+            rings=8,
+            scale=(1.0, 1.0, 0.9),
+        ),
+        part_sphere(
+            "l_shoulder",
+            (9.5, -2, 8),
+            2.8,
+            ARMOR,
+            segments=12,
+            rings=8,
+            scale=(1.0, 1.0, 0.9),
+        ),
+        # 红肩饰 (肩甲上缘)
+        part_sphere("r_shoulder_red", (-9.5, -2, 10.4), 1.1, RED),
+        part_sphere("l_shoulder_red", (9.5, -2, 10.4), 1.1, RED),
     ]
     return join_parts(parts, "player_part_torso")
 
 
 def build_player_part_head():
-    """头: 颈锚点 z=0, z∈[-3,13], x∈[-9,9]
-    颈柱 + 头颅椭球 + 头发(前额+后脑) + 发饰。"""
+    """头: 颈锚点 z=0, z∈[-3,12], x∈[-7,7]
+    Blender +Y=前面(朝相机), -Y=背面。面部(+Y) + 分层头发(顶盖/刘海前/后脑后/侧发) + 红发带。"""
     parts = [
-        part_cylinder("neck", (0, 0, 0), 2.6, 4, BOOT, vertices=10),
+        # 颈
+        part_cylinder("neck", (0, 0.2, -1.5), 2.0, 3.5, SKIN, vertices=10),
+        # 颅骨
         part_sphere(
             "skull",
-            (0, 0, 6.5),
-            7.2,
+            (0, 0, 5.5),
+            6.0,
             SKIN,
+            segments=18,
+            rings=11,
+            scale=(0.98, 0.92, 1.04),
+        ),
+        # 下颌 (让球颅骨有可读正面, 微前凸 +Y)
+        part_box("jaw", (0, 0.8, 2.6), (7.0, 7.4, 4.0), SKIN, bevel=1.2, taper=0.84),
+        # 颊 + 下巴 (前面 +Y)
+        part_sphere(
+            "cheek_l",
+            (-2.4, 3.4, 3.6),
+            1.5,
+            SKIN,
+            segments=10,
+            rings=6,
+            scale=(1.0, 0.62, 0.85),
+        ),
+        part_sphere(
+            "cheek_r",
+            (2.4, 3.4, 3.6),
+            1.5,
+            SKIN,
+            segments=10,
+            rings=6,
+            scale=(1.0, 0.62, 0.85),
+        ),
+        part_sphere(
+            "chin",
+            (0, 3.8, 2.2),
+            1.6,
+            SKIN,
+            segments=10,
+            rings=6,
+            scale=(1.05, 0.7, 0.75),
+        ),
+        # 鼻 (楔形, 前面 +Y)
+        part_box(
+            "nose",
+            (0, 4.4, 4.0),
+            (1.4, 1.7, 1.9),
+            SKIN,
+            bevel=0.4,
+            taper=0.55,
+            rotation_x=math.radians(10),
+        ),
+        # 眼 (眼白 + 瞳孔, 加大) + 眉 (前面 +Y)
+        part_sphere(
+            "eye_white_l",
+            (-2.3, 4.5, 5.2),
+            1.5,
+            EYE_WHITE,
+            segments=12,
+            rings=6,
+            scale=(0.95, 0.45, 1.2),
+        ),
+        part_sphere(
+            "eye_white_r",
+            (2.3, 4.5, 5.2),
+            1.5,
+            EYE_WHITE,
+            segments=12,
+            rings=6,
+            scale=(0.95, 0.45, 1.2),
+        ),
+        part_sphere("pupil_l", (-2.3, 5.1, 5.1), 0.75, DARK, segments=8, rings=4),
+        part_sphere("pupil_r", (2.3, 5.1, 5.1), 0.75, DARK, segments=8, rings=4),
+        part_box(
+            "brow_l",
+            (-2.3, 4.6, 6.9),
+            (3.4, 1.1, 0.9),
+            (150, 162, 178),
+            bevel=0.25,
+            rotation_z=math.radians(8),
+        ),
+        part_box(
+            "brow_r",
+            (2.3, 4.6, 6.9),
+            (3.4, 1.1, 0.9),
+            (150, 162, 178),
+            bevel=0.25,
+            rotation_z=math.radians(-8),
+        ),
+        # 嘴 (暗色, 前移避让下巴, 干净横条)
+        part_box("mouth", (0, 4.9, 3.0), (3.0, 0.6, 0.6), (108, 82, 88), bevel=0.2),
+        # 头发: 顶盖 + 刘海(前 +Y) + 后脑(后 -Y) + 侧发
+        part_sphere(
+            "hair_cap",
+            (0, -0.4, 7.6),
+            5.6,
+            HAIR,
             segments=16,
-            rings=10,
-            scale=(1.0, 0.92, 1.05),
+            rings=9,
+            scale=(1.02, 0.96, 0.74),
         ),
-        # 头发: 前额(+Y 朝相机) + 后脑(-Y)
-        part_sphere(
-            "hair_front",
-            (0, 2.2, 8.5),
-            7.0,
-            DARK,
-            segments=14,
-            rings=8,
-            scale=(1.05, 1.0, 0.85),
-        ),
-        part_sphere(
-            "hair_back",
-            (0, -2.6, 6.0),
-            6.6,
-            DARK,
-            segments=14,
-            rings=8,
-            scale=(1.02, 1.0, 0.80),
-        ),
-        part_box("brow", (0, 2.6, 10.5), (10, 1.2, 2.5), DARK, bevel=0.3),
+        part_box("fringe", (0, 2.9, 8.0), (8.6, 2.6, 2.4), HAIR, bevel=0.8),
+        part_box("back_hair", (0, -3.6, 5.2), (8.8, 2.6, 7.6), HAIR, bevel=0.9),
+        part_box("sideburn_l", (-4.2, 1.8, 4.6), (1.5, 3.0, 4.6), HAIR, bevel=0.5),
+        part_box("sideburn_r", (4.2, 1.8, 4.6), (1.5, 3.0, 4.6), HAIR, bevel=0.5),
+        # 红发带 (前额 +Y, 前移避开刘海)
+        part_box("hair_band", (0, 3.6, 7.3), (8.6, 1.0, 1.3), RED, bevel=0.3),
     ]
     return join_parts(parts, "player_part_head")
 
 
 def build_player_part_arm():
-    """臂: 肩锚点 z=0, z∈[-18,0], x∈[-5,6]
-    上臂锥台 + 前臂 + 护腕 + 手。"""
+    """臂: 肩锚点 z=0, z∈[-19,0], x∈[-4,4]
+    肩球 + 细上臂 + 肘 + 前臂 + 白袖口 + 手套。"""
     parts = [
+        part_sphere("shoulder", (0, 0, -1.2), 2.6, ARMOR, segments=12, rings=8),
         part_cylinder(
-            "upper", (0, 0, -4), 2.6, 8, ARMOR, vertices=10, radius_top=3.0, bevel=0.4
+            "upper", (0, 0, -5), 2.2, 8, ARMOR, vertices=10, radius_top=2.4, bevel=0.4
         ),
         part_cylinder(
-            "forearm",
-            (0, 0, -11.5),
-            2.0,
-            7,
-            BOOT,
-            vertices=10,
-            radius_top=2.6,
-            bevel=0.4,
+            "elbow", (0, 0, -9.5), 2.2, 1.8, ARMOR_LIGHT, vertices=10, bevel=0.3
         ),
-        part_cylinder("wrist", (0, 0, -13.5), 2.2, 1.6, DARK, vertices=10, bevel=0.3),
-        part_sphere("hand", (0, 0, -16.0), 2.5, SKIN),
+        part_cylinder(
+            "forearm", (0, 0, -13), 1.9, 6, BOOT, vertices=10, radius_top=2.2, bevel=0.4
+        ),
+        part_cylinder("cuff", (0, 0, -15.5), 2.2, 1.3, WHITE, vertices=10, bevel=0.3),
+        part_sphere("hand", (0, 0, -17.5), 2.0, DARK),
     ]
     return join_parts(parts, "player_part_arm")
 
 
 def build_player_part_weapon():
     """剑: 握柄锚点 z=0, z∈[-23,0], x∈[-3,3]
-    握柄(暗) + 护手(金, 宽) + 剑刃(钢, 有剑脊) + 红宝石。"""
+    红柄 + 金护手(十字) + 银剑刃(锥尖, 剑脊) + 红宝石。"""
     parts = [
-        part_box("grip", (0, 0, -2.5), (3, 3, 5), DARK, bevel=0.4),
-        part_box("guard", (0, 0, -5.5), (11, 3, 2.2), GOLD, bevel=0.5),
-        # 剑刃: 底宽顶窄, 沿 -Z 伸展
+        part_cylinder("grip", (0, 0, -3), 1.5, 6, RED, vertices=8, bevel=0.3),
+        part_sphere("pommel", (0, 0, 0), 1.3, GOLD),
+        part_box("guard", (0, 0, -6.5), (11, 2.2, 2.0), GOLD, bevel=0.5),
+        part_sphere("guard_mid", (0, 0, -6.5), 1.3, GOLD),
         part_cylinder(
             "blade",
-            (0, 0, -14),
+            (0, 0, -15),
             0.5,
             16,
             STEEL,
@@ -210,26 +319,27 @@ def build_player_part_weapon():
             smooth=False,
             bevel=0.3,
         ),
-        part_box("blade_edge", (0, 2.4, -14), (1.2, 1.0, 14), STEEL_DARK, bevel=0.2),
-        part_sphere("gem", (0, 0, -5.2), 1.1, GEM),
+        part_box("blade_ridge", (0, 2.2, -15), (1.0, 0.9, 14), STEEL_DARK, bevel=0.2),
+        part_sphere("gem", (0, 0, -6.5), 0.9, GEM),
     ]
     return join_parts(parts, "player_part_weapon")
 
 
 def build_player_part_cape():
     """披风: 锚点 z=0 顶, z∈[-25,1], 位于背后 (Blender y<0 → 导出 mesh.y>0 离相机)
-    梯形主体(上窄下宽) + 领 + 内衬阴影。基白, 元素染色。"""
+    梯形主体(上窄下宽) + 领 + 内衬 + 金扣。基白, 元素染色。"""
     parts = [
-        part_box("cape", (1, -3.5, -12), (30, 4.5, 27), CAPE, bevel=1.0, taper=0.5),
+        part_box("cape", (1, -3.2, -12), (28, 4.2, 27), WHITE, bevel=1.2, taper=0.52),
         part_box(
             "cape_inner",
-            (1, -1.5, -10),
-            (24, 1.2, 22),
-            CAPE_SHADOW,
+            (1, -1.4, -10),
+            (22, 1.1, 22),
+            (192, 197, 208),
             bevel=0.8,
-            taper=0.6,
+            taper=0.62,
         ),
-        part_box("collar", (1, -3.5, 0), (14, 4.5, 3.5), CAPE, bevel=0.6),
+        part_box("collar", (1, -3.2, 0), (13, 4.2, 3.2), WHITE, bevel=0.6),
+        part_sphere("clasp", (1, -3.2, 0), 1.1, GOLD),
     ]
     return join_parts(parts, "player_part_cape")
 

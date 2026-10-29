@@ -1,4 +1,28 @@
-﻿# G29 — 重复源树清理 + 两个守护工具（2026-10-04）
+﻿# A16-Player: 主人公完整骨骼动画低模 + 朝向随WASD + v4精细建模（2026-10-29）
+
+> 目标：把玩家从 A13 体素部件升级为完整骨骼动画低模，修复用户反馈的「建模太差」（比例失调/玩具感/颜色灰）。
+> 方案A（用户确认）：完整骨骼动画低模 —— 骨骼 + AvatarAnimator 动画 clip 全复用，只替换部件几何来源。
+
+## 完成
+- **骨架化低模**：6 件 `player_part_*.json`（leg/torso/head/arm/weapon/cape）由 Blender MCP 建模导出，
+  广告牌局部空间（原点=骨骼锚点 pivot，x宽 y深 z高），逐面明暗烘进顶点色；`_setup_lowpoly_parts`
+  优先低模→回退体素→回退纸偶；`model_cache` 暴露 `build_gpu_mesh_asset`。
+- **朝向随WASD**：`direction_yaw` 方向→朝向角映射（DOWN=0、RIGHT=+90、LEFT=-90、UP=180），
+  `partMeshMatrix` 绕广告牌 up 轴 Rodrigues 旋转 col_x/col_y，角色保持直立；`AvatarPartDraw.yaw_deg`、
+  `HD2DDrawItem.facing_yaw`、`appendAvatarParts` 透传；`PlayerAvatar::worldParts` 按 `player.direction` 统一设 yaw。
+- **v4精细建模**（借鉴 A14 NPC 人形手法）：颅骨+下颌+颊/下巴/鼻 + 眼白/瞳孔/眉/嘴 + 分层头发
+  （顶盖/刘海/后脑/侧发）+ 红发带；蓝灰胸甲锥台+V形亮甲片+白腹甲+金腰带+贴合圆肩甲+红肩饰；
+  细长腿+护膝+白靴口+深靴；外露臂+白袖口；红柄金护手银刃剑；白披风+领+金扣。
+- **面部朝向修正**：v4 曾把头部 Y 符号翻反（面朝后、白发头盔），已翻回（面部 mesh.y 负=朝相机，
+  披风 mesh.y 正=离相机）；五官加大（白眼球/黑瞳孔/眉/干净嘴线）+ 红发带前移可见。
+- **fn_length 清零**：`partMeshMatrix` 的 Rodrigues 朝向旋转拆为 `rotateAboutAxis` + `applyFacingYaw`
+  两个匿名命名空间助手（53→<40 行）。
+
+## 门禁
+- ctest **89/89** 全绿 · fn_length **0** · world_validator **0/0** · golden_baseline 不变（纯渲染不改 sim）
+- 桌面包已同步（exe + 6 件 JSON + 预览 + README/CHANGELOG）
+
+# G29 — 重复源树清理 + 两个守护工具（2026-10-04）
 
 > 目标：清掉仓库里潜伏的嵌套自复制源树，并补上防止复发的守卫。
 > **这批清理本身不可提交 —— 那些文件从未被 git 跟踪。**
