@@ -17,7 +17,21 @@ float face_sign(Direction dir) {
     return (dir == Direction::LEFT || dir == Direction::UP) ? -1.f : 1.f;
 }
 
+} // namespace
+
+// A16-Player: 朝向角 — 绕广告牌 up 轴, 0=下(朝相机), +90=右, -90=左, 180=上(背对相机)
+float direction_yaw(Direction dir) {
+    switch (dir) {
+        case Direction::RIGHT: return 90.f;
+        case Direction::LEFT:  return -90.f;
+        case Direction::UP:    return 180.f;
+        case Direction::DOWN:  break;
+    }
+    return 0.f;
+}
+
 // G10.6-B C1 同款朝墙探测 (视觉衰减, 不改判定)
+namespace {
 bool wall_ahead(const GameMap* map, Vector2 center, Direction dir) {
     if (!map) return false;
     const float PROBE = 20.f, TS = 32.f;
@@ -140,5 +154,10 @@ void PlayerAvatar::draw(const Player& pl, float cam_x, float cam_y, const GameMa
 }
 
 std::vector<AvatarPartDraw> PlayerAvatar::worldParts(const Player& player) const {
-    return _core.part_draws(_overlay(player), face_sign(player.direction) < 0);
+    auto parts = _core.part_draws(_overlay(player), false);
+    // A16-Player: 朝向随 WASD — 绕广告牌 up 轴转向 (0=下/朝相机, 90=右, -90=左, 180=上)
+    // face_sign 只做左右镜像不随 WASD 转向, 故此处按 direction 统一设 yaw
+    const float yaw = direction_yaw(player.direction);
+    for (auto& p : parts) p.yaw_deg = yaw;
+    return parts;
 }

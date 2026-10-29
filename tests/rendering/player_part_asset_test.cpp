@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 #include "data/mesh_asset.h"
 #include "data/voxel_part_defs.h"
+#include "game/animation/player_avatar.h"   // A16-Player: direction_yaw 朝向映射
+#include "game/entities/entity.h"           // Direction
 
 // ============================================================
 // A16-Player: 玩家低模部件资产 — 6 件 (leg/torso/head/arm/weapon/cape)
@@ -120,4 +122,12 @@ TEST(PlayerPartAssets, SlotKeyMatchesRuntimeLookup) {
     EXPECT_EQ(voxel_slot_from_path("assets/sprites/player_part_weapon.png"), "weapon");
     EXPECT_EQ(voxel_slot_from_path("assets/sprites/player_part_torso.png"), "torso");
     EXPECT_EQ(voxel_slot_from_path("assets/sprites/player_part_head.png"), "head");
+}
+
+TEST(PlayerPartAssets, DirectionYawFollowsWASD) {
+    // A16-Player: 朝向随 WASD — 绕广告牌 up 轴转向 (0=下/朝相机, 90=右, -90=左, 180=上)
+    EXPECT_FLOAT_EQ(direction_yaw(Direction::DOWN), 0.0f);    // S
+    EXPECT_FLOAT_EQ(direction_yaw(Direction::RIGHT), 90.0f);  // D
+    EXPECT_FLOAT_EQ(direction_yaw(Direction::LEFT), -90.0f);  // A
+    EXPECT_FLOAT_EQ(direction_yaw(Direction::UP), 180.0f);    // W
 }

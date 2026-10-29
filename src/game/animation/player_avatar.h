@@ -7,6 +7,11 @@
 class Player;
 struct GameMap;
 
+// A16-Player: 朝向角 — 绕广告牌 up 轴, 0=下(朝相机), +90=右, -90=左, 180=上(背对相机)
+// 供渲染层 (worldParts) 与测试锁定映射用
+enum class Direction;
+float direction_yaw(Direction dir);
+
 class PlayerAvatar {
 public:
     // 全有才 true (all-or-nothing): 两 JSON + 全部件贴图, 任一失败 → active()=false 走静帧回退

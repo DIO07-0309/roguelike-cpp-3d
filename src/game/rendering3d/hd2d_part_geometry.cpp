@@ -21,6 +21,7 @@ void appendAvatarParts(const std::vector<AvatarPartDraw>& parts, Vector3 feet_wo
         item.height = part.size.y;
         item.pivot_uv_px = part.pivot;
         item.rot_deg = part.rot_deg;
+        item.facing_yaw = part.yaw_deg;   // A16-Player: 朝向 (绕广告牌 up 轴)
         item.texture = part.tex;
         item.voxel_mesh = part.voxel;         // A13: 体素网格 (空则四边形回退)
         item.flip_x = part.flip_x;
@@ -77,12 +78,38 @@ bool partMeshMatrix(const HD2DDrawItem& item, const Camera3D& camera, Matrix& ou
     const Vector3 col_z = {(right.x * sine + up.x * cosine) * kz,
                            (right.y * sine + up.y * cosine) * kz,
                            (right.z * sine + up.z * cosine) * kz};
+    // A16-Player: 朝向 — 绕广告牌 up 轴 (col_z) 旋转 col_x/col_y, 角色保持直立
+    // (广告牌平面内 rot_deg 是绕深度轴的肢体摆动, 不表达朝向; 朝向需绕 up 轴转)
+    // 方向映射: 0=下(朝相机), +90=右, -90=左, 180=上(背对相机)
+    Vector3 facing_x = col_x;
+    Vector3 facing_y = col_y;
+    if (item.facing_yaw != 0.0f) {
+        const float yaw = item.facing_yaw * DEG2RAD;
+        const float cy = std::cos(yaw), sy = std::sin(yaw);
+        const Vector3 axis = {col_z.x, col_z.y, col_z.z};
+        const float inv_len = 1.0f / (std::sqrt(axis.x * axis.x + axis.y * axis.y
+                                                + axis.z * axis.z) + 1e-6f);
+        const Vector3 axis_u = {axis.x * inv_len, axis.y * inv_len, axis.z * inv_len};
+        // Rodrigues: v' = v*cos + (axis×v)*sin + axis*(axis·v)*(1-cos)
+        const auto rot_about = [&](Vector3 v) {
+            const Vector3 axv = {axis_u.y * v.z - axis_u.z * v.y,
+                                 axis_u.z * v.x - axis_u.x * v.z,
+                                 axis_u.x * v.y - axis_u.y * v.x};
+            const float d = axis_u.x * v.x + axis_u.y * v.y + axis_u.z * v.z;
+            return Vector3{
+                v.x * cy + axv.x * sy + axis_u.x * d * (1.0f - cy),
+                v.y * cy + axv.y * sy + axis_u.y * d * (1.0f - cy),
+                v.z * cy + axv.z * sy + axis_u.z * d * (1.0f - cy)};
+        };
+        facing_x = rot_about(col_x);
+        facing_y = rot_about(col_y);
+    }
     const Vector3 world = Vector3Add(item.world_pos,
         Vector3Add(Vector3Scale(right, item.part_offset.x),
                    Vector3Scale(up, item.part_offset.y)));
-    out = {col_x.x, col_y.x, col_z.x, world.x,
-           col_x.y, col_y.y, col_z.y, world.y,
-           col_x.z, col_y.z, col_z.z, world.z,
+    out = {facing_x.x, facing_y.x, col_z.x, world.x,
+           facing_x.y, facing_y.y, col_z.y, world.y,
+           facing_x.z, facing_y.z, col_z.z, world.z,
            0.0f, 0.0f, 0.0f, 1.0f};
     return true;
 }
