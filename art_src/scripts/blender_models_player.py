@@ -39,6 +39,8 @@ GOLD = (182, 136, 92)  # 金饰
 GEM = (170, 42, 58)  # 红宝石
 EYE_WHITE = (235, 238, 244)  # 眼白
 MOUTH = (150, 120, 120)  # 唇
+TEAL = (66, 128, 170)  # 蓝绿靴 (2D配色, 更饱和)
+TRIM = (172, 178, 208)  # 披风淡蓝紫描边
 
 
 def _shade_part(normal):
@@ -100,22 +102,24 @@ def export_part_json(obj, path, name):
 
 def build_player_part_leg():
     """腿: 髋锚点 z=0, 向下 z∈[-23,0], x∈[-5,5]
-    细长大腿锥台 + 护膝 + 小腿 + 白靴口 + 深靴(前端前伸)。"""
+    蓝大腿锥台 + 白膝 + 蓝小腿 + 白靴口 + 蓝绿靴 + 橙饰 (贴合2D配色)。"""
     parts = [
         part_cylinder(
             "thigh", (0, 0, -7), 3.4, 13, ARMOR, vertices=10, radius_top=3.0, bevel=0.5
         ),
+        # 白膝 (2D: 白膝带)
+        part_cylinder("knee", (0, 0.4, -13.5), 2.9, 2.2, WHITE, vertices=10, bevel=0.4),
         part_cylinder(
-            "knee", (0, 0.4, -13.5), 2.9, 2.2, ARMOR_LIGHT, vertices=10, bevel=0.4
+            "shin", (0, 0, -17.0), 2.6, 5, ARMOR, vertices=10, radius_top=2.2, bevel=0.5
         ),
-        part_cylinder(
-            "shin", (0, 0, -17.5), 2.6, 6, BOOT, vertices=10, radius_top=2.2, bevel=0.5
-        ),
+        # 白靴口
         part_cylinder(
             "boot_cuff", (0, 0, -19.5), 3.0, 1.6, WHITE, vertices=10, bevel=0.3
         ),
-        part_box("boot", (0, 1.6, -21.5), (8, 10, 4), BOOT, bevel=0.6),
-        part_box("boot_toe", (0, 5.6, -22.5), (5, 3, 2.4), DARK, bevel=0.5),
+        # 蓝绿靴 (2D) + 深蓝绿靴头 + 橙金扣
+        part_box("boot", (0, 1.6, -21.5), (8, 10, 4), TEAL, bevel=0.6),
+        part_box("boot_toe", (0, 5.6, -22.5), (5, 3, 2.4), (40, 84, 118), bevel=0.5),
+        part_sphere("boot_stud", (0, 1.6, -19.6), 1.0, GOLD),
     ]
     return join_parts(parts, "player_part_leg")
 
@@ -240,8 +244,8 @@ def build_player_part_head():
             rings=6,
             scale=(0.95, 0.45, 1.2),
         ),
-        part_sphere("pupil_l", (-2.3, 5.1, 5.1), 0.75, DARK, segments=8, rings=4),
-        part_sphere("pupil_r", (2.3, 5.1, 5.1), 0.75, DARK, segments=8, rings=4),
+        part_sphere("pupil_l", (-2.3, 5.2, 5.1), 0.95, DARK, segments=8, rings=4),
+        part_sphere("pupil_r", (2.3, 5.2, 5.1), 0.95, DARK, segments=8, rings=4),
         part_box(
             "brow_l",
             (-2.3, 4.6, 6.9),
@@ -258,8 +262,8 @@ def build_player_part_head():
             bevel=0.25,
             rotation_z=math.radians(-8),
         ),
-        # 嘴 (暗色, 前移避让下巴, 干净横条)
-        part_box("mouth", (0, 4.9, 3.0), (3.0, 0.6, 0.6), (108, 82, 88), bevel=0.2),
+        # 嘴 (2D 红唇, 前移避让下巴)
+        part_box("mouth", (0, 4.9, 3.0), (3.2, 0.7, 0.8), (172, 62, 72), bevel=0.2),
         # 头发: 顶盖 + 刘海(前 +Y) + 后脑(后 -Y) + 侧发
         part_sphere(
             "hair_cap",
@@ -276,26 +280,40 @@ def build_player_part_head():
         part_box("sideburn_r", (4.2, 1.8, 4.6), (1.5, 3.0, 4.6), HAIR, bevel=0.5),
         # 红发带 (前额 +Y, 前移避开刘海)
         part_box("hair_band", (0, 3.6, 7.3), (8.6, 1.0, 1.3), RED, bevel=0.3),
+        # 头顶红发饰 (2D: 顶部红饰 + 金芯)
+        part_sphere("hair_ornament", (2.2, 1.0, 9.6), 1.4, RED),
+        part_sphere("hair_ornament_gem", (2.2, 1.0, 9.6), 0.6, GOLD),
     ]
     return join_parts(parts, "player_part_head")
 
 
 def build_player_part_arm():
     """臂: 肩锚点 z=0, z∈[-19,0], x∈[-4,4]
-    肩球 + 细上臂 + 肘 + 前臂 + 白袖口 + 手套。"""
+    蓝肩球 + 红上臂段 + 蓝肘 + 蓝前臂 + 橙腕 + 白手 (贴合2D配色)。"""
     parts = [
         part_sphere("shoulder", (0, 0, -1.2), 2.6, ARMOR, segments=12, rings=8),
+        # 红上臂段 (2D: 红袖)
         part_cylinder(
-            "upper", (0, 0, -5), 2.2, 8, ARMOR, vertices=10, radius_top=2.4, bevel=0.4
+            "upper", (0, 0, -5), 2.2, 7, RED, vertices=10, radius_top=2.4, bevel=0.4
         ),
+        # 蓝肘 + 蓝前臂
         part_cylinder(
             "elbow", (0, 0, -9.5), 2.2, 1.8, ARMOR_LIGHT, vertices=10, bevel=0.3
         ),
         part_cylinder(
-            "forearm", (0, 0, -13), 1.9, 6, BOOT, vertices=10, radius_top=2.2, bevel=0.4
+            "forearm",
+            (0, 0, -12.5),
+            1.9,
+            5,
+            ARMOR,
+            vertices=10,
+            radius_top=2.2,
+            bevel=0.4,
         ),
-        part_cylinder("cuff", (0, 0, -15.5), 2.2, 1.3, WHITE, vertices=10, bevel=0.3),
-        part_sphere("hand", (0, 0, -17.5), 2.0, DARK),
+        # 橙金护腕 (2D: 橙腕)
+        part_cylinder("wrist", (0, 0, -15.5), 2.0, 1.6, GOLD, vertices=10, bevel=0.3),
+        # 白手
+        part_sphere("hand", (0, 0, -17.5), 2.0, WHITE),
     ]
     return join_parts(parts, "player_part_arm")
 
@@ -319,7 +337,9 @@ def build_player_part_weapon():
             smooth=False,
             bevel=0.3,
         ),
-        part_box("blade_ridge", (0, 2.2, -15), (1.0, 0.9, 14), STEEL_DARK, bevel=0.2),
+        part_box(
+            "blade_ridge", (0, 2.2, -15), (1.0, 0.9, 14), (110, 160, 185), bevel=0.2
+        ),
         part_sphere("gem", (0, 0, -6.5), 0.9, GEM),
     ]
     return join_parts(parts, "player_part_weapon")
@@ -327,19 +347,31 @@ def build_player_part_weapon():
 
 def build_player_part_cape():
     """披风: 锚点 z=0 顶, z∈[-25,1], 位于背后 (Blender y<0 → 导出 mesh.y>0 离相机)
-    梯形主体(上窄下宽) + 领 + 内衬 + 金扣。基白, 元素染色。"""
+    白主体(后移避穿模) + 淡蓝紫描边 + 内衬 + 领 + 金扣。基白, 元素染色。"""
     parts = [
-        part_box("cape", (1, -3.2, -12), (28, 4.2, 27), WHITE, bevel=1.2, taper=0.52),
+        # 描边层 (更大, 置于背面最外侧 → 从背后看到淡蓝紫边框包白芯)
+        part_box(
+            "cape_trim",
+            (1, -9.5, -12),
+            (25.5, 0.8, 28),
+            TRIM,
+            bevel=1.0,
+            taper=0.55,
+        ),
+        # 白主体 (较小, 在描边层内侧/靠身体)
+        part_box("cape", (1, -7.3, -12), (24, 4.0, 27), WHITE, bevel=1.2, taper=0.55),
+        # 内衬 (贴身体侧)
         part_box(
             "cape_inner",
-            (1, -1.4, -10),
-            (22, 1.1, 22),
+            (1, -5.6, -10),
+            (18, 0.8, 20),
             (192, 197, 208),
             bevel=0.8,
             taper=0.62,
         ),
-        part_box("collar", (1, -3.2, 0), (13, 4.2, 3.2), WHITE, bevel=0.6),
-        part_sphere("clasp", (1, -3.2, 0), 1.1, GOLD),
+        # 领 + 金扣 (靠近颈部/肩背)
+        part_box("collar", (1, -6.5, 0), (13, 3.0, 3.2), WHITE, bevel=0.6),
+        part_sphere("clasp", (1, -6.5, 0), 1.1, GOLD),
     ]
     return join_parts(parts, "player_part_cape")
 
