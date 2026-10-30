@@ -1,4 +1,23 @@
-﻿# A16-Player: v6 对照2D贴图补齐服饰与颜色（2026-10-30）
+﻿# A16-Player: v7 披风贴背修复 + 摆幅随速度/瞬步（2026-10-30）
+
+> 反馈:①移动时披风上端与后背连接处有空隙 ②披风摆幅应随移动速度与瞬步调整。
+
+## ① 披风贴背 (模型)
+- 顶部加 **披领(`cape_mantle`)** — 加厚前伸到躯干背面(y 到 -1.9, 深入上背),
+  移动/摆动时遮住肩胛连接处, 不再露缝; 领口/金扣随之前移贴背。
+
+## ② 摆幅随速度/瞬步 (代码)
+- `PlayerAvatar::update` 逐帧用**位置差分**求实际速度(单位/秒, 归一化 speed01),
+  `dodge.active()` 给瞬步强度 dash01, 各自指数平滑。
+- 新增纯函数 `cape_sway_gain(speed01, dash01) = 1.2*speed + 3.0*dash` (供测试锁定);
+  `worldParts` 里对**披风件(`element_tinted` 唯一件)** `rot_deg *= (1 + gain)` —
+  静止×1.0 / 正常移动×~2.2 / 瞬步×~5.2, 摆幅随速度与瞬步显著放大。
+- 新增测试 `PlayerPartAssets.CapeSwayScalesWithSpeedAndDash` (静止=0 / 越快越大 / 瞬步最大)。
+
+## 门禁
+- ctest **89/89** · fn_length **0** · world_validator **0/0** · 桌面包已同步(exe+JSON+预览) · GitHub 已推送
+
+# A16-Player: v6 对照2D贴图补齐服饰与颜色（2026-10-30）
 
 > 需求:对比 2D 版把该有的服饰和颜色都补齐。用像素级采样 2D `player_part_*.png` 得到精确调色板与服饰形状。
 

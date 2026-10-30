@@ -2,6 +2,7 @@
 #include "game/animation/player_avatar.h"
 
 #include <cmath>
+#include <algorithm>
 #include "entities/player.h"
 #include "data/voxel_part_defs.h"
 #include "game/rendering3d/part_voxelizer.h"
@@ -28,6 +29,18 @@ float direction_yaw(Direction dir) {
         case Direction::DOWN:  break;
     }
     return 0.f;
+}
+
+// A16-Player: 披风摆幅增益 — 随移动速度与瞬步(翻滚)增大; 纯函数供测试锁定
+float cape_sway_gain(float speed01, float dash01) {
+    constexpr float kMoveGain = 1.2f;   // 正常移动时的额外摆幅倍率
+    constexpr float kDashGain = 3.0f;   // 瞬步(翻滚)时的额外摆幅倍率
+    return kMoveGain * speed01 + kDashGain * dash01;
+}
+
+// 披风速度归一化参考 (单位/秒): 达到该速度 → speed01≈1
+namespace {
+constexpr float kCapeRefSpeed = 200.0f;
 }
 
 // G10.6-B C1 同款朝墙探测 (视觉衰减, 不改判定)
@@ -112,6 +125,21 @@ void PlayerAvatar::update(float dt, const Player& pl) {
     in.moving = pl.is_moving;
     in.attack_recovery_ratio = pl.weapon.runtime().recovery_timer / kAttackBaseDur;
     _core.advance(dt, in);
+
+    // A16-Player: 披风摆幅输入 — 位置差分 → 速度; dodge.active() → 瞬步; 平滑后算增益
+    const Vector2 pos = {pl.entity.position.x, pl.entity.position.y};
+    float speed01 = 0.0f;
+    if (_has_world_pos && dt > 1e-5f) {
+        const float dx = pos.x - _last_world_pos.x, dy = pos.y - _last_world_pos.y;
+        speed01 = sqrtf(dx * dx + dy * dy) / dt / kCapeRefSpeed;
+        speed01 = std::min(speed01, 1.5f);
+    }
+    _last_world_pos = pos;
+    _has_world_pos = true;
+    const float dash01 = pl.dodge.active() ? 1.0f : 0.0f;
+    _cape_speed01 += (speed01 - _cape_speed01) * std::min(1.0f, dt * 12.0f);
+    _cape_dash01 += (dash01 - _cape_dash01) * std::min(1.0f, dt * 16.0f);
+    _cape_gain = cape_sway_gain(_cape_speed01, _cape_dash01);
 }
 
 OverlayTf PlayerAvatar::_overlay(const Player& pl) const {
@@ -158,6 +186,10 @@ std::vector<AvatarPartDraw> PlayerAvatar::worldParts(const Player& player) const
     // A16-Player: 朝向随 WASD — 绕广告牌 up 轴转向 (0=下/朝相机, 90=右, -90=左, 180=上)
     // face_sign 只做左右镜像不随 WASD 转向, 故此处按 direction 统一设 yaw
     const float yaw = direction_yaw(player.direction);
-    for (auto& p : parts) p.yaw_deg = yaw;
+    const float cape_amp = 1.0f + _cape_gain;   // A16-Player: 披风摆幅随速度/瞬步放大
+    for (auto& p : parts) {
+        p.yaw_deg = yaw;
+        if (p.element_tinted) p.rot_deg *= cape_amp;   // 披风 = 唯一元素染色件
+    }
     return parts;
 }

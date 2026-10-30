@@ -12,6 +12,10 @@ struct GameMap;
 enum class Direction;
 float direction_yaw(Direction dir);
 
+// A16-Player: 披风摆幅增益 — 随移动速度与瞬步(翻滚)增大; 纯函数供测试锁定
+// speed01: 归一化速度 (0=静止, ~1=正常移动), dash01: 瞬步强度 (0/1)
+float cape_sway_gain(float speed01, float dash01);
+
 class PlayerAvatar {
 public:
     // 全有才 true (all-or-nothing): 两 JSON + 全部件贴图, 任一失败 → active()=false 走静帧回退
@@ -31,4 +35,11 @@ private:
     bool _setup_lowpoly_parts(); // A16-Player: 构建手工低模部件 (优先于体素; 任一失败 → false 回退体素)
 
     SkeletonAvatar _core;   // 组合优于继承: 通用骨骼核心 (数据+贴图+animator)
+
+    // A16-Player: 披风摆幅状态 (update 里按速度/瞬步平滑; worldParts 里作用于披风件)
+    float _cape_speed01 = 0.0f;
+    float _cape_dash01 = 0.0f;
+    float _cape_gain = 0.0f;
+    Vector2 _last_world_pos = {};
+    bool _has_world_pos = false;
 };

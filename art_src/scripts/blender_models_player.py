@@ -295,6 +295,11 @@ def build_player_part_cape():
         ),
         part_box("collar", (1, -6.5, 0), (13, 3.0, 3.2), WHITE, bevel=0.6),
         part_sphere("clasp", (1, -6.5, 0), 1.1, GOLD),
+        # 披领 (顶部加厚前伸贴住上背, 遮住连接缝; 移动/摆动时也不露空隙)
+        part_box(
+            "cape_mantle", (1, -5.2, -2.0), (21, 6.6, 5.4), WHITE, bevel=1.0, taper=0.9
+        ),
+        part_sphere("mantle_clasp", (1, -1.9, 0.2), 1.2, GOLD),
     ]
     # 锯齿下摆 (下垂小片形成花边)
     for sx in (-8.0, -3.5, 1.0, 5.5, 9.5):

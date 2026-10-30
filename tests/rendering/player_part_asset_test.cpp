@@ -131,3 +131,14 @@ TEST(PlayerPartAssets, DirectionYawFollowsWASD) {
     EXPECT_FLOAT_EQ(direction_yaw(Direction::LEFT), -90.0f);  // A
     EXPECT_FLOAT_EQ(direction_yaw(Direction::UP), 180.0f);    // W
 }
+
+TEST(PlayerPartAssets, CapeSwayScalesWithSpeedAndDash) {
+    // A16-Player: 披风摆幅随移动速度/瞬步增大 — 静止=0, 移动>0, 更快更大, 瞬步最大
+    EXPECT_FLOAT_EQ(cape_sway_gain(0.0f, 0.0f), 0.0f);        // 静止无额外摆幅
+    const float slow = cape_sway_gain(0.4f, 0.0f);
+    const float fast = cape_sway_gain(1.0f, 0.0f);
+    const float dash = cape_sway_gain(1.0f, 1.0f);
+    EXPECT_GT(slow, 0.0f);
+    EXPECT_GT(fast, slow);        // 速度越快摆幅越大
+    EXPECT_GT(dash, fast);        // 瞬步额外增大
+}
