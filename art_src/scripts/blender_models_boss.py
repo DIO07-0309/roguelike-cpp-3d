@@ -1,7 +1,8 @@
 # A16-Boss: Boss 手建低模部件 (试点: 暗影骑士)
 # 广告牌局部空间: 原点 = 骨骼锚点, x=宽度(右), y=深度(前=+Y 朝相机), z=高度(上)
-# 骨骼世界 z (单位, ×ppu0.8=世界): hips=28 torso=36 head=51 arm=49 weapon=42
-# 配色采样自 boss_shadow_knight_part_*.png (暗紫骑士 + 金铜饰)
+# 骨骼世界 z (单位, ×ppu1.15=世界): hips=28 torso=36 head=51 arm=49 weapon=42
+# 设计原则 (参考 Boss 建模资料): 剪影优先 · 上重下轻(三角力量) · 宽尖肩 · 小头沉肩 ·
+#   尖角/三角威胁语言置于末梢 · 巨大武器 · 前倾压迫姿态 · 暗紫+金+红眼 威胁色
 import math
 
 from blender_lib import part_box, part_cylinder, part_sphere, join_parts
@@ -33,26 +34,26 @@ def _shift(obj, dx=0.0, dy=0.0, dz=0.0):
 
 
 def build_boss_part_head():
-    """头: 暗紫头盔 + 深色面甲 + 红眼 + 金眉甲 + 盔脊冠饰 (原点=头骨)。"""
+    """头: 小头盔沉肩 + 深面甲 + 红眼 + 金眉 + 双尖角(威胁) + 中央冠鳍。"""
     parts = [
-        part_cylinder("neck", (0, 0, -6), 3.4, 6, PURPLE_DEEP, vertices=12),
-        # 头盔主体 (暗紫, 略高)
+        part_cylinder("neck", (0, 0, -7), 4.4, 8, PURPLE_DEEP, vertices=12),
+        # 小头盔主体 (相对躯干显小)
         part_sphere(
             "helm",
-            (0, 0, 5),
-            8.6,
+            (0, 0, 4),
+            7.0,
             PURPLE,
-            segments=20,
-            rings=12,
-            scale=(1.0, 0.96, 1.08),
+            segments=18,
+            rings=11,
+            scale=(1.0, 0.95, 1.06),
         ),
-        # 面甲 (深, 前面 +Y)
-        part_box("visor", (0, 6.4, 1.5), (12, 3.6, 10), DARK, bevel=1.1, taper=0.9),
-        # 红眼 (发光, 面甲缝内)
+        # 深色面甲 (前)
+        part_box("visor", (0, 5.6, 1.0), (11, 3.6, 9.5), DARK, bevel=1.0, taper=0.9),
+        # 红眼 (发光窄缝)
         part_sphere(
             "eye_l",
-            (-3.2, 8.0, 2.0),
-            1.6,
+            (-2.8, 7.4, 2.2),
+            1.5,
             GLOW,
             segments=10,
             rings=6,
@@ -60,37 +61,57 @@ def build_boss_part_head():
         ),
         part_sphere(
             "eye_r",
-            (3.2, 8.0, 2.0),
-            1.6,
+            (2.8, 7.4, 2.2),
+            1.5,
             GLOW,
             segments=10,
             rings=6,
             scale=(1.0, 0.5, 0.8),
         ),
-        # 金眉甲 (面甲上缘)
-        part_box("brow", (0, 6.8, 6.2), (13, 1.6, 2.2), GOLD, bevel=0.5),
-        # 盔脊 + 冠饰 (顶部鳍)
+        # 金眉甲 (面甲上缘, 凶)
         part_box(
-            "crest",
-            (0, -0.5, 11.5),
-            (2.4, 10, 6.5),
+            "brow",
+            (0, 6.2, 5.6),
+            (12, 1.8, 2.4),
+            GOLD,
+            bevel=0.5,
+            rotation_x=math.radians(-8),
+        ),
+        # 双尖角 (尖角威胁语言, 向两侧上外, 三角)
+        part_box(
+            "horn_l",
+            (-6.5, -1.0, 9),
+            (4.8, 6.0, 12),
             PURPLE_LT,
             bevel=0.7,
-            rotation_x=math.radians(-10),
+            taper=0.45,
+            rotation_z=math.radians(22),
+            rotation_x=math.radians(-18),
         ),
         part_box(
-            "crest_gold",
-            (0, -0.5, 11.5),
-            (2.9, 10.4, 1.4),
-            GOLD,
-            bevel=0.4,
-            rotation_x=math.radians(-10),
+            "horn_r",
+            (6.5, -1.0, 9),
+            (4.8, 6.0, 12),
+            PURPLE_LT,
+            bevel=0.7,
+            taper=0.45,
+            rotation_z=math.radians(-22),
+            rotation_x=math.radians(-18),
         ),
-        # 两侧颊甲
+        # 中央冠鳍 (后掠)
+        part_box(
+            "crest",
+            (0, -1.5, 10.5),
+            (2.8, 13, 7.5),
+            PURPLE_LT,
+            bevel=0.7,
+            rotation_x=math.radians(-16),
+        ),
+        # 侧颊甲
         part_sphere(
             "cheek_l",
-            (-7.0, 2.2, 0.5),
-            3.8,
+            (-6.2, 1.8, 0.5),
+            3.6,
             PURPLE_DK,
             segments=12,
             rings=8,
@@ -98,8 +119,8 @@ def build_boss_part_head():
         ),
         part_sphere(
             "cheek_r",
-            (7.0, 2.2, 0.5),
-            3.8,
+            (6.2, 1.8, 0.5),
+            3.6,
             PURPLE_DK,
             segments=12,
             rings=8,
@@ -110,140 +131,142 @@ def build_boss_part_head():
 
 
 def build_boss_part_torso():
-    """躯干: 暗紫胸甲(锥台) + 尖肩甲 + 金 V 甲片 + 腰带 + 下摆 (原点=躯干骨)。"""
+    """躯干: 上重下轻(宽胸窄腰) + 巨尖肩甲(金尖) + 金 V 甲片 + 腰带 + 下摆。"""
     parts = [
-        # 胸甲主体
+        # 上胸 (超宽, 强 taper = 三角力量)
         part_box(
-            "chest", (0, 0, 4), (26, 15, 22), PURPLE, bevel=1.5, segments=2, taper=0.82
+            "chest", (0, 0, 7), (32, 18, 17), PURPLE, bevel=1.6, segments=2, taper=0.66
         ),
-        # 胸甲亮板 (高光, 前凸)
+        # 亮胸甲 (前凸高光)
         part_box(
-            "chest_plate", (0, 6.6, 4), (16, 2.2, 15), PURPLE_LT, bevel=0.9, taper=0.85
+            "chest_plate", (0, 8.0, 6), (19, 2.4, 13), PURPLE_LT, bevel=1.0, taper=0.82
         ),
-        # 金 V 甲片 (两条斜条)
+        # 金 V 甲片
         part_box(
             "vtrim_l",
-            (-3.0, 7.6, 6.0),
-            (7.0, 1.4, 2.0),
+            (-3.4, 9.0, 7.0),
+            (8.0, 1.6, 2.2),
             GOLD,
             bevel=0.4,
-            rotation_z=math.radians(30),
+            rotation_z=math.radians(32),
         ),
         part_box(
             "vtrim_r",
-            (3.0, 7.6, 6.0),
-            (7.0, 1.4, 2.0),
+            (3.4, 9.0, 7.0),
+            (8.0, 1.6, 2.2),
             GOLD,
             bevel=0.4,
-            rotation_z=math.radians(-30),
+            rotation_z=math.radians(-32),
         ),
-        # 腹部深色 + 金腰带
-        part_box(
-            "abdomen", (0, 0, -6), (18, 12, 8), PURPLE_DEEP, bevel=0.8, taper=0.95
-        ),
-        part_box("belt", (0, 0, -8.5), (21, 13, 3.0), GOLD, bevel=0.6),
-        part_box("buckle", (0, 7.0, -8.5), (4.0, 1.6, 3.4), PURPLE_LT, bevel=0.5),
-        # 尖肩甲 (两侧, 尖角朝外上)
+        # 窄腰 + 深色腹
+        part_box("waist", (0, 0, -6), (16, 12, 10), PURPLE_DEEP, bevel=0.9, taper=0.95),
+        # 金腰带 + 扣
+        part_box("belt", (0, 0, -10), (18, 13, 3.4), GOLD, bevel=0.6),
+        part_box("buckle", (0, 7.2, -10), (4.4, 1.6, 3.6), PURPLE_LT, bevel=0.5),
+        # 巨尖肩甲 (超宽, 三角) — 主剪影
         part_box(
             "pauldron_l",
-            (-13.5, 0, 9),
-            (8, 11, 8),
+            (-18.0, 0, 8),
+            (12, 16, 13),
             PURPLE,
-            bevel=1.2,
-            taper=0.6,
-            rotation_z=math.radians(18),
+            bevel=1.3,
+            taper=0.5,
+            rotation_z=math.radians(24),
         ),
         part_box(
             "pauldron_r",
-            (13.5, 0, 9),
-            (8, 11, 8),
+            (18.0, 0, 8),
+            (12, 16, 13),
             PURPLE,
-            bevel=1.2,
-            taper=0.6,
-            rotation_z=math.radians(-18),
+            bevel=1.3,
+            taper=0.5,
+            rotation_z=math.radians(-24),
+        ),
+        # 金肩尖 (威胁语言置于末梢, 宽三角板)
+        part_box(
+            "spike_l",
+            (-19.5, 0, 14),
+            (5.5, 9.0, 13),
+            GOLD,
+            bevel=0.5,
+            taper=0.4,
+            rotation_z=math.radians(30),
         ),
         part_box(
-            "pauldron_spike_l",
-            (-15.5, 0, 14),
-            (3.0, 3.0, 5.0),
+            "spike_r",
+            (19.5, 0, 14),
+            (5.5, 9.0, 13),
             GOLD,
-            bevel=0.4,
-            rotation_z=math.radians(22),
+            bevel=0.5,
+            taper=0.4,
+            rotation_z=math.radians(-30),
         ),
-        part_box(
-            "pauldron_spike_r",
-            (15.5, 0, 14),
-            (3.0, 3.0, 5.0),
-            GOLD,
-            bevel=0.4,
-            rotation_z=math.radians(-22),
-        ),
-        # 下摆
-        part_box("hem", (0, 0, -12), (22, 13, 3.0), PURPLE_DK, bevel=0.7),
+        # 上下摆
+        part_box("hem", (0, 0, -13), (18, 13, 3.2), PURPLE_DK, bevel=0.7),
     ]
     return join_parts(parts, "boss_shadow_knight_part_torso")
 
 
 def build_boss_part_arm():
-    """臂: 肩球 + 上臂 + 肘 + 前臂 + 金护腕 + 铁手 (原点=肩骨)。"""
+    """臂: 粗肩球 + 粗上臂 + 肘 + 前臂 + 金护腕 + 大拳 (原点=肩骨)。"""
     parts = [
         part_sphere("shoulder", (0, 0, -2), 4.0, PURPLE, segments=14, rings=8),
         part_cylinder(
             "upper",
-            (0, 0, -8),
-            3.4,
-            11,
-            PURPLE,
-            vertices=12,
-            radius_top=3.8,
-            smooth=True,
-            bevel=0.4,
-        ),
-        part_sphere("elbow", (0, 0, -13.5), 3.4, PURPLE_DK, segments=12, rings=8),
-        part_cylinder(
-            "forearm",
-            (0, 0, -17.5),
-            3.0,
-            9,
-            PURPLE_DK,
-            vertices=12,
-            radius_top=3.4,
-            smooth=True,
-            bevel=0.4,
-        ),
-        part_cylinder("cuff", (0, 0, -21.0), 3.4, 2.2, GOLD, vertices=14, bevel=0.4),
-        part_sphere(
-            "hand",
-            (0, 0, -23.5),
-            3.0,
-            PURPLE,
-            segments=12,
-            rings=8,
-            scale=(1.0, 1.0, 1.1),
-        ),
-    ]
-    # 前移: 骨骼 arm 骨靠中(x=-4/6), 陷进躯干; 前移显于胸前 (举剑姿态)
-    return _shift(join_parts(parts, "boss_shadow_knight_part_arm"), dy=7.0)
-
-
-def build_boss_part_leg():
-    """腿: 大腿锥台 + 膝甲 + 小腿 + 靴 (原点=髋骨)。"""
-    parts = [
-        part_cylinder(
-            "thigh",
             (0, 0, -9),
-            4.6,
+            3.6,
             13,
             PURPLE,
             vertices=12,
             radius_top=4.0,
             smooth=True,
+            bevel=0.4,
+        ),
+        part_sphere("elbow", (0, 0, -16), 3.6, PURPLE_DK, segments=12, rings=8),
+        part_cylinder(
+            "forearm",
+            (0, 0, -21),
+            3.2,
+            10,
+            PURPLE_DK,
+            vertices=12,
+            radius_top=3.6,
+            smooth=True,
+            bevel=0.4,
+        ),
+        part_cylinder("cuff", (0, 0, -25.5), 3.7, 2.6, GOLD, vertices=14, bevel=0.4),
+        part_sphere(
+            "fist",
+            (0, 0, -29),
+            3.4,
+            PURPLE,
+            segments=12,
+            rings=8,
+            scale=(1.05, 1.05, 1.0),
+        ),
+    ]
+    # 前移: 骨骼 arm 骨靠中(x=-4/6), 陷进躯干; 前移显于胸前 (举剑姿态)
+    return _shift(join_parts(parts, "boss_shadow_knight_part_arm"), dy=5.0)
+
+
+def build_boss_part_leg():
+    """腿: 粗大腿锥台 + 膝甲 + 小腿 + 大靴(金边) (原点=髋骨)。"""
+    parts = [
+        part_cylinder(
+            "thigh",
+            (0, 0, -9),
+            6.0,
+            15,
+            PURPLE,
+            vertices=12,
+            radius_top=5.2,
+            smooth=True,
             bevel=0.5,
         ),
         part_sphere(
             "knee",
-            (0, 0.6, -16),
-            3.6,
+            (0, 0.8, -17),
+            4.8,
             PURPLE_LT,
             segments=12,
             rings=8,
@@ -251,43 +274,43 @@ def build_boss_part_leg():
         ),
         part_cylinder(
             "shin",
-            (0, 0, -22),
-            3.6,
-            9,
+            (0, 0, -23),
+            4.8,
+            10,
             PURPLE_DK,
             vertices=12,
-            radius_top=3.0,
+            radius_top=4.0,
             smooth=True,
             bevel=0.5,
         ),
-        part_box("boot", (0, 1.8, -26.5), (9, 12, 5), PURPLE_DEEP, bevel=0.7),
-        part_box("boot_toe", (0, 6.4, -27.5), (6, 3.5, 3.0), DARK, bevel=0.5),
-        part_box("boot_trim", (0, 1.8, -23.8), (9, 12, 1.4), GOLD, bevel=0.3),
+        part_box("boot", (0, 2.2, -27), (13, 16, 6), PURPLE_DEEP, bevel=0.8),
+        part_box("boot_toe", (0, 8.0, -28), (9, 4.5, 3.6), DARK, bevel=0.5),
+        part_box("boot_trim", (0, 2.2, -23.8), (13, 16, 1.6), GOLD, bevel=0.3),
     ]
     return join_parts(parts, "boss_shadow_knight_part_leg")
 
 
 def build_boss_part_weapon():
-    """巨剑: 金柄尾 + 深柄 + 金十字护手 + 暗刃(冷银脊) (原点=握柄顶)。"""
+    """巨剑: 金柄尾 + 深柄 + 金十字护手 + 宽暗刃(冷银脊) (原点=握柄顶)。"""
     parts = [
-        part_cylinder("grip", (0, 0, -4), 2.0, 8, PURPLE_DEEP, vertices=10, bevel=0.3),
-        part_sphere("pommel", (0, 0, 0), 2.2, GOLD),
-        part_box("guard", (0, 0, -8.5), (16, 3.0, 2.8), GOLD, bevel=0.6),
-        part_sphere("guard_mid", (0, 0, -8.5), 2.4, PURPLE_LT),
+        part_cylinder("grip", (0, 0, -5), 2.6, 10, PURPLE_DEEP, vertices=10, bevel=0.3),
+        part_sphere("pommel", (0, 0, 0), 2.8, GOLD),
+        part_box("guard", (0, 0, -11), (24, 4.0, 3.6), GOLD, bevel=0.7),
+        part_sphere("guard_mid", (0, 0, -11), 3.0, PURPLE_LT),
         part_cylinder(
             "blade",
-            (0, 0, -22),
-            0.6,
-            24,
+            (0, 0, -27),
+            0.8,
+            30,
             PURPLE_DK,
             vertices=6,
-            radius_top=3.2,
+            radius_top=4.6,
             smooth=False,
             bevel=0.4,
         ),
-        part_box("ridge", (0, 3.0, -22), (1.4, 1.2, 21), STEEL, bevel=0.3),
+        part_box("ridge", (0, 4.2, -27), (2.0, 1.6, 28), STEEL, bevel=0.3),
     ]
-    return _shift(join_parts(parts, "boss_shadow_knight_part_weapon"), dy=10.0)
+    return _shift(join_parts(parts, "boss_shadow_knight_part_weapon"), dy=11.0)
 
 
 BOSS_PART_BUILDERS = {
