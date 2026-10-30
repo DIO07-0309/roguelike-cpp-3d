@@ -6,6 +6,8 @@
 #include "game/entities/player.h"
 #include "game/entities/monster.h"
 #include "game/rendering3d/part_voxelizer.h"
+#include "game/rendering3d/model_cache.h"
+#include "data/mesh_asset.h"
 #include "raylib.h"
 
 void AvatarDirector::ensure_player(Player* player) {
@@ -39,12 +41,31 @@ void AvatarDirector::_attach_voxel(SkeletonAvatar& avatar, const std::string& sk
     if (!voxel::g_voxel_avatar) return;   // --no-voxel-avatar: 全局回退纸偶
     const std::string key = voxel_parts_key_from_skeleton(skeleton_path);
     if (key.empty()) return;
+    // A16-Boss: 优先手建低模部件 (boss/monster 手建模), 缺任一 → 回退体素
+    if (_try_attach_lowpoly(avatar, key)) return;
     std::vector<Mesh> meshes;
     for (const auto& part : avatar.part_defs()) {
         const std::string slot = voxel_slot_from_path(part.file);
         meshes.push_back(_voxel_lib.get(key, slot, part.file, part.pivot_x, part.pivot_y));
     }
     avatar.set_borrowed_voxel_parts(std::move(meshes));
+}
+
+// A16-Boss: 手建低模部件 (assets/models/<actor>_part_<slot>.json) — 全部存在才采用
+bool AvatarDirector::_try_attach_lowpoly(SkeletonAvatar& avatar, const std::string& key) {
+    std::vector<Mesh> meshes;
+    meshes.reserve(avatar.part_defs().size());
+    for (const auto& part : avatar.part_defs()) {
+        const std::string slot = voxel_slot_from_path(part.file);
+        if (slot.empty()) return false;
+        std::string err;
+        const auto asset = load_mesh_asset_file(
+            "assets/models/" + key + "_part_" + slot + ".json", err);
+        if (!asset) return false;   // 缺任一 → 整体回退体素 (all-or-nothing)
+        meshes.push_back(build_gpu_mesh_asset(*asset));
+    }
+    avatar.set_voxel_parts(std::move(meshes));   // 拥有所有权 (析构释放)
+    return true;
 }
 
 void AvatarDirector::tick_monsters(const std::vector<std::unique_ptr<Monster>>& monsters) {

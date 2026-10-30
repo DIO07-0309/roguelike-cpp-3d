@@ -32,6 +32,8 @@ private:
     void ensure_defs();
     // A13-M2: 怪物挂体素件 (网格按类共享; 失败/无槽位 → 该件留空回退纸偶)
     void _attach_voxel(SkeletonAvatar& avatar, const std::string& skeleton_path);
+    // A16-Boss: 优先手建低模部件 (assets/models/<actor>_part_<slot>.json); 全部存在才采用
+    bool _try_attach_lowpoly(SkeletonAvatar& avatar, const std::string& key);
 
     std::unique_ptr<PlayerAvatar> _player_avatar;
     std::map<std::string, ActorAvatarDef> _actor_avatars;

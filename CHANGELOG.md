@@ -1,4 +1,24 @@
-﻿# A16-Player: v8 走路腿部摆动轴随朝向（2026-10-30）
+﻿# A16-Boss: 怪物/Boss 手建低模 — 试点(暗影骑士) + 通用优先路径（2026-10-30）
+
+> 需求:提升怪物/Boss 建模质量,对齐新主人公水准。先做一个 Boss 试跑确认风格。
+> 现状:怪物/Boss 是"2D 像素部件贴图 → 体素化"(块状)。
+
+## 通用代码路径
+- `AvatarDirector` 新增 `_try_attach_lowpoly`:任意骨骼角色若存在
+  `assets/models/<actor>_part_<槽位>.json`(全部件齐全)则优先手建低模,缺任一 → 回退体素/纸偶。
+- 因此后续 Boss/怪物只需导出同名 JSON 即可接入,无需改代码。
+
+## 试点:暗影骑士 Boss(5 件手建低模)
+- `art_src/scripts/blender_models_boss.py` 手建 head/torso/arm/leg/weapon,
+  配色采样自 `boss_shadow_knight_part_*.png`(暗紫甲 80,64,112 / 高光 128,112,160 / 金铜 150,120,70 / 红眼 220,70,60)。
+- 暗紫头盔+深色面甲+**红眼**+金眉甲+盔脊冠饰;胸甲+金V甲片+尖肩甲(金尖)+腰带;盔甲臂+金护腕;腿+金边靴;深紫巨剑(冷银脊)。
+- 骨骼 arm 骨靠中(x=-4/6)导致手臂陷进躯干 → 手臂/巨剑前移(举剑于胸前),深度测试下可见。
+- 新增测试 `PlayerPartAssets.BossShadowKnightPartsLoad` (5 件可加载)。
+
+## 门禁
+- ctest **89/89** · fn_length **0** · world_validator **0/0** · 桌面包已同步(exe+Boss JSON+预览) · GitHub 已推送
+
+# A16-Player: v8 走路腿部摆动轴随朝向（2026-10-30）
 
 > 反馈:水平(左右)移动时双腿左右摆是对的;但向前/向后移动时应前后摆动,而不是仍左右摆。
 
