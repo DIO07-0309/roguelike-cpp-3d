@@ -113,6 +113,14 @@ std::vector<AvatarPartDraw> SkeletonAvatar::part_draws(const OverlayTf& overlay,
         parts.push_back(buildAvatarPart(part, bones[part.bone], _tex[index],
                                         _sk.pixels_per_unit, flip_x));
         if (index < _voxel.size()) parts.back().voxel = _voxel[index];  // A13
+        // A16-Player: 肢体件 (腿/臂/武器) 摆动轴随朝向 — 前后移动时前后摆而非左右摆
+        if (part.bone >= 0 && part.bone < (int)_sk.bones.size()) {
+            const std::string& bone = _sk.bones[part.bone].name;
+            parts.back().swing_side =
+                bone.find("leg") != std::string::npos ||
+                bone.find("arm") != std::string::npos ||
+                bone.find("weapon") != std::string::npos;
+        }
     }
     return parts;
 }

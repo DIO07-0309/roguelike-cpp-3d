@@ -16,6 +16,7 @@ struct AvatarPartDraw {
     float rot_deg = 0;
     bool flip_x = false;
     float yaw_deg = 0;             // A16-Player: 朝向 (绕广告牌 up 轴, 0=朝相机/下, 90=右, -90=左, 180=上)
+    bool swing_side = false;       // A16-Player: 肢体摆动轴随朝向 (腿/臂/武器=绕侧轴前后摆; 其余绕深度轴左右摆)
     bool element_tinted = false;   // G12-5: 该件按玩家元素核心染色 (披风)
     Mesh voxel = {};               // A13: 体素网格 (vertexCount>0 时走 3D 件; 借用, 不释放)
 };

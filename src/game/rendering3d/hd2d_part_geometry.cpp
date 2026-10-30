@@ -22,6 +22,7 @@ void appendAvatarParts(const std::vector<AvatarPartDraw>& parts, Vector3 feet_wo
         item.pivot_uv_px = part.pivot;
         item.rot_deg = part.rot_deg;
         item.facing_yaw = part.yaw_deg;   // A16-Player: 朝向 (绕广告牌 up 轴)
+        item.swing_side = part.swing_side;  // A16-Player: 肢体摆动轴随朝向
         item.texture = part.tex;
         item.voxel_mesh = part.voxel;         // A13: 体素网格 (空则四边形回退)
         item.flip_x = part.flip_x;
@@ -69,20 +70,44 @@ Vector3 rotateAboutAxis(Vector3 v, Vector3 axis_u, float cosine, float sine) {
                    v.z * cosine + axv.z * sine + axis_u.z * d * (1.0f - cosine)};
 }
 
-// A16-Player: 朝向 — 绕广告牌 up 轴 (col_z) 旋转 col_x/col_y, 角色保持直立
-void applyFacingYaw(Vector3 col_x, Vector3 col_y, Vector3 col_z, float facing_yaw,
+// A16-Player: 朝向 — 绕给定轴旋转 col_x/col_y, 角色保持直立 (轴通常=广告牌 up)
+void applyFacingYaw(Vector3 col_x, Vector3 col_y, Vector3 axis, float facing_yaw,
                     Vector3& out_x, Vector3& out_y) {
     const float yaw = facing_yaw * DEG2RAD;
     const float cy = std::cos(yaw), sy = std::sin(yaw);
-    const float inv_len = 1.0f / (std::sqrt(col_z.x * col_z.x + col_z.y * col_z.y
-                                            + col_z.z * col_z.z) + 1e-6f);
-    const Vector3 axis_u = {col_z.x * inv_len, col_z.y * inv_len, col_z.z * inv_len};
+    const float inv_len = 1.0f / (std::sqrt(axis.x * axis.x + axis.y * axis.y
+                                            + axis.z * axis.z) + 1e-6f);
+    const Vector3 axis_u = {axis.x * inv_len, axis.y * inv_len, axis.z * inv_len};
     out_x = rotateAboutAxis(col_x, axis_u, cy, sy);
     out_y = rotateAboutAxis(col_y, axis_u, cy, sy);
 }
 
+// A16-Player: 广告牌基三轴 (含肢体摆动)
+//  side_mode=false: 摆动绕深度轴 (广告牌平面内, 屏幕左右摆) — 既有无朝向行为
+//  side_mode=true : 摆动绕角色侧轴 (随朝向) — 前后移动时腿/臂前后摆而非左右摆
+struct PartCols { Vector3 x, y, z; };
+
+PartCols billboardCols(Vector3 right, Vector3 up, Vector3 normal, float kx, float kz,
+                       float flip, float cosine, float sine, float facing_yaw, bool side_mode) {
+    const Vector3 col_y0 = {-normal.x * kx, -normal.y * kx, -normal.z * kx};
+    if (!side_mode) {
+        return {{(right.x * cosine - up.x * sine) * kx * flip,
+                 (right.y * cosine - up.y * sine) * kx * flip,
+                 (right.z * cosine - up.z * sine) * kx * flip},
+                col_y0,
+                {(right.x * sine + up.x * cosine) * kz,
+                 (right.y * sine + up.y * cosine) * kz,
+                 (right.z * sine + up.z * cosine) * kz}};
+    }
+    const float yaw = facing_yaw * DEG2RAD;
+    const Vector3 up_u = Vector3Normalize(up);
+    const Vector3 side = rotateAboutAxis(right, up_u, std::cos(yaw), -std::sin(yaw));
+    return {{right.x * kx * flip, right.y * kx * flip, right.z * kx * flip},
+            rotateAboutAxis(col_y0, side, cosine, sine),
+            rotateAboutAxis({up.x * kz, up.y * kz, up.z * kz}, side, cosine, sine)};
+}
+
 // A13: 体素网格 → 广告牌基矩阵 — 网格轴 x=贴图横向, y=厚度(+背离相机), z=贴图向上
-// 与四边形路径同源: kx/kz 缩放, rot_deg 平面内旋转, flip_x 绕 pivot 镜像
 bool partMeshMatrix(const HD2DDrawItem& item, const Camera3D& camera, Matrix& out) {
     if (item.texture.width <= 0 || item.texture.height <= 0
         || item.size <= 0 || item.height <= 0) return false;
@@ -94,26 +119,18 @@ bool partMeshMatrix(const HD2DDrawItem& item, const Camera3D& camera, Matrix& ou
     const float kx = item.size / (float)item.texture.width;    // 贴图 px → 世界
     const float kz = item.height / (float)item.texture.height;
     const float flip = item.flip_x ? -1.f : 1.f;
-    const Vector3 col_x = {(right.x * cosine - up.x * sine) * kx * flip,
-                           (right.y * cosine - up.y * sine) * kx * flip,
-                           (right.z * cosine - up.z * sine) * kx * flip};
-    const Vector3 col_y = {-normal.x * kx, -normal.y * kx, -normal.z * kx};
-    const Vector3 col_z = {(right.x * sine + up.x * cosine) * kz,
-                           (right.y * sine + up.y * cosine) * kz,
-                           (right.z * sine + up.z * cosine) * kz};
-    // A16-Player: 朝向 — 绕广告牌 up 轴 (col_z) 旋转 col_x/col_y, 角色保持直立
-    // (广告牌平面内 rot_deg 是绕深度轴的肢体摆动, 不表达朝向; 朝向需绕 up 轴转)
-    // 方向映射: 0=下(朝相机), +90=右, -90=左, 180=上(背对相机)
-    Vector3 facing_x = col_x;
-    Vector3 facing_y = col_y;
+    const PartCols c = billboardCols(right, up, normal, kx, kz, flip, cosine, sine,
+                                     item.facing_yaw, item.swing_side);
+    // A16-Player: 朝向 — 绕 up 轴转 col_x/col_y (肢体件用基 up, 其余用 col_z 保持既有行为)
+    Vector3 facing_x = c.x, facing_y = c.y;
     if (item.facing_yaw != 0.0f)
-        applyFacingYaw(col_x, col_y, col_z, item.facing_yaw, facing_x, facing_y);
+        applyFacingYaw(c.x, c.y, item.swing_side ? up : c.z, item.facing_yaw, facing_x, facing_y);
     const Vector3 world = Vector3Add(item.world_pos,
         Vector3Add(Vector3Scale(right, item.part_offset.x),
                    Vector3Scale(up, item.part_offset.y)));
-    out = {facing_x.x, facing_y.x, col_z.x, world.x,
-           facing_x.y, facing_y.y, col_z.y, world.y,
-           facing_x.z, facing_y.z, col_z.z, world.z,
+    out = {facing_x.x, facing_y.x, c.z.x, world.x,
+           facing_x.y, facing_y.y, c.z.y, world.y,
+           facing_x.z, facing_y.z, c.z.z, world.z,
            0.0f, 0.0f, 0.0f, 1.0f};
     return true;
 }

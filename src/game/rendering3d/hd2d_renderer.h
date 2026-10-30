@@ -71,6 +71,7 @@ struct HD2DDrawItem {
     Mesh voxel_mesh = {};          // A13: 体素网格 (vertexCount>0 时替代纸偶四边形; 借用不释放)
     float rot_deg = 0.0f;
     float facing_yaw = 0.0f;   // A16-Player: 朝向 (绕广告牌 up 轴; 0=下/朝相机, 90=右, -90=左, 180=上)
+    bool swing_side = false;   // A16-Player: 肢体摆动轴随朝向 (前后移动前后摆; 否则左右摆)
     Vector2 pivot_uv_px = {0, 0};
     Vector2 part_offset = {0, 0};
     float blob_width = 0.0f;
