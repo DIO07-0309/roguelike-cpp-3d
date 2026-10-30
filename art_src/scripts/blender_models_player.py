@@ -24,18 +24,20 @@ from blender_lib import (
 )
 import blender_models_npc as _npc
 
-# ── 玩家骑士调色板 (贴合 2D player_part_*.png) ──
-SKIN = (232, 190, 158)  # 皮肤 (暖浅, 可读)
-HAIR = (222, 230, 236)  # 银白头发
-RED = (176, 52, 64)  # 红发饰/红袖/剑柄
-ARMOR = (92, 112, 146)  # 蓝灰主甲
-ARMOR_DARK = (66, 84, 116)  # 甲暗色
-WHITE = (232, 236, 242)  # 白布甲/披风基白 (元素染色)
-TRIM = (150, 164, 208)  # 淡蓝紫饰边
-GOLD = (206, 162, 78)  # 金饰/腰带
-BUCKLE = (208, 214, 224)  # 带扣 (银)
-TEAL = (72, 132, 168)  # 蓝绿靴
-SOLE = (44, 42, 54)  # 靴底/暗部
+# ── 玩家骑士调色板 (直接采样自 2D player_part_*.png 像素) ──
+SKIN = (206, 198, 190)  # 皮肤 (冷浅, 贴合2D冷色调)
+HAIR = (176, 190, 198)  # 银发
+SILVER = (192, 208, 208)  # 银亮 (发/刃高光)
+RED = (192, 64, 64)  # 红饰/红袖/剑柄/红顶
+RED_DARK = (144, 48, 48)  # 红暗
+ARMOR = (96, 96, 128)  # 蓝紫灰主甲 (2D 主色)
+ARMOR_LT = (144, 160, 176)  # 甲高光/浅饰
+ARMOR_DK = (64, 64, 80)  # 甲暗
+DARK = (48, 32, 48)  # 最深/描边/深靴
+WHITE = (224, 224, 224)  # 白布甲/披风基白 (元素染色)
+GOLD = (160, 128, 80)  # 金/棕腰带/护腕
+LIP = (224, 112, 96)  # 唇
+SOLE = (38, 26, 38)  # 靴底
 
 # 骨骼世界 z (与 resources/animations/player_skeleton.json 一致) → 部件局部 z = 世界 z - 锚点 z
 HIPS_Z = 18.0
@@ -125,101 +127,162 @@ def export_part_json(obj, path, name):
 
 
 def build_player_part_head():
-    """头: 复用 NPC _head (颅骨/下颌/颊/鼻/眼白瞳孔高光/眉/上下唇/耳/分层头发) + 骑士红发带/红饰。"""
+    """头: 复用 NPC _head (颅骨/下颌/颊/鼻/眼白瞳孔高光/眉/上下唇/耳/分层头发)
+    + 骑士红顶(2D 头顶大片红)/金饰/红发带。"""
     parts = []
     _npc._head(parts, SKIN, HAIR)
-    # 骑士配饰 (世界坐标, 颅骨 z~38.6, 头顶 z~47)
+    # 红顶盖 (2D: 头顶红): 覆盖头顶的红色帽/发
     parts.append(
-        part_box("hair_band", (0, -3.6, 42.2), (10.2, 1.2, 1.5), RED, bevel=0.3)
+        part_sphere(
+            "red_cap",
+            (0, 0.2, 45.4),
+            4.2,
+            RED,
+            segments=16,
+            rings=9,
+            scale=(1.02, 0.98, 0.66),
+        )
     )
     parts.append(
-        part_box("hair_band_back", (0, 3.0, 43.0), (9.0, 1.2, 1.4), RED, bevel=0.3)
+        part_box("red_cap_fr", (0, -2.8, 45.0), (9.6, 1.8, 2.6), RED, bevel=0.6)
     )
-    parts.append(part_sphere("hair_ornament", (2.6, 0.4, 46.6), 1.6, RED))
-    parts.append(part_sphere("hair_ornament_gem", (2.6, 0.4, 46.6), 0.65, GOLD))
+    parts.append(
+        part_box("red_cap_bk", (0, 2.8, 44.6), (8.6, 1.6, 3.0), RED, bevel=0.6)
+    )
+    # 金 stud
+    parts.append(
+        part_sphere("cap_stud_l", (-1.8, -1.4, 46.6), 0.7, GOLD, segments=8, rings=4)
+    )
+    parts.append(
+        part_sphere("cap_stud_r", (1.8, -1.4, 46.6), 0.7, GOLD, segments=8, rings=4)
+    )
+    # 红发带 (前额)
+    parts.append(
+        part_box("hair_band", (0, -3.6, 42.0), (10.2, 1.2, 1.4), RED, bevel=0.3)
+    )
     obj = join_parts(parts, "player_part_head")
     return _to_local(obj, dz=-HEAD_Z, flip_y=True)
 
 
 def build_player_part_torso():
-    """躯干: 复用 NPC _torso (骨盆/胸/胸甲/领口V/纽扣/腰带/带扣/下摆) + 圆肩甲 + 红胸徽。"""
+    """躯干: 复用 NPC _torso (骨盆/胸/胸甲/领口V/纽扣/腰带/带扣/下摆)
+    + 中央白胸甲(系绳, 2D) + 左肩红块/右肩蓝甲 + 腰带浅色铆钉。"""
     parts = []
-    _npc._torso(parts, ARMOR, ARMOR_DARK, TRIM, GOLD, BUCKLE)
-    # 圆肩甲 (罩肩根, 抬到局部 z≥8 = 世界 z 33)
-    for sx in (-6.4, 6.4):
+    _npc._torso(parts, ARMOR, ARMOR_DK, WHITE, GOLD, ARMOR_LT)
+    # 中央白胸甲前板 (2D: 中央白)
+    parts.append(
+        part_box("tabard", (0, -4.8, 25.4), (8.8, 1.4, 12.0), WHITE, bevel=0.9)
+    )
+    # 系绳交叉 (深色细条)
+    for sign in (-1, 1):
+        parts.append(
+            part_box(
+                "lace_v",
+                (sign * 2.4, -5.6, 25.4),
+                (0.9, 0.8, 9.2),
+                ARMOR_DK,
+                bevel=0.2,
+                rotation_z=sign * 0.45,
+            )
+        )
+    for level in (28.6, 25.4, 22.2):
+        parts.append(
+            part_box("lace_h", (0, -5.6, level), (7.6, 0.8, 0.9), ARMOR_DK, bevel=0.2)
+        )
+    # 圆肩甲 (2D: 左肩红块, 右肩蓝甲)
+    for sx, col in ((6.4, RED), (-6.4, ARMOR)):
         parts.append(
             part_sphere(
                 "pauldron",
-                (sx, -0.4, 31.4),
+                (sx, -0.4, 31.2),
                 3.4,
-                ARMOR,
+                col,
                 segments=14,
                 rings=8,
-                scale=(1.0, 1.0, 0.92),
+                scale=(1.0, 1.0, 0.94),
             )
         )
+    # 腰带浅色铆钉
+    for sx in (-4.2, -1.4, 1.4, 4.2):
         parts.append(
-            part_sphere(
-                "pauldron_red", (sx, -0.4, 33.4), 1.2, RED, segments=10, rings=6
+            part_box(
+                "belt_stud", (sx, -5.2, 19.4), (0.9, 0.9, 1.4), ARMOR_LT, bevel=0.2
             )
         )
-    # 红胸徽
-    parts.append(
-        part_box("chest_emblem", (0, -4.7, 27.0), (3.2, 1.2, 3.6), RED, bevel=0.5)
-    )
     obj = join_parts(parts, "player_part_torso")
     return _to_local(obj, dz=-TORSO_Z, flip_y=True)
 
 
 def build_player_part_arm():
-    """臂: 复用 NPC _arm (肩球/肩缝/上臂/肘/前臂/护腕/手指手) — 骑士: 蓝肩 + 红袖 + 金护腕。"""
+    """臂: 复用 NPC _arm (肩球/肩缝/上臂/肘/前臂/护腕/手指手)
+    — 骑士: 蓝肩蓝臂 + 红中段带(2D) + 金护腕。"""
     parts = []
-    _npc._arm(parts, 0.0, ARMOR, RED, SKIN, GOLD)
+    _npc._arm(parts, 0.0, ARMOR, ARMOR, SKIN, GOLD)
+    # 红中段带 (2D: 红在中段)
+    parts.append(
+        part_cylinder(
+            "sleeve_red", (0, 0, 23.2), 2.75, 3.4, RED, vertices=12, bevel=0.3
+        )
+    )
     obj = join_parts(parts, "player_part_arm")
     return _to_local(obj, dz=-ARM_Z, flip_y=True)
 
 
 def build_player_part_leg():
-    """腿: 复用 NPC _leg (smooth 大腿/护膝/靴/靴头/靴底/靴带) — 骑士: 蓝腿 + 蓝绿靴。"""
+    """腿: 复用 NPC _leg (smooth 大腿/护膝/靴/靴头/靴底/靴带)
+    — 骑士: 蓝腿 + 深靴(2D 非蓝绿) + 白靴口 + 金饰。"""
     parts = []
-    _npc._leg(parts, 0.0, ARMOR, TEAL, SOLE)
+    _npc._leg(parts, 0.0, ARMOR, DARK, SOLE)
+    # 白靴口 + 金饰 (2D)
+    parts.append(
+        part_cylinder("cuff", (0, -0.4, 5.2), 3.2, 1.5, WHITE, vertices=14, bevel=0.4)
+    )
+    parts.append(
+        part_sphere("boot_stud", (0, -1.9, 5.2), 0.85, GOLD, segments=8, rings=4)
+    )
     obj = join_parts(parts, "player_part_leg")
     return _to_local(obj, dz=-HIPS_Z, flip_y=True)
 
 
 def build_player_part_weapon():
     """剑: 握柄锚点 z=0, z∈[-23,0], x∈[-3,3]
-    金柄尾 + 红柄 + 金护手(十字) + 银剑刃(锥尖, 蓝青剑脊) + 红宝石。"""
+    金柄尾 + 红柄(带金环, 2D) + 金护手(十字) + 银刃(锥尖, 蓝灰剑脊) + 银护手中。"""
     parts = [
         part_cylinder("grip", (0, 0, -3), 1.5, 6, RED, vertices=8, bevel=0.3),
         part_sphere("pommel", (0, 0, 0), 1.3, GOLD),
+        part_cylinder("grip_band_a", (0, 0, -1.9), 1.62, 0.6, GOLD, vertices=10),
+        part_cylinder("grip_band_b", (0, 0, -4.1), 1.62, 0.6, GOLD, vertices=10),
         part_box("guard", (0, 0, -6.5), (11, 2.2, 2.0), GOLD, bevel=0.5),
-        part_sphere("guard_mid", (0, 0, -6.5), 1.3, GOLD),
+        part_sphere("guard_mid", (0, 0, -6.5), 1.3, SILVER),
         part_cylinder(
             "blade",
             (0, 0, -15),
             0.5,
             16,
-            (208, 222, 226),
+            SILVER,
             vertices=8,
             radius_top=2.2,
             smooth=True,
             bevel=0.3,
         ),
         part_box(
-            "blade_ridge", (0, 2.2, -15), (1.0, 0.9, 14), (110, 160, 185), bevel=0.2
+            "blade_ridge", (0, 2.2, -15), (1.0, 0.9, 14), (120, 140, 160), bevel=0.2
         ),
-        part_sphere("gem", (0, 0, -6.5), 0.9, (170, 42, 58)),
     ]
     return join_parts(parts, "player_part_weapon")
 
 
 def build_player_part_cape():
     """披风: 锚点 z=0 顶, z∈[-25,1], 位于背后 (Blender y<0 → 导出 mesh.y>0 离相机)
-    白主体(后移避穿模) + 淡蓝紫描边 + 内衬 + 领 + 金扣。基白, 元素染色。"""
+    白主体(后移避穿模) + 淡蓝灰细边 + 锯齿下摆(2D 花边) + 领 + 金扣。基白, 元素染色。"""
     parts = [
         part_box(
-            "cape_trim", (1, -9.5, -12), (25.5, 0.8, 28), TRIM, bevel=1.0, taper=0.55
+            "cape_trim",
+            (1, -9.5, -12),
+            (25.0, 0.8, 28),
+            ARMOR_LT,
+            bevel=1.0,
+            taper=0.55,
         ),
         part_box("cape", (1, -7.3, -12), (24, 4.0, 27), WHITE, bevel=1.2, taper=0.55),
         part_box(
@@ -233,6 +296,18 @@ def build_player_part_cape():
         part_box("collar", (1, -6.5, 0), (13, 3.0, 3.2), WHITE, bevel=0.6),
         part_sphere("clasp", (1, -6.5, 0), 1.1, GOLD),
     ]
+    # 锯齿下摆 (下垂小片形成花边)
+    for sx in (-8.0, -3.5, 1.0, 5.5, 9.5):
+        parts.append(
+            part_box(
+                "scallop",
+                (sx, -7.2, -26.2),
+                (4.8, 3.8, 3.2),
+                WHITE,
+                bevel=0.9,
+                taper=0.72,
+            )
+        )
     return join_parts(parts, "player_part_cape")
 
 
