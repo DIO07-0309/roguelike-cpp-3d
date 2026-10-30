@@ -3,9 +3,9 @@
 # 导出格式与 mesh_asset 加载器一致: {"name","vertices":[[x,y,z,r,g,b]...],"faces":[[i,j,k]...]}
 # 构建坐标系 (Blender): X=宽(右), Y=深(前面=+Y 朝相机), Z=高(上); 锚点在原点。
 # 导出映射: mesh = (co.x, -co.y, co.z) → 前面(+Y)→mesh.y 负=朝相机。
-# 精细版 v4 (借鉴 A14 NPC 人形手法): 颅骨+下颌+颊/鼻/眼白瞳孔/眉/嘴 + 分层头发(顶盖/刘海/后脑/侧发/发缕)
-#   + 红发带; 蓝灰胸甲(锥台+V形甲片) + 白腹甲 + 金腰带 + 贴合圆肩甲 + 红肩饰;
-#   细长腿+护膝+白靴口+深靴; 外露臂+白袖口; 红柄金护手银刃剑; 白披风+领+金扣。
+#
+# v5: 直接复用 A14 NPC 的精修人形手法 (blender_models_npc 的 _head/_face/_torso/_arm/_leg),
+#     换玩家骑士配色, 构建后整体平移到各骨骼锚点局部空间 (骨骼世界 z: hips=18 torso=25 head=36 arm=34)。
 import json
 import math
 import os
@@ -22,25 +22,49 @@ from blender_lib import (
     part_sphere,
     join_parts,
 )
+import blender_models_npc as _npc
 
-# ── 玩家调色板 (采样自 assets/sprites/player_part_*.png) ──
-SKIN = (149, 166, 183)  # 皮肤 (浅蓝灰)
-SKIN_DARK = (120, 136, 155)  # 皮肤暗部 (颊/耳窝)
-HAIR = (212, 224, 230)  # 银白头发
-RED = (166, 44, 60)  # 红发饰/肩饰/剑柄
-ARMOR = (92, 108, 138)  # 蓝灰主甲
-ARMOR_LIGHT = (138, 156, 186)  # 甲高光
-WHITE = (228, 232, 240)  # 白布甲/披风基白 (元素染色)
-BOOT = (68, 64, 82)  # 深靴/手套
-DARK = (58, 36, 46)  # 暗部/瞳孔
-STEEL = (208, 222, 226)  # 银刃
-STEEL_DARK = (168, 184, 194)  # 刃暗面
-GOLD = (182, 136, 92)  # 金饰
-GEM = (170, 42, 58)  # 红宝石
-EYE_WHITE = (235, 238, 244)  # 眼白
-MOUTH = (150, 120, 120)  # 唇
-TEAL = (66, 128, 170)  # 蓝绿靴 (2D配色, 更饱和)
-TRIM = (172, 178, 208)  # 披风淡蓝紫描边
+# ── 玩家骑士调色板 (贴合 2D player_part_*.png) ──
+SKIN = (232, 190, 158)  # 皮肤 (暖浅, 可读)
+HAIR = (222, 230, 236)  # 银白头发
+RED = (176, 52, 64)  # 红发饰/红袖/剑柄
+ARMOR = (92, 112, 146)  # 蓝灰主甲
+ARMOR_DARK = (66, 84, 116)  # 甲暗色
+WHITE = (232, 236, 242)  # 白布甲/披风基白 (元素染色)
+TRIM = (150, 164, 208)  # 淡蓝紫饰边
+GOLD = (206, 162, 78)  # 金饰/腰带
+BUCKLE = (208, 214, 224)  # 带扣 (银)
+TEAL = (72, 132, 168)  # 蓝绿靴
+SOLE = (44, 42, 54)  # 靴底/暗部
+
+# 骨骼世界 z (与 resources/animations/player_skeleton.json 一致) → 部件局部 z = 世界 z - 锚点 z
+HIPS_Z = 18.0
+TORSO_Z = 25.0
+HEAD_Z = 36.0
+ARM_Z = 34.0
+WEAPON_Z = 29.0
+CAPE_Z = 34.0
+
+
+def _to_local(obj, dz=0.0, dx=0.0, dy=0.0, flip_y=False):
+    """把已构建的 mesh 平移到部件局部原点 (世界锚点 → 局部)。
+    flip_y: NPC 几何正面朝 -Y, 玩家正面朝 +Y → 镜像 Y (并反转面绕序保持法线朝外)。"""
+    import bmesh
+
+    mesh = obj.data
+    if flip_y:
+        bm = bmesh.new()
+        bm.from_mesh(mesh)
+        for vert in bm.verts:
+            vert.co.y = -vert.co.y
+        bmesh.ops.reverse_faces(bm, faces=bm.faces)
+        bm.to_mesh(mesh)
+        bm.free()
+    for vert in mesh.vertices:
+        vert.co.x += dx
+        vert.co.y += dy
+        vert.co.z += dz
+    return obj
 
 
 def _shade_part(normal):
@@ -97,230 +121,75 @@ def export_part_json(obj, path, name):
     return len(vertices), len(faces)
 
 
-# ── 部件构建 (锚点在原点; z 上, 前面=+Y 朝相机) ──
-
-
-def build_player_part_leg():
-    """腿: 髋锚点 z=0, 向下 z∈[-23,0], x∈[-5,5]
-    蓝大腿锥台 + 白膝 + 蓝小腿 + 白靴口 + 蓝绿靴 + 橙饰 (贴合2D配色)。"""
-    parts = [
-        part_cylinder(
-            "thigh", (0, 0, -7), 3.4, 13, ARMOR, vertices=10, radius_top=3.0, bevel=0.5
-        ),
-        # 白膝 (2D: 白膝带)
-        part_cylinder("knee", (0, 0.4, -13.5), 2.9, 2.2, WHITE, vertices=10, bevel=0.4),
-        part_cylinder(
-            "shin", (0, 0, -17.0), 2.6, 5, ARMOR, vertices=10, radius_top=2.2, bevel=0.5
-        ),
-        # 白靴口
-        part_cylinder(
-            "boot_cuff", (0, 0, -19.5), 3.0, 1.6, WHITE, vertices=10, bevel=0.3
-        ),
-        # 蓝绿靴 (2D) + 深蓝绿靴头 + 橙金扣
-        part_box("boot", (0, 1.6, -21.5), (8, 10, 4), TEAL, bevel=0.6),
-        part_box("boot_toe", (0, 5.6, -22.5), (5, 3, 2.4), (40, 84, 118), bevel=0.5),
-        part_sphere("boot_stud", (0, 1.6, -19.6), 1.0, GOLD),
-    ]
-    return join_parts(parts, "player_part_leg")
-
-
-def build_player_part_torso():
-    """躯干: 锚点 z=0 中间, z∈[-9,12], x∈[-12,12]
-    蓝灰胸甲(锥台) + V形亮甲片 + 白腹甲 + 金腰带 + 贴合圆肩甲 + 红肩饰。"""
-    parts = [
-        # 胸甲主体 (蓝灰, 上宽下窄, 圆润)
-        part_box("chest", (0, 0, 4), (21, 10, 13), ARMOR, bevel=1.3, taper=0.78),
-        # 胸前 V 形亮甲片 (分层, 微凸)
-        part_box(
-            "chest_plate",
-            (0, 4.6, 4.5),
-            (14, 1.4, 9),
-            ARMOR_LIGHT,
-            bevel=0.6,
-            taper=0.82,
-        ),
-        # 腹部白布甲 (收窄)
-        part_box("abdomen", (0, 0, -6), (16, 8, 6), WHITE, bevel=0.7, taper=0.95),
-        # 金腰带
-        part_box("belt", (0, 0, -2.5), (18, 2.2, 2.0), GOLD, bevel=0.5),
-        # 贴合圆肩甲 (蓝灰, 半嵌入胸甲上缘)
-        part_sphere(
-            "r_shoulder",
-            (-9.5, -2, 8),
-            2.8,
-            ARMOR,
-            segments=12,
-            rings=8,
-            scale=(1.0, 1.0, 0.9),
-        ),
-        part_sphere(
-            "l_shoulder",
-            (9.5, -2, 8),
-            2.8,
-            ARMOR,
-            segments=12,
-            rings=8,
-            scale=(1.0, 1.0, 0.9),
-        ),
-        # 红肩饰 (肩甲上缘)
-        part_sphere("r_shoulder_red", (-9.5, -2, 10.4), 1.1, RED),
-        part_sphere("l_shoulder_red", (9.5, -2, 10.4), 1.1, RED),
-    ]
-    return join_parts(parts, "player_part_torso")
+# ── 部件构建 (复用 NPC 精修几何, 再平移到骨骼局部) ──
 
 
 def build_player_part_head():
-    """头: 颈锚点 z=0, z∈[-3,12], x∈[-7,7]
-    Blender +Y=前面(朝相机), -Y=背面。面部(+Y) + 分层头发(顶盖/刘海前/后脑后/侧发) + 红发带。"""
-    parts = [
-        # 颈
-        part_cylinder("neck", (0, 0.2, -1.5), 2.0, 3.5, SKIN, vertices=10),
-        # 颅骨
-        part_sphere(
-            "skull",
-            (0, 0, 5.5),
-            6.0,
-            SKIN,
-            segments=18,
-            rings=11,
-            scale=(0.98, 0.92, 1.04),
-        ),
-        # 下颌 (让球颅骨有可读正面, 微前凸 +Y)
-        part_box("jaw", (0, 0.8, 2.6), (7.0, 7.4, 4.0), SKIN, bevel=1.2, taper=0.84),
-        # 颊 + 下巴 (前面 +Y)
-        part_sphere(
-            "cheek_l",
-            (-2.4, 3.4, 3.6),
-            1.5,
-            SKIN,
-            segments=10,
-            rings=6,
-            scale=(1.0, 0.62, 0.85),
-        ),
-        part_sphere(
-            "cheek_r",
-            (2.4, 3.4, 3.6),
-            1.5,
-            SKIN,
-            segments=10,
-            rings=6,
-            scale=(1.0, 0.62, 0.85),
-        ),
-        part_sphere(
-            "chin",
-            (0, 3.8, 2.2),
-            1.6,
-            SKIN,
-            segments=10,
-            rings=6,
-            scale=(1.05, 0.7, 0.75),
-        ),
-        # 鼻 (楔形, 前面 +Y)
-        part_box(
-            "nose",
-            (0, 4.4, 4.0),
-            (1.4, 1.7, 1.9),
-            SKIN,
-            bevel=0.4,
-            taper=0.55,
-            rotation_x=math.radians(10),
-        ),
-        # 眼 (眼白 + 瞳孔, 加大) + 眉 (前面 +Y)
-        part_sphere(
-            "eye_white_l",
-            (-2.3, 4.5, 5.2),
-            1.5,
-            EYE_WHITE,
-            segments=12,
-            rings=6,
-            scale=(0.95, 0.45, 1.2),
-        ),
-        part_sphere(
-            "eye_white_r",
-            (2.3, 4.5, 5.2),
-            1.5,
-            EYE_WHITE,
-            segments=12,
-            rings=6,
-            scale=(0.95, 0.45, 1.2),
-        ),
-        part_sphere("pupil_l", (-2.3, 5.2, 5.1), 0.95, DARK, segments=8, rings=4),
-        part_sphere("pupil_r", (2.3, 5.2, 5.1), 0.95, DARK, segments=8, rings=4),
-        part_box(
-            "brow_l",
-            (-2.3, 4.6, 6.9),
-            (3.4, 1.1, 0.9),
-            (150, 162, 178),
-            bevel=0.25,
-            rotation_z=math.radians(8),
-        ),
-        part_box(
-            "brow_r",
-            (2.3, 4.6, 6.9),
-            (3.4, 1.1, 0.9),
-            (150, 162, 178),
-            bevel=0.25,
-            rotation_z=math.radians(-8),
-        ),
-        # 嘴 (2D 红唇, 前移避让下巴)
-        part_box("mouth", (0, 4.9, 3.0), (3.2, 0.7, 0.8), (172, 62, 72), bevel=0.2),
-        # 头发: 顶盖 + 刘海(前 +Y) + 后脑(后 -Y) + 侧发
-        part_sphere(
-            "hair_cap",
-            (0, -0.4, 7.6),
-            5.6,
-            HAIR,
-            segments=16,
-            rings=9,
-            scale=(1.02, 0.96, 0.74),
-        ),
-        part_box("fringe", (0, 2.9, 8.0), (8.6, 2.6, 2.4), HAIR, bevel=0.8),
-        part_box("back_hair", (0, -3.6, 5.2), (8.8, 2.6, 7.6), HAIR, bevel=0.9),
-        part_box("sideburn_l", (-4.2, 1.8, 4.6), (1.5, 3.0, 4.6), HAIR, bevel=0.5),
-        part_box("sideburn_r", (4.2, 1.8, 4.6), (1.5, 3.0, 4.6), HAIR, bevel=0.5),
-        # 红发带 (前额 +Y, 前移避开刘海)
-        part_box("hair_band", (0, 3.6, 7.3), (8.6, 1.0, 1.3), RED, bevel=0.3),
-        # 头顶红发饰 (2D: 顶部红饰 + 金芯)
-        part_sphere("hair_ornament", (2.2, 1.0, 9.6), 1.4, RED),
-        part_sphere("hair_ornament_gem", (2.2, 1.0, 9.6), 0.6, GOLD),
-    ]
-    return join_parts(parts, "player_part_head")
+    """头: 复用 NPC _head (颅骨/下颌/颊/鼻/眼白瞳孔高光/眉/上下唇/耳/分层头发) + 骑士红发带/红饰。"""
+    parts = []
+    _npc._head(parts, SKIN, HAIR)
+    # 骑士配饰 (世界坐标, 颅骨 z~38.6, 头顶 z~47)
+    parts.append(
+        part_box("hair_band", (0, -3.6, 42.2), (10.2, 1.2, 1.5), RED, bevel=0.3)
+    )
+    parts.append(
+        part_box("hair_band_back", (0, 3.0, 43.0), (9.0, 1.2, 1.4), RED, bevel=0.3)
+    )
+    parts.append(part_sphere("hair_ornament", (2.6, 0.4, 46.6), 1.6, RED))
+    parts.append(part_sphere("hair_ornament_gem", (2.6, 0.4, 46.6), 0.65, GOLD))
+    obj = join_parts(parts, "player_part_head")
+    return _to_local(obj, dz=-HEAD_Z, flip_y=True)
+
+
+def build_player_part_torso():
+    """躯干: 复用 NPC _torso (骨盆/胸/胸甲/领口V/纽扣/腰带/带扣/下摆) + 圆肩甲 + 红胸徽。"""
+    parts = []
+    _npc._torso(parts, ARMOR, ARMOR_DARK, TRIM, GOLD, BUCKLE)
+    # 圆肩甲 (罩肩根, 抬到局部 z≥8 = 世界 z 33)
+    for sx in (-6.4, 6.4):
+        parts.append(
+            part_sphere(
+                "pauldron",
+                (sx, -0.4, 31.4),
+                3.4,
+                ARMOR,
+                segments=14,
+                rings=8,
+                scale=(1.0, 1.0, 0.92),
+            )
+        )
+        parts.append(
+            part_sphere(
+                "pauldron_red", (sx, -0.4, 33.4), 1.2, RED, segments=10, rings=6
+            )
+        )
+    # 红胸徽
+    parts.append(
+        part_box("chest_emblem", (0, -4.7, 27.0), (3.2, 1.2, 3.6), RED, bevel=0.5)
+    )
+    obj = join_parts(parts, "player_part_torso")
+    return _to_local(obj, dz=-TORSO_Z, flip_y=True)
 
 
 def build_player_part_arm():
-    """臂: 肩锚点 z=0, z∈[-19,0], x∈[-4,4]
-    蓝肩球 + 红上臂段 + 蓝肘 + 蓝前臂 + 橙腕 + 白手 (贴合2D配色)。"""
-    parts = [
-        part_sphere("shoulder", (0, 0, -1.2), 2.6, ARMOR, segments=12, rings=8),
-        # 红上臂段 (2D: 红袖)
-        part_cylinder(
-            "upper", (0, 0, -5), 2.2, 7, RED, vertices=10, radius_top=2.4, bevel=0.4
-        ),
-        # 蓝肘 + 蓝前臂
-        part_cylinder(
-            "elbow", (0, 0, -9.5), 2.2, 1.8, ARMOR_LIGHT, vertices=10, bevel=0.3
-        ),
-        part_cylinder(
-            "forearm",
-            (0, 0, -12.5),
-            1.9,
-            5,
-            ARMOR,
-            vertices=10,
-            radius_top=2.2,
-            bevel=0.4,
-        ),
-        # 橙金护腕 (2D: 橙腕)
-        part_cylinder("wrist", (0, 0, -15.5), 2.0, 1.6, GOLD, vertices=10, bevel=0.3),
-        # 白手
-        part_sphere("hand", (0, 0, -17.5), 2.0, WHITE),
-    ]
-    return join_parts(parts, "player_part_arm")
+    """臂: 复用 NPC _arm (肩球/肩缝/上臂/肘/前臂/护腕/手指手) — 骑士: 蓝肩 + 红袖 + 金护腕。"""
+    parts = []
+    _npc._arm(parts, 0.0, ARMOR, RED, SKIN, GOLD)
+    obj = join_parts(parts, "player_part_arm")
+    return _to_local(obj, dz=-ARM_Z, flip_y=True)
+
+
+def build_player_part_leg():
+    """腿: 复用 NPC _leg (smooth 大腿/护膝/靴/靴头/靴底/靴带) — 骑士: 蓝腿 + 蓝绿靴。"""
+    parts = []
+    _npc._leg(parts, 0.0, ARMOR, TEAL, SOLE)
+    obj = join_parts(parts, "player_part_leg")
+    return _to_local(obj, dz=-HIPS_Z, flip_y=True)
 
 
 def build_player_part_weapon():
     """剑: 握柄锚点 z=0, z∈[-23,0], x∈[-3,3]
-    红柄 + 金护手(十字) + 银剑刃(锥尖, 剑脊) + 红宝石。"""
+    金柄尾 + 红柄 + 金护手(十字) + 银剑刃(锥尖, 蓝青剑脊) + 红宝石。"""
     parts = [
         part_cylinder("grip", (0, 0, -3), 1.5, 6, RED, vertices=8, bevel=0.3),
         part_sphere("pommel", (0, 0, 0), 1.3, GOLD),
@@ -331,16 +200,16 @@ def build_player_part_weapon():
             (0, 0, -15),
             0.5,
             16,
-            STEEL,
-            vertices=6,
+            (208, 222, 226),
+            vertices=8,
             radius_top=2.2,
-            smooth=False,
+            smooth=True,
             bevel=0.3,
         ),
         part_box(
             "blade_ridge", (0, 2.2, -15), (1.0, 0.9, 14), (110, 160, 185), bevel=0.2
         ),
-        part_sphere("gem", (0, 0, -6.5), 0.9, GEM),
+        part_sphere("gem", (0, 0, -6.5), 0.9, (170, 42, 58)),
     ]
     return join_parts(parts, "player_part_weapon")
 
@@ -349,18 +218,10 @@ def build_player_part_cape():
     """披风: 锚点 z=0 顶, z∈[-25,1], 位于背后 (Blender y<0 → 导出 mesh.y>0 离相机)
     白主体(后移避穿模) + 淡蓝紫描边 + 内衬 + 领 + 金扣。基白, 元素染色。"""
     parts = [
-        # 描边层 (更大, 置于背面最外侧 → 从背后看到淡蓝紫边框包白芯)
         part_box(
-            "cape_trim",
-            (1, -9.5, -12),
-            (25.5, 0.8, 28),
-            TRIM,
-            bevel=1.0,
-            taper=0.55,
+            "cape_trim", (1, -9.5, -12), (25.5, 0.8, 28), TRIM, bevel=1.0, taper=0.55
         ),
-        # 白主体 (较小, 在描边层内侧/靠身体)
         part_box("cape", (1, -7.3, -12), (24, 4.0, 27), WHITE, bevel=1.2, taper=0.55),
-        # 内衬 (贴身体侧)
         part_box(
             "cape_inner",
             (1, -5.6, -10),
@@ -369,7 +230,6 @@ def build_player_part_cape():
             bevel=0.8,
             taper=0.62,
         ),
-        # 领 + 金扣 (靠近颈部/肩背)
         part_box("collar", (1, -6.5, 0), (13, 3.0, 3.2), WHITE, bevel=0.6),
         part_sphere("clasp", (1, -6.5, 0), 1.1, GOLD),
     ]
