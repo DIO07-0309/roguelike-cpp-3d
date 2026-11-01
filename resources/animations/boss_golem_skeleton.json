@@ -1,5 +1,5 @@
 {
-  "pixels_per_unit": 0.8,
+  "pixels_per_unit": 1.15,
   "anchor": [
     34,
     87
@@ -26,18 +26,19 @@
     {
       "name": "arm_back",
       "parent": "torso",
-      "x": -4,
+      "x": -14,
       "y": 13
     },
     {
       "name": "weapon",
       "parent": "arm_back",
+      "x": 10,
       "y": -7
     },
     {
       "name": "arm_front",
       "parent": "torso",
-      "x": 6,
+      "x": 14,
       "y": 13
     },
     {

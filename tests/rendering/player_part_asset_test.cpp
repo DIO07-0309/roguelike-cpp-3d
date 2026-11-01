@@ -168,3 +168,16 @@ TEST(PlayerPartAssets, BossFireDemonPartsLoad) {
         EXPECT_TRUE(no_degenerate(*a)) << slot;
     }
 }
+
+TEST(PlayerPartAssets, BossGolemPartsLoad) {
+    // A16-Boss: 魔像手建低模 — 5 件齐全可加载 (AvatarDirector 优先采用)
+    const char* slots[] = {"leg", "arm", "weapon", "torso", "head"};
+    for (const char* slot : slots) {
+        std::string err;
+        const auto a = load_mesh_asset_file(
+            mesh_asset_path(std::string("boss_golem_part_") + slot), err);
+        ASSERT_TRUE(a) << slot << ": " << err;
+        EXPECT_GT(a->triangle_count(), 0) << slot;
+        EXPECT_TRUE(no_degenerate(*a)) << slot;
+    }
+}
