@@ -318,6 +318,78 @@ def build_vampire_part_torso():
             rings=6,
             scale=(1.0, 0.5, 1.0),
         ),
+        # 披风内衬/破边 + 金色纹饰 + 肩部垂布
+        part_box(
+            "cape_inner_l",
+            (-9.0, -7.2, -2.0),
+            (5.0, 1.2, 20.0),
+            DARK,
+            bevel=0.3,
+            taper=0.75,
+        ),
+        part_box(
+            "cape_inner_r",
+            (9.0, -7.2, -2.0),
+            (5.0, 1.2, 20.0),
+            DARK,
+            bevel=0.3,
+            taper=0.75,
+        ),
+        part_box(
+            "cape_gold_trim",
+            (0, -9.2, -17.0),
+            (14.0, 0.8, 1.2),
+            GOLD,
+            bevel=0.1,
+            taper=0.8,
+        ),
+        _slanted_box(
+            "lapel_filigree_l",
+            (-6.0, 9.4, 4.0),
+            (0.8, 0.8, 9.0),
+            GOLD,
+            -16.0,
+            bevel=0.1,
+        ),
+        _slanted_box(
+            "lapel_filigree_r", (6.0, 9.4, 4.0), (0.8, 0.8, 9.0), GOLD, 16.0, bevel=0.1
+        ),
+        part_box(
+            "shoulder_rag_l1",
+            (-14.0, 1.0, 1.0),
+            (2.6, 3.8, 8.0),
+            BLOOD,
+            bevel=0.2,
+            taper=0.3,
+            rotation_z=math.radians(10),
+        ),
+        part_box(
+            "shoulder_rag_l2",
+            (-11.5, 0.5, -1.0),
+            (2.2, 3.4, 6.0),
+            CRIMSON,
+            bevel=0.2,
+            taper=0.3,
+            rotation_z=math.radians(16),
+        ),
+        part_box(
+            "shoulder_rag_r1",
+            (14.0, 1.0, 1.0),
+            (2.6, 3.8, 8.0),
+            BLOOD,
+            bevel=0.2,
+            taper=0.3,
+            rotation_z=math.radians(-10),
+        ),
+        part_box(
+            "shoulder_rag_r2",
+            (11.5, 0.5, -1.0),
+            (2.2, 3.4, 6.0),
+            CRIMSON,
+            bevel=0.2,
+            taper=0.3,
+            rotation_z=math.radians(-16),
+        ),
     ]
     return join_parts(parts, "boss_vampire_part_torso")
 

@@ -253,6 +253,52 @@ def build_boss_part_torso():
         # 颈甲 + 下摆
         part_box("gorget", (0, 0, 15.5), (14, 12, 3.0), PURPLE_DK, bevel=0.7),
         part_box("hem", (0, 0, -13), (18, 13, 3.2), PURPLE_DK, bevel=0.7),
+        # 暗紫破披风 (背后, 增加剪影层次)
+        part_box(
+            "cape",
+            (0, -8.5, -3.0),
+            (20.0, 2.0, 22.0),
+            PURPLE_DEEP,
+            bevel=0.5,
+            taper=0.75,
+        ),
+        part_box(
+            "cape_tear_l",
+            (-6.0, -8.5, -16.0),
+            (3.0, 1.8, 7.0),
+            PURPLE_DK,
+            bevel=0.2,
+            taper=0.35,
+        ),
+        part_box(
+            "cape_tear_c",
+            (0.0, -8.5, -17.5),
+            (3.2, 1.8, 9.0),
+            PURPLE_DEEP,
+            bevel=0.2,
+            taper=0.3,
+        ),
+        part_box(
+            "cape_tear_r",
+            (6.0, -8.5, -16.0),
+            (3.0, 1.8, 7.0),
+            PURPLE_DK,
+            bevel=0.2,
+            taper=0.35,
+        ),
+        part_sphere(
+            "cape_clasp_l", (-10.0, -7.0, 13.0), 1.0, GOLD, segments=8, rings=4
+        ),
+        part_sphere("cape_clasp_r", (10.0, -7.0, 13.0), 1.0, GOLD, segments=8, rings=4),
+        # 胸甲金线纹饰
+        _slanted_box(
+            "filigree_l", (-5.0, 9.7, 4.0), (0.9, 0.8, 8.0), GOLD, -10.0, bevel=0.1
+        ),
+        _slanted_box(
+            "filigree_r", (5.0, 9.7, 4.0), (0.9, 0.8, 8.0), GOLD, 10.0, bevel=0.1
+        ),
+        part_sphere("chest_rivet_l", (-7.5, 9.7, 8.0), 0.55, GOLD, segments=8, rings=4),
+        part_sphere("chest_rivet_r", (7.5, 9.7, 8.0), 0.55, GOLD, segments=8, rings=4),
     ]
     return join_parts(parts, "boss_shadow_knight_part_torso")
 
@@ -392,6 +438,10 @@ def build_boss_part_weapon():
         ),
         part_box("ridge", (0, 4.2, -27), (2.0, 1.6, 28), STEEL, bevel=0.3),
         part_box("fuller", (0, 4.7, -27), (0.8, 1.0, 26), PURPLE, bevel=0.2),
+        # 刃身血槽魂光符文
+        part_box("blade_rune_a", (0, 5.1, -18.0), (1.2, 0.8, 2.6), GLOW, bevel=0.1),
+        part_box("blade_rune_b", (0, 5.1, -25.0), (1.2, 0.8, 2.6), GLOW, bevel=0.1),
+        part_box("blade_rune_c", (0, 5.1, -32.0), (1.2, 0.8, 2.6), GLOW, bevel=0.1),
     ]
     return _shift(join_parts(parts, "boss_shadow_knight_part_weapon"), dy=11.0)
 

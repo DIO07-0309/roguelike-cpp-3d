@@ -301,6 +301,43 @@ def build_golem_part_torso():
             bevel=0.1,
             rotation_z=math.radians(10),
         ),
+        # 肩部琥珀符文 + 碎石缺口
+        part_box(
+            "shoulder_rune_l", (-20.0, 8.3, 13.0), (2.2, 0.8, 3.2), GLOW, bevel=0.1
+        ),
+        part_box(
+            "shoulder_rune_r", (20.0, 8.3, 13.0), (2.2, 0.8, 3.2), GLOW, bevel=0.1
+        ),
+        part_sphere(
+            "shoulder_chip_l", (-25.0, 5.0, 17.0), 1.2, STONE_LT, segments=8, rings=4
+        ),
+        part_sphere(
+            "shoulder_chip_r", (25.0, 5.0, 17.0), 1.2, STONE_LT, segments=8, rings=4
+        ),
+        part_box(
+            "crack_chest_c",
+            (0.0, 10.6, -1.0),
+            (0.8, 1.0, 5.0),
+            CRACK,
+            bevel=0.1,
+            rotation_z=math.radians(-6),
+        ),
+        part_box(
+            "back_chip_l",
+            (-14.0, -7.0, 18.0),
+            (3.0, 3.0, 2.0),
+            STONE_LT,
+            bevel=0.2,
+            rotation_z=math.radians(-18),
+        ),
+        part_box(
+            "back_chip_r",
+            (14.0, -7.0, 18.0),
+            (3.0, 3.0, 2.0),
+            STONE_LT,
+            bevel=0.2,
+            rotation_z=math.radians(18),
+        ),
     ]
     return join_parts(parts, "boss_golem_part_torso")
 
@@ -530,6 +567,33 @@ def build_golem_part_weapon():
             STONE_DK,
             bevel=0.2,
             rotation_z=math.radians(20),
+        ),
+        # 锤面符文 + 铜角 + 顶部碎石
+        part_box("hammer_rune_l", (-5.0, 7.6, 23.0), (1.2, 0.8, 4.0), GLOW, bevel=0.1),
+        part_box("hammer_rune_r", (5.0, 7.6, 21.0), (1.2, 0.8, 4.0), GLOW, bevel=0.1),
+        part_box(
+            "hammer_corner_l", (-8.0, 6.8, 28.0), (3.0, 1.4, 2.4), BRONZE, bevel=0.2
+        ),
+        part_box(
+            "hammer_corner_r", (8.0, 6.8, 16.0), (3.0, 1.4, 2.4), BRONZE, bevel=0.2
+        ),
+        part_box(
+            "hammer_top_spike_l",
+            (-5.0, 0, 31.5),
+            (2.0, 2.4, 4.0),
+            STONE_DK,
+            bevel=0.2,
+            taper=0.15,
+            rotation_z=math.radians(-14),
+        ),
+        part_box(
+            "hammer_top_spike_r",
+            (5.0, 0, 31.5),
+            (2.0, 2.4, 4.0),
+            STONE_DK,
+            bevel=0.2,
+            taper=0.15,
+            rotation_z=math.radians(14),
         ),
         # 柄尾尖石
         part_box(

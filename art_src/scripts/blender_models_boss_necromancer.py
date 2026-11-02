@@ -316,6 +316,64 @@ def build_necromancer_part_torso():
         _slanted_box(
             "rune_r", (5.0, 10.2, 1.0), (0.8, 0.8, 5.0), GLOW, 10.0, bevel=0.1
         ),
+        # 肩部破布条 + 腰带骨坠
+        part_box(
+            "shoulder_rag_l1",
+            (-16.0, 1.0, 2.0),
+            (2.6, 4.0, 8.0),
+            MOSS_DK,
+            bevel=0.2,
+            taper=0.35,
+            rotation_z=math.radians(8),
+        ),
+        part_box(
+            "shoulder_rag_l2",
+            (-13.5, 0.5, 0.0),
+            (2.2, 3.6, 6.0),
+            ROBE_DK,
+            bevel=0.2,
+            taper=0.3,
+            rotation_z=math.radians(14),
+        ),
+        part_box(
+            "shoulder_rag_r1",
+            (16.0, 1.0, 2.0),
+            (2.6, 4.0, 8.0),
+            MOSS_DK,
+            bevel=0.2,
+            taper=0.35,
+            rotation_z=math.radians(-8),
+        ),
+        part_box(
+            "shoulder_rag_r2",
+            (13.5, 0.5, 0.0),
+            (2.2, 3.6, 6.0),
+            ROBE_DK,
+            bevel=0.2,
+            taper=0.3,
+            rotation_z=math.radians(-14),
+        ),
+        part_sphere("bone_charm_l", (-4.0, 7.8, -13.0), 0.7, BONE, segments=8, rings=4),
+        part_sphere("bone_charm_c", (0.0, 7.8, -14.0), 0.8, BONE, segments=8, rings=4),
+        part_sphere("bone_charm_r", (4.0, 7.8, -13.0), 0.7, BONE, segments=8, rings=4),
+        part_box("robe_trim_l", (-7.0, 9.6, 5.0), (0.8, 0.8, 9.0), BONE, bevel=0.1),
+        part_box("robe_trim_r", (7.0, 9.6, 5.0), (0.8, 0.8, 9.0), BONE, bevel=0.1),
+        part_box(
+            "cape_tear_l",
+            (-6.0, -8.2, -14.0),
+            (2.6, 1.6, 6.0),
+            ROBE_DK,
+            bevel=0.2,
+            taper=0.3,
+        ),
+        part_box(
+            "cape_tear_r",
+            (6.0, -8.2, -14.0),
+            (2.6, 1.6, 6.0),
+            ROBE_DK,
+            bevel=0.2,
+            taper=0.3,
+        ),
     ]
     return join_parts(parts, "boss_necromancer_part_torso")
 

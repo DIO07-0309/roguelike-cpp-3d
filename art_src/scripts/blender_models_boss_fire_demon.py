@@ -410,6 +410,51 @@ def build_fire_demon_part_torso():
             rotation_z=math.radians(18),
             rotation_x=math.radians(22),
         ),
+        # 肩部余烬碎晶 + 胸甲熔岩脉
+        _slanted_box(
+            "shoulder_ember_l1",
+            (-21.0, 3.0, 19.0),
+            (2.4, 2.4, 5.0),
+            GLOW,
+            -28.0,
+            bevel=0.15,
+            taper=0.15,
+        ),
+        _slanted_box(
+            "shoulder_ember_l2",
+            (-17.0, 2.0, 22.0),
+            (1.8, 2.0, 4.0),
+            FIRE,
+            -14.0,
+            bevel=0.15,
+            taper=0.15,
+        ),
+        _slanted_box(
+            "shoulder_ember_r1",
+            (21.0, 3.0, 19.0),
+            (2.4, 2.4, 5.0),
+            GLOW,
+            28.0,
+            bevel=0.15,
+            taper=0.15,
+        ),
+        _slanted_box(
+            "shoulder_ember_r2",
+            (17.0, 2.0, 22.0),
+            (1.8, 2.0, 4.0),
+            FIRE,
+            14.0,
+            bevel=0.15,
+            taper=0.15,
+        ),
+        _slanted_box(
+            "chest_vein_l", (-6.0, 9.4, 5.0), (0.9, 0.8, 7.0), FIRE, -12.0, bevel=0.1
+        ),
+        _slanted_box(
+            "chest_vein_r", (6.0, 9.4, 2.0), (0.8, 0.8, 5.5), ORANGE_LT, 10.0, bevel=0.1
+        ),
+        part_sphere("belt_ember_l", (-6.0, 7.6, -10.5), 0.7, GLOW, segments=8, rings=4),
+        part_sphere("belt_ember_r", (6.0, 7.6, -10.5), 0.7, GLOW, segments=8, rings=4),
     ]
     return join_parts(parts, "boss_fire_demon_part_torso")
 
@@ -608,6 +653,45 @@ def build_fire_demon_part_weapon():
             bevel=0.2,
             taper=0.15,
         ),
+        # 斧刃锯齿 + 柄身火符
+        _slanted_box(
+            "axe_tooth_l1",
+            (-19.5, 0, 30.0),
+            (2.0, 2.4, 4.0),
+            FIRE,
+            -52.0,
+            bevel=0.15,
+            taper=0.12,
+        ),
+        _slanted_box(
+            "axe_tooth_l2",
+            (-19.5, 0, 22.0),
+            (2.0, 2.4, 4.0),
+            FIRE,
+            -38.0,
+            bevel=0.15,
+            taper=0.12,
+        ),
+        _slanted_box(
+            "axe_tooth_r1",
+            (19.5, 0, 30.0),
+            (2.0, 2.4, 4.0),
+            FIRE,
+            52.0,
+            bevel=0.15,
+            taper=0.12,
+        ),
+        _slanted_box(
+            "axe_tooth_r2",
+            (19.5, 0, 22.0),
+            (2.0, 2.4, 4.0),
+            FIRE,
+            38.0,
+            bevel=0.15,
+            taper=0.12,
+        ),
+        part_box("haft_rune_a", (0, 1.8, -8.0), (1.0, 0.8, 3.0), GLOW, bevel=0.1),
+        part_box("haft_rune_b", (0, 1.8, -18.0), (1.0, 0.8, 3.0), GLOW, bevel=0.1),
         _fang("haft_spike", (0, 0, -31.0), 1.6, 5.0, ORANGE),
     ]
     return _shift(join_parts(parts, "boss_fire_demon_part_weapon"), dy=11.0)
