@@ -1030,10 +1030,14 @@ def preview_one(name):
     import blender_scene
 
     camera = blender_scene.setup_scene()  # 先清场并布置灯光/相机
-    parts = build_parts(name)  # 再建模 (避免被 clear_scene 删掉)
+    family = MONSTERS[name][0]
+    builders = FAMILIES[family]
+    c = _color(name)
     objs = []
+    # 每个骨骼锚点新建对象 (leg/arm 有 front/back 两条骨, 复用同一对象会让
+    # 第二次 location 覆盖第一次 → 预览里两条腿塌成一条)
     for bone_name, slot, bx, bz in ANCHORS:
-        obj = parts[slot]
+        obj = builders[slot](name, c)
         obj.name = bone_name
         obj.scale = (PPU, PPU, PPU)
         obj.location = (bx * PPU, 0, bz * PPU)

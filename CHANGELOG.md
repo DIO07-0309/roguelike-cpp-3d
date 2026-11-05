@@ -1,4 +1,21 @@
-﻿# A17-Monster: 30 种普通怪物手建低模（2026-11-05）
+﻿# A17-Monster: 预览「只有一条腿」根因修复（2026-11-05）
+
+> 反馈:怪物预览里好多只有一条腿。按 systematic-debugging 定位根因后再修。
+
+## 根因 (非建模缺腿)
+- `blender_models_monsters.py::preview_one()` 用 `build_parts(name)` 每槽位只建 **1 个** Blender 对象，
+  而 `ANCHORS` 中 `leg_back`/`leg_front`（及 `arm_back`/`arm_front`）是两条独立骨骼、引用同一槽位；
+  第二次 `obj.location` 覆盖第一次 → **预览图里两条腿塌成一条、两臂塌成一只**。
+- 对照工作参照 `boss_mcp_rebuild.py`：它在循环内每次 `builders[slot]()` 新建对象，故六 Boss 预览一直正常。
+- 游戏内不受影响:骨架 `parts` 有 7 项 (含 leg_back/leg_front 各一), `part_draws()` 逐项画,
+  `_try_attach_lowpoly` 逐项加载 mesh, 两腿 `bone.x=-3/+3` 位置不同 → 实战本就是两条腿。
+
+## 修复
+- `preview_one` 改为**每个骨骼锚点新建对象** (与 Boss 助手一致), 移除复用导致的 location 覆盖。
+- 四族代表预览重渲染 (orc/golem/slime/fire_imp), orc 与 golem 均确认显示两条腿 + 两只臂。
+- 仅改预览脚本 + 重渲 4 张预览; **150 件游戏资产 / 骨架 / 运行时代码零改动** (避免过度修复)。
+
+# A17-Monster: 30 种普通怪物手建低模（2026-11-05）
 
 > 兑现 A16 试点里"风格满意后铺开怪物"的剩余一半；先铺开再二次精修。
 > 30 种怪物共用同一骨架 (ppu 0.8 / anchor 24,62 / 5 槽位 head·torso·arm·leg·weapon)，
