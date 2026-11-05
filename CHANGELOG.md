@@ -1,4 +1,29 @@
-﻿# A16-Boss: 六 Boss MCP 细节细化（2026-11-02）
+﻿# A17-Monster: 30 种普通怪物手建低模（2026-11-05）
+
+> 兑现 A16 试点里"风格满意后铺开怪物"的剩余一半；先铺开再二次精修。
+> 30 种怪物共用同一骨架 (ppu 0.8 / anchor 24,62 / 5 槽位 head·torso·arm·leg·weapon)，
+> 沿用 A16 通用路径 `AvatarDirector._try_attach_lowpoly`，零代码改动。
+
+## 参数化建模
+- `art_src/scripts/blender_models_monsters.py`: 一个脚本 + 4 个形态族模板 + 30 组 2D 采样配色，
+  经 **Blender MCP** 全量导出 30×5=**150 件** `assets/models/mon_<key>_part_<slot>.json`。
+- 4 个形态族（按 2D 部件形态归类）:
+  - **humanoid 类人** (19): 兽人/骷髅/法师/刺客/祭司/守卫/冲锋/炸弹/精英兽人等 — 头盔+胸甲+双臂+腿+长柄武器。
+  - **orb 浮灵/元素** (4): 火魔仆从/闪电球/虚空行者/风暴元素 — 能量球核+光环+悬浮碎晶，无实体腿。
+  - **slime 软体/虫** (5): 史莱姆/冰霜/精英/血蛭/毒蠕 — 纵向连贯凝胶球+眼点+底裙涟漪，头/腿退化贴附避免散架。
+  - **construct 构造/重甲** (2): 魔像/石卫 — 方块石甲+发光核心+巨肩+方锤。
+- 配色逐种采样自 `mon_*_part_*.png`（如 orc 苔绿、fire_imp 橙红、frost_slime 冰蓝、golem 岩褐、void_walker 紫）。
+- 尺度: 世界高约 22~37（主角 ≈39、Boss 74~96），符合"普通怪 < 主角 < Boss"。
+
+## 验证
+- 150 件资产全部有效、无退化面；白名单 `mon_*` 30 条 → skeleton → 5 件低模链路 30/30 闭合。
+- 新增 `PlayerPartAssets.All30MonsterPartsLoad`（30 物种×5 槽位矩阵）。
+- ctest **89/89** · fn_length **0** · world_validator **0/0** · 游戏 exe 重建成功。
+- 预览: `monster_preview_{orc,fire_imp,slime,golem}.png`。
+
+> 后续: 按用户计划"先铺开，再二次精修"逐族细化特征（各族专属部件、更多配色层次）。
+
+# A16-Boss: 六 Boss MCP 细节细化（2026-11-02）
 
 > 用 Blender MCP 实时重建六个已定稿 Boss，统一补充细节层。
 

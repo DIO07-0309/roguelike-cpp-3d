@@ -220,3 +220,31 @@ TEST(PlayerPartAssets, BossDemonLordPartsLoad) {
         EXPECT_TRUE(no_degenerate(*a)) << slot;
     }
 }
+
+// A17-Monster: 30 种普通怪物手建低模 — 每种 5 件, 共 150 件。
+// 一个参数化遍历锁住"物种×槽位"矩阵, 避免逐条重复。
+namespace {
+const char* kMonsterKeys[] = {
+    "orc", "archer", "goblin_hunter", "shaman", "bone_soldier",
+    "skeleton_archer", "dark_mage", "shadow_stalker", "shadow_assassin",
+    "night_stalker", "blood_priest", "summoner", "necromancer", "tank",
+    "charger", "bomber", "elite_orc", "ice_warden", "iron_sentinel",
+    "fire_imp", "lightning_orb", "void_walker", "storm_elemental",
+    "slime", "frost_slime", "elite_slime", "blood_leech", "poison_wyrm",
+    "golem", "stone_guardian",
+};
+const char* kMonsterSlots[] = {"leg", "arm", "weapon", "torso", "head"};
+}  // namespace
+
+TEST(PlayerPartAssets, All30MonsterPartsLoad) {
+    for (const char* key : kMonsterKeys) {
+        for (const char* slot : kMonsterSlots) {
+            const std::string name = std::string("mon_") + key + "_part_" + slot;
+            std::string err;
+            const auto a = load_mesh_asset_file(mesh_asset_path(name), err);
+            ASSERT_TRUE(a) << name << ": " << err;
+            EXPECT_GT(a->triangle_count(), 0) << name;
+            EXPECT_TRUE(no_degenerate(*a)) << name;
+        }
+    }
+}
