@@ -189,6 +189,7 @@ std::vector<AvatarPartDraw> PlayerAvatar::worldParts(const Player& player) const
     const float cape_amp = 1.0f + _cape_gain;   // A16-Player: 披风摆幅随速度/瞬步放大
     for (auto& p : parts) {
         p.yaw_deg = yaw;
+        p.swing_yaw = yaw;   // A17: 玩家摆动轴 = 朝向 (保持 v8 行为); 怪物由位移方向单独给
         if (p.element_tinted) p.rot_deg *= cape_amp;   // 披风 = 唯一元素染色件
     }
     return parts;

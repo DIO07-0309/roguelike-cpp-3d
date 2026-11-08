@@ -2,7 +2,9 @@
 #include "data/mesh_asset.h"
 #include "data/voxel_part_defs.h"
 #include "game/animation/player_avatar.h"   // A16-Player: direction_yaw 朝向映射
-#include "game/entities/entity.h"           // Direction
+#include "game/animation/skeleton_avatar.h"  // A17-Monster: monster_swing_yaw 摆动轴 / AvatarPartDraw
+#include "game/entities/entity.h"            // Direction
+#include "rendering3d/hd2d_renderer.h"       // A17-Monster: HD2DDrawItem 解耦契约
 
 // ============================================================
 // A16-Player: 玩家低模部件资产 — 6 件 (leg/torso/head/arm/weapon/cape)
@@ -130,6 +132,42 @@ TEST(PlayerPartAssets, DirectionYawFollowsWASD) {
     EXPECT_FLOAT_EQ(direction_yaw(Direction::RIGHT), 90.0f);  // D
     EXPECT_FLOAT_EQ(direction_yaw(Direction::LEFT), -90.0f);  // A
     EXPECT_FLOAT_EQ(direction_yaw(Direction::UP), 180.0f);    // W
+}
+
+// A17-Monster: 怪物摆动轴 yaw — 由实际位移方向决定 (水平=左右摆, 垂直=前后摆)。
+// 这是 v8 swing_side 通用化后怪物缺 yaw 的回归锁定。
+TEST(PlayerPartAssets, MonsterSwingYawFollowsMoveDirection) {
+    // 水平位移 → ±90 (side 轴转到深度, 屏幕内左右摆)
+    EXPECT_FLOAT_EQ(monster_swing_yaw(1.0f, 0.0f), 90.0f);    // 向右
+    EXPECT_FLOAT_EQ(monster_swing_yaw(-1.0f, 0.0f), -90.0f);  // 向左
+    // 垂直位移 → 0/180 (side 轴 = 屏幕水平, 前后摆)
+    EXPECT_FLOAT_EQ(monster_swing_yaw(0.0f, 1.0f), 180.0f);   // 向下(背对)
+    EXPECT_FLOAT_EQ(monster_swing_yaw(0.0f, -1.0f), 0.0f);    // 向上(朝相机)
+    // 斜向以较大分量为准
+    EXPECT_FLOAT_EQ(monster_swing_yaw(2.0f, 0.5f), 90.0f);
+    EXPECT_FLOAT_EQ(monster_swing_yaw(0.5f, 2.0f), 180.0f);
+    // 静止返回 0 (调用方据此沿用上一方向, 不抖动)
+    EXPECT_FLOAT_EQ(monster_swing_yaw(0.0f, 0.0f), 0.0f);
+}
+
+// A17-Monster: 摆动轴 yaw 与转身 yaw 必须是两个独立字段 (解耦契约)。
+// v8 把摆动轴绑定在 facing_yaw 上, 怪物 facing_yaw 恒 0 → 恒前后摆; 修复后各自独立。
+TEST(PlayerPartAssets, SwingYawIsDecoupledFromFacingYaw) {
+    AvatarPartDraw part;
+    EXPECT_FLOAT_EQ(part.yaw_deg, 0.0f);
+    EXPECT_FLOAT_EQ(part.swing_yaw, 0.0f);
+    // 两者可独立赋值, 互不影响
+    part.yaw_deg = 45.0f;
+    part.swing_yaw = -90.0f;
+    EXPECT_FLOAT_EQ(part.yaw_deg, 45.0f);     // 转身
+    EXPECT_FLOAT_EQ(part.swing_yaw, -90.0f);  // 摆动轴 = 水平移动左右摆
+    HD2DDrawItem item;
+    EXPECT_FLOAT_EQ(item.facing_yaw, 0.0f);
+    EXPECT_FLOAT_EQ(item.swing_yaw, 0.0f);
+    item.facing_yaw = 45.0f;
+    item.swing_yaw = -90.0f;
+    EXPECT_FLOAT_EQ(item.facing_yaw, 45.0f);
+    EXPECT_FLOAT_EQ(item.swing_yaw, -90.0f);
 }
 
 TEST(PlayerPartAssets, CapeSwayScalesWithSpeedAndDash) {

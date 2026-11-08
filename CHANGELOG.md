@@ -1,4 +1,31 @@
-﻿# A17-Monster: 预览「只有一条腿」根因修复（2026-11-05）
+﻿# A17-Monster: 怪物水平移动腿前后摆修复（2026-11-08）
+
+> 反馈:怪物水平移动时腿变成前后摆(应左右摆), 与 A16 玩家 v8 修过的问题同源。
+> 按 systematic-debugging 定位根因 + TDD 红绿验证。
+
+## 根因 (数据流)
+- A16-v8 把 `swing_side=true` 加在**通用** `SkeletonAvatar::part_draws()` (leg/arm/weapon 骨名),
+  但 `yaw_deg` 只有玩家 `PlayerAvatar::worldParts()` 按 `direction_yaw(WASD)` 设置。
+- 怪物走通用路径 → `yaw_deg` 恒 0 → `billboardCols()` 里 `side=rotateAboutAxis(right,up,cos0,-sin0)=right`
+  恒为屏幕水平轴 → **无论往哪走腿都前后摆**。玩家水平走 yaw=±90 → side 转到深度轴 → 左右摆。
+- 这正是 v8 记录里的隐患: swing_side 位于通用 part_draws, 实际影响所有骨骼角色, 不限玩家。
+
+## 修复: 摆动轴 yaw 与转身 yaw 解耦
+- 新增 `swing_yaw` (AvatarPartDraw / HD2DDrawItem): **专管四肢摆动轴**;
+  `facing_yaw` / `yaw_deg` 保持只管转身, 不再耦合。
+- `billboardCols()` 的 side 轴改用 `swing_yaw`; `applyFacingYaw` 仍用 `facing_yaw` → 转身行为零变化。
+- 新增纯函数 `monster_swing_yaw(dx,dy)`: 水平位移→±90(左右摆), 垂直→0/180(前后摆), 静止→0(沿用上向)。
+- `SkeletonAvatar::track_facing()` 每帧由实际位移更新 `_swing_yaw` (静止沿用, 不抖动), `part_draws` 输出。
+- 玩家 `worldParts()` 设 `swing_yaw = yaw_deg = direction_yaw` → **v8 行为完全保留**;
+  怪物 `facing_yaw` 仍为 0 (不转身, 与现状一致), 仅摆动轴随位移正确切换。
+
+## 验证
+- TDD: `MonsterSwingYawFollowsMoveDirection` (7 断言) + `SwingYawIsDecoupledFromFacingYaw` (解耦契约),
+  先 RED (未声明/编译失败) 后 GREEN。
+- ctest **89/89** · fn_length **0** · world_validator **0/0** · 游戏 exe 重建成功。
+- 改动纯渲染层: 不碰 gameplay / RNG / 存档 / 骨架 JSON。
+
+# A17-Monster: 预览「只有一条腿」根因修复（2026-11-05）
 
 > 反馈:怪物预览里好多只有一条腿。按 systematic-debugging 定位根因后再修。
 

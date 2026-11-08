@@ -5,6 +5,14 @@
 
 SkeletonAvatar::~SkeletonAvatar() { release_textures(); release_voxel(); }
 
+// A17-Monster: 摆动轴 yaw 由实际位移方向决定 (与 direction_yaw 同一套角度约定)。
+// 水平移动 → ±90 (side 轴转到深度 → 屏幕内左右摆); 垂直移动 → 0/180 (前后摆)。
+float monster_swing_yaw(float dx, float dy) {
+    if (dx == 0.0f && dy == 0.0f) return 0.0f;   // 静止: 由调用方沿用上一方向
+    if (std::fabs(dx) >= std::fabs(dy)) return dx > 0.0f ? 90.0f : -90.0f;
+    return dy > 0.0f ? 180.0f : 0.0f;
+}
+
 void SkeletonAvatar::release_textures() {
     for (auto& t : _tex)
         if (t.id > 0) UnloadTexture(t);
@@ -71,8 +79,12 @@ bool SkeletonAvatar::hp_hit_edge(int hp) {
 void SkeletonAvatar::track_facing(const Vector2& pos) {
     if (_has_last_pos) {
         const float dx = pos.x - _last_pos.x;
+        const float dy = pos.y - _last_pos.y;
         if (dx > 1e-3f) _facing = 1.f;
         else if (dx < -1e-3f) _facing = -1.f;
+        // A17-Monster: 用实际位移方向更新摆动轴 yaw; 静止时沿用上一方向避免抖动
+        if (std::fabs(dx) > 1e-3f || std::fabs(dy) > 1e-3f)
+            _swing_yaw = monster_swing_yaw(dx, dy);
     }
     _last_pos = pos;
     _has_last_pos = true;
@@ -113,6 +125,8 @@ std::vector<AvatarPartDraw> SkeletonAvatar::part_draws(const OverlayTf& overlay,
         parts.push_back(buildAvatarPart(part, bones[part.bone], _tex[index],
                                         _sk.pixels_per_unit, flip_x));
         if (index < _voxel.size()) parts.back().voxel = _voxel[index];  // A13
+        // A17-Monster: 摆动轴 yaw 默认取本形象记录的位移方向; 玩家在 worldParts() 覆盖为 WASD yaw
+        parts.back().swing_yaw = _swing_yaw;
         // A16-Player: 肢体件 (腿/臂/武器) 摆动轴随朝向 — 前后移动时前后摆而非左右摆
         if (part.bone >= 0 && part.bone < (int)_sk.bones.size()) {
             const std::string& bone = _sk.bones[part.bone].name;

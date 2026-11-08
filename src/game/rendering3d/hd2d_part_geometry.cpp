@@ -21,7 +21,8 @@ void appendAvatarParts(const std::vector<AvatarPartDraw>& parts, Vector3 feet_wo
         item.height = part.size.y;
         item.pivot_uv_px = part.pivot;
         item.rot_deg = part.rot_deg;
-        item.facing_yaw = part.yaw_deg;   // A16-Player: 朝向 (绕广告牌 up 轴)
+        item.facing_yaw = part.yaw_deg;    // A16-Player: 朝向 (绕广告牌 up 轴, 管转身)
+        item.swing_yaw = part.swing_yaw;    // A17-Monster: 摆动轴专用 yaw (管四肢摆动方向)
         item.swing_side = part.swing_side;  // A16-Player: 肢体摆动轴随朝向
         item.texture = part.tex;
         item.voxel_mesh = part.voxel;         // A13: 体素网格 (空则四边形回退)
@@ -88,7 +89,7 @@ void applyFacingYaw(Vector3 col_x, Vector3 col_y, Vector3 axis, float facing_yaw
 struct PartCols { Vector3 x, y, z; };
 
 PartCols billboardCols(Vector3 right, Vector3 up, Vector3 normal, float kx, float kz,
-                       float flip, float cosine, float sine, float facing_yaw, bool side_mode) {
+                       float flip, float cosine, float sine, float swing_yaw, bool side_mode) {
     const Vector3 col_y0 = {-normal.x * kx, -normal.y * kx, -normal.z * kx};
     if (!side_mode) {
         return {{(right.x * cosine - up.x * sine) * kx * flip,
@@ -99,7 +100,8 @@ PartCols billboardCols(Vector3 right, Vector3 up, Vector3 normal, float kx, floa
                  (right.y * sine + up.y * cosine) * kz,
                  (right.z * sine + up.z * cosine) * kz}};
     }
-    const float yaw = facing_yaw * DEG2RAD;
+    // A17-Monster: 摆动轴用 swing_yaw (位移方向); facing_yaw 只管转身, 不再耦合
+    const float yaw = swing_yaw * DEG2RAD;
     const Vector3 up_u = Vector3Normalize(up);
     const Vector3 side = rotateAboutAxis(right, up_u, std::cos(yaw), -std::sin(yaw));
     return {{right.x * kx * flip, right.y * kx * flip, right.z * kx * flip},
@@ -120,7 +122,7 @@ bool partMeshMatrix(const HD2DDrawItem& item, const Camera3D& camera, Matrix& ou
     const float kz = item.height / (float)item.texture.height;
     const float flip = item.flip_x ? -1.f : 1.f;
     const PartCols c = billboardCols(right, up, normal, kx, kz, flip, cosine, sine,
-                                     item.facing_yaw, item.swing_side);
+                                     item.swing_yaw, item.swing_side);
     // A16-Player: 朝向 — 绕 up 轴转 col_x/col_y (肢体件用基 up, 其余用 col_z 保持既有行为)
     Vector3 facing_x = c.x, facing_y = c.y;
     if (item.facing_yaw != 0.0f)

@@ -16,6 +16,7 @@ struct AvatarPartDraw {
     float rot_deg = 0;
     bool flip_x = false;
     float yaw_deg = 0;             // A16-Player: 朝向 (绕广告牌 up 轴, 0=朝相机/下, 90=右, -90=左, 180=上)
+    float swing_yaw = 0;           // A17-Monster: 摆动轴专用 yaw (解耦转身; 玩家=yaw_deg, 怪物=位移方向)
     bool swing_side = false;       // A16-Player: 肢体摆动轴随朝向 (腿/臂/武器=绕侧轴前后摆; 其余绕深度轴左右摆)
     bool element_tinted = false;   // G12-5: 该件按玩家元素核心染色 (披风)
     Mesh voxel = {};               // A13: 体素网格 (vertexCount>0 时走 3D 件; 借用, 不释放)
@@ -23,6 +24,10 @@ struct AvatarPartDraw {
 
 AvatarPartDraw buildAvatarPart(const PartDef& part, const WorldBone& bone,
                                Texture2D texture, float pixels_per_unit, bool flip_x);
+
+// A17-Monster: 由实际位移方向求摆动轴 yaw (水平→±90 左右摆, 垂直→0/180 前后摆)。
+// 纯函数供测试锁定; dx/dy 为屏幕坐标位移 (dy>0=向下)。
+float monster_swing_yaw(float dx, float dy);
 
 class SkeletonAvatar {
 public:
@@ -66,6 +71,7 @@ private:
     bool _active = false;
     int _last_hp = -1;
     float _facing = 1.f;
+    float _swing_yaw = 0.f;    // A17-Monster: 摆动轴 yaw (由 track_facing 的位移方向更新)
     Vector2 _last_pos = {};
     bool _has_last_pos = false;
 };
