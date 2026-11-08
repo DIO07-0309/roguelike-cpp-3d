@@ -1,4 +1,30 @@
-﻿# A17-Monster: 怪物水平移动腿前后摆修复（2026-11-08）
+﻿# A17-Monster: 怪物身体随移动转向 (第一版表现补全)（2026-11-08）
+
+> 反馈:腿摆修复了, 但移动时身体不转向显得僵硬; 二次精修先不做, 先把第一版表现补全。
+> 先核查"第一次建模是否漏做": 运行时 30 种怪物 actor_key 命中白名单 30/30,
+> 每 key 骨架+5 件低模齐全 (ALL_HIT / ALL_LOWPOLY_OK = True) → 建模本身无遗漏,
+> 缺的是转向表现, 属第一版收尾。
+
+## 根因
+- 身体转身由 `facing_yaw` (=part.yaw_deg) 控制 (`partMeshMatrix` 里 applyFacingYaw);
+  上一修为不引入转身, 怪物 `yaw_deg` 保持恒 0 → 腿摆对了但身体永远朝正面, 显得僵硬。
+- 玩家 `worldParts` 本就按 `direction_yaw(WASD)` 设 yaw (含 ±90/180) 且实机认可,
+  怪物照搬同一套映射一致性最好。
+
+## 修复
+- `SkeletonAvatar` 新增 `_facing_yaw`, `track_facing()` 由位移方向与 `_swing_yaw` 同源更新;
+  `part_draws` 输出 `yaw_deg = _facing_yaw` → 身体随移动方向转向, 腿按该方向摆动, 不脱节。
+- 玩家 `worldParts()` 仍覆盖为 `direction_yaw` → 玩家行为零变化; NPC 静止位移≈0 保持不转向。
+- **hd2d 怪物路径 `flip_x=false`** (原 `facing()<0`): 与玩家一致, 朝向统一由 facing_yaw 表达,
+  避免左右镜像与 yaw 转身叠加导致朝向错乱; 2D 纸偶路径 (monster.cpp draw_at) 仍用 facing() 镜像。
+- 映射复用: `MonsterFacingYawSharesMoveDirectionMapping` 锁定转身/摆动同源且字段独立。
+
+## 验证
+- ctest **89/89** · fn_length **0** · world_validator **0/0** · 游戏 exe + hd2d 冒烟出图 (95KB 非黑屏)。
+- 纯渲染层: 不碰 gameplay / RNG / 存档 / 骨架 / 150 件资产。
+- 动态转身画面需实机走动确认 (静态截图难抓移动瞬间)。
+
+# A17-Monster: 怪物水平移动腿前后摆修复（2026-11-08）
 
 > 反馈:怪物水平移动时腿变成前后摆(应左右摆), 与 A16 玩家 v8 修过的问题同源。
 > 按 systematic-debugging 定位根因 + TDD 红绿验证。

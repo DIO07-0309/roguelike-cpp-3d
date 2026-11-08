@@ -72,6 +72,7 @@ private:
     int _last_hp = -1;
     float _facing = 1.f;
     float _swing_yaw = 0.f;    // A17-Monster: 摆动轴 yaw (由 track_facing 的位移方向更新)
+    float _facing_yaw = 0.f;   // A17-Monster: 身体转向 yaw (与摆动轴同源; 玩家由 worldParts 覆盖)
     Vector2 _last_pos = {};
     bool _has_last_pos = false;
 };

@@ -566,7 +566,9 @@ static void _build_entities(const hd2d::SceneView& view, std::vector<HD2DDrawIte
         // A6-S1: 骨骼皮肤命中 → 逐件 pro 片 (无 blob shadow, 依赖 depth shadow), 否则旧 billboard 原样
         if (auto* skav = m->skeleton_avatar(); skav && skav->active()) {
             const auto& mr = m->entity.rect;
-            const auto parts = skav->part_draws({}, skav->facing() < 0);
+            // A17-Monster: 与玩家一致用 flip_x=false — 朝向统一由 facing_yaw 表达,
+            // 避免左右镜像与 yaw 转身叠加导致朝向错乱 (2D 纸偶路径仍用 facing() 镜像)
+            const auto parts = skav->part_draws({}, false);
             if (!parts.empty()) {
                 appendAvatarParts(parts, {mr.x + mr.width * 0.5f, 0, mr.y + mr.height * 0.5f},
                                   mr.y, 255, 0.f, out);

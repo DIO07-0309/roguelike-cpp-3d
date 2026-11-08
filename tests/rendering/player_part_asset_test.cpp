@@ -170,6 +170,22 @@ TEST(PlayerPartAssets, SwingYawIsDecoupledFromFacingYaw) {
     EXPECT_FLOAT_EQ(item.swing_yaw, -90.0f);
 }
 
+// A17-Monster: 怪物身体朝向 yaw 与摆动轴 yaw 同源 (都取实际位移方向), 但字段独立。
+// 身体转向由 facing_yaw 管, 四肢摆动由 swing_yaw 管; 两者用同一映射保证不脱节。
+TEST(PlayerPartAssets, MonsterFacingYawSharesMoveDirectionMapping) {
+    // 转身 yaw 复用 monster_swing_yaw 的映射 (同一份方向数据)
+    EXPECT_FLOAT_EQ(monster_swing_yaw(1.0f, 0.0f), 90.0f);
+    EXPECT_FLOAT_EQ(monster_swing_yaw(-1.0f, 0.0f), -90.0f);
+    EXPECT_FLOAT_EQ(monster_swing_yaw(0.0f, 1.0f), 180.0f);
+    EXPECT_FLOAT_EQ(monster_swing_yaw(0.0f, -1.0f), 0.0f);
+    // facing_yaw 与 swing_yaw 是独立字段, 都由该映射驱动
+    AvatarPartDraw part;
+    part.yaw_deg = monster_swing_yaw(1.0f, 0.0f);     // 身体右转
+    part.swing_yaw = monster_swing_yaw(1.0f, 0.0f);   // 腿左右摆
+    EXPECT_FLOAT_EQ(part.yaw_deg, 90.0f);
+    EXPECT_FLOAT_EQ(part.swing_yaw, 90.0f);
+}
+
 TEST(PlayerPartAssets, CapeSwayScalesWithSpeedAndDash) {
     // A16-Player: 披风摆幅随移动速度/瞬步增大 — 静止=0, 移动>0, 更快更大, 瞬步最大
     EXPECT_FLOAT_EQ(cape_sway_gain(0.0f, 0.0f), 0.0f);        // 静止无额外摆幅

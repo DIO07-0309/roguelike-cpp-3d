@@ -82,9 +82,12 @@ void SkeletonAvatar::track_facing(const Vector2& pos) {
         const float dy = pos.y - _last_pos.y;
         if (dx > 1e-3f) _facing = 1.f;
         else if (dx < -1e-3f) _facing = -1.f;
-        // A17-Monster: 用实际位移方向更新摆动轴 yaw; 静止时沿用上一方向避免抖动
-        if (std::fabs(dx) > 1e-3f || std::fabs(dy) > 1e-3f)
-            _swing_yaw = monster_swing_yaw(dx, dy);
+        // A17-Monster: 用实际位移方向同时更新摆动轴与身体转向 yaw; 静止沿用上一方向避免抖动
+        if (std::fabs(dx) > 1e-3f || std::fabs(dy) > 1e-3f) {
+            const float dir_yaw = monster_swing_yaw(dx, dy);
+            _swing_yaw = dir_yaw;
+            _facing_yaw = dir_yaw;   // 身体随移动方向转向 (与摆动轴同源, 不脱节)
+        }
     }
     _last_pos = pos;
     _has_last_pos = true;
@@ -125,8 +128,9 @@ std::vector<AvatarPartDraw> SkeletonAvatar::part_draws(const OverlayTf& overlay,
         parts.push_back(buildAvatarPart(part, bones[part.bone], _tex[index],
                                         _sk.pixels_per_unit, flip_x));
         if (index < _voxel.size()) parts.back().voxel = _voxel[index];  // A13
-        // A17-Monster: 摆动轴 yaw 默认取本形象记录的位移方向; 玩家在 worldParts() 覆盖为 WASD yaw
+        // A17-Monster: 摆动轴/身体转向 yaw 默认取本形象记录的位移方向; 玩家在 worldParts() 覆盖为 WASD yaw
         parts.back().swing_yaw = _swing_yaw;
+        parts.back().yaw_deg = _facing_yaw;
         // A16-Player: 肢体件 (腿/臂/武器) 摆动轴随朝向 — 前后移动时前后摆而非左右摆
         if (part.bone >= 0 && part.bone < (int)_sk.bones.size()) {
             const std::string& bone = _sk.bones[part.bone].name;
