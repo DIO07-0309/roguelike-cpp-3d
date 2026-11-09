@@ -31,7 +31,11 @@ const char* kModelNames[] = {"npc_1", "npc_2", "npc_3", "npc_blacksmith",
                               // A18: 三群系 9 个地牢地标
                               "lm_broken_cell", "lm_torture_chamber", "lm_collapsed_tunnel",
                               "lm_lava_rift", "lm_forge_ruins", "lm_fire_pillar",
-                              "lm_floating_altar", "lm_void_crack", "lm_ancient_gate"};
+                              "lm_floating_altar", "lm_void_crack", "lm_ancient_gate",
+                              // A19: 8 种护甲专属掉落物模型
+                              "item_armor_leather", "item_armor_chain", "item_armor_iron",
+                              "item_armor_scale", "item_armor_plate", "item_armor_rune",
+                              "item_armor_ice", "item_armor_robe"};
 
 std::string repo_path(const std::string& relative) {
     return relative;   // ctest 工作目录 = 仓库根 (tests/CMakeLists: WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
@@ -151,6 +155,22 @@ TEST(MeshAsset, AllNineLandmarkModelsExist) {
     };
     for (const char* id : ids) {
         std::string name = std::string("lm_") + id;
+        std::string err;
+        const auto asset = load_mesh_asset_file(mesh_asset_path(name), err);
+        ASSERT_TRUE(asset.has_value()) << name << ": " << err;
+        EXPECT_GT(asset->triangle_count(), 0) << name;
+        EXPECT_TRUE(mesh_asset_exists(name)) << name;
+    }
+}
+
+// A19: 8 种护甲 icon_key 各有专属 3D 模型 (渲染层 kGroundItemModels 映射目标)。
+// 锁住"每种护甲掉落显示不同造型", 避免回退到全用 item_armor 一个模型。
+TEST(MeshAsset, AllEightArmorModelsExist) {
+    const char* ids[] = {
+        "leather", "chain", "iron", "scale", "plate", "rune", "ice", "robe",
+    };
+    for (const char* id : ids) {
+        std::string name = std::string("item_armor_") + id;
         std::string err;
         const auto asset = load_mesh_asset_file(mesh_asset_path(name), err);
         ASSERT_TRUE(asset.has_value()) << name << ": " << err;

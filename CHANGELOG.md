@@ -1,4 +1,35 @@
-﻿# A18-Landmark: 9 个地牢地标手建低模 + 渲染接入（2026-11-09）
+﻿# A19-Armor: 8 种护甲专属掉落物 3D 模型（2026-11-09）
+
+> 承接"补齐 3D 模型"。先排查避免白做: 圣物 (Relic) 是纯被动数据
+> (RelicInstance + HUD 图标), 不是 Item / 不进 ground_items / 无 3D 实体路径 →
+> 建 60 个圣物模型用不上, 排除。真正缺口是地面掉落物: 8 种 item_armor_* icon_key
+> 全挤在 item_armor / item_robe 两个模型, 不同护甲掉地上长得一样。
+
+## 建模 (Blender MCP, 8 件)
+- `art_src/scripts/blender_models_armors.py`: 复用 A14 `build_armor` 立放胸甲骨架尺度
+  (Z-up / 1 单位=1 px / 脚底 y=0), 每种护甲 = 专属配色 + 特征部件:
+  - 皮甲(棕革+交叉缝线) / 锁子甲(灰+密集环铆) / 铁铠(银灰+亮板+铆钉) /
+    鳞甲(绿+层叠鳞片) / 板甲(巨尖肩+护心镜+金腰带) / 符文甲(紫+发光符文+魂核) /
+    冰霜甲(冰蓝+肩冰刺+霜纹) / 暗影袍(黑紫兜帽+幽光符+垂布)。
+- 经 Blender MCP 试跑 3 代表 (修预览相机到正面 3/4 以看清正面特征) → 全量导出 8 件
+  `assets/models/item_armor_<kind>.json` (728~1310 tris), 8 张 `armor_preview_*.png`。
+- 全部脚底 y≈0 (robe -0.08 在容差内), 0 退化面。
+
+## 渲染接入
+- `hd2d_scene_builder.cpp` 的 `kGroundItemModels` 把 8 个 `item_armor_*` 从
+  `item_armor`/`item_robe` 改为各自专属模型名; 缺资产仍自动回退 billboard (零风险)。
+- 纯表现层 + 资产, 不碰 gameplay / RNG / 存档 / 骨架。
+
+## 验证
+- `mesh_asset_test`: kModelNames 加 8 件 (加载/脚底贴地/法线) + 新增
+  `AllEightArmorModelsExist` (锁 8 个 icon_key ↔ 专属资产一致)。
+- ctest **89/89** · fn_length **0** · world_validator **0/0** · 游戏 exe 重建 +
+  hd2d 冒烟出图非黑屏 · 桌面同步 8/8。
+
+> 剩余可补: 墙/地板/门/楼梯的 3D 立体化 (工程较大)、更多掉落物变体、
+> 以及 dnd_reference_* 参考文件若用于新内容扩展。
+
+# A18-Landmark: 9 个地牢地标手建低模 + 渲染接入（2026-11-09）
 
 > 承接"还有什么没建模"的盘点: 角色类 (玩家/6 Boss/30 怪/NPC/守卫) 已全建完,
 > 缺口在场景装饰。本批补 landmarks.json 的 9 个地标房间实物模型 + 接入 3D 渲染路径。

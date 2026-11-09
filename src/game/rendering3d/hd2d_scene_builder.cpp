@@ -1017,7 +1017,8 @@ static void _build_effects(const hd2d::SceneView& view, std::vector<HD2DDrawItem
 }
 
 
-// ── A15: icon key → 掉落物 3D 模型名 (皮锁鳞板符 → item_armor; 冰霜暗影 → item_robe) ──
+// ── A15/A19: icon key → 掉落物 3D 模型名 ──
+// A19: 8 种护甲各有专属模型 (原全挤在 item_armor / item_robe 两个); 缺资产 → 回退 billboard
 struct GroundItemModelMap { const char* icon_key; const char* model_name; };
 static const GroundItemModelMap kGroundItemModels[] = {
     {"weapon_dagger", "item_dagger"},
@@ -1026,14 +1027,14 @@ static const GroundItemModelMap kGroundItemModels[] = {
     {"weapon_nunchaku", "item_nunchaku"},
     {"weapon_crossbow", "item_crossbow"},
     {"item_charm", "item_charm"},
-    {"item_armor_leather", "item_armor"},
-    {"item_armor_chain", "item_armor"},
-    {"item_armor_iron", "item_armor"},
-    {"item_armor_scale", "item_armor"},
-    {"item_armor_plate", "item_armor"},
-    {"item_armor_rune", "item_armor"},
-    {"item_armor_ice", "item_robe"},
-    {"item_armor_robe", "item_robe"},
+    {"item_armor_leather", "item_armor_leather"},
+    {"item_armor_chain", "item_armor_chain"},
+    {"item_armor_iron", "item_armor_iron"},
+    {"item_armor_scale", "item_armor_scale"},
+    {"item_armor_plate", "item_armor_plate"},
+    {"item_armor_rune", "item_armor_rune"},
+    {"item_armor_ice", "item_armor_ice"},
+    {"item_armor_robe", "item_armor_robe"},
     {"item_potion_red", "item_potion_red"},
     {"item_potion_blue", "item_potion_blue"},
 };
