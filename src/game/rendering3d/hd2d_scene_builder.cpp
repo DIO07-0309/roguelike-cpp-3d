@@ -1360,9 +1360,27 @@ static void _build_special_rooms(const hd2d::SceneView& view, std::vector<HD2DDr
     }
 }
 
+// A18-Landmark: 地标房间 → lm_<landmark_id> 模型 (9 件, 三群系各 3)。
+// landmark_id 为空或模型缺失 → 返回 false, 调用方回退旧路径 (地板染色 + 2D 图标)。
+static bool _emit_landmark_prop(const SpecialRoom& sr, std::vector<HD2DDrawItem>& out) {
+    if (sr.landmark_id.empty()) return false;
+    const std::string model_name = "lm_" + sr.landmark_id;
+    auto model = _model_cache().get(model_name);
+    if (!model) return false;
+    const float wx = (float)sr.cx * TILE_SIZE + TILE_SIZE * 0.5f;
+    const float wz = (float)sr.cy * TILE_SIZE + TILE_SIZE * 0.5f;
+    _append_model(model, {wx, 0, wz}, (float)sr.cy * TILE_SIZE, 0.0f, 26.0f, out);
+    return true;
+}
+
 // A14: 特殊房间实物低模 (宝箱/祭坛/泉水) — 与房间中心图标并存 (图标=贴地提示)
 // 已触发 (used) 时改用残迹模型: 开盖空箱 / 灰暗熄灭祭坛 / 干涸开裂泉水
 static void _emit_room_prop(const SpecialRoom& sr, std::vector<HD2DDrawItem>& out) {
+    // A18: 地标房间用独立模型 (不进 switch 的 used 残迹体系)
+    if (sr.type == SpecialRoomType::LANDMARK) {
+        _emit_landmark_prop(sr, out);
+        return;
+    }
     const char* model_name = nullptr;
     const char* used_name = nullptr;
     switch (sr.type) {

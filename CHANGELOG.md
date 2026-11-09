@@ -1,4 +1,40 @@
-﻿# A17-Monster: 怪物身体随移动转向 (第一版表现补全)（2026-11-08）
+﻿# A18-Landmark: 9 个地牢地标手建低模 + 渲染接入（2026-11-09）
+
+> 承接"还有什么没建模"的盘点: 角色类 (玩家/6 Boss/30 怪/NPC/守卫) 已全建完,
+> 缺口在场景装饰。本批补 landmarks.json 的 9 个地标房间实物模型 + 接入 3D 渲染路径。
+
+## 现状核查
+- 特殊房间 (chest/altar/spring/room_*) 早有 3D 模型 (`_emit_room_prop`), 但
+  `SpecialRoomType::LANDMARK` 走 `default: return` — 9 个地标房间只有地板染色 + 2D 图标 + 文字,
+  **没有任何 3D 实物**。这是真正的空白点, 接入路径现成 (`_model_cache().get` + `_append_model`)。
+
+## 建模 (Blender, 9 件)
+- `art_src/scripts/blender_models_landmarks.py`: 三群系各 3 件, 配色采样自 landmarks.json 的
+  `tile_color` + 描述文案; 坐标同 A14 props (Z-up / 1 单位=1 px / 脚底 y=0 / 正面 -Y)。
+  - **遗忘监牢**: 断裂牢房(铁栏+骸骨+残墙) / 刑讯室(铁架+垂链+锈镣) / 坍塌隧道(拱门+落石+断木)
+  - **灰烬火山**: 熔岩裂缝(黑岩+发光裂口+岩刺) / 废弃铁匠铺(半埋铁砧+未熄炉火) / 火柱(螺旋火焰+火星)
+  - **虚空深渊**: 浮空祭坛(石板+符文柱+浮石) / 虚空裂缝(紫光裂口+扭曲碎石) / 远古石门(符文门楣)
+- 试点先建 3 个代表确认风格; 修掉 broken_cell / torture_chamber 的"整面背墙挡主体"、
+  floating_altar 的 gem 过大; floating_altar 补贴地虚空基座使全部 9 件脚底 y=0。
+- 9 件经 MCP 试跑 + headless (MCP 中途断开时) 全量导出 `assets/models/lm_<id>.json`,
+  面数 380~1688 tris/件, 预览 9 张 `landmark_preview_*.png`。
+
+## 渲染接入
+- `hd2d_scene_builder.cpp` 新增 `_emit_landmark_prop`: 按 `"lm_" + sr.landmark_id` 取模型并
+  `_append_model` (触发后仍保留遗迹); `_emit_room_prop` 顶部对 LANDMARK 提前分派。
+  landmark_id 空 / 模型缺 → 自动回退旧路径 (地板染色 + 2D 图标), 零风险。
+- LANDMARK 在 `_special_room_icon_key` 本就返回 nullptr (不画图标), 由 3D 模型替代。
+
+## 验证
+- `mesh_asset_test`: kModelNames 加 9 件 (加载/脚底贴地/法线) + 新增 `AllNineLandmarkModelsExist`
+  (锁住 landmarks.json 的 id 与资产命名一致)。
+- ctest **89/89** · fn_length **0** · world_validator **0/0** · 游戏 exe 重建 + hd2d 冒烟出图非黑屏。
+- 纯表现层 + 资产: 不碰 gameplay / RNG / 存档 / 已有骨架。
+
+> 备注: 本批 9 件全量导出阶段 Blender MCP 连接中断, 用同版本 Blender 5.2 headless CLI
+> (`bpy` 同脚本) 补位, 产物与 MCP 一致; 试点渲染与首次全量导出经 MCP 完成。
+
+# A17-Monster: 怪物身体随移动转向 (第一版表现补全)（2026-11-08）
 
 > 反馈:腿摆修复了, 但移动时身体不转向显得僵硬; 二次精修先不做, 先把第一版表现补全。
 > 先核查"第一次建模是否漏做": 运行时 30 种怪物 actor_key 命中白名单 30/30,

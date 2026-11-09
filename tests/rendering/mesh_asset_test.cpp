@@ -27,7 +27,11 @@ const char* kModelNames[] = {"npc_1", "npc_2", "npc_3", "npc_blacksmith",
                              "item_spear", "item_nunchaku", "item_crossbow",
                              "arena_barrel", "arena_totem", "arena_rock",
                              "arena_spike", "arena_pool",
-                              "guard_alert", "guard_interacted", "guard_banner"};
+                              "guard_alert", "guard_interacted", "guard_banner",
+                              // A18: 三群系 9 个地牢地标
+                              "lm_broken_cell", "lm_torture_chamber", "lm_collapsed_tunnel",
+                              "lm_lava_rift", "lm_forge_ruins", "lm_fire_pillar",
+                              "lm_floating_altar", "lm_void_crack", "lm_ancient_gate"};
 
 std::string repo_path(const std::string& relative) {
     return relative;   // ctest 工作目录 = 仓库根 (tests/CMakeLists: WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
@@ -135,4 +139,22 @@ TEST(MeshAsset, PathAndExistence) {
     EXPECT_TRUE(mesh_asset_exists("npc_1"));
     EXPECT_TRUE(mesh_asset_exists("chest"));
     EXPECT_FALSE(mesh_asset_exists("no_such_model_xyz"));
+}
+
+// A18: 9 个 landmark_id 全部有对应 3D 模型 (渲染层按 "lm_"+landmark_id 取用)。
+// 锁住数据 (landmarks.json) 与资产命名的一致性, 新增地标却漏建模型会在此失败。
+TEST(MeshAsset, AllNineLandmarkModelsExist) {
+    const char* ids[] = {
+        "broken_cell", "torture_chamber", "collapsed_tunnel",
+        "lava_rift", "forge_ruins", "fire_pillar",
+        "floating_altar", "void_crack", "ancient_gate",
+    };
+    for (const char* id : ids) {
+        std::string name = std::string("lm_") + id;
+        std::string err;
+        const auto asset = load_mesh_asset_file(mesh_asset_path(name), err);
+        ASSERT_TRUE(asset.has_value()) << name << ": " << err;
+        EXPECT_GT(asset->triangle_count(), 0) << name;
+        EXPECT_TRUE(mesh_asset_exists(name)) << name;
+    }
 }
