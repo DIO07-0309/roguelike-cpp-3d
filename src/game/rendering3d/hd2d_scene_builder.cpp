@@ -415,7 +415,8 @@ static void _emit_floor_item(HD2DDrawItem& item, const GameMap* map, int tx, int
 
 
 // ── A20-Terrain: 雕饰地形 3D 替代 ──
-// 三群系 × 四类 tile; LAVA 不替代 (保留岩浆 shader)。缺资产 → 静默回退原 quad。
+// 三群系 × 四类 tile; LAVA 不替代 (保留岩浆 shader);
+// 门替换门板为 3D 门框, 但四态叠加装饰 (门楣/锁/封印) 由渲染器保留。缺资产 → 回退原 quad。
 static const char* _terrain_biome_short(const char* biome_id) {
     if (!biome_id) return "prison";
     if (strcmp(biome_id, "ash_volcano") == 0) return "volcano";
@@ -423,25 +424,46 @@ static const char* _terrain_biome_short(const char* biome_id) {
     return "prison";
 }
 
+// A20 二次精修: 墙按 tile 坐标确定性选 3 种结构变体 (不吃游戏 RNG)。
+static int _wall_variant(int tx, int ty) {
+    unsigned h = (unsigned)tx * 73856093u ^ (unsigned)ty * 19349663u;
+    return (int)(h % 3u);
+}
+
 // 返回模型名 (写入 buf); 返回 false = 该 tile 不用 3D 雕饰
 static bool _terrain_model_name(TileType t, const char* biome_short,
-                                char* buf, size_t buf_size) {
+                                int tx, int ty, char* buf, size_t buf_size) {
     const char* kind = nullptr;
     switch (t) {
         case TileType::WALL:         kind = "wall";   break;
         case TileType::FLOOR:        kind = "floor";  break;
         case TileType::STAIRS_DOWN:  kind = "stairs"; break;
-        default: return false;   // LAVA / DOOR 等保留原渲染 (门四态/岩浆 shader)
+        case TileType::DOOR:         kind = "door";   break;
+        default: return false;   // LAVA 保留原渲染 (岩浆 shader)
     }
-    snprintf(buf, buf_size, "terrain_%s_%s", kind, biome_short);
+    if (t == TileType::WALL)
+        snprintf(buf, buf_size, "terrain_wall_%s_v%d", biome_short,
+                 _wall_variant(tx, ty));
+    else
+        snprintf(buf, buf_size, "terrain_%s_%s", kind, biome_short);
     return true;
 }
 
 // 若命中雕饰资产: 给主 tile 打 terrain_replaced 标记, 并推一个同位置 MODEL3D 件。
 // 主 tile 的全部副作用 (LAVA/特殊房间/门态/fog) 由调用方后续照常处理。
 static void _try_terrain_3d(HD2DDrawItem& item, std::vector<HD2DDrawItem>& out,
-                            const char* model_name, bool visible_now) {
+                            const char* model_name, bool visible_now,
+                            float model_yaw = 0.0f) {
     auto model = _model_cache().get(model_name);
+    if (!model) {
+        // 墙变体缺资产 → 回退无后缀名 (= v0); 再缺则彻底回退原 quad
+        std::string base(model_name);
+        const size_t vpos = base.rfind("_v");
+        if (vpos != std::string::npos && vpos + 3 == base.size()
+            && (base[vpos + 2] == '0' || base[vpos + 2] == '1'
+                || base[vpos + 2] == '2'))
+            model = _model_cache().get(base.substr(0, vpos));
+    }
     if (!model) return;   // 缺资产 → 原 quad
     item.terrain_replaced = true;
     item.terrain_model = model;
@@ -452,7 +474,7 @@ static void _try_terrain_3d(HD2DDrawItem& item, std::vector<HD2DDrawItem>& out,
     m.model = model;
     // 3D 用资产自带顶点色, tint 只承载 fog (可见=白 / 已探索不可见=60%灰)
     m.tint = visible_now ? WHITE : Color{153, 153, 153, 255};
-    m.model_yaw = 0.0f;
+    m.model_yaw = model_yaw;   // 门按 door_axis 转 90°, 墙/地板 0
     out.push_back(m);
 }
 
@@ -469,18 +491,21 @@ static void _emit_terrain_tile(const GameMap* map, int tx, int ty,
     item.size = (float)TILE_SIZE;
     if (!map->isExplored(tx, ty)) return;   // v1.6: 未探索 → 虚空
     item.tint = _tile_color(t, map->isVisible(tx, ty));
-    // A20: 先决定本格是否用雕饰 3D (特殊房间 / LAVA / 门 不替代)
+    // A20: 先决定本格是否用雕饰 3D (特殊房间 / LAVA 不替代)
     char model_name[64] = {0};
     const bool use_3d = !map->get_special_room_at(tx, ty)
         && _terrain_model_name(t, _terrain_biome_short(map->biome_id()),
-                               model_name, sizeof(model_name));
+                               tx, ty, model_name, sizeof(model_name));
     if (t == TileType::WALL)
         _emit_wall_item(item, map, tx, ty, wall_tex);
     else if (t == TileType::DOOR)
         _emit_door_item(item, map, tx, ty);
     else
         _emit_floor_item(item, map, tx, ty, floor_tex, has_pal, pal, out, use_3d);
-    if (use_3d) _try_terrain_3d(item, out, model_name, map->isVisible(tx, ty));
+    // 门框: door_axis=1 (贴南北墙) 时转 90° 让正面朝走廊
+    const float door_yaw = (t == TileType::DOOR && item.door_axis == 1) ? 90.0f : 0.0f;
+    if (use_3d)
+        _try_terrain_3d(item, out, model_name, map->isVisible(tx, ty), door_yaw);
     out.push_back(item);
     _emit_boss_fov_fog(map, tx, ty, item, out);
 }

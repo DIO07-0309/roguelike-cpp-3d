@@ -39,7 +39,11 @@ const char* kModelNames[] = {"npc_1", "npc_2", "npc_3", "npc_blacksmith",
                               // A20: 三群系 x 四类 雕饰地形
                               "terrain_wall_prison", "terrain_floor_prison", "terrain_stairs_prison", "terrain_door_prison",
                               "terrain_wall_volcano", "terrain_floor_volcano", "terrain_stairs_volcano", "terrain_door_volcano",
-                              "terrain_wall_void", "terrain_floor_void", "terrain_stairs_void", "terrain_door_void"};
+                              "terrain_wall_void", "terrain_floor_void", "terrain_stairs_void", "terrain_door_void",
+                              // A20 二次精修: 墙 3 结构变体 x 3 群系
+                              "terrain_wall_prison_v0", "terrain_wall_prison_v1", "terrain_wall_prison_v2",
+                              "terrain_wall_volcano_v0", "terrain_wall_volcano_v1", "terrain_wall_volcano_v2",
+                              "terrain_wall_void_v0", "terrain_wall_void_v1", "terrain_wall_void_v2"};
 
 std::string repo_path(const std::string& relative) {
     return relative;   // ctest 工作目录 = 仓库根 (tests/CMakeLists: WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
@@ -183,9 +187,10 @@ TEST(MeshAsset, AllEightArmorModelsExist) {
     }
 }
 
-// A20: 三群系 x 四类 雕饰地形资产齐全。渲染层按 terrain_<kind>_<biome_short>
-// 取用 (LAVA/门/特殊房间不替代), 缺任一 → 静默回退原 quad, 但测试应拦住漏建。
-TEST(MeshAsset, AllTwelveTerrainModelsExist) {
+// A20: 三群系 x 四类 雕饰地形资产齐全 + 墙 3 结构变体 (v0/v1/v2)。
+// 渲染层按 terrain_<kind>_<biome_short>[_vN] 取用 (LAVA/特殊房间不替代,
+// 门替换门板但保留四态装饰), 缺任一 → 静默回退原 quad, 但测试应拦住漏建。
+TEST(MeshAsset, AllTerrainModelsAndWallVariantsExist) {
     const char* biomes[] = {"prison", "volcano", "void"};
     const char* kinds[] = {"wall", "floor", "stairs", "door"};
     for (const char* b : biomes) {
@@ -196,6 +201,16 @@ TEST(MeshAsset, AllTwelveTerrainModelsExist) {
             ASSERT_TRUE(asset.has_value()) << name << ": " << err;
             EXPECT_GT(asset->triangle_count(), 0) << name;
             EXPECT_TRUE(mesh_asset_exists(name)) << name;
+            // 墙: 3 个确定性结构变体都必须存在
+            if (strcmp(k, "wall") == 0) {
+                for (int v = 0; v < 3; ++v) {
+                    std::string vn = name + "_v" + std::to_string(v);
+                    std::string verr;
+                    const auto va = load_mesh_asset_file(mesh_asset_path(vn), verr);
+                    ASSERT_TRUE(va.has_value()) << vn << ": " << verr;
+                    EXPECT_GT(va->triangle_count(), 0) << vn;
+                }
+            }
         }
     }
 }

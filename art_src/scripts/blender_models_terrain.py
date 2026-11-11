@@ -229,96 +229,60 @@ def build_wall(c, variant=0, biome="forgotten_prison"):
                     bevel=0.1,
                 )
             )
-    # 两侧壁柱
-    for side in (-1, 1):
-        p.append(
-            part_box(
-                "pilaster_%d" % side,
-                (side * (TILE / 2 - 3), -(TILE / 2) - 1.0, WALL_H / 2),
-                (5, 3, WALL_H - 4),
-                c["top"],
-                bevel=0.5,
-                taper=0.92,
-            )
-        )
-        p.append(
-            part_box(
-                "pilaster_base_%d" % side,
-                (side * (TILE / 2 - 3), -(TILE / 2) - 1.4, 3),
-                (6, 3.5, 5),
-                c["hi"],
-                bevel=0.4,
-            )
-        )
-        p.append(
-            part_box(
-                "pilaster_cap_%d" % side,
-                (side * (TILE / 2 - 3), -(TILE / 2) - 1.4, WALL_H - 3),
-                (6, 3.5, 4),
-                c["hi"],
-                bevel=0.4,
-            )
-        )
-    # 拱券楔石 (正面贴墙的半圆拱, 分段斜切块)
-    for i, ang in enumerate([-60, -30, 0, 30, 60]):
-        a = math.radians(ang)
-        x = math.sin(a) * 8.0
-        z = WALL_H - 9 + math.cos(a) * 8.0
-        p.append(
-            part_box(
-                "arch_%d" % i,
-                (x, -(TILE / 2) - 1.4, z),
-                (3.2, 2.0, 3.2),
-                c["hi"],
-                bevel=0.3,
-                rotation_z=-a,
-            )
-        )
-    # 拱心石
-    p.append(
-        part_box(
-            "arch_key",
-            (0, -(TILE / 2) - 2.0, WALL_H - 1),
-            (3.6, 2.6, 4.0),
-            c["top"],
-            bevel=0.3,
-        )
-    )
-    # 变体: 裂纹 / 苔痕 / 符文
-    if variant == 1:
-        p.append(
-            _slanted_box(
-                "crack",
-                (5, -(TILE / 2) - 2.0, 20),
-                (1.2, 0.8, 18),
-                c["grid"],
-                14,
-                bevel=0.1,
-            )
-        )
-        p.append(
-            _slanted_box(
-                "crack2",
-                (-4, -(TILE / 2) - 2.0, 12),
-                (0.9, 0.8, 10),
-                c["grid"],
-                -20,
-                bevel=0.1,
-            )
-        )
-    elif variant == 2:
-        for i, (x, z) in enumerate([(-10, 8), (8, 22), (0, 30)]):
-            p.append(
-                part_sphere(
-                    "moss_%d" % i,
-                    (x, -(TILE / 2) - 1.6, z),
-                    2.2,
-                    c["moss"],
-                    segments=8,
-                    rings=5,
-                    scale=(1.3, 0.4, 0.8),
-                )
-            )
+    # ── 结构变体 (A20 二次精修: 三群系各 3 种墙面, 按 tile 坐标确定性选择) ──
+    if variant == 0:
+        # v0 拱券墙: 双壁柱(柱础/柱头) + 半圆拱券楔石 + 拱心石
+        for side in (-1, 1):
+            p.append(part_box("pilaster_%d" % side,
+                              (side * (TILE / 2 - 3), -(TILE / 2) - 1.0, WALL_H / 2),
+                              (5, 3, WALL_H - 4), c["top"], bevel=0.5, taper=0.92))
+            p.append(part_box("pilaster_base_%d" % side,
+                              (side * (TILE / 2 - 3), -(TILE / 2) - 1.4, 3),
+                              (6, 3.5, 5), c["hi"], bevel=0.4))
+            p.append(part_box("pilaster_cap_%d" % side,
+                              (side * (TILE / 2 - 3), -(TILE / 2) - 1.4, WALL_H - 3),
+                              (6, 3.5, 4), c["hi"], bevel=0.4))
+        for i, ang in enumerate([-60, -30, 0, 30, 60]):
+            a = math.radians(ang)
+            p.append(part_box("arch_%d" % i,
+                              (math.sin(a) * 8.0, -(TILE / 2) - 1.4,
+                               WALL_H - 9 + math.cos(a) * 8.0),
+                              (3.2, 2.0, 3.2), c["hi"], bevel=0.3, rotation_z=-a))
+        p.append(part_box("arch_key", (0, -(TILE / 2) - 2.0, WALL_H - 1),
+                          (3.6, 2.6, 4.0), c["top"], bevel=0.3))
+    elif variant == 1:
+        # v1 纯砖墙: 无壁柱/拱券, 满版错缝砖 + 两道横石带 + 竖向裂纹
+        for row in range(4):
+            z = 4 + row * 8
+            for col in range(2):
+                x = -8 + col * 16 + (8 if row % 2 else 0)
+                if x > TILE / 2 - 4:
+                    continue
+                p.append(part_box("brick2_%d_%d" % (row, col),
+                                  (x, -(TILE / 2) - 1.2, z), (14, 2.2, 6.6),
+                                  c["brick"] if (row + col) % 2 else c["top"],
+                                  bevel=0.5, taper=0.95))
+        for k, z in enumerate((14, 30)):
+            p.append(part_box("band_%d" % k, (0, -(TILE / 2) - 1.5, z),
+                              (TILE - 2, 2.4, 2.2), c["hi"], bevel=0.3))
+        p.append(_slanted_box("crack", (3, -(TILE / 2) - 1.8, 20),
+                              (1.2, 0.8, 20), c["grid"], 10, bevel=0.1))
+    else:
+        # v2 浮雕墙: 中央单壁柱 + 两侧菱形盾徽 + 苔痕, 无拱券
+        p.append(part_box("center_pilaster", (0, -(TILE / 2) - 1.2, WALL_H / 2),
+                          (5, 3, WALL_H - 4), c["top"], bevel=0.5, taper=0.94))
+        for side in (-1, 1):
+            p.append(part_box("shield_%d" % side,
+                              (side * 8, -(TILE / 2) - 1.6, 20),
+                              (6, 1.4, 6), c["hi"], bevel=0.3,
+                              rotation_z=math.radians(45)))
+            p.append(part_sphere("boss_%d" % side,
+                                 (side * 8, -(TILE / 2) - 2.4, 20), 1.4,
+                                 c["top"], segments=8, rings=4, scale=(1, 0.5, 1)))
+        for i, (x, z) in enumerate([(-10, 8), (10, 30), (7, 12)]):
+            p.append(part_sphere("moss_v2_%d" % i, (x, -(TILE / 2) - 1.6, z),
+                                 2.0, c["moss"], segments=8, rings=5,
+                                 scale=(1.3, 0.4, 0.8)))
     _biome_decor(p, c, biome, "wall")
     return join_parts(p, "terrain_wall_" + biome)
 
@@ -484,24 +448,29 @@ def build_door(c, biome="forgotten_prison"):
     return join_parts(p, "terrain_door_" + biome)
 
 
-# 三群系 x 四类 = 12 件; 资产名 terrain_<kind>_<biome_short>
+# 三群系: 墙 3 结构变体 (v0 拱券 / v1 纯砖 / v2 浮雕) + 地板/楼梯/门 各 1 = 18 件。
+# 墙保留无后缀别名 (= v0), 供 builder 确定性 hash 选变体时作默认回退名。
 PRISON = PALETTES["forgotten_prison"]
 VOLCANO = PALETTES["ash_volcano"]
 VOID = PALETTES["void_abyss"]
-TERRAIN_BUILDERS = {
-    "terrain_wall_prison": lambda: build_wall(PRISON, 0, "forgotten_prison"),
-    "terrain_floor_prison": lambda: build_floor(PRISON, 0, "forgotten_prison"),
-    "terrain_stairs_prison": lambda: build_stairs(PRISON, "forgotten_prison"),
-    "terrain_door_prison": lambda: build_door(PRISON, "forgotten_prison"),
-    "terrain_wall_volcano": lambda: build_wall(VOLCANO, 1, "ash_volcano"),
-    "terrain_floor_volcano": lambda: build_floor(VOLCANO, 1, "ash_volcano"),
-    "terrain_stairs_volcano": lambda: build_stairs(VOLCANO, "ash_volcano"),
-    "terrain_door_volcano": lambda: build_door(VOLCANO, "ash_volcano"),
-    "terrain_wall_void": lambda: build_wall(VOID, 2, "void_abyss"),
-    "terrain_floor_void": lambda: build_floor(VOID, 2, "void_abyss"),
-    "terrain_stairs_void": lambda: build_stairs(VOID, "void_abyss"),
-    "terrain_door_void": lambda: build_door(VOID, "void_abyss"),
-}
+TERRAIN_BUILDERS = {}
+for _short, _pal, _biome in (
+    ("prison", PRISON, "forgotten_prison"),
+    ("volcano", VOLCANO, "ash_volcano"),
+    ("void", VOID, "void_abyss"),
+):
+    TERRAIN_BUILDERS["terrain_floor_%s" % _short] = (
+        lambda c=_pal, b=_biome: build_floor(c, 0, b))
+    TERRAIN_BUILDERS["terrain_stairs_%s" % _short] = (
+        lambda c=_pal, b=_biome: build_stairs(c, b))
+    TERRAIN_BUILDERS["terrain_door_%s" % _short] = (
+        lambda c=_pal, b=_biome: build_door(c, b))
+    for _v in (0, 1, 2):
+        TERRAIN_BUILDERS["terrain_wall_%s_v%d" % (_short, _v)] = (
+            lambda c=_pal, v=_v, b=_biome: build_wall(c, v, b))
+    # 无后缀别名 = v0 (确定性 hash 的默认/回退)
+    TERRAIN_BUILDERS["terrain_wall_%s" % _short] = (
+        lambda c=_pal, b=_biome: build_wall(c, 0, b))
 
 
 def export_one(name):

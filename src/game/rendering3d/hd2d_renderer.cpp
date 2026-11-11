@@ -1148,14 +1148,17 @@ void HD2DRenderer::_draw_door_panel(const HD2DDrawItem& item) {
     Vector3 pos = item.world_pos;
     float h = item.height;
     float half = item.size * 0.5f;
-    if (item.texture.id > 0) {
-        _draw_door_textured_quad(item, pos, _camera, half, h);
-    } else {
-        // 无贴图回退: 棕色立板 (2D DOOR 色 130,90,50), 按 axis 取向
-        float depth = 6.0f, width = item.size * 0.9f;
-        if (item.door_axis == 1) { float t = depth; depth = width; width = t; }
-        DrawCube({pos.x, item.height * 0.5f, pos.z}, width,
-                 item.height, depth, Color{130, 90, 50, 255});
+    // A20: 雕饰 3D 门框已画 → 跳过门板; 但四态叠加装饰 (门楣/锁/封印) 保留
+    if (!item.terrain_replaced) {
+        if (item.texture.id > 0) {
+            _draw_door_textured_quad(item, pos, _camera, half, h);
+        } else {
+            // 无贴图回退: 棕色立板 (2D DOOR 色 130,90,50), 按 axis 取向
+            float depth = 6.0f, width = item.size * 0.9f;
+            if (item.door_axis == 1) { float t = depth; depth = width; width = t; }
+            DrawCube({pos.x, item.height * 0.5f, pos.z}, width,
+                     item.height, depth, Color{130, 90, 50, 255});
+        }
     }
     _draw_door_lintel(pos, h, item.size, item.door_axis);
     if ((DoorState)item.door_state == DoorState::LOCKED) {
