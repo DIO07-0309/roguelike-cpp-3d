@@ -35,7 +35,11 @@ const char* kModelNames[] = {"npc_1", "npc_2", "npc_3", "npc_blacksmith",
                               // A19: 8 种护甲专属掉落物模型
                               "item_armor_leather", "item_armor_chain", "item_armor_iron",
                               "item_armor_scale", "item_armor_plate", "item_armor_rune",
-                              "item_armor_ice", "item_armor_robe"};
+                              "item_armor_ice", "item_armor_robe",
+                              // A20: 三群系 x 四类 雕饰地形
+                              "terrain_wall_prison", "terrain_floor_prison", "terrain_stairs_prison", "terrain_door_prison",
+                              "terrain_wall_volcano", "terrain_floor_volcano", "terrain_stairs_volcano", "terrain_door_volcano",
+                              "terrain_wall_void", "terrain_floor_void", "terrain_stairs_void", "terrain_door_void"};
 
 std::string repo_path(const std::string& relative) {
     return relative;   // ctest 工作目录 = 仓库根 (tests/CMakeLists: WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
@@ -176,5 +180,22 @@ TEST(MeshAsset, AllEightArmorModelsExist) {
         ASSERT_TRUE(asset.has_value()) << name << ": " << err;
         EXPECT_GT(asset->triangle_count(), 0) << name;
         EXPECT_TRUE(mesh_asset_exists(name)) << name;
+    }
+}
+
+// A20: 三群系 x 四类 雕饰地形资产齐全。渲染层按 terrain_<kind>_<biome_short>
+// 取用 (LAVA/门/特殊房间不替代), 缺任一 → 静默回退原 quad, 但测试应拦住漏建。
+TEST(MeshAsset, AllTwelveTerrainModelsExist) {
+    const char* biomes[] = {"prison", "volcano", "void"};
+    const char* kinds[] = {"wall", "floor", "stairs", "door"};
+    for (const char* b : biomes) {
+        for (const char* k : kinds) {
+            std::string name = std::string("terrain_") + k + "_" + b;
+            std::string err;
+            const auto asset = load_mesh_asset_file(mesh_asset_path(name), err);
+            ASSERT_TRUE(asset.has_value()) << name << ": " << err;
+            EXPECT_GT(asset->triangle_count(), 0) << name;
+            EXPECT_TRUE(mesh_asset_exists(name)) << name;
+        }
     }
 }

@@ -81,6 +81,12 @@ struct HD2DDrawItem {
     std::shared_ptr<ModelAsset> model;  // MODEL3D: 已上传网格 (空 = 走纸片回退)
     float model_yaw = 0.0f;             // 模型朝向 (度, 绕 Y)
     float model_scale = 1.0f;
+    // ── A20-Terrain: 雕饰地形 3D 替代件 ──
+    // 主 tile (WALL_BLOCK/FLOOR_TILE/DOOR_PANEL) 保留其 kind 与全部副作用
+    // (LAVA/特殊房间/门态/fog), 仅当此字段非空时跳过自身几何绘制;
+    // 另有一个同位置 MODEL3D 件负责画精细雕饰网格。
+    bool terrain_replaced = false;
+    std::shared_ptr<ModelAsset> terrain_model;  // 雕饰网格 (与 MODEL3D 件共享)
 };
 
 // 单房间切片: 960x640 目标 → 3D 透视相机 + 地形 + billboard

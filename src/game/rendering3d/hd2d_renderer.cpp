@@ -583,6 +583,7 @@ void HD2DRenderer::_draw_terrain_pass() {
 
 // ── 地板: XZ 贴地 quad (v2a: 贴图原语采样 / 纯色 DrawPlane 回退) ──
 void HD2DRenderer::_draw_floor_tile(const HD2DDrawItem& item) {
+    if (item.terrain_replaced) return;   // A20: 雕饰 3D 模型已画, 跳过平片
     Vector3 pos = item.world_pos;
     if (item.texture.id > 0) {
         // rlGL 原语: 顶点顺序保持与 DrawPlane 一致 (法线朝上),
@@ -611,6 +612,7 @@ void HD2DRenderer::_draw_floor_tile(const HD2DDrawItem& item) {
 
 // ── 墙体: 拉伸盒子 (v2a: 贴图四侧 + 顶面; 无贴图回退纯色伪光照) ──
 void HD2DRenderer::_draw_wall_block(const HD2DDrawItem& item) {
+    if (item.terrain_replaced) return;   // A20: 雕饰 3D 模型已画, 跳过方块
     Vector3 pos = item.world_pos;
     float h = item.height;
     float e = item.size * 0.5f;

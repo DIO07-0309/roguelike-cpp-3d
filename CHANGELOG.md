@@ -1,4 +1,49 @@
-﻿# A19-Armor: 8 种护甲专属掉落物 3D 模型（2026-11-09）
+﻿# A20-Terrain: 三群系雕饰地形 3D 立体化（2026-11-11）
+
+> 反馈:地板/墙面被指"过度单一", 要"足够立体和丰富, 最好有各种雕饰",
+> 且明确"满屏每一格都变精致、不惜加重渲染"。
+
+## 现状核查 (根因)
+- 墙本就是立体块 (WALL_BLOCK 4 侧面+顶面), 但每面共用一张程序化贴图+单色 tint →
+  整面重复平面图案; 地板是完全平的贴地片; 楼梯是贴地箭头; 门是竖立贴图面板。
+  → 「单一」缺的是**每格雕饰几何与起伏**, 不是缺 3D。
+
+## 建模 (Blender MCP, 三群系 x 四类 = 12 件)
+- `art_src/scripts/blender_models_terrain.py`: 配色采样自 biomes.json tile_palette,
+  尺度 TILE_SIZE=32 / 墙高 40 / 脚底 y=0 / 正面 -Y。主体石作通用, 群系专属点缀分两套
+  (墙=正面高浮雕, 地面=贴地薄纹, 避免贴地件悬浮):
+  - **墙**: 错缝砖浮雕 + 双壁柱(柱础/柱头) + 半圆拱券楔石 + 压檐;
+    火山加熔岩缝+黑曜刺, 深渊加发光符文+紫晶。
+  - **地板**: 2x2 有厚度石板 + 接缝 + 磨损凹点; 火山贴地熔岩缝, 深渊贴地幽光符点。
+  - **楼梯**: 4 级递降真台阶 + 两侧栏柱 (替代原贴地箭头 + STAIR_STEP 立方)。
+  - **门**: 立体门框 + 分板铆钉门 + 门楣石 (本批建好但未接入, 保留门四态)。
+- 先试跑遗忘监牢 4 件确认风格, 再铺三群系; 修掉拱券斜立环、火山/深渊地板点缀悬浮。
+- 12 件经 MCP 全量导出 `assets/models/terrain_<kind>_<biome>.json`
+  (732~3344 tris), 脚底 y=0, 0 退化面, 顶点色 200~475 种, 12 张 `terrain_preview_*.png`。
+
+## 渲染接入 (增量可回退)
+- `HD2DDrawItem` 加 `terrain_replaced` / `terrain_model`;
+  `hd2d_scene_builder.cpp` 新增 `_terrain_biome_short` / `_terrain_model_name` / `_try_terrain_3d`
+  及 `_emit_terrain_tile` (把单格逻辑抽出, 保证 `_build_terrain` ≤40 行)。
+- 每格 WALL/FLOOR/STAIRS_DOWN 命中雕饰资产 → 主 tile 打 replaced 标记 (渲染器跳过自身几何)
+  + 推一个同位置 MODEL3D 件画雕饰网格; **LAVA / DOOR(门四态) / 特殊房间 不替代**,
+  保留其 shader/配色/decal; 缺资产静默回退原 quad。
+- fog 压暗由 tint 承载 (可见=白 / 已探索不可见=60%灰); 楼梯/地板装饰旧几何在替代时跳过,
+  避免与雕饰模型重叠。
+- hd2d 冒烟实机帧 (122KB) 确认: 中央房间地板变有厚度的石板、墙顶出现雕饰壁柱/砖块浮雕,
+  渲染正常不崩 (HUD 乱码是已知 hidwin 取证伪影)。
+
+## 验证
+- `mesh_asset_test`: kModelNames 加 12 件 + 新增 `AllTwelveTerrainModelsExist`
+  (锁 terrain_<kind>_<biome> 命名与资产一致)。
+- ctest **89/89** · fn_length **0** · world_validator **0/0** · 游戏 exe 重建 +
+  hd2d 实机冒烟出图 · 桌面同步 12/12。
+- 纯表现层 + 资产: 不碰 gameplay / RNG / 存档 / 骨架 / 已有模型。
+
+> 备注: 门雕饰 4 件已建但因门四态视觉未接入; 墙雕饰从俯视看略显重复(每格同一壁柱),
+> 可作后续二次精修调整点。
+
+# A19-Armor: 8 种护甲专属掉落物 3D 模型（2026-11-09）
 
 > 承接"补齐 3D 模型"。先排查避免白做: 圣物 (Relic) 是纯被动数据
 > (RelicInstance + HUD 图标), 不是 Item / 不进 ground_items / 无 3D 实体路径 →

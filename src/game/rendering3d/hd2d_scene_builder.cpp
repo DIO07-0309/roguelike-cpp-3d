@@ -371,7 +371,8 @@ static void _emit_boss_fov_fog(const GameMap* map, int tx, int ty,
 // FLOOR / STAIRS_DOWN / LAVA: 贴图 + tint + 特殊房间 + 楼梯 3D 化 + 装饰
 static void _emit_floor_item(HD2DDrawItem& item, const GameMap* map, int tx, int ty,
                              const TileTexPair& floor_tex, bool has_pal,
-                             const TilePalette& pal, std::vector<HD2DDrawItem>& out) {
+                             const TilePalette& pal, std::vector<HD2DDrawItem>& out,
+                             bool terrain_replaced = false) {
     TileType t = map->tile_at(tx, ty);
     item.kind = HD2DDrawItem::Kind::FLOOR_TILE;
     item.texture = floor_tex.tex;
@@ -401,16 +402,88 @@ static void _emit_floor_item(HD2DDrawItem& item, const GameMap* map, int tx, int
         && !map->get_special_room_at(tx, ty))
         item.tint = map->isVisible(tx, ty) ? Color{150, 120, 70, 255}
                                            : Color{90, 72, 42, 255};
+    // A20: 雕饰 3D 已自带台阶/地板细节 → 跳过旧几何与贴花
     // N5: 楼梯 4 级 3D 立方 (视觉 descending 沿 +Z 方向)
-    if (t == TileType::STAIRS_DOWN && map->isVisible(tx, ty))
+    if (!terrain_replaced && t == TileType::STAIRS_DOWN && map->isVisible(tx, ty))
         _emit_stairs_3d(map, tx, ty, out);
     // M6-j: 地板装饰 (2D 同款坐标哈希; 只在普通可见地板)
-    if (t == TileType::FLOOR && map->isVisible(tx, ty)
+    if (!terrain_replaced && t == TileType::FLOOR && map->isVisible(tx, ty)
         && !map->get_special_room_at(tx, ty))
         _apply_floor_decoration(*map, tx, ty, has_pal, pal,
                                 floor_tex.tex, item, out);
 }
 
+
+// ── A20-Terrain: 雕饰地形 3D 替代 ──
+// 三群系 × 四类 tile; LAVA 不替代 (保留岩浆 shader)。缺资产 → 静默回退原 quad。
+static const char* _terrain_biome_short(const char* biome_id) {
+    if (!biome_id) return "prison";
+    if (strcmp(biome_id, "ash_volcano") == 0) return "volcano";
+    if (strcmp(biome_id, "void_abyss") == 0) return "void";
+    return "prison";
+}
+
+// 返回模型名 (写入 buf); 返回 false = 该 tile 不用 3D 雕饰
+static bool _terrain_model_name(TileType t, const char* biome_short,
+                                char* buf, size_t buf_size) {
+    const char* kind = nullptr;
+    switch (t) {
+        case TileType::WALL:         kind = "wall";   break;
+        case TileType::FLOOR:        kind = "floor";  break;
+        case TileType::STAIRS_DOWN:  kind = "stairs"; break;
+        default: return false;   // LAVA / DOOR 等保留原渲染 (门四态/岩浆 shader)
+    }
+    snprintf(buf, buf_size, "terrain_%s_%s", kind, biome_short);
+    return true;
+}
+
+// 若命中雕饰资产: 给主 tile 打 terrain_replaced 标记, 并推一个同位置 MODEL3D 件。
+// 主 tile 的全部副作用 (LAVA/特殊房间/门态/fog) 由调用方后续照常处理。
+static void _try_terrain_3d(HD2DDrawItem& item, std::vector<HD2DDrawItem>& out,
+                            const char* model_name, bool visible_now) {
+    auto model = _model_cache().get(model_name);
+    if (!model) return;   // 缺资产 → 原 quad
+    item.terrain_replaced = true;
+    item.terrain_model = model;
+    HD2DDrawItem m;
+    m.kind = HD2DDrawItem::Kind::MODEL3D;
+    m.world_pos = item.world_pos;
+    m.sort_y = (float)item.tile_y * TILE_SIZE;
+    m.model = model;
+    // 3D 用资产自带顶点色, tint 只承载 fog (可见=白 / 已探索不可见=60%灰)
+    m.tint = visible_now ? WHITE : Color{153, 153, 153, 255};
+    m.model_yaw = 0.0f;
+    out.push_back(m);
+}
+
+// 单格地形: 主 tile (含全部既有副作用) + 可选 A20 雕饰 3D 替代件
+static void _emit_terrain_tile(const GameMap* map, int tx, int ty,
+                               const TileTexPair& wall_tex, const TileTexPair& floor_tex,
+                               bool has_pal, const TilePalette& pal,
+                               std::vector<HD2DDrawItem>& out) {
+    TileType t = map->tile_at(tx, ty);
+    HD2DDrawItem item;
+    item.tile_x = tx; item.tile_y = ty;
+    item.world_pos = {(float)tx * TILE_SIZE + TILE_SIZE * 0.5f, 0,
+                      (float)ty * TILE_SIZE + TILE_SIZE * 0.5f};
+    item.size = (float)TILE_SIZE;
+    if (!map->isExplored(tx, ty)) return;   // v1.6: 未探索 → 虚空
+    item.tint = _tile_color(t, map->isVisible(tx, ty));
+    // A20: 先决定本格是否用雕饰 3D (特殊房间 / LAVA / 门 不替代)
+    char model_name[64] = {0};
+    const bool use_3d = !map->get_special_room_at(tx, ty)
+        && _terrain_model_name(t, _terrain_biome_short(map->biome_id()),
+                               model_name, sizeof(model_name));
+    if (t == TileType::WALL)
+        _emit_wall_item(item, map, tx, ty, wall_tex);
+    else if (t == TileType::DOOR)
+        _emit_door_item(item, map, tx, ty);
+    else
+        _emit_floor_item(item, map, tx, ty, floor_tex, has_pal, pal, out, use_3d);
+    if (use_3d) _try_terrain_3d(item, out, model_name, map->isVisible(tx, ty));
+    out.push_back(item);
+    _emit_boss_fov_fog(map, tx, ty, item, out);
+}
 
 static void _build_terrain(const hd2d::SceneView& view, std::vector<HD2DDrawItem>& out) {
     const GameMap* map = view.game_map;
@@ -430,27 +503,9 @@ static void _build_terrain(const hd2d::SceneView& view, std::vector<HD2DDrawItem
     const auto& pal = map->palette();
     bool has_pal = map->has_palette();
 
-    for (int ty = y0; ty <= y1; ty++) {
-        for (int tx = x0; tx <= x1; tx++) {
-            TileType t = map->tile_at(tx, ty);
-            HD2DDrawItem item;
-            item.tile_x = tx; item.tile_y = ty;
-            item.world_pos = {(float)tx * TILE_SIZE + TILE_SIZE * 0.5f, 0,
-                              (float)ty * TILE_SIZE + TILE_SIZE * 0.5f};
-            item.size = (float)TILE_SIZE;
-            // v1.6: 未探索 → 跳过 (虚空)
-            if (!map->isExplored(tx, ty)) continue;
-            item.tint = _tile_color(t, map->isVisible(tx, ty));
-            if (t == TileType::WALL)
-                _emit_wall_item(item, map, tx, ty, wall_tex);
-            else if (t == TileType::DOOR)
-                _emit_door_item(item, map, tx, ty);
-            else
-                _emit_floor_item(item, map, tx, ty, floor_tex, has_pal, pal, out);
-            out.push_back(item);
-            _emit_boss_fov_fog(map, tx, ty, item, out);
-        }
-    }
+    for (int ty = y0; ty <= y1; ty++)
+        for (int tx = x0; tx <= x1; tx++)
+            _emit_terrain_tile(map, tx, ty, wall_tex, floor_tex, has_pal, pal, out);
 }
 
 // ── M6-m: 怪物 sprite key 映射 (与 monster.cpp _monster_sprite_key 同源) ──
