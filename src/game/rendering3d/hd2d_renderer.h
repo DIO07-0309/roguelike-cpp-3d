@@ -26,6 +26,13 @@ enum class WeatherType;   // G42: _draw_weather_particle 参数
 // A2.1: 氛围粒子群系性格 (纯渲染语义, 不进 gameplay)
 enum class MoteStyle : int { DUST = 0, EMBER = 1, FIREFLY = 2 };
 
+// A21: 世界坐标投影 → 逻辑 RT 坐标的视口归一化。
+// GetWorldToScreen 按当前 viewport (DPI 缩放后可能是 1440x960) 返回像素,
+// 但 HUD/世界标签绘制在 960x640 逻辑 RT 里; 不缩放会让提示飘到右下角。
+// proj: GetWorldToScreen 结果; vp_w/vp_h: 当前 viewport; target_w/target_h: 逻辑 RT 尺寸。
+Vector2 logical_screen_coord(Vector2 proj, float vp_w, float vp_h,
+                             float target_w, float target_h);
+
 // 一帧的 3D 绘制项 (由 HD2DSceneBuilder 从只读场景视图提取)
 struct HD2DDrawItem {
     enum class Kind { FLOOR_TILE, WALL_BLOCK, ENTITY_BILLBOARD, FX_QUAD,

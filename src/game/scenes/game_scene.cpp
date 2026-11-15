@@ -3863,9 +3863,11 @@ void GameScene::_render_hd2d_monster_labels() {
 }
 
 // A15-fix: 投影在屏幕内才算数 (相机背后/出屏点 Raylib 会返回任意大 x → 气泡跑最右)
+// A21: world_to_screen 已归一到 960x640 逻辑 RT, 边界判断必须用逻辑尺寸
+// (WINDOW_WIDTH/HEIGHT), 不能用 DPI 放大后的 GetScreen* (会让出屏点误判为在屏内)。
 static bool _hint_on_screen(Vector2 s) {
-    return s.x >= 0.0f && s.x <= (float)GetScreenWidth()
-        && s.y >= 0.0f && s.y <= (float)GetScreenHeight();
+    return s.x >= 0.0f && s.x <= (float)WINDOW_WIDTH
+        && s.y >= 0.0f && s.y <= (float)WINDOW_HEIGHT;
 }
 
 // E 交互气泡 (NPC 对话 / 地面物品拾取; 玩家相邻时显示)

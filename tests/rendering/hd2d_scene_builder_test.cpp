@@ -41,6 +41,24 @@ std::unique_ptr<GameScene> make_scene() {
 
 }  // namespace
 
+// ── A21: 3D 世界标签投影的视口归一化 ──
+// 根因: GetWorldToScreen 按 DPI 放大后的 viewport(1440x960) 返回像素, 但 HUD/
+// E提示/伤害飘字画在 960x640 逻辑 RT → 提示飘到右下、与物品对不齐。
+TEST(HD2DSceneBuilder, LogicalScreenCoordNormalizesViewport) {
+    // 无缩放: viewport 恰为逻辑 RT → 保持原值
+    Vector2 a = logical_screen_coord({480.0f, 320.0f}, 960.0f, 640.0f, 960.0f, 640.0f);
+    EXPECT_FLOAT_EQ(a.x, 480.0f);
+    EXPECT_FLOAT_EQ(a.y, 320.0f);
+    // DPI 1.5x: proj(1381,759)@1440x960 → 逻辑(≈920,506)@960x640
+    Vector2 b = logical_screen_coord({1381.0f, 759.0f}, 1440.0f, 960.0f, 960.0f, 640.0f);
+    EXPECT_NEAR(b.x, 920.7f, 1.0f);
+    EXPECT_NEAR(b.y, 506.0f, 1.0f);
+    // 逻辑中心不因缩放改变
+    Vector2 c = logical_screen_coord({720.0f, 480.0f}, 1440.0f, 960.0f, 960.0f, 640.0f);
+    EXPECT_NEAR(c.x, 480.0f, 0.5f);
+    EXPECT_NEAR(c.y, 320.0f, 0.5f);
+}
+
 // ── 契约 1: 全空视图必须安全返回空列表 (约定: nullptr = 子系统缺失) ──
 TEST(HD2DSceneBuilder, EmptyViewProducesNoItems) {
     hd2d::SceneView view;

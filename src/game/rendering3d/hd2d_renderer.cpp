@@ -1365,6 +1365,14 @@ void HD2DRenderer::_draw_entity_link(const HD2DDrawItem& item) {
 }
 
 // ── M6-v2a: 世界→屏幕投影 (GetWorldToScreen 封装; 相机就绪后有效) ──
+// A21: GetWorldToScreen 按当前 viewport 返回像素; DPI 缩放下 viewport(1440x960)
+// 大于逻辑 RT(960x640), 需按比例缩回, 否则世界标签飘到右下。纯函数供测试锁定。
+Vector2 logical_screen_coord(Vector2 proj, float vp_w, float vp_h,
+                              float target_w, float target_h) {
+    if (vp_w <= 0.0f || vp_h <= 0.0f) return proj;
+    return {proj.x * target_w / vp_w, proj.y * target_h / vp_h};
+}
+
 Vector2 HD2DRenderer::world_to_screen(Vector3 world_pos, float y_offset) const {
     if (!_ready) return {-1, -1};
     Vector3 pos = {world_pos.x, world_pos.y + y_offset, world_pos.z};
@@ -1372,7 +1380,10 @@ Vector2 HD2DRenderer::world_to_screen(Vector3 world_pos, float y_offset) const {
     const Vector3 fwd = Vector3Normalize(Vector3Subtract(_camera.target, _camera.position));
     const Vector3 to_p = Vector3Subtract(pos, _camera.position);
     if (Vector3DotProduct(fwd, to_p) <= 0.0f) return {-1, -1};
-    return GetWorldToScreen(pos, _camera);
+    const Vector2 proj = GetWorldToScreen(pos, _camera);
+    // A21: viewport → 逻辑 RT; 用 GetScreen* (当前绘图空间) 与 _target_* (HUD RT) 对齐
+    return logical_screen_coord(proj, (float)GetScreenWidth(), (float)GetScreenHeight(),
+                                (float)_target_w, (float)_target_h);
 }
 
 // ── M6-v2g: bloom 三档手调 preset (监狱/深渊/火山) ──

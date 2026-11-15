@@ -1,4 +1,35 @@
-﻿# A20-Terrain 挂起小尾巴: 门雕饰接入 + 墙结构变体（2026-11-11）
+﻿# A21-Fix: 3D 掉落物「看不到/捡不上/E提示乱跑」根因修复（2026-11-15）
+
+> 反馈:物品掉落显示重大 bug — 看不到、捡不上、提示文字乱跑; 且明确「2D 老版本没有本 BUG」。
+
+## 根因定位 (systematic-debugging, 证据链)
+- 用户线索: ① E 提示有、但飘在右下不在物品旁; ② 捡不上(疑似没对齐); ③ 所有地板; ④ 2D 无、3D 才有。
+- 逐链路排查 + 实机诊断(临时日志, 已全部移除):
+  - 拾取逻辑 `interaction_handler.cpp` / `hd2d_view()` 2D·3D 共用且 A20 没碰 → 排除。
+  - `dropped=1 visible=1 walkable=1`, 物品每帧走 MODEL3D 且已 emit → 门控/资产/绘制列表都正常, 排除「没画」。
+  - 决定性证据: `item_world=(208,144) proj=(1381,759) GetScreen=(1440,960)`。
+    `GetWorldToScreen` 按 **DPI 放大后的 viewport 1440×960** 返回像素, 但 HUD / E 提示 /
+    伤害飘字 / 怪名条全部绘制在 **960×640 逻辑 RT** 里 → 坐标被放大 1.5 倍,
+    提示飘到右下角、与物品对不齐 → 玩家「看不见提示所指的位置、走不对、按 E 捡不上」。
+    三症状同源 = 投影坐标系错位; 2D 不走 3D 投影, 故老版本无此 bug。
+- 曾有「A20 厚地板把掉落物埋住」的错误假设(写了 y 抬升 + 测试), 经投影证据推翻, **已全部撤除**, 不留无效改动。
+
+## 修复 (单一根因, 一处公共入口)
+- `hd2d_renderer.cpp` 新增纯函数 `logical_screen_coord(proj, vp_w, vp_h, target_w, target_h)`:
+  把 `GetWorldToScreen` 结果按 `target/viewport` 比例缩回逻辑 RT 空间。
+- `world_to_screen` 应用它: `GetScreen*` (当前 viewport) → `_target_*` (HUD RT)。
+  **所有世界标签**(E 拾取/E 对话/伤害飘字/怪名/NPC 名)一次归位, 无缩放环境系数=1 不受影响。
+- `game_scene.cpp::_hint_on_screen` 边界判断改用 `WINDOW_WIDTH/HEIGHT` (960×640 逻辑尺寸),
+  不再用 DPI 放大后的 `GetScreen*` (否则出屏点会误判为在屏内仍飘右下)。
+- 实机诊断确认归一化生效: `proj=(1526,843) vp=(1440,960) → out=(1018,562)@960×640`。
+
+## 验证
+- TDD: `LogicalScreenCoordNormalizesViewport` 先 RED(undefined) 后 GREEN;
+  覆盖无缩放恒等 / DPI 1.5x 缩放 / 逻辑中心不变。
+- ctest **89/89** · fn_length **0** · world_validator **0/0** · 游戏 exe 重建 + hd2d 冒烟出图非黑屏。
+- 纯表现层: 不碰 gameplay / RNG / 存档 / 骨架 / 资产。临时诊断日志 0 残留。
+
+# A20-Terrain 挂起小尾巴: 门雕饰接入 + 墙结构变体（2026-11-11）
 
 > 用户点名清「挂起的小尾巴」: ① 门雕饰 4 件已建未接入; ② 墙雕饰每格重复(略碎)。
 > (怪物/六 Boss/地标的「二次精修」大工程按之前判断暂不动。)
