@@ -1152,29 +1152,49 @@ static Color _arena_pulse_tint(const ArenaObject& ao) {
                  (unsigned char)(100 * pulse), 255};
 }
 
-// A15: 掉落物 → 真 3D 模型; false = 无映射/缺资产, 调用方回退 billboard
+// A21: 3D 掉落物摆放高度。A20 雕饰地板是 y=0~4.48 的实体石板,
+// 掉落物模型平躺(y=0~3); 放 y=0 会被石板埋住(看不见)。2D/无雕饰地板保持 0。
+float ground_item_model_y(bool terrain_active) {
+    return terrain_active ? 6.0f : 0.0f;
+}
+
+// 当前掉落格是否实际绘制 A20 雕饰模型。
+// 特殊房间、LAVA、缺资产格会走旧 quad/decal，不能把物品抬高悬空。
+static bool _terrain_active_for(const GameMap* map, int tx, int ty) {
+    if (!map) return false;
+    if (map->get_special_room_at(tx, ty)) return false;
+    if (map->tile_at(tx, ty) != TileType::FLOOR) return false;
+    char name[64];
+    if (!_terrain_model_name(map->tile_at(tx, ty), _terrain_biome_short(map->biome_id()),
+                             tx, ty, name, sizeof(name)))
+        return false;
+    return _model_cache().get(name) != nullptr;
+}
+
+// A15: 掉落物 -> 真 3D 模型; false = 无映射/缺资产, 调用方回退 billboard
 static bool _try_ground_item_model(const DroppedItem& d, const char* ikey,
-                                   std::vector<HD2DDrawItem>& out) {
+                                   std::vector<HD2DDrawItem>& out, float item_y) {
     const char* mname = _ground_item_model_name(ikey);
     if (!mname) return false;
     auto model = _model_cache().get(mname);
     if (!model) return false;
     const float wx = (float)d.tile_x * TILE_SIZE + TILE_SIZE * 0.5f;
     const float wz = (float)d.tile_y * TILE_SIZE + TILE_SIZE * 0.5f;
-    _append_model(model, {wx, 0, wz}, (float)d.tile_y * TILE_SIZE,
+    _append_model(model, {wx, item_y, wz}, (float)d.tile_y * TILE_SIZE,
                   _scatter_yaw(d.tile_x, d.tile_y), 9.0f, out);
     return true;
 }
 
 // A15-fix: 兜底可见 —— 无 icon key / 缺贴图 / 模型缺失的物品也必须画出来
 // (否则会出现「看不见却能按 E 捡走」, 且它更近时还会抢走你看得见那件的拾取)
-static void _emit_item_fallback(const DroppedItem& d, std::vector<HD2DDrawItem>& out) {
+static void _emit_item_fallback(const DroppedItem& d, std::vector<HD2DDrawItem>& out,
+                                float item_y) {
     auto model = _model_cache().get("item_potion_red");
     if (!model) return;
     const float wx = (float)d.tile_x * TILE_SIZE + TILE_SIZE * 0.5f;
     const float wz = (float)d.tile_y * TILE_SIZE + TILE_SIZE * 0.5f;
-    _append_model(model, {wx, 0, wz}, (float)d.tile_y * TILE_SIZE,
-                  _scatter_yaw(d.tile_x, d.tile_y), 9.0f, out);
+    _append_model(model, {wx, item_y, wz}, (float)d.tile_y * TILE_SIZE,
+                   _scatter_yaw(d.tile_x, d.tile_y), 9.0f, out);
     out.back().tint = d.item ? d.item->color : Color{200, 200, 200, 255};
 }
 
@@ -1186,11 +1206,13 @@ static void _build_ground_items(const hd2d::SceneView& view, std::vector<HD2DDra
         if (view.game_map && !view.game_map->isVisible(d.tile_x, d.tile_y)) continue;
         // A15-fix3: 墙/关闭门格上的掉落不画 — 模型会被墙体包住, 但 FOV 认为可见 → 会变成「空地上有 E」
         if (view.game_map && !view.game_map->is_walkable(d.tile_x, d.tile_y)) continue;
+        const float item_y = ground_item_model_y(
+            _terrain_active_for(view.game_map, d.tile_x, d.tile_y));
         const char* ikey = item_icon_key(d.item.get());
-        if (ikey && _try_ground_item_model(d, ikey, out)) continue;
+        if (ikey && _try_ground_item_model(d, ikey, out, item_y)) continue;
         HD2DDrawItem item;
         item.kind = HD2DDrawItem::Kind::ENTITY_BILLBOARD;
-        item.world_pos = {(float)d.tile_x * TILE_SIZE + TILE_SIZE * 0.5f, 0,
+        item.world_pos = {(float)d.tile_x * TILE_SIZE + TILE_SIZE * 0.5f, item_y,
                           (float)d.tile_y * TILE_SIZE + TILE_SIZE * 0.5f};
         item.size = 24.0f;                     // 拾取物小一号
         item.sort_y = (float)d.tile_y * TILE_SIZE;
@@ -1202,7 +1224,7 @@ static void _build_ground_items(const hd2d::SceneView& view, std::vector<HD2DDra
             out.push_back(item);
             continue;
         }
-        _emit_item_fallback(d, out);           // 无图标/缺贴图 → 通用彩色小件
+        _emit_item_fallback(d, out, item_y);
     }
 }
 

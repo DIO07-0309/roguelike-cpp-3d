@@ -59,6 +59,16 @@ TEST(HD2DSceneBuilder, LogicalScreenCoordNormalizesViewport) {
     EXPECT_NEAR(c.y, 320.0f, 0.5f);
 }
 
+// ── A21: 3D 掉落物必须抬到 A20 雕饰地板石板顶面之上 ──
+// 实测: 地板石板 y∈[0,4.48], 掉落物模型平躺 y∈[0,3](高度≈0) → 放 y=0 会被埋住。
+// 2D/无雕饰地板是平片(y≈0), 保持贴地 0。
+TEST(HD2DSceneBuilder, GroundItemLiftedAboveTerrainSlab) {
+    EXPECT_FLOAT_EQ(hd2d::ground_item_model_y(false), 0.0f);
+    // 必须严格高于石板顶面 4.48(留余量), 但也不该飘太高
+    EXPECT_GT(hd2d::ground_item_model_y(true), 4.48f);
+    EXPECT_LE(hd2d::ground_item_model_y(true), 12.0f);
+}
+
 // ── 契约 1: 全空视图必须安全返回空列表 (约定: nullptr = 子系统缺失) ──
 TEST(HD2DSceneBuilder, EmptyViewProducesNoItems) {
     hd2d::SceneView view;

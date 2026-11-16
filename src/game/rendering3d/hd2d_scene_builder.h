@@ -11,6 +11,11 @@
 // ============================================================
 namespace hd2d {
 
+// A21: 3D 掉落物摆放高度。A20 雕饰地板是 y=0~4.48 的实体石板(实测),
+// 而掉落物模型是平躺的(y=0~3, 高度≈0); 若仍放 y=0 会被石板完全埋住(看不见)。
+// terrain_active: 该掉落格实际启用了 A20 雕饰地板。返回掉落物 world_pos.y。
+float ground_item_model_y(bool terrain_active);
+
 // G12-5: tint 默认值只在 hd2d_part_geometry.h 声明一次 (避免 TU 内重复)
 void appendAvatarParts(const std::vector<AvatarPartDraw>& parts, Vector3 feet_world,
                         float sort_y, unsigned char alpha, float blob_width,
