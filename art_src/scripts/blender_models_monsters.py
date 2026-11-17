@@ -978,6 +978,35 @@ CONSTRUCT = {
     "weapon": _c_weapon,
 }
 
+# ══════════════════════════════════════════════════════════════
+# A22: per-monster refinement (逐怪覆盖, 不改共享 FAMILIES 模板)
+#   REFINEMENTS[name] = {slot: [detail_spec, ...]}
+#   detail_spec = (builder_name, kwargs_dict)  — builder_name 是 blender_lib.part_* 的名字
+#   _refine 在每个 slot 的原部件对象上 join 追加细节对象, 返回同一 parts 字典。
+#   空 REFINEMENTS 时 build_parts 产物与 A17 基线逐字节一致。
+# ══════════════════════════════════════════════════════════════
+REFINEMENTS = {}
+
+
+def _refine(name, parts):
+    """把 REFINEMENTS[name] 的追加细节 join 进 parts 的对应槽位对象。"""
+    spec = REFINEMENTS.get(name)
+    if not spec:
+        return parts
+    import blender_lib
+    for slot, details in spec.items():
+        base = parts.get(slot)
+        if base is None:
+            continue
+        extras = []
+        for builder_name, kwargs in details:
+            builder = getattr(blender_lib, builder_name)
+            extras.append(builder(**kwargs))
+        if extras:
+            parts[slot] = blender_lib.join_parts([base] + extras, base.name)
+    return parts
+
+
 FAMILIES = {"humanoid": HUMANOID, "orb": ORB, "slime": SLIME, "construct": CONSTRUCT}
 
 
@@ -1001,7 +1030,8 @@ def build_parts(name):
     family = MONSTERS[name][0]
     builders = FAMILIES[family]
     c = _color(name)
-    return {slot: builders[slot](name, c) for slot in SLOTS}
+    out = {slot: builders[slot](name, c) for slot in SLOTS}
+    return _refine(name, out)
 
 
 def export_monster(name):
@@ -1037,7 +1067,7 @@ def preview_one(name):
     # 每个骨骼锚点新建对象 (leg/arm 有 front/back 两条骨, 复用同一对象会让
     # 第二次 location 覆盖第一次 → 预览里两条腿塌成一条)
     for bone_name, slot, bx, bz in ANCHORS:
-        obj = builders[slot](name, c)
+        obj = _refine(name, {slot: builders[slot](name, c)}).get(slot)
         obj.name = bone_name
         obj.scale = (PPU, PPU, PPU)
         obj.location = (bx * PPU, 0, bz * PPU)
