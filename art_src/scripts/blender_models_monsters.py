@@ -1018,6 +1018,47 @@ def _refine(name, parts):
 # 用 callable detail 注入配色 c; part_* 基元坐标均为部件局部系 (原点=骨骼 pivot)。
 # A22 slime 精修 (slime 代表): 软体核心 + 气泡 + 骨色/金色分层, 落在 A17 包络内。
 # 低面数部件 (weapon 120/arm 188) 用高分段球体高效补足面数并做视觉层次。
+# A22 golem 精修 (construct 代表): 石块分层 + 金色符文核心 + 铁箍, 落在 A17 包络内。
+REFINEMENTS["golem"] = {
+    "head": [
+        # 金色符文眼 + 铁质眉脊 + 石质额甲分层
+        lambda c: part_box("golem_eyes", (0.0, -4.6, 2.0), (7.0, 1.0, 1.4), c["eye"], bevel=0.2, segments=2),
+        lambda c: part_box("golem_brow", (0.0, -4.8, 4.0), (9.0, 1.6, 1.8), IRON, bevel=0.25, segments=2),
+        lambda c: part_box("golem_crest", (0.0, -3.0, 6.4), (4.0, 2.0, 1.8), c["light"], bevel=0.25, segments=2),
+        lambda c: part_box("golem_jaw", (0.0, -4.6, -3.0), (7.0, 1.4, 1.6), IRON, bevel=0.2, segments=2),
+        lambda c: part_sphere("golem_eye_l", (-2.0, -5.0, 2.0), 0.9, c["eye"], segments=16, rings=10),
+        lambda c: part_sphere("golem_eye_r", (2.0, -5.0, 2.0), 0.9, c["eye"], segments=16, rings=10),
+    ],
+    "torso": [
+        # 前置铁质胸甲板 + 金色核心 + 双肩石块 + 腹部铁箍
+        lambda c: part_box("golem_chest", (0.0, -8.3, 2.0), (22.0, 2.0, 13.0), IRON, bevel=0.3, segments=2),
+        lambda c: part_sphere("golem_core", (0.0, -9.6, 2.0), 3.0, c["eye"], segments=20, rings=12),
+        lambda c: part_box("golem_shoulder_l", (-13.0, -5.0, 7.0), (7.0, 4.0, 4.0), c["light"], bevel=0.3, segments=2),
+        lambda c: part_box("golem_shoulder_r", (13.0, -5.0, 7.0), (7.0, 4.0, 4.0), c["light"], bevel=0.3, segments=2),
+        lambda c: part_box("golem_belt", (0.0, -8.8, -7.0), (24.0, 2.2, 3.0), GOLD, bevel=0.25, segments=2),
+    ],
+    "arm": [
+        # 铁箍 + 金环 + 石质护手
+        lambda c: part_cylinder("golem_band", (0.0, -6.4, -8.0), 3.2, 6.0, IRON, vertices=14, bevel=0.25),
+        lambda c: part_cylinder("golem_ring", (0.0, -6.4, -14.0), 3.0, 3.0, GOLD, vertices=12, bevel=0.25),
+        lambda c: part_box("golem_fist", (0.0, -6.4, -19.0), (5.5, 4.0, 4.0), c["light"], bevel=0.3, segments=2),
+    ],
+    "leg": [
+        # 铁质护膝 + 金胫甲 + 石块脚
+        lambda c: part_box("golem_knee", (0.0, -7.0, -9.0), (7.0, 3.0, 5.0), IRON, bevel=0.3, segments=2),
+        lambda c: part_box("golem_shin", (0.0, -7.2, -15.0), (5.0, 2.0, 8.0), GOLD, bevel=0.25, segments=2),
+        lambda c: part_box("golem_foot", (0.0, -6.0, -20.0), (7.0, 4.0, 2.0), c["light"], bevel=0.25, segments=2),
+        lambda c: part_cylinder("golem_ankle", (0.0, -7.0, -18.0), 3.2, 3.0, IRON, vertices=14, bevel=0.25),
+    ],
+    "weapon": [
+        # 巨岩锤头 + 铁箍 + 符文 + 握柄
+        lambda c: part_box("golem_hammer", (0.0, -8.4, 3.0), (11.0, 5.0, 8.0), c["light"], bevel=0.35, segments=2),
+        lambda c: part_box("golem_hammer_band", (0.0, -10.0, 3.0), (11.5, 1.2, 8.5), IRON, bevel=0.25, segments=2),
+        lambda c: part_box("golem_rune", (0.0, -10.8, 3.0), (4.0, 1.0, 4.0), c["eye"], bevel=0.2, segments=2),
+        lambda c: part_cylinder("golem_grip", (0.0, -6.8, -12.0), 2.0, 12.0, GOLD, vertices=12, bevel=0.25),
+    ],
+}
+
 REFINEMENTS["slime"] = {
     # head: 骨色眼窝环 + 顶部晶核 + 两侧气泡
     "head": [
