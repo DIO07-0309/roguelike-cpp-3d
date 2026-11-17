@@ -1,4 +1,61 @@
-﻿# A22: 3D 建模资产精修样板（P0+P1）（2026-11-17）
+﻿# A22b: 30 种怪物全部精修完成（P2 全量）（2026-11-17）
+
+> A22 P1 样板（4 族）验收通过后，用户要求 26 种全部精修完。
+
+## 关键杠杆：同族配方复用
+
+审查数据发现同族怪物共用 builder，**几何基线完全相同**：
+- humanoid 18 种：均 1080/964/1236/976/836
+- orb 3 种：均 888/1180/456/236/828
+- slime 4 种：均 464/1112/188/316/120
+- construct 1 种：648/748/540/540/592
+
+所以 A22 P1 的 4 个已精修样板就是各形态族的现成配方。新增 `_REFINE_FAMILY`
+映射（humanoid→orc / orb→fire_imp / slime→slime / construct→golem），
+遍历 MONSTERS 把样板配方赋给同族未精修怪物；配色由 `_color(name)` 自动替换。
+**26 种 = 4 族配方复用 + 26 次配色替换**，几何全部复用已验证的样板。
+
+## 交付
+
+- 26 种 × 5 槽 = **130 件**模型 JSON 全部精修导出。
+- 26 张 `art_src/preview/monster_preview_<name>.png` 全部重生成。
+- 配色辨识度实机审图确认（抽样 dark_mage / frost_slime / void_walker）：
+  紫法师银灰胸甲+金条+绿眼、冰史莱姆骨白核心环、虚空行者金色核心环+角。
+- 全部细节沿用 A22 修复后的正确约定：**Blender +Y（导出 mesh.y<0 = 正面）**，
+  `_refine` 的 envelope clamp 保证不超基础包围盒。
+
+## 面数（30 种合计，按族）
+
+| 族 | 种数 | 基线/种 | 精修后/种 |
+|---|---:|---:|---|
+| humanoid | 18 | 5092 | 7320 |
+| orb | 4 | 3588 | 8828 |
+| slime | 5 | 2200 | 8616 |
+| construct | 2 | 3068 | 7144 |
+
+（含 A22 已精修的 4 种样板；各槽 1248–2176 面，全部 ≤4000。）
+
+## 闸门升级
+
+`tools/check_ground_item_assets.js` 从"4 种试点"扩展为**全 30 种**：
+- 基线正面顶点数表外置到 `tools/ground_item_baselines.json`（30 种 × 5 槽，
+  由原始 builder 导出统计生成）。
+- 校验 schema / name==stem / finite / 面数 ≤4000 / **正面细节 > 基线**
+  —— 最后一项正是 A22 审查抓出的"细节做在背面"回归的防线。
+- `node tools/check_ground_item_assets.js --all`：**CHECKED=150 MONSTERS=30 FAILED=0**。
+
+## 验证
+
+- 全量闸门 150/150；`player_part_asset_test.All30MonsterPartsLoad` 15/15；
+  `ctest` 90/90；`fn_length` 0 超规；`world_validator` 通过。
+
+## 后续（P3/P4）
+
+地标/道具细节层次（P3）、地形审美升级（P4）仍未开始，按用户节奏另行立项。
+
+---
+
+# A22: 3D 建模资产精修样板（P0+P1）（2026-11-17）
 
 > 前置：A21 修完掉落物可见性/拾取后，全面审查建模资产。
 > 结论：**建模缺口为 0**（271 个模型覆盖所有实体），真正短板是"质量分层"——

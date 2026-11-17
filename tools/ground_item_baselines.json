@@ -1,0 +1,212 @@
+{
+  "orc": {
+    "head": 1334,
+    "torso": 1300,
+    "arm": 2492,
+    "leg": 926,
+    "weapon": 1708
+  },
+  "archer": {
+    "head": 1334,
+    "torso": 1300,
+    "arm": 2492,
+    "leg": 926,
+    "weapon": 1708
+  },
+  "goblin_hunter": {
+    "head": 1334,
+    "torso": 1300,
+    "arm": 2492,
+    "leg": 926,
+    "weapon": 1708
+  },
+  "shaman": {
+    "head": 1334,
+    "torso": 1300,
+    "arm": 2492,
+    "leg": 926,
+    "weapon": 1708
+  },
+  "bone_soldier": {
+    "head": 1334,
+    "torso": 1300,
+    "arm": 2492,
+    "leg": 926,
+    "weapon": 1708
+  },
+  "skeleton_archer": {
+    "head": 1334,
+    "torso": 1300,
+    "arm": 2492,
+    "leg": 926,
+    "weapon": 1708
+  },
+  "dark_mage": {
+    "head": 1334,
+    "torso": 1300,
+    "arm": 2492,
+    "leg": 926,
+    "weapon": 1708
+  },
+  "shadow_stalker": {
+    "head": 1334,
+    "torso": 1300,
+    "arm": 2492,
+    "leg": 926,
+    "weapon": 1708
+  },
+  "shadow_assassin": {
+    "head": 1334,
+    "torso": 1300,
+    "arm": 2492,
+    "leg": 926,
+    "weapon": 1708
+  },
+  "night_stalker": {
+    "head": 1334,
+    "torso": 1300,
+    "arm": 2492,
+    "leg": 926,
+    "weapon": 1708
+  },
+  "blood_priest": {
+    "head": 1334,
+    "torso": 1300,
+    "arm": 2492,
+    "leg": 926,
+    "weapon": 1708
+  },
+  "summoner": {
+    "head": 1334,
+    "torso": 1300,
+    "arm": 2492,
+    "leg": 926,
+    "weapon": 1708
+  },
+  "necromancer": {
+    "head": 1334,
+    "torso": 1300,
+    "arm": 2492,
+    "leg": 926,
+    "weapon": 1708
+  },
+  "tank": {
+    "head": 1334,
+    "torso": 1300,
+    "arm": 2492,
+    "leg": 926,
+    "weapon": 1708
+  },
+  "charger": {
+    "head": 1334,
+    "torso": 1300,
+    "arm": 2492,
+    "leg": 926,
+    "weapon": 1708
+  },
+  "bomber": {
+    "head": 1334,
+    "torso": 1300,
+    "arm": 2492,
+    "leg": 926,
+    "weapon": 1708
+  },
+  "elite_orc": {
+    "head": 1334,
+    "torso": 1300,
+    "arm": 2492,
+    "leg": 926,
+    "weapon": 1708
+  },
+  "ice_warden": {
+    "head": 1334,
+    "torso": 1300,
+    "arm": 2492,
+    "leg": 926,
+    "weapon": 1708
+  },
+  "iron_sentinel": {
+    "head": 1334,
+    "torso": 1300,
+    "arm": 2492,
+    "leg": 926,
+    "weapon": 1708
+  },
+  "fire_imp": {
+    "head": 996,
+    "torso": 1192,
+    "arm": 940,
+    "leg": 219,
+    "weapon": 1704
+  },
+  "lightning_orb": {
+    "head": 996,
+    "torso": 1192,
+    "arm": 940,
+    "leg": 219,
+    "weapon": 1704
+  },
+  "void_walker": {
+    "head": 996,
+    "torso": 1192,
+    "arm": 940,
+    "leg": 219,
+    "weapon": 1704
+  },
+  "storm_elemental": {
+    "head": 996,
+    "torso": 1192,
+    "arm": 940,
+    "leg": 219,
+    "weapon": 1704
+  },
+  "slime": {
+    "head": 804,
+    "torso": 1124,
+    "arm": 396,
+    "leg": 232,
+    "weapon": 256
+  },
+  "frost_slime": {
+    "head": 804,
+    "torso": 1124,
+    "arm": 396,
+    "leg": 232,
+    "weapon": 256
+  },
+  "elite_slime": {
+    "head": 804,
+    "torso": 1124,
+    "arm": 396,
+    "leg": 232,
+    "weapon": 256
+  },
+  "blood_leech": {
+    "head": 804,
+    "torso": 1124,
+    "arm": 396,
+    "leg": 232,
+    "weapon": 256
+  },
+  "poison_wyrm": {
+    "head": 804,
+    "torso": 1124,
+    "arm": 396,
+    "leg": 232,
+    "weapon": 256
+  },
+  "golem": {
+    "head": 1080,
+    "torso": 976,
+    "arm": 1080,
+    "leg": 648,
+    "weapon": 1192
+  },
+  "stone_guardian": {
+    "head": 1080,
+    "torso": 976,
+    "arm": 1080,
+    "leg": 648,
+    "weapon": 1192
+  }
+}

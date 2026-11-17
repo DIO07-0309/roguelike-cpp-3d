@@ -1515,6 +1515,23 @@ REFINEMENTS["orc"] = {
 }
 
 
+
+# A22b: 同族配方复用 — 4 族样板配方直接套用到同族其他怪物。
+# 同族共享 builder (几何基线完全相同), 仅 _color(name) 配色不同,
+# 因此复用样板配方即可得到结构一致、配色各异的精修结果。
+_REFINE_FAMILY = {
+    "humanoid": "orc",
+    "orb": "fire_imp",
+    "slime": "slime",
+    "construct": "golem",
+}
+for _mon, _meta in MONSTERS.items():
+    if _mon in REFINEMENTS:
+        continue
+    _pilot = _REFINE_FAMILY.get(_meta[0])
+    if _pilot:
+        REFINEMENTS[_mon] = REFINEMENTS[_pilot]
+
 FAMILIES = {"humanoid": HUMANOID, "orb": ORB, "slime": SLIME, "construct": CONSTRUCT}
 
 
