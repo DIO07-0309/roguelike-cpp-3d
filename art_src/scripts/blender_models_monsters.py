@@ -7,7 +7,7 @@
 import math
 import os
 
-from blender_lib import part_box, part_cylinder, part_sphere, join_parts
+from blender_lib import part_box, part_cylinder, part_sphere, part_prism, join_parts
 from blender_models_player import export_part_json
 
 # ── 30 种怪物配置: family + 配色 (采样自 mon_*_part_*.png) ──
@@ -1019,43 +1019,271 @@ def _refine(name, parts):
 # A22 slime 精修 (slime 代表): 软体核心 + 气泡 + 骨色/金色分层, 落在 A17 包络内。
 # 低面数部件 (weapon 120/arm 188) 用高分段球体高效补足面数并做视觉层次。
 # A22 golem 精修 (construct 代表): 石块分层 + 金色符文核心 + 铁箍, 落在 A17 包络内。
+# A22 fire_imp 精修 (orb 代表): 火焰层叠 + 金色核心 + 亮黄符文, 落在 A17 包络内。
+REFINEMENTS["fire_imp"] = {
+    "head": [
+        # 亮黄眼 + 火焰眉 + 金冠
+        lambda c: part_sphere(
+            "imp_eye_l", (-2.2, -4.0, 2.0), 1.0, c["eye"], segments=16, rings=10
+        ),
+        lambda c: part_sphere(
+            "imp_eye_r", (2.2, -4.0, 2.0), 1.0, c["eye"], segments=16, rings=10
+        ),
+        lambda c: part_prism(
+            "imp_flame_brow",
+            (0.0, -3.5, 5.0),
+            [(-3, 0), (3, 0), (0, 5)],
+            1.5,
+            GOLD,
+            bevel=0.2,
+        ),
+        lambda c: part_box(
+            "imp_brow",
+            (0.0, -4.2, 3.8),
+            (7.0, 1.2, 1.2),
+            c["shadow"],
+            bevel=0.2,
+            segments=2,
+        ),
+    ],
+    "torso": [
+        # 前置金色火核 + 亮黄环 + 火焰尖层 + 亮黄腰带
+        lambda c: part_sphere(
+            "imp_core", (0.0, -8.4, 3.0), 3.2, c["eye"], segments=20, rings=12
+        ),
+        lambda c: part_sphere(
+            "imp_core_ring", (0.0, -8.0, 3.0), 4.2, GOLD, segments=16, rings=10
+        ),
+        lambda c: part_prism(
+            "imp_flame1",
+            (-4.0, -7.6, 9.0),
+            [(-2, 0), (2, 0), (0, 6)],
+            1.5,
+            c["light"],
+            bevel=0.2,
+        ),
+        lambda c: part_prism(
+            "imp_flame2",
+            (4.0, -7.6, 8.0),
+            [(-2, 0), (2, 0), (0, 5)],
+            1.5,
+            c["main"],
+            bevel=0.2,
+        ),
+        lambda c: part_box(
+            "imp_belt",
+            (0.0, -8.6, -2.0),
+            (14.0, 2.0, 2.4),
+            GOLD,
+            bevel=0.25,
+            segments=2,
+        ),
+    ],
+    "arm": [
+        # 金色火环 + 高分段火焰臂核 (456 -> 1200+)
+        lambda c: part_sphere(
+            "imp_arm_core", (0.0, -5.2, -6.0), 1.8, c["eye"], segments=24, rings=14
+        ),
+        lambda c: part_cylinder(
+            "imp_arm_ring", (0.0, -5.2, -11.0), 2.2, 4.0, GOLD, vertices=14, bevel=0.25
+        ),
+        lambda c: part_sphere(
+            "imp_arm_bub", (0.0, -5.2, -2.0), 1.2, c["light"], segments=20, rings=12
+        ),
+    ],
+    "leg": [
+        # 高分段火焰腿核 + 金环 (236 -> 1200+)
+        lambda c: part_sphere(
+            "imp_leg_core", (0.0, -2.8, -8.0), 2.2, c["main"], segments=24, rings=14
+        ),
+        lambda c: part_cylinder(
+            "imp_leg_ring", (0.0, -2.8, -12.0), 2.6, 3.0, GOLD, vertices=16, bevel=0.25
+        ),
+        lambda c: part_sphere(
+            "imp_leg_bub", (0.0, -2.8, -3.0), 1.4, c["eye"], segments=20, rings=12
+        ),
+    ],
+    "weapon": [
+        # 火焰刃层 + 金柄 + 亮黄护手
+        lambda c: part_prism(
+            "imp_blade",
+            (0.0, -7.2, 4.0),
+            [(-3, 0), (3, 0), (0, 12)],
+            1.6,
+            c["eye"],
+            bevel=0.25,
+        ),
+        lambda c: part_box(
+            "imp_guard",
+            (0.0, -7.0, -1.0),
+            (7.0, 2.0, 2.0),
+            GOLD,
+            bevel=0.25,
+            segments=2,
+        ),
+        lambda c: part_cylinder(
+            "imp_grip",
+            (0.0, -6.8, -10.0),
+            1.5,
+            12.0,
+            c["shadow"],
+            vertices=12,
+            bevel=0.25,
+        ),
+    ],
+}
+
 REFINEMENTS["golem"] = {
     "head": [
         # 金色符文眼 + 铁质眉脊 + 石质额甲分层
-        lambda c: part_box("golem_eyes", (0.0, -4.6, 2.0), (7.0, 1.0, 1.4), c["eye"], bevel=0.2, segments=2),
-        lambda c: part_box("golem_brow", (0.0, -4.8, 4.0), (9.0, 1.6, 1.8), IRON, bevel=0.25, segments=2),
-        lambda c: part_box("golem_crest", (0.0, -3.0, 6.4), (4.0, 2.0, 1.8), c["light"], bevel=0.25, segments=2),
-        lambda c: part_box("golem_jaw", (0.0, -4.6, -3.0), (7.0, 1.4, 1.6), IRON, bevel=0.2, segments=2),
-        lambda c: part_sphere("golem_eye_l", (-2.0, -5.0, 2.0), 0.9, c["eye"], segments=16, rings=10),
-        lambda c: part_sphere("golem_eye_r", (2.0, -5.0, 2.0), 0.9, c["eye"], segments=16, rings=10),
+        lambda c: part_box(
+            "golem_eyes",
+            (0.0, -4.6, 2.0),
+            (7.0, 1.0, 1.4),
+            c["eye"],
+            bevel=0.2,
+            segments=2,
+        ),
+        lambda c: part_box(
+            "golem_brow",
+            (0.0, -4.8, 4.0),
+            (9.0, 1.6, 1.8),
+            IRON,
+            bevel=0.25,
+            segments=2,
+        ),
+        lambda c: part_box(
+            "golem_crest",
+            (0.0, -3.0, 6.4),
+            (4.0, 2.0, 1.8),
+            c["light"],
+            bevel=0.25,
+            segments=2,
+        ),
+        lambda c: part_box(
+            "golem_jaw", (0.0, -4.6, -3.0), (7.0, 1.4, 1.6), IRON, bevel=0.2, segments=2
+        ),
+        lambda c: part_sphere(
+            "golem_eye_l", (-2.0, -5.0, 2.0), 0.9, c["eye"], segments=16, rings=10
+        ),
+        lambda c: part_sphere(
+            "golem_eye_r", (2.0, -5.0, 2.0), 0.9, c["eye"], segments=16, rings=10
+        ),
     ],
     "torso": [
         # 前置铁质胸甲板 + 金色核心 + 双肩石块 + 腹部铁箍
-        lambda c: part_box("golem_chest", (0.0, -8.3, 2.0), (22.0, 2.0, 13.0), IRON, bevel=0.3, segments=2),
-        lambda c: part_sphere("golem_core", (0.0, -9.6, 2.0), 3.0, c["eye"], segments=20, rings=12),
-        lambda c: part_box("golem_shoulder_l", (-13.0, -5.0, 7.0), (7.0, 4.0, 4.0), c["light"], bevel=0.3, segments=2),
-        lambda c: part_box("golem_shoulder_r", (13.0, -5.0, 7.0), (7.0, 4.0, 4.0), c["light"], bevel=0.3, segments=2),
-        lambda c: part_box("golem_belt", (0.0, -8.8, -7.0), (24.0, 2.2, 3.0), GOLD, bevel=0.25, segments=2),
+        lambda c: part_box(
+            "golem_chest",
+            (0.0, -8.3, 2.0),
+            (22.0, 2.0, 13.0),
+            IRON,
+            bevel=0.3,
+            segments=2,
+        ),
+        lambda c: part_sphere(
+            "golem_core", (0.0, -9.6, 2.0), 3.0, c["eye"], segments=20, rings=12
+        ),
+        lambda c: part_box(
+            "golem_shoulder_l",
+            (-13.0, -5.0, 7.0),
+            (7.0, 4.0, 4.0),
+            c["light"],
+            bevel=0.3,
+            segments=2,
+        ),
+        lambda c: part_box(
+            "golem_shoulder_r",
+            (13.0, -5.0, 7.0),
+            (7.0, 4.0, 4.0),
+            c["light"],
+            bevel=0.3,
+            segments=2,
+        ),
+        lambda c: part_box(
+            "golem_belt",
+            (0.0, -8.8, -7.0),
+            (24.0, 2.2, 3.0),
+            GOLD,
+            bevel=0.25,
+            segments=2,
+        ),
     ],
     "arm": [
         # 铁箍 + 金环 + 石质护手
-        lambda c: part_cylinder("golem_band", (0.0, -6.4, -8.0), 3.2, 6.0, IRON, vertices=14, bevel=0.25),
-        lambda c: part_cylinder("golem_ring", (0.0, -6.4, -14.0), 3.0, 3.0, GOLD, vertices=12, bevel=0.25),
-        lambda c: part_box("golem_fist", (0.0, -6.4, -19.0), (5.5, 4.0, 4.0), c["light"], bevel=0.3, segments=2),
+        lambda c: part_cylinder(
+            "golem_band", (0.0, -6.4, -8.0), 3.2, 6.0, IRON, vertices=14, bevel=0.25
+        ),
+        lambda c: part_cylinder(
+            "golem_ring", (0.0, -6.4, -14.0), 3.0, 3.0, GOLD, vertices=12, bevel=0.25
+        ),
+        lambda c: part_box(
+            "golem_fist",
+            (0.0, -6.4, -19.0),
+            (5.5, 4.0, 4.0),
+            c["light"],
+            bevel=0.3,
+            segments=2,
+        ),
     ],
     "leg": [
         # 铁质护膝 + 金胫甲 + 石块脚
-        lambda c: part_box("golem_knee", (0.0, -7.0, -9.0), (7.0, 3.0, 5.0), IRON, bevel=0.3, segments=2),
-        lambda c: part_box("golem_shin", (0.0, -7.2, -15.0), (5.0, 2.0, 8.0), GOLD, bevel=0.25, segments=2),
-        lambda c: part_box("golem_foot", (0.0, -6.0, -20.0), (7.0, 4.0, 2.0), c["light"], bevel=0.25, segments=2),
-        lambda c: part_cylinder("golem_ankle", (0.0, -7.0, -18.0), 3.2, 3.0, IRON, vertices=14, bevel=0.25),
+        lambda c: part_box(
+            "golem_knee",
+            (0.0, -7.0, -9.0),
+            (7.0, 3.0, 5.0),
+            IRON,
+            bevel=0.3,
+            segments=2,
+        ),
+        lambda c: part_box(
+            "golem_shin",
+            (0.0, -7.2, -15.0),
+            (5.0, 2.0, 8.0),
+            GOLD,
+            bevel=0.25,
+            segments=2,
+        ),
+        lambda c: part_box(
+            "golem_foot",
+            (0.0, -6.0, -20.0),
+            (7.0, 4.0, 2.0),
+            c["light"],
+            bevel=0.25,
+            segments=2,
+        ),
+        lambda c: part_cylinder(
+            "golem_ankle", (0.0, -7.0, -18.0), 3.2, 3.0, IRON, vertices=14, bevel=0.25
+        ),
     ],
     "weapon": [
         # 巨岩锤头 + 铁箍 + 符文 + 握柄
-        lambda c: part_box("golem_hammer", (0.0, -8.4, 3.0), (11.0, 5.0, 8.0), c["light"], bevel=0.35, segments=2),
-        lambda c: part_box("golem_hammer_band", (0.0, -10.0, 3.0), (11.5, 1.2, 8.5), IRON, bevel=0.25, segments=2),
-        lambda c: part_box("golem_rune", (0.0, -10.8, 3.0), (4.0, 1.0, 4.0), c["eye"], bevel=0.2, segments=2),
-        lambda c: part_cylinder("golem_grip", (0.0, -6.8, -12.0), 2.0, 12.0, GOLD, vertices=12, bevel=0.25),
+        lambda c: part_box(
+            "golem_hammer",
+            (0.0, -8.4, 3.0),
+            (11.0, 5.0, 8.0),
+            c["light"],
+            bevel=0.35,
+            segments=2,
+        ),
+        lambda c: part_box(
+            "golem_hammer_band",
+            (0.0, -10.0, 3.0),
+            (11.5, 1.2, 8.5),
+            IRON,
+            bevel=0.25,
+            segments=2,
+        ),
+        lambda c: part_box(
+            "golem_rune",
+            (0.0, -10.8, 3.0),
+            (4.0, 1.0, 4.0),
+            c["eye"],
+            bevel=0.2,
+            segments=2,
+        ),
+        lambda c: part_cylinder(
+            "golem_grip", (0.0, -6.8, -12.0), 2.0, 12.0, GOLD, vertices=12, bevel=0.25
+        ),
     ],
 }
 
