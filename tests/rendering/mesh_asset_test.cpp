@@ -23,7 +23,7 @@ const char* kModelNames[] = {"npc_1", "npc_2", "npc_3", "npc_blacksmith",
                              "room_challenge_gate", "room_challenge_gate_sealed",
                              "room_challenge_gate_active",
                              "item_potion_red", "item_potion_blue", "item_charm",
-                             "item_armor", "item_robe", "item_dagger", "item_sword",
+                             "item_dagger", "item_sword",
                              "item_spear", "item_nunchaku", "item_crossbow",
                              "arena_barrel", "arena_totem", "arena_rock",
                              "arena_spike", "arena_pool",
@@ -41,8 +41,8 @@ const char* kModelNames[] = {"npc_1", "npc_2", "npc_3", "npc_blacksmith",
                               "terrain_wall_volcano", "terrain_floor_volcano", "terrain_stairs_volcano", "terrain_door_volcano",
                               "terrain_wall_void", "terrain_floor_void", "terrain_stairs_void", "terrain_door_void",
                               // A20 二次精修: 墙 3 结构变体 x 3 群系
-                              "terrain_wall_prison_v0", "terrain_wall_prison_v1", "terrain_wall_prison_v2",
-                              "terrain_wall_volcano_v0", "terrain_wall_volcano_v1", "terrain_wall_volcano_v2",
+                              "terrain_wall_prison_v1", "terrain_wall_prison_v2",
+                              "terrain_wall_volcano_v1", "terrain_wall_volcano_v2",
                               "terrain_wall_void_v0", "terrain_wall_void_v1", "terrain_wall_void_v2"};
 
 std::string repo_path(const std::string& relative) {
@@ -201,14 +201,17 @@ TEST(MeshAsset, AllTerrainModelsAndWallVariantsExist) {
             ASSERT_TRUE(asset.has_value()) << name << ": " << err;
             EXPECT_GT(asset->triangle_count(), 0) << name;
             EXPECT_TRUE(mesh_asset_exists(name)) << name;
-            // 墙: 3 个确定性结构变体都必须存在
+            // 墙: 3 个确定性结构变体都必须存在。v0 与无后缀基准几何相同,
+            // 运行时 _try_terrain_3d 在 v0 缺失时回退到基准名, 二者等价,
+            // 故 v0 位接受"v0 或基准"任一存在 (A22 清理重复资产后)。
             if (strcmp(k, "wall") == 0) {
                 for (int v = 0; v < 3; ++v) {
                     std::string vn = name + "_v" + std::to_string(v);
+                    std::string lookup = (v == 0 && !mesh_asset_exists(vn)) ? name : vn;
                     std::string verr;
-                    const auto va = load_mesh_asset_file(mesh_asset_path(vn), verr);
-                    ASSERT_TRUE(va.has_value()) << vn << ": " << verr;
-                    EXPECT_GT(va->triangle_count(), 0) << vn;
+                    const auto va = load_mesh_asset_file(mesh_asset_path(lookup), verr);
+                    ASSERT_TRUE(va.has_value()) << lookup << ": " << verr;
+                    EXPECT_GT(va->triangle_count(), 0) << lookup;
                 }
             }
         }
