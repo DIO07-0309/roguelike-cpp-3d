@@ -1016,38 +1016,218 @@ def _refine(name, parts):
 
 # A22 orc 精修 (humanoid 代表): 结构分层 + 特征件, 全部落在 A17 包络内。
 # 用 callable detail 注入配色 c; part_* 基元坐标均为部件局部系 (原点=骨骼 pivot)。
+# A22 slime 精修 (slime 代表): 软体核心 + 气泡 + 骨色/金色分层, 落在 A17 包络内。
+# 低面数部件 (weapon 120/arm 188) 用高分段球体高效补足面数并做视觉层次。
+REFINEMENTS["slime"] = {
+    # head: 骨色眼窝环 + 顶部晶核 + 两侧气泡
+    "head": [
+        lambda c: part_sphere(
+            "slime_core", (0.0, -5.2, 2.0), 1.8, GOLD, segments=20, rings=12
+        ),
+        lambda c: part_sphere(
+            "slime_bub_l", (-2.2, -5.0, 0.0), 0.9, BONE, segments=16, rings=10
+        ),
+        lambda c: part_sphere(
+            "slime_bub_r", (2.2, -5.0, 0.0), 0.9, BONE, segments=16, rings=10
+        ),
+        lambda c: part_box(
+            "slime_brow",
+            (0.0, -6.0, 3.6),
+            (5.0, 0.8, 0.9),
+            c["dark"],
+            bevel=0.2,
+            segments=2,
+        ),
+    ],
+    # torso: 前置骨色核心环 + 金色晶核 + 表面气泡群
+    "torso": [
+        lambda c: part_sphere(
+            "slime_heart", (0.0, -7.6, 2.0), 3.2, GOLD, segments=16, rings=9
+        ),
+        lambda c: part_sphere(
+            "slime_heart_ring", (0.0, -7.2, 2.0), 4.2, BONE, segments=14, rings=8
+        ),
+        lambda c: part_sphere(
+            "slime_bub1", (-5.5, -6.8, 8.0), 1.4, BONE, segments=16, rings=10
+        ),
+        lambda c: part_sphere(
+            "slime_bub3", (0.0, -6.8, -6.0), 1.6, GOLD, segments=16, rings=10
+        ),
+    ],
+    # arm: 高分段骨色核心 (188 -> 1200+)
+    "arm": [
+        lambda c: part_sphere(
+            "slime_arm_core", (0.0, -5.5, -4.0), 1.9, GOLD, segments=24, rings=14
+        ),
+        lambda c: part_sphere(
+            "slime_arm_bub", (0.0, -5.5, -1.5), 1.3, BONE, segments=20, rings=12
+        ),
+    ],
+    # leg: 高分段核心 + 骨色足环
+    "leg": [
+        lambda c: part_sphere(
+            "slime_leg_core", (0.0, -4.4, -1.4), 2.6, GOLD, segments=24, rings=14
+        ),
+        lambda c: part_cylinder(
+            "slime_leg_ring", (0.0, -4.4, -2.2), 3.4, 1.2, BONE, vertices=20, bevel=0.2
+        ),
+    ],
+    # weapon: 高分段骨色刺核 + 金色环 (120 -> 1200+)
+    "weapon": [
+        lambda c: part_sphere(
+            "slime_weapon_core", (0.0, -6.0, -0.5), 1.2, BONE, segments=28, rings=16
+        ),
+        lambda c: part_sphere(
+            "slime_weapon_tip", (0.0, -6.0, 1.8), 0.9, GOLD, segments=24, rings=14
+        ),
+        lambda c: part_cylinder(
+            "slime_weapon_ring",
+            (0.0, -6.0, -2.5),
+            1.3,
+            1.0,
+            GOLD,
+            vertices=20,
+            bevel=0.2,
+        ),
+    ],
+}
+
 REFINEMENTS["orc"] = {
     # head: 骨色眉脊 + 深色眼罩 + 骨色獠牙, 全部前置 (y 更负 = 朝相机)
     "head": [
-        lambda c: part_box("orc_brow", (0.0, -5.0, 3.6), (9.0, 1.2, 1.4), BONE, bevel=0.25, segments=2),
-        lambda c: part_box("orc_eyemask", (0.0, -5.1, 0.5), (8.0, 1.0, 2.6), c["dark"], bevel=0.25, segments=2),
-        lambda c: part_box("orc_tusk_l", (-3.2, -5.0, -5.2), (1.2, 1.2, 2.4), BONE, bevel=0.25, segments=2),
-        lambda c: part_box("orc_tusk_r", (3.2, -5.0, -5.2), (1.2, 1.2, 2.4), BONE, bevel=0.25, segments=2),
+        lambda c: part_box(
+            "orc_brow", (0.0, -5.0, 3.6), (9.0, 1.2, 1.4), BONE, bevel=0.25, segments=2
+        ),
+        lambda c: part_box(
+            "orc_eyemask",
+            (0.0, -5.1, 0.5),
+            (8.0, 1.0, 2.6),
+            c["dark"],
+            bevel=0.25,
+            segments=2,
+        ),
+        lambda c: part_box(
+            "orc_tusk_l",
+            (-3.2, -5.0, -5.2),
+            (1.2, 1.2, 2.4),
+            BONE,
+            bevel=0.25,
+            segments=2,
+        ),
+        lambda c: part_box(
+            "orc_tusk_r",
+            (3.2, -5.0, -5.2),
+            (1.2, 1.2, 2.4),
+            BONE,
+            bevel=0.25,
+            segments=2,
+        ),
     ],
     # torso: 银灰胸甲 + 金色高光 + 骨色肩扣 + 深色腹带, 前置
     "torso": [
-        lambda c: part_box("orc_chest", (0.0, -7.2, 2.5), (17.0, 1.6, 10.0), IRON, bevel=0.25, segments=2),
-        lambda c: part_box("orc_chest_hl", (0.0, -8.1, 4.0), (12.0, 0.9, 1.4), GOLD, bevel=0.25, segments=2),
-        lambda c: part_box("orc_shoulder_l", (-11.0, -6.5, 7.0), (5.0, 3.0, 3.5), BONE, bevel=0.25, segments=2),
-        lambda c: part_box("orc_shoulder_r", (11.0, -6.5, 7.0), (5.0, 3.0, 3.5), BONE, bevel=0.25, segments=2),
-        lambda c: part_box("orc_belt", (0.0, -7.6, -6.5), (19.0, 2.0, 2.8), c["dark"], bevel=0.25, segments=2),
+        lambda c: part_box(
+            "orc_chest",
+            (0.0, -7.2, 2.5),
+            (17.0, 1.6, 10.0),
+            IRON,
+            bevel=0.25,
+            segments=2,
+        ),
+        lambda c: part_box(
+            "orc_chest_hl",
+            (0.0, -8.1, 4.0),
+            (12.0, 0.9, 1.4),
+            GOLD,
+            bevel=0.25,
+            segments=2,
+        ),
+        lambda c: part_box(
+            "orc_shoulder_l",
+            (-11.0, -6.5, 7.0),
+            (5.0, 3.0, 3.5),
+            BONE,
+            bevel=0.25,
+            segments=2,
+        ),
+        lambda c: part_box(
+            "orc_shoulder_r",
+            (11.0, -6.5, 7.0),
+            (5.0, 3.0, 3.5),
+            BONE,
+            bevel=0.25,
+            segments=2,
+        ),
+        lambda c: part_box(
+            "orc_belt",
+            (0.0, -7.6, -6.5),
+            (19.0, 2.0, 2.8),
+            c["dark"],
+            bevel=0.25,
+            segments=2,
+        ),
     ],
     # arm: 银灰护腕 + 金扣
     "arm": [
-        lambda c: part_cylinder("orc_bracer", (0.0, -6.5, -12.0), 3.2, 8.0, IRON, vertices=12, bevel=0.25),
-        lambda c: part_box("orc_wrist", (0.0, -6.8, -17.5), (5.5, 2.4, 2.0), GOLD, bevel=0.25, segments=2),
+        lambda c: part_cylinder(
+            "orc_bracer", (0.0, -6.5, -12.0), 3.2, 8.0, IRON, vertices=12, bevel=0.25
+        ),
+        lambda c: part_box(
+            "orc_wrist",
+            (0.0, -6.8, -17.5),
+            (5.5, 2.4, 2.0),
+            GOLD,
+            bevel=0.25,
+            segments=2,
+        ),
     ],
     # leg: 银灰护膝 + 金胫甲条 + 骨色脚踝扣
     "leg": [
-        lambda c: part_box("orc_knee", (0.0, -6.5, -10.0), (6.5, 2.8, 4.5), IRON, bevel=0.25, segments=2),
-        lambda c: part_box("orc_shin", (0.0, -6.8, -15.0), (4.5, 1.6, 7.0), GOLD, bevel=0.25, segments=2),
-        lambda c: part_box("orc_ankle", (0.0, -6.5, -18.5), (5.5, 2.4, 1.8), BONE, bevel=0.25, segments=2),
+        lambda c: part_box(
+            "orc_knee",
+            (0.0, -6.5, -10.0),
+            (6.5, 2.8, 4.5),
+            IRON,
+            bevel=0.25,
+            segments=2,
+        ),
+        lambda c: part_box(
+            "orc_shin",
+            (0.0, -6.8, -15.0),
+            (4.5, 1.6, 7.0),
+            GOLD,
+            bevel=0.25,
+            segments=2,
+        ),
+        lambda c: part_box(
+            "orc_ankle",
+            (0.0, -6.5, -18.5),
+            (5.5, 2.4, 1.8),
+            BONE,
+            bevel=0.25,
+            segments=2,
+        ),
     ],
     # weapon: 银灰斧刃 + 金握柄缠带 + 骨色柄尾
     "weapon": [
-        lambda c: part_box("orc_axe_edge", (0.0, -7.0, 2.0), (7.5, 1.4, 9.0), IRON, bevel=0.25, segments=2),
-        lambda c: part_cylinder("orc_grip", (0.0, -6.8, -14.0), 1.5, 9.0, GOLD, vertices=10, bevel=0.25),
-        lambda c: part_box("orc_pommel", (0.0, -6.8, -19.0), (2.8, 2.8, 2.4), BONE, bevel=0.25, segments=2),
+        lambda c: part_box(
+            "orc_axe_edge",
+            (0.0, -7.0, 2.0),
+            (7.5, 1.4, 9.0),
+            IRON,
+            bevel=0.25,
+            segments=2,
+        ),
+        lambda c: part_cylinder(
+            "orc_grip", (0.0, -6.8, -14.0), 1.5, 9.0, GOLD, vertices=10, bevel=0.25
+        ),
+        lambda c: part_box(
+            "orc_pommel",
+            (0.0, -6.8, -19.0),
+            (2.8, 2.8, 2.4),
+            BONE,
+            bevel=0.25,
+            segments=2,
+        ),
     ],
 }
 
