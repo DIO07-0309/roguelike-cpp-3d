@@ -727,16 +727,10 @@ void HD2DRenderer::_draw_billboard(const HD2DDrawItem& item) {
 
 // ── M6-n 回退: 4 向偏移深色底稿 (仅 outline shader 加载失败时) ──
 // A14: 真 3D 模型绘制 — 顶点色网格 (与体素件共用材质)
-// 世界变换: 平移(脚底) * 绕Y旋转 * 缩放; 模型自带朝向, 不走广告牌基
+// 世界变换: 先局部缩放/绕Y旋转, 再平移到脚底 (model_world_transform 统一入口)
 void HD2DRenderer::_draw_model(const HD2DDrawItem& item) {
     if (!item.model || item.model->mesh.vertexCount <= 0) return;
-    Matrix transform = MatrixTranslate(item.world_pos.x, item.world_pos.y, item.world_pos.z);
-    if (item.model_yaw != 0.0f)
-        transform = MatrixMultiply(transform, MatrixRotateY(item.model_yaw * DEG2RAD));
-    if (item.model_scale != 1.0f) {
-        const float scale = item.model_scale;
-        transform = MatrixMultiply(transform, MatrixScale(scale, scale, scale));
-    }
+    Matrix transform = model_world_transform(item.world_pos, item.model_yaw, item.model_scale);
     hd2d::partMeshMaterial().maps[MATERIAL_MAP_DIFFUSE].color = item.tint;
     DrawMesh(item.model->mesh, hd2d::partMeshMaterial(), transform);
     if (item.blob_width > 0) _draw_blob_shadow(item.world_pos, item.blob_width);
@@ -1371,6 +1365,17 @@ Vector2 logical_screen_coord(Vector2 proj, float vp_w, float vp_h,
                               float target_w, float target_h) {
     if (vp_w <= 0.0f || vp_h <= 0.0f) return proj;
     return {proj.x * target_w / vp_w, proj.y * target_h / vp_h};
+}
+
+// A21-fix: 模型世界变换 — 局部缩放→旋转→世界平移。
+// raylib 行向量约定下 MatrixMultiply(A,B) 表示「先 A 后 B」, 因此
+// 平移必须在最右; 写成 (translate, rotate) 会让随机散摆 yaw 把物品转出地图。
+Matrix model_world_transform(Vector3 world_pos, float yaw_deg, float scale) {
+    const Matrix translate = MatrixTranslate(world_pos.x, world_pos.y, world_pos.z);
+    const Matrix rotate = MatrixRotateY(yaw_deg * DEG2RAD);
+    if (scale == 1.0f) return MatrixMultiply(rotate, translate);
+    return MatrixMultiply(MatrixScale(scale, scale, scale),
+                         MatrixMultiply(rotate, translate));
 }
 
 Vector2 HD2DRenderer::world_to_screen(Vector3 world_pos, float y_offset) const {

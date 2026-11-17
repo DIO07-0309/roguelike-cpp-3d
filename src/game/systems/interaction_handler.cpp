@@ -66,6 +66,11 @@ std::string InteractionHandler::pickup_item(Player* player, GameMap* map,
 
     std::vector<int> stack;                    // 下标自高到低 (helper 保证), erase 安全
     _collect_same_tile(ground_items, map, best->tile_x, best->tile_y, stack);
+
+    // A21-fix: 背包已满时必须给可见反馈。此前整格物品都 add 失败 → 返回空串,
+    // 调用方当作"什么都没发生", 玩家只看到 E 提示与地上的物品, 误判为拾取失效。
+    if (stack.empty() || player->inventory.is_full()) return "背包已满，无法拾取";
+
     std::string msg;
     for (int idx : stack) {
         auto& d = ground_items[idx];

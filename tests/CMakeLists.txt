@@ -86,6 +86,8 @@ add_roguelike_test(registry_test    registry/registry_test.cpp)
 add_roguelike_test(damage_test      combat/damage_test.cpp)
 add_roguelike_test(skill_execute_test combat/skill_execute_test.cpp)  # G14: Skill::execute 伤害数值基线 (此前零覆盖)
 add_roguelike_test(hd2d_scene_builder_test rendering/hd2d_scene_builder_test.cpp)  # G14: 3D 构建纯翻译层契约
+# A21-fix: 3D 掉落物模型世界变换顺序 + 背包满拾取反馈
+add_roguelike_test(hd2d_ground_item_test rendering/hd2d_ground_item_test.cpp)
 # A13: 部件体素化 — 纯函数契约 + 真实 PNG 与 Blender 脚本的逐件面数一致性 (1054/386/424/2288/1602/2230)
 add_roguelike_test(voxelizer_test rendering/voxelizer_test.cpp)
 # A14: 真 3D 模型资产 (NPC/道具低模) 合法性 + 加载器 round-trip

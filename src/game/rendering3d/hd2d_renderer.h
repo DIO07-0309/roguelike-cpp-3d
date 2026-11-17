@@ -33,6 +33,13 @@ enum class MoteStyle : int { DUST = 0, EMBER = 1, FIREFLY = 2 };
 Vector2 logical_screen_coord(Vector2 proj, float vp_w, float vp_h,
                              float target_w, float target_h);
 
+// A21-fix: 模型世界变换 = 局部旋转/缩放 → 再平移到 world_pos。
+// raylib 的 MatrixMultiply(A,B) 是「先 A 后 B」的行向量约定, 因此
+// 平移必须写在最右边; 原来的 MatrixMultiply(translate, rotate) 会
+// 让物品先平移再绕世界原点旋转 → 随机散摆 yaw 把掉落物甩出地图。
+Matrix model_world_transform(Vector3 world_pos, float yaw_deg,
+                              float scale = 1.0f);
+
 // 一帧的 3D 绘制项 (由 HD2DSceneBuilder 从只读场景视图提取)
 struct HD2DDrawItem {
     enum class Kind { FLOOR_TILE, WALL_BLOCK, ENTITY_BILLBOARD, FX_QUAD,

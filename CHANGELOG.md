@@ -1,4 +1,106 @@
-﻿# A21-Fix 续: 3D 掉落物地形遮挡调查 — 摆放高度候选修复（2026-11-15）
+﻿# A21-Fix 终: 3D 掉落物「看不见 / 捡不到」双根因定位（2026-11-17）
+
+> 用户复验结论: 背包满 → 捡不到（已确认）。
+> 掉落物仍不显示 → 与地板遮挡无关，是**模型世界变换矩阵顺序错误**。
+
+## 根因 1 — 模型世界变换顺序（"看不见"的直接原因）
+
+`HD2DRenderer::_draw_model`（`src/game/rendering3d/hd2d_renderer.cpp`）原写法:
+
+```cpp
+Matrix t = MatrixTranslate(pos.x, pos.y, pos.z);    // 先平移
+t = MatrixMultiply(t, MatrixRotateY(yaw * DEG2RAD)); // 再旋转
+```
+
+raylib 用**行向量**约定（`Vector3Transform` 即 `v * M`），因此
+`MatrixMultiply(A, B)` 的真实语义是「先 A，后 B」。上式等价于：
+
+```
+v' = (v * T) * R
+```
+
+即先把模型搬到 `world_pos`，再让它**绕世界原点 (0,0,0) 旋转**。
+掉落物 yaw 来自 tile 坐标哈希散摆（`_scatter_yaw`，几乎每格都不是 0），
+于是物品全被甩到地图外：
+
+| yaw | 期望世界坐标 | 旧顺序实际坐标 |
+|---|---|---|
+| 0°   | (208, 7, 176) | (208, 7, 176) |
+| 90°  | (208, 7, 176) | (176, 7, **-208**) |
+| 180° | (208, 7, 176) | (**-208**, 7, **-176**) |
+| 270° | (208, 7, 176) | (**-176**, 7, **208**) |
+
+这解释了全部现象:
+- E 提示用 tile 数字直接投影 → 位置永远正确（就画在空格子上）。
+- 模型走矩阵变换 → 被转到房间外/负数坐标 → 完全看不见。
+- 只有掉落物受影响: 地形/墙/NPC 的 yaw 都是 0, `T * R0 = T`, 顺序错误不显形。
+  （挑战门有 ±90/180 yaw，同样会漂移，只是此前被当作"门朝向"没察觉。）
+- 2D 模式不走这条管线 → 一直正常。
+- 上一轮把 y 从 0 抬到 6（A20 石板厚 4.48）救不了，因为模型**根本不在那一格**。
+
+修复: 新增唯一入口 `hd2d::model_world_transform(world_pos, yaw_deg, scale)`
+（`hd2d_renderer.h/.cpp`），语义固定为「局部缩放 → 局部绕 Y 旋转 → 世界平移」:
+
+```cpp
+MatrixMultiply(MatrixScale(s, s, s),
+               MatrixMultiply(MatrixRotateY(yaw), MatrixTranslate(pos)))
+```
+
+`_draw_model` 改为只调用该函数，杜绝后续再写反顺序。
+
+## 根因 2 — 背包满拾取静默失败（"捡不到"）
+
+`Inventory::max_size` 默认 16；用户存档日志正是 `16物品`。
+`pickup_item` 里 `inventory.add()` 失败会 `break`，然后返回空串，
+`_handle_interact_result` 认为「没有操作」→ 无声效、无提示、物品留地。
+玩家看到 E 提示却怎么按都不掉，误判为拾取逻辑失效。
+
+修复: 背包已满时返回 `"背包已满，无法拾取"`，走正常 `room_msg` 反馈链路。
+
+## 取证过程 (不是猜测)
+
+1. 用 `--hd2d --autocontinue --goto-floor 7 --autoshot 120 --hidwin` 在
+   **第 7 层（ash_volcano）**实机截图，临时在玩家脚边 3×3 生成 9 件武器。
+2. 日志确认 9 件全部 `loaded=1 y=6.00 terrain=1 vis=1 walk=1 branch=MODEL3D`
+   ——装配、资产、可见性、抬高全部正常。
+3. 截图却显示 9 个「E 拾取」气泡整齐排成一圈，**9 个模型全部跑到房间外的空地
+   和屏幕边缘**（yaw 越大跑得越远），与提示框完全脱钩。
+4. 独立最小程序用 `raymath.h` 实测矩阵顺序:
+   `MatrixMultiply(translate, rotate)` 在 yaw=90/180/270 下分别得到
+   `(176,7,-208)` / `(-208,7,-176)` / `(-176,7,208)`；
+   `MatrixMultiply(rotate, translate)` 恒为 `(208,7,176)`。
+5. 修复后重跑同一取证场景: 第 1 层保底武器（游戏正常生成的掉落物）精确显示在
+   其格子上，与 E 气泡重合。
+
+## 测试
+
+新增 `tests/rendering/hd2d_ground_item_test.cpp`（5 条）:
+- `HD2DModelTransform.LocalOriginLandsOnWorldPosition` — 任意 yaw 下局部原点必须
+  落在 world_pos
+- `HD2DModelTransform.RotatedFootPointStaysNearTile` — 局部脚点不得被甩到地图外
+- `HD2DModelTransform.OldTranslateRotateOrderOrbitsWorldOrigin` — 锁死旧顺序的
+  破坏性坐标，防止有人"简化"回去
+- `InteractionPickup.FullInventoryReportsMessageAndKeepsItem` — 背包满必须给文案
+  且物品留地
+- `InteractionPickup.EmptySlotStillPicksUp` — 有空位时成功路径不回归
+
+全量: `ctest` **90/90 通过**。
+
+## 改动文件
+
+- `src/game/rendering3d/hd2d_renderer.h` — 新增 `model_world_transform` 声明
+- `src/game/rendering3d/hd2d_renderer.cpp` — 实现该函数；`_draw_model` 接入
+- `src/game/systems/interaction_handler.cpp` — 背包满返回可见文案
+- `tests/rendering/hd2d_ground_item_test.cpp` — 新增回归测试
+- `tests/CMakeLists.txt` — 注册新测试
+
+> A21 第一轮（`4c5e8a5` 投影视口归一化）仍然有效: 它修的是 HUD/提示画在
+> 960×640 逻辑 RT 上的坐标系问题。本轮修的是 3D 世界模型自身的变换矩阵。
+> 两者独立，缺一不可。
+
+---
+
+# A21-Fix 续: 3D 掉落物地形遮挡调查 — 摆放高度候选修复（2026-11-15）
 
 > 用户复验: ① E 提示已贴近(投影归一化生效); ② 仍看不见物品、捡不上。
 > 说明「看不见」是**独立的第二个根因**, 上一轮误用投影证据连带否定了「地板遮挡」并撤掉 y 抬升, 现更正。
