@@ -994,17 +994,62 @@ def _refine(name, parts):
     if not spec:
         return parts
     import blender_lib
+
     for slot, details in spec.items():
         base = parts.get(slot)
         if base is None:
             continue
+        c = _color(name)
         extras = []
-        for builder_name, kwargs in details:
-            builder = getattr(blender_lib, builder_name)
-            extras.append(builder(**kwargs))
+        for detail in details:
+            # detail = (builder_name, kwargs) 或 callable(c) -> bpy.Object
+            if callable(detail):
+                extras.append(detail(c))
+            else:
+                builder_name, kwargs = detail
+                builder = getattr(blender_lib, builder_name)
+                extras.append(builder(**kwargs))
         if extras:
             parts[slot] = blender_lib.join_parts([base] + extras, base.name)
     return parts
+
+
+# A22 orc 精修 (humanoid 代表): 结构分层 + 特征件, 全部落在 A17 包络内。
+# 用 callable detail 注入配色 c; part_* 基元坐标均为部件局部系 (原点=骨骼 pivot)。
+REFINEMENTS["orc"] = {
+    # head: 骨色眉脊 + 深色眼罩 + 骨色獠牙, 全部前置 (y 更负 = 朝相机)
+    "head": [
+        lambda c: part_box("orc_brow", (0.0, -5.0, 3.6), (9.0, 1.2, 1.4), BONE, bevel=0.25, segments=2),
+        lambda c: part_box("orc_eyemask", (0.0, -5.1, 0.5), (8.0, 1.0, 2.6), c["dark"], bevel=0.25, segments=2),
+        lambda c: part_box("orc_tusk_l", (-3.2, -5.0, -5.2), (1.2, 1.2, 2.4), BONE, bevel=0.25, segments=2),
+        lambda c: part_box("orc_tusk_r", (3.2, -5.0, -5.2), (1.2, 1.2, 2.4), BONE, bevel=0.25, segments=2),
+    ],
+    # torso: 银灰胸甲 + 金色高光 + 骨色肩扣 + 深色腹带, 前置
+    "torso": [
+        lambda c: part_box("orc_chest", (0.0, -7.2, 2.5), (17.0, 1.6, 10.0), IRON, bevel=0.25, segments=2),
+        lambda c: part_box("orc_chest_hl", (0.0, -8.1, 4.0), (12.0, 0.9, 1.4), GOLD, bevel=0.25, segments=2),
+        lambda c: part_box("orc_shoulder_l", (-11.0, -6.5, 7.0), (5.0, 3.0, 3.5), BONE, bevel=0.25, segments=2),
+        lambda c: part_box("orc_shoulder_r", (11.0, -6.5, 7.0), (5.0, 3.0, 3.5), BONE, bevel=0.25, segments=2),
+        lambda c: part_box("orc_belt", (0.0, -7.6, -6.5), (19.0, 2.0, 2.8), c["dark"], bevel=0.25, segments=2),
+    ],
+    # arm: 银灰护腕 + 金扣
+    "arm": [
+        lambda c: part_cylinder("orc_bracer", (0.0, -6.5, -12.0), 3.2, 8.0, IRON, vertices=12, bevel=0.25),
+        lambda c: part_box("orc_wrist", (0.0, -6.8, -17.5), (5.5, 2.4, 2.0), GOLD, bevel=0.25, segments=2),
+    ],
+    # leg: 银灰护膝 + 金胫甲条 + 骨色脚踝扣
+    "leg": [
+        lambda c: part_box("orc_knee", (0.0, -6.5, -10.0), (6.5, 2.8, 4.5), IRON, bevel=0.25, segments=2),
+        lambda c: part_box("orc_shin", (0.0, -6.8, -15.0), (4.5, 1.6, 7.0), GOLD, bevel=0.25, segments=2),
+        lambda c: part_box("orc_ankle", (0.0, -6.5, -18.5), (5.5, 2.4, 1.8), BONE, bevel=0.25, segments=2),
+    ],
+    # weapon: 银灰斧刃 + 金握柄缠带 + 骨色柄尾
+    "weapon": [
+        lambda c: part_box("orc_axe_edge", (0.0, -7.0, 2.0), (7.5, 1.4, 9.0), IRON, bevel=0.25, segments=2),
+        lambda c: part_cylinder("orc_grip", (0.0, -6.8, -14.0), 1.5, 9.0, GOLD, vertices=10, bevel=0.25),
+        lambda c: part_box("orc_pommel", (0.0, -6.8, -19.0), (2.8, 2.8, 2.4), BONE, bevel=0.25, segments=2),
+    ],
+}
 
 
 FAMILIES = {"humanoid": HUMANOID, "orb": ORB, "slime": SLIME, "construct": CONSTRUCT}
