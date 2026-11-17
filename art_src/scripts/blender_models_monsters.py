@@ -983,7 +983,8 @@ CONSTRUCT = {
 #   REFINEMENTS[name] = {slot: [detail_spec, ...]}
 #   detail_spec = (builder_name, kwargs_dict)  — builder_name 是 blender_lib.part_* 的名字
 #   _refine 在每个 slot 的原部件对象上 join 追加细节对象, 返回同一 parts 字典。
-#   空 REFINEMENTS 时 build_parts 产物与 A17 基线逐字节一致。
+#   空 REFINEMENTS 时 _refine 为 no-op; 导出因 bmesh 面序非确定性,
+#   与磁盘基线仅语义等价 (顶点数/面数/bbox), 不做字节比对。
 # ══════════════════════════════════════════════════════════════
 REFINEMENTS = {}
 
@@ -1002,7 +1003,8 @@ def _refine(name, parts):
         c = _color(name)
         extras = []
         for detail in details:
-            # detail = (builder_name, kwargs) 或 callable(c) -> bpy.Object
+            # detail 用 callable(c) -> bpy.Object (当前 4 族配方均为 callable);
+            # (builder_name, kwargs) 元组路径保留为 P2 扩展点, 当前无配方使用。
             if callable(detail):
                 extras.append(detail(c))
             else:
@@ -1010,6 +1012,18 @@ def _refine(name, parts):
                 builder = getattr(blender_lib, builder_name)
                 extras.append(builder(**kwargs))
         if extras:
+            # A22: 追加细节顶点收敛到基础部件包围盒内 (spec §3.6 包络约束)。
+            bx = [v.co.x for v in base.data.vertices]
+            by = [v.co.y for v in base.data.vertices]
+            bz = [v.co.z for v in base.data.vertices]
+            xmin, xmax = min(bx), max(bx)
+            ymin, ymax = min(by), max(by)
+            zmin, zmax = min(bz), max(bz)
+            for ex in extras:
+                for v in ex.data.vertices:
+                    v.co.x = min(max(v.co.x, xmin), xmax)
+                    v.co.y = min(max(v.co.y, ymin), ymax)
+                    v.co.z = min(max(v.co.z, zmin), zmax)
             parts[slot] = blender_lib.join_parts([base] + extras, base.name)
     return parts
 
@@ -1024,14 +1038,14 @@ REFINEMENTS["fire_imp"] = {
     "head": [
         # 亮黄眼 + 火焰眉 + 金冠
         lambda c: part_sphere(
-            "imp_eye_l", (-2.2, -4.0, 2.0), 1.0, c["eye"], segments=16, rings=10
+            "imp_eye_l", (-2.2, 4.0, 2.0), 1.0, c["eye"], segments=16, rings=10
         ),
         lambda c: part_sphere(
-            "imp_eye_r", (2.2, -4.0, 2.0), 1.0, c["eye"], segments=16, rings=10
+            "imp_eye_r", (2.2, 4.0, 2.0), 1.0, c["eye"], segments=16, rings=10
         ),
         lambda c: part_prism(
             "imp_flame_brow",
-            (0.0, -3.5, 5.0),
+            (0.0, 3.5, 5.0),
             [(-3, 0), (3, 0), (0, 5)],
             1.5,
             GOLD,
@@ -1039,7 +1053,7 @@ REFINEMENTS["fire_imp"] = {
         ),
         lambda c: part_box(
             "imp_brow",
-            (0.0, -4.2, 3.8),
+            (0.0, 4.2, 3.8),
             (7.0, 1.2, 1.2),
             c["shadow"],
             bevel=0.2,
@@ -1049,14 +1063,14 @@ REFINEMENTS["fire_imp"] = {
     "torso": [
         # 前置金色火核 + 亮黄环 + 火焰尖层 + 亮黄腰带
         lambda c: part_sphere(
-            "imp_core", (0.0, -8.4, 3.0), 3.2, c["eye"], segments=20, rings=12
+            "imp_core", (0.0, 8.4, 3.0), 3.2, c["eye"], segments=20, rings=12
         ),
         lambda c: part_sphere(
-            "imp_core_ring", (0.0, -8.0, 3.0), 4.2, GOLD, segments=16, rings=10
+            "imp_core_ring", (0.0, 8.0, 3.0), 4.2, GOLD, segments=16, rings=10
         ),
         lambda c: part_prism(
             "imp_flame1",
-            (-4.0, -7.6, 9.0),
+            (-4.0, 7.6, 9.0),
             [(-2, 0), (2, 0), (0, 6)],
             1.5,
             c["light"],
@@ -1064,7 +1078,7 @@ REFINEMENTS["fire_imp"] = {
         ),
         lambda c: part_prism(
             "imp_flame2",
-            (4.0, -7.6, 8.0),
+            (4.0, 7.6, 8.0),
             [(-2, 0), (2, 0), (0, 5)],
             1.5,
             c["main"],
@@ -1072,7 +1086,7 @@ REFINEMENTS["fire_imp"] = {
         ),
         lambda c: part_box(
             "imp_belt",
-            (0.0, -8.6, -2.0),
+            (0.0, 8.6, -2.0),
             (14.0, 2.0, 2.4),
             GOLD,
             bevel=0.25,
@@ -1082,32 +1096,32 @@ REFINEMENTS["fire_imp"] = {
     "arm": [
         # 金色火环 + 高分段火焰臂核 (456 -> 1200+)
         lambda c: part_sphere(
-            "imp_arm_core", (0.0, -5.2, -6.0), 1.8, c["eye"], segments=24, rings=14
+            "imp_arm_core", (0.0, 5.2, -6.0), 1.8, c["eye"], segments=24, rings=14
         ),
         lambda c: part_cylinder(
-            "imp_arm_ring", (0.0, -5.2, -11.0), 2.2, 4.0, GOLD, vertices=14, bevel=0.25
+            "imp_arm_ring", (0.0, 5.2, -11.0), 2.2, 4.0, GOLD, vertices=14, bevel=0.25
         ),
         lambda c: part_sphere(
-            "imp_arm_bub", (0.0, -5.2, -2.0), 1.2, c["light"], segments=20, rings=12
+            "imp_arm_bub", (0.0, 5.2, -2.0), 1.2, c["light"], segments=20, rings=12
         ),
     ],
     "leg": [
         # 高分段火焰腿核 + 金环 (236 -> 1200+)
         lambda c: part_sphere(
-            "imp_leg_core", (0.0, -2.8, -8.0), 2.2, c["main"], segments=24, rings=14
+            "imp_leg_core", (0.0, 2.8, -8.0), 2.2, c["main"], segments=24, rings=14
         ),
         lambda c: part_cylinder(
-            "imp_leg_ring", (0.0, -2.8, -12.0), 2.6, 3.0, GOLD, vertices=16, bevel=0.25
+            "imp_leg_ring", (0.0, 2.8, -12.0), 2.6, 3.0, GOLD, vertices=16, bevel=0.25
         ),
         lambda c: part_sphere(
-            "imp_leg_bub", (0.0, -2.8, -3.0), 1.4, c["eye"], segments=20, rings=12
+            "imp_leg_bub", (0.0, 2.8, -3.0), 1.4, c["eye"], segments=20, rings=12
         ),
     ],
     "weapon": [
         # 火焰刃层 + 金柄 + 亮黄护手
         lambda c: part_prism(
             "imp_blade",
-            (0.0, -7.2, 4.0),
+            (0.0, 7.2, 4.0),
             [(-3, 0), (3, 0), (0, 12)],
             1.6,
             c["eye"],
@@ -1115,7 +1129,7 @@ REFINEMENTS["fire_imp"] = {
         ),
         lambda c: part_box(
             "imp_guard",
-            (0.0, -7.0, -1.0),
+            (0.0, 7.0, -1.0),
             (7.0, 2.0, 2.0),
             GOLD,
             bevel=0.25,
@@ -1123,7 +1137,7 @@ REFINEMENTS["fire_imp"] = {
         ),
         lambda c: part_cylinder(
             "imp_grip",
-            (0.0, -6.8, -10.0),
+            (0.0, 6.8, -10.0),
             1.5,
             12.0,
             c["shadow"],
@@ -1138,7 +1152,7 @@ REFINEMENTS["golem"] = {
         # 金色符文眼 + 铁质眉脊 + 石质额甲分层
         lambda c: part_box(
             "golem_eyes",
-            (0.0, -4.6, 2.0),
+            (0.0, 4.6, 2.0),
             (7.0, 1.0, 1.4),
             c["eye"],
             bevel=0.2,
@@ -1146,7 +1160,7 @@ REFINEMENTS["golem"] = {
         ),
         lambda c: part_box(
             "golem_brow",
-            (0.0, -4.8, 4.0),
+            (0.0, 4.8, 4.0),
             (9.0, 1.6, 1.8),
             IRON,
             bevel=0.25,
@@ -1154,38 +1168,38 @@ REFINEMENTS["golem"] = {
         ),
         lambda c: part_box(
             "golem_crest",
-            (0.0, -3.0, 6.4),
+            (0.0, 3.0, 6.4),
             (4.0, 2.0, 1.8),
             c["light"],
             bevel=0.25,
             segments=2,
         ),
         lambda c: part_box(
-            "golem_jaw", (0.0, -4.6, -3.0), (7.0, 1.4, 1.6), IRON, bevel=0.2, segments=2
+            "golem_jaw", (0.0, 4.6, -3.0), (7.0, 1.4, 1.6), IRON, bevel=0.2, segments=2
         ),
         lambda c: part_sphere(
-            "golem_eye_l", (-2.0, -5.0, 2.0), 0.9, c["eye"], segments=16, rings=10
+            "golem_eye_l", (-2.0, 5.0, 2.0), 0.9, c["eye"], segments=16, rings=10
         ),
         lambda c: part_sphere(
-            "golem_eye_r", (2.0, -5.0, 2.0), 0.9, c["eye"], segments=16, rings=10
+            "golem_eye_r", (2.0, 5.0, 2.0), 0.9, c["eye"], segments=16, rings=10
         ),
     ],
     "torso": [
         # 前置铁质胸甲板 + 金色核心 + 双肩石块 + 腹部铁箍
         lambda c: part_box(
             "golem_chest",
-            (0.0, -8.3, 2.0),
+            (0.0, 8.3, 2.0),
             (22.0, 2.0, 13.0),
             IRON,
             bevel=0.3,
             segments=2,
         ),
         lambda c: part_sphere(
-            "golem_core", (0.0, -9.6, 2.0), 3.0, c["eye"], segments=20, rings=12
+            "golem_core", (0.0, 9.6, 2.0), 3.0, c["eye"], segments=20, rings=12
         ),
         lambda c: part_box(
             "golem_shoulder_l",
-            (-13.0, -5.0, 7.0),
+            (-13.0, 5.0, 7.0),
             (7.0, 4.0, 4.0),
             c["light"],
             bevel=0.3,
@@ -1193,7 +1207,7 @@ REFINEMENTS["golem"] = {
         ),
         lambda c: part_box(
             "golem_shoulder_r",
-            (13.0, -5.0, 7.0),
+            (13.0, 5.0, 7.0),
             (7.0, 4.0, 4.0),
             c["light"],
             bevel=0.3,
@@ -1201,7 +1215,7 @@ REFINEMENTS["golem"] = {
         ),
         lambda c: part_box(
             "golem_belt",
-            (0.0, -8.8, -7.0),
+            (0.0, 8.8, -7.0),
             (24.0, 2.2, 3.0),
             GOLD,
             bevel=0.25,
@@ -1211,14 +1225,14 @@ REFINEMENTS["golem"] = {
     "arm": [
         # 铁箍 + 金环 + 石质护手
         lambda c: part_cylinder(
-            "golem_band", (0.0, -6.4, -8.0), 3.2, 6.0, IRON, vertices=14, bevel=0.25
+            "golem_band", (0.0, 6.4, -8.0), 3.2, 6.0, IRON, vertices=14, bevel=0.25
         ),
         lambda c: part_cylinder(
-            "golem_ring", (0.0, -6.4, -14.0), 3.0, 3.0, GOLD, vertices=12, bevel=0.25
+            "golem_ring", (0.0, 6.4, -14.0), 3.0, 3.0, GOLD, vertices=12, bevel=0.25
         ),
         lambda c: part_box(
             "golem_fist",
-            (0.0, -6.4, -19.0),
+            (0.0, 6.4, -19.0),
             (5.5, 4.0, 4.0),
             c["light"],
             bevel=0.3,
@@ -1229,7 +1243,7 @@ REFINEMENTS["golem"] = {
         # 铁质护膝 + 金胫甲 + 石块脚
         lambda c: part_box(
             "golem_knee",
-            (0.0, -7.0, -9.0),
+            (0.0, 7.0, -9.0),
             (7.0, 3.0, 5.0),
             IRON,
             bevel=0.3,
@@ -1237,7 +1251,7 @@ REFINEMENTS["golem"] = {
         ),
         lambda c: part_box(
             "golem_shin",
-            (0.0, -7.2, -15.0),
+            (0.0, 7.2, -15.0),
             (5.0, 2.0, 8.0),
             GOLD,
             bevel=0.25,
@@ -1245,21 +1259,21 @@ REFINEMENTS["golem"] = {
         ),
         lambda c: part_box(
             "golem_foot",
-            (0.0, -6.0, -20.0),
+            (0.0, 6.0, -20.0),
             (7.0, 4.0, 2.0),
             c["light"],
             bevel=0.25,
             segments=2,
         ),
         lambda c: part_cylinder(
-            "golem_ankle", (0.0, -7.0, -18.0), 3.2, 3.0, IRON, vertices=14, bevel=0.25
+            "golem_ankle", (0.0, 7.0, -18.0), 3.2, 3.0, IRON, vertices=14, bevel=0.25
         ),
     ],
     "weapon": [
         # 巨岩锤头 + 铁箍 + 符文 + 握柄
         lambda c: part_box(
             "golem_hammer",
-            (0.0, -8.4, 3.0),
+            (0.0, 8.4, 3.0),
             (11.0, 5.0, 8.0),
             c["light"],
             bevel=0.35,
@@ -1267,7 +1281,7 @@ REFINEMENTS["golem"] = {
         ),
         lambda c: part_box(
             "golem_hammer_band",
-            (0.0, -10.0, 3.0),
+            (0.0, 10.0, 3.0),
             (11.5, 1.2, 8.5),
             IRON,
             bevel=0.25,
@@ -1275,14 +1289,14 @@ REFINEMENTS["golem"] = {
         ),
         lambda c: part_box(
             "golem_rune",
-            (0.0, -10.8, 3.0),
+            (0.0, 10.8, 3.0),
             (4.0, 1.0, 4.0),
             c["eye"],
             bevel=0.2,
             segments=2,
         ),
         lambda c: part_cylinder(
-            "golem_grip", (0.0, -6.8, -12.0), 2.0, 12.0, GOLD, vertices=12, bevel=0.25
+            "golem_grip", (0.0, 6.8, -12.0), 2.0, 12.0, GOLD, vertices=12, bevel=0.25
         ),
     ],
 }
@@ -1291,17 +1305,17 @@ REFINEMENTS["slime"] = {
     # head: 骨色眼窝环 + 顶部晶核 + 两侧气泡
     "head": [
         lambda c: part_sphere(
-            "slime_core", (0.0, -5.2, 2.0), 1.8, GOLD, segments=20, rings=12
+            "slime_core", (0.0, 5.2, 2.0), 1.8, GOLD, segments=20, rings=12
         ),
         lambda c: part_sphere(
-            "slime_bub_l", (-2.2, -5.0, 0.0), 0.9, BONE, segments=16, rings=10
+            "slime_bub_l", (-2.2, 5.0, 0.0), 0.9, BONE, segments=16, rings=10
         ),
         lambda c: part_sphere(
-            "slime_bub_r", (2.2, -5.0, 0.0), 0.9, BONE, segments=16, rings=10
+            "slime_bub_r", (2.2, 5.0, 0.0), 0.9, BONE, segments=16, rings=10
         ),
         lambda c: part_box(
             "slime_brow",
-            (0.0, -6.0, 3.6),
+            (0.0, 6.0, 3.6),
             (5.0, 0.8, 0.9),
             c["dark"],
             bevel=0.2,
@@ -1311,47 +1325,47 @@ REFINEMENTS["slime"] = {
     # torso: 前置骨色核心环 + 金色晶核 + 表面气泡群
     "torso": [
         lambda c: part_sphere(
-            "slime_heart", (0.0, -7.6, 2.0), 3.2, GOLD, segments=16, rings=9
+            "slime_heart", (0.0, 7.6, 2.0), 3.2, GOLD, segments=16, rings=9
         ),
         lambda c: part_sphere(
-            "slime_heart_ring", (0.0, -7.2, 2.0), 4.2, BONE, segments=14, rings=8
+            "slime_heart_ring", (0.0, 7.2, 2.0), 4.2, BONE, segments=14, rings=8
         ),
         lambda c: part_sphere(
-            "slime_bub1", (-5.5, -6.8, 8.0), 1.4, BONE, segments=16, rings=10
+            "slime_bub1", (-5.5, 6.8, 8.0), 1.4, BONE, segments=16, rings=10
         ),
         lambda c: part_sphere(
-            "slime_bub3", (0.0, -6.8, -6.0), 1.6, GOLD, segments=16, rings=10
+            "slime_bub3", (0.0, 6.8, -6.0), 1.6, GOLD, segments=16, rings=10
         ),
     ],
     # arm: 高分段骨色核心 (188 -> 1200+)
     "arm": [
         lambda c: part_sphere(
-            "slime_arm_core", (0.0, -5.5, -4.0), 1.9, GOLD, segments=24, rings=14
+            "slime_arm_core", (0.0, 5.5, -4.0), 1.9, GOLD, segments=24, rings=14
         ),
         lambda c: part_sphere(
-            "slime_arm_bub", (0.0, -5.5, -1.5), 1.3, BONE, segments=20, rings=12
+            "slime_arm_bub", (0.0, 5.5, -1.5), 1.3, BONE, segments=20, rings=12
         ),
     ],
     # leg: 高分段核心 + 骨色足环
     "leg": [
         lambda c: part_sphere(
-            "slime_leg_core", (0.0, -4.4, -1.4), 2.6, GOLD, segments=24, rings=14
+            "slime_leg_core", (0.0, 4.4, -1.4), 2.6, GOLD, segments=24, rings=14
         ),
         lambda c: part_cylinder(
-            "slime_leg_ring", (0.0, -4.4, -2.2), 3.4, 1.2, BONE, vertices=20, bevel=0.2
+            "slime_leg_ring", (0.0, 4.4, -2.2), 3.4, 1.2, BONE, vertices=20, bevel=0.2
         ),
     ],
     # weapon: 高分段骨色刺核 + 金色环 (120 -> 1200+)
     "weapon": [
         lambda c: part_sphere(
-            "slime_weapon_core", (0.0, -6.0, -0.5), 1.2, BONE, segments=28, rings=16
+            "slime_weapon_core", (0.0, 6.0, -0.5), 1.2, BONE, segments=28, rings=16
         ),
         lambda c: part_sphere(
-            "slime_weapon_tip", (0.0, -6.0, 1.8), 0.9, GOLD, segments=24, rings=14
+            "slime_weapon_tip", (0.0, 6.0, 1.8), 0.9, GOLD, segments=24, rings=14
         ),
         lambda c: part_cylinder(
             "slime_weapon_ring",
-            (0.0, -6.0, -2.5),
+            (0.0, 6.0, -2.5),
             1.3,
             1.0,
             GOLD,
@@ -1365,11 +1379,11 @@ REFINEMENTS["orc"] = {
     # head: 骨色眉脊 + 深色眼罩 + 骨色獠牙, 全部前置 (y 更负 = 朝相机)
     "head": [
         lambda c: part_box(
-            "orc_brow", (0.0, -5.0, 3.6), (9.0, 1.2, 1.4), BONE, bevel=0.25, segments=2
+            "orc_brow", (0.0, 5.0, 3.6), (9.0, 1.2, 1.4), BONE, bevel=0.25, segments=2
         ),
         lambda c: part_box(
             "orc_eyemask",
-            (0.0, -5.1, 0.5),
+            (0.0, 5.1, 0.5),
             (8.0, 1.0, 2.6),
             c["dark"],
             bevel=0.25,
@@ -1377,7 +1391,7 @@ REFINEMENTS["orc"] = {
         ),
         lambda c: part_box(
             "orc_tusk_l",
-            (-3.2, -5.0, -5.2),
+            (-3.2, 5.0, -5.2),
             (1.2, 1.2, 2.4),
             BONE,
             bevel=0.25,
@@ -1385,7 +1399,7 @@ REFINEMENTS["orc"] = {
         ),
         lambda c: part_box(
             "orc_tusk_r",
-            (3.2, -5.0, -5.2),
+            (3.2, 5.0, -5.2),
             (1.2, 1.2, 2.4),
             BONE,
             bevel=0.25,
@@ -1396,7 +1410,7 @@ REFINEMENTS["orc"] = {
     "torso": [
         lambda c: part_box(
             "orc_chest",
-            (0.0, -7.2, 2.5),
+            (0.0, 7.2, 2.5),
             (17.0, 1.6, 10.0),
             IRON,
             bevel=0.25,
@@ -1404,7 +1418,7 @@ REFINEMENTS["orc"] = {
         ),
         lambda c: part_box(
             "orc_chest_hl",
-            (0.0, -8.1, 4.0),
+            (0.0, 8.1, 4.0),
             (12.0, 0.9, 1.4),
             GOLD,
             bevel=0.25,
@@ -1412,7 +1426,7 @@ REFINEMENTS["orc"] = {
         ),
         lambda c: part_box(
             "orc_shoulder_l",
-            (-11.0, -6.5, 7.0),
+            (-11.0, 6.5, 7.0),
             (5.0, 3.0, 3.5),
             BONE,
             bevel=0.25,
@@ -1420,7 +1434,7 @@ REFINEMENTS["orc"] = {
         ),
         lambda c: part_box(
             "orc_shoulder_r",
-            (11.0, -6.5, 7.0),
+            (11.0, 6.5, 7.0),
             (5.0, 3.0, 3.5),
             BONE,
             bevel=0.25,
@@ -1428,7 +1442,7 @@ REFINEMENTS["orc"] = {
         ),
         lambda c: part_box(
             "orc_belt",
-            (0.0, -7.6, -6.5),
+            (0.0, 7.6, -6.5),
             (19.0, 2.0, 2.8),
             c["dark"],
             bevel=0.25,
@@ -1438,11 +1452,11 @@ REFINEMENTS["orc"] = {
     # arm: 银灰护腕 + 金扣
     "arm": [
         lambda c: part_cylinder(
-            "orc_bracer", (0.0, -6.5, -12.0), 3.2, 8.0, IRON, vertices=12, bevel=0.25
+            "orc_bracer", (0.0, 6.5, -12.0), 3.2, 8.0, IRON, vertices=12, bevel=0.25
         ),
         lambda c: part_box(
             "orc_wrist",
-            (0.0, -6.8, -17.5),
+            (0.0, 6.8, -17.5),
             (5.5, 2.4, 2.0),
             GOLD,
             bevel=0.25,
@@ -1453,7 +1467,7 @@ REFINEMENTS["orc"] = {
     "leg": [
         lambda c: part_box(
             "orc_knee",
-            (0.0, -6.5, -10.0),
+            (0.0, 6.5, -10.0),
             (6.5, 2.8, 4.5),
             IRON,
             bevel=0.25,
@@ -1461,7 +1475,7 @@ REFINEMENTS["orc"] = {
         ),
         lambda c: part_box(
             "orc_shin",
-            (0.0, -6.8, -15.0),
+            (0.0, 6.8, -15.0),
             (4.5, 1.6, 7.0),
             GOLD,
             bevel=0.25,
@@ -1469,7 +1483,7 @@ REFINEMENTS["orc"] = {
         ),
         lambda c: part_box(
             "orc_ankle",
-            (0.0, -6.5, -18.5),
+            (0.0, 6.5, -18.5),
             (5.5, 2.4, 1.8),
             BONE,
             bevel=0.25,
@@ -1480,18 +1494,18 @@ REFINEMENTS["orc"] = {
     "weapon": [
         lambda c: part_box(
             "orc_axe_edge",
-            (0.0, -7.0, 2.0),
+            (0.0, 7.0, 2.0),
             (7.5, 1.4, 9.0),
             IRON,
             bevel=0.25,
             segments=2,
         ),
         lambda c: part_cylinder(
-            "orc_grip", (0.0, -6.8, -14.0), 1.5, 9.0, GOLD, vertices=10, bevel=0.25
+            "orc_grip", (0.0, 6.8, -14.0), 1.5, 9.0, GOLD, vertices=10, bevel=0.25
         ),
         lambda c: part_box(
             "orc_pommel",
-            (0.0, -6.8, -19.0),
+            (0.0, 6.8, -19.0),
             (2.8, 2.8, 2.4),
             BONE,
             bevel=0.25,

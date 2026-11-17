@@ -42,6 +42,13 @@
 每族经 Blender MCP `execute_blender_code` 在实时 Blender 导出，`look()` 四视图审图
 （正面/右/顶/3q）：无穿模、正面朝相机、轮廓未超包络；预览图同步更新到 `art_src/preview/`。
 
+> **审查后修复（同日）**：最终审查发现首版精修细节全落在部件**背面**（Blender −Y，
+> 导出后 mesh.y>0），正面顶点数与基线完全相同——面数涨了但玩家看不到，违背精修目标；
+> 且部分细节超出基础包围盒达 10.7。已修复：① 四个 REFINEMENTS 块所有细节的 Y 取反
+> 到 Blender +Y（正面）；② `_refine` 在 join 前把细节顶点 clamp 到基础部件包围盒内。
+> 重导出后 20/20 部件正面顶点增加（如 orc head 1334→2198）、0 部件超包络。
+> 新增 `tools/check_ground_item_assets.js`（含正面位置契约）作为 P2 回归网。
+
 ## 验证
 
 - 全量资产校验：267 个 JSON，schema/finite/name 全通过，试点件 ≤4000。
