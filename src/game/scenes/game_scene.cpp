@@ -3870,6 +3870,19 @@ static bool _hint_on_screen(Vector2 s) {
         && s.y >= 0.0f && s.y <= (float)WINDOW_HEIGHT;
 }
 
+// A21-fix: NPC 对话气泡 — 从 _render_hd2d_interact_hints 抽出 (函数长度门)
+void GameScene::_render_npc_interact_hints(int ptx, int pty) {
+    auto& hd2d = HD2DRenderer::inst();
+    for (auto& npc : npc_views()) {
+        if (game_map && !game_map->isVisible(npc.tile_x, npc.tile_y)) continue;
+        if (abs(npc.tile_x - ptx) > 1 || abs(npc.tile_y - pty) > 1) continue;
+        Vector2 s = hd2d.world_to_screen(
+            {(float)npc.tile_x * TILE_SIZE + TILE_SIZE * 0.5f, 0,
+             (float)npc.tile_y * TILE_SIZE + TILE_SIZE * 0.5f}, 56.0f);
+        if (_hint_on_screen(s)) _draw_interact_hint("E 对话", s.x, s.y - 16);
+    }
+}
+
 // E 交互气泡 (NPC 对话 / 地面物品拾取; 玩家相邻时显示)
 void GameScene::_render_hd2d_interact_hints() {
     auto& hd2d = HD2DRenderer::inst();
@@ -3881,14 +3894,7 @@ void GameScene::_render_hd2d_interact_hints() {
             player->entity.rect.y + player->entity.rect.height/2);
         ptx = ppl.first; pty = ppl.second;
     }
-    for (auto& npc : npc_views()) {
-        if (game_map && !game_map->isVisible(npc.tile_x, npc.tile_y)) continue;
-        if (abs(npc.tile_x - ptx) > 1 || abs(npc.tile_y - pty) > 1) continue;
-        Vector2 s = hd2d.world_to_screen(
-            {(float)npc.tile_x * TILE_SIZE + TILE_SIZE * 0.5f, 0,
-             (float)npc.tile_y * TILE_SIZE + TILE_SIZE * 0.5f}, 56.0f);
-        if (_hint_on_screen(s)) _draw_interact_hint("E 对话", s.x, s.y - 16);
-    }
+    _render_npc_interact_hints(ptx, pty);
     // A15-fix: 提示与 pickup_item 同源 — 可见格 + 欧氏距离 < PICKUP_RANGE (原切比雪夫≤1 会漏/谎报)
     std::vector<std::pair<int, int>> hinted_tiles;   // 同格只画一个气泡 (整格会被一起捡走)
     for (auto& d : ground_items) {
@@ -3907,7 +3913,11 @@ void GameScene::_render_hd2d_interact_hints() {
         if (dup) continue;
         hinted_tiles.push_back({d.tile_x, d.tile_y});
         Vector2 s = hd2d.world_to_screen({icx, 0, icy}, 20.0f);
-        if (_hint_on_screen(s)) _draw_interact_hint("E 拾取", s.x, s.y - 4);
+        if (_hint_on_screen(s)) {
+            // A21-fix: 背包已满时拾取必然失败, 不要再骗玩家按 E
+            const bool full = player && player->inventory.is_full();
+            _draw_interact_hint(full ? "背包已满" : "E 拾取", s.x, s.y - 4);
+        }
     }
 }
 
@@ -4082,7 +4092,8 @@ void GameScene::_draw_ground_item(const DroppedItem& d) {
             player->entity.rect.x + player->entity.rect.width/2,
             player->entity.rect.y + player->entity.rect.height/2);
         if (abs(d.tile_x - itx) <= 1 && abs(d.tile_y - ity) <= 1)
-            _draw_interact_hint("E 拾取", cx, cy - TILE_SIZE/2 - 8);
+            _draw_interact_hint(player->inventory.is_full() ? "背包已满" : "E 拾取",
+                               cx, cy - TILE_SIZE/2 - 8);
     }
 }
 

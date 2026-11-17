@@ -479,12 +479,16 @@ void PlayerController::_handle_interact_result() {
     auto& gs = *_scene;
     std::string result = gs._interact.try_interact(gs.player.get(), gs.game_map.get(), gs.ground_items);
     if (!result.empty()) {
-        gs._gameplay.flow.mark_reward();
+        const bool picked_up = (result.find("拾取: ") == 0);
+        // A21-fix: "背包已满" 是失败提示, 不能当成已发奖励记账 (否则 FlowDirector
+        // 奖励计时器被清零, 反而更容易立刻再刷奖励)。
+        const bool bag_full = (result.find("背包已满") != std::string::npos);
+        if (!bag_full) gs._gameplay.flow.mark_reward();
         bool is_relic = (result.find("圣物") != std::string::npos);
         gs._presentation.room_msg = result;
         gs._presentation.room_msg_timer = is_relic ? 3.5f : 2.5f;
         // Q4.3: 拾取音效 + 拾取闪光
-        if (result.find("拾取: ") == 0) {
+        if (picked_up) {
             gs._sim_items_picked++;   // M2-C: 拾取计数 (sim 仪表盘)
             gs.get_tree()->get_audio()->play_sfx("pickup", 0.55f);
             float px = gs.player->entity.rect.x + gs.player->entity.rect.width/2;
@@ -499,7 +503,7 @@ void PlayerController::_handle_interact_result() {
             gs._presentation.trigger_shake(CombatFeelSystem::SHAKE_LIGHT);
             gs._presentation.trigger_freeze(CombatFeelSystem::RELIC_PICKUP);
         }
-        if (!gs._interact.shown_relic_hint && !gs.player->relics.empty()) {
+        if (!bag_full && !gs._interact.shown_relic_hint && !gs.player->relics.empty()) {
             gs._interact.shown_relic_hint = true;
             gs._presentation.room_msg = "按 R 可查看圣物面板";
             gs._presentation.room_msg_timer = 2.5f;

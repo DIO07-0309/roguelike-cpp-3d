@@ -627,6 +627,7 @@ private:
     void _render_hd2d_world_labels();
     void _render_hd2d_monster_labels();
     void _render_hd2d_interact_hints();
+    void _render_npc_interact_hints(int ptx, int pty);
 
     // C1/M6-v2b: 伤害飘字 (样式共用; 2D 相机偏移 / 3D 投影)
     void _render_damage_text(const PresentationSystemDirector::DamageFloat& df,
