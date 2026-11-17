@@ -1530,7 +1530,7 @@ for _mon, _meta in MONSTERS.items():
         continue
     _pilot = _REFINE_FAMILY.get(_meta[0])
     if _pilot:
-        REFINEMENTS[_mon] = REFINEMENTS[_pilot]
+        REFINEMENTS[_mon] = dict(REFINEMENTS[_pilot])  # 浅拷贝, 避免日后按名改动联动全族
 
 FAMILIES = {"humanoid": HUMANOID, "orb": ORB, "slime": SLIME, "construct": CONSTRUCT}
 

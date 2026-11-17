@@ -28,18 +28,18 @@
 
 | 族 | 种数 | 基线/种 | 精修后/种 |
 |---|---:|---:|---|
-| humanoid | 18 | 5092 | 7320 |
+| humanoid | 19 | 5092 | 7320 |
 | orb | 4 | 3588 | 8828 |
 | slime | 5 | 2200 | 8616 |
 | construct | 2 | 3068 | 7144 |
 
-（含 A22 已精修的 4 种样板；各槽 1248–2176 面，全部 ≤4000。）
+（含 A22 已精修的 4 种样板；humanoid 19 = 剩余 18 + orc 样板。各槽 1248–2176 面，全部 ≤4000。）
 
 ## 闸门升级
 
 `tools/check_ground_item_assets.js` 从"4 种试点"扩展为**全 30 种**：
 - 基线正面顶点数表外置到 `tools/ground_item_baselines.json`（30 种 × 5 槽，
-  由原始 builder 导出统计生成）。
+  由原始 builder 导出统计生成；重生成时 orb 族 head/weapon 基线较 A22 内联旧值各差 54 顶点（bmesh 非确定性），精修后 2590/2730 远大于两者，闸门未削弱）。
 - 校验 schema / name==stem / finite / 面数 ≤4000 / **正面细节 > 基线**
   —— 最后一项正是 A22 审查抓出的"细节做在背面"回归的防线。
 - `node tools/check_ground_item_assets.js --all`：**CHECKED=150 MONSTERS=30 FAILED=0**。
