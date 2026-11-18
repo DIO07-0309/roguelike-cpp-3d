@@ -1,4 +1,69 @@
-﻿# P4: 21 件地形审美升级（2026-11-18）
+﻿# P5: 特殊房间地板/墙壁破碎感升级（2026-11-19）
+
+> 用户诉求：房间花雕精致丰富，但特殊房地板/墙壁是"一大块色块"，要改；
+> 用属于地牢的"破碎感"去丰富地板和墙壁。拍板：特殊房+普通地板都加、改 C++ 放开 3D 路径、
+> 独立 rubble 装饰件、2D 最小对位、沿用惯例交付。
+
+## 根因（只读调查）
+
+`hd2d_scene_builder.cpp:494-498` 的 `use_3d = !get_special_room_at(...) && ...`
+把特殊房所有 tile（含地板/墙/门）排除出 3D 地形模型路径，只走运行时纯色 quad
+（`_emit_special_room_floor` → `DrawPlane` 纯色），覆盖群系贴图；
+普通地板装饰在特殊房被跳过；地面唯一图案是 0.35 tile 小菱形。
+LANDMARK/CHALLENGE 还共用同一默认暗色 `{25,25,35}`。
+P4 刚做的精致群系 3D 地形，在特殊房一个都用不上——这就是"一大块色块"的来源。
+
+## 三层方案
+
+1. **C++ 打通显示**（scene_builder.cpp）：仅特殊房 FLOOR 转 `terrain_floor_<biome>` 3D 模型
+   （墙/门保留 quad 以保阴影/轮廓）；类型色烘进 MODEL3D.tint——纯函数
+   `special_room_tint_for_model(sr, visible)` 把 9 色基色×2.4 重标定后乘
+   triggered(0.55)×visible(1.0/0.6)，与顶点色相乘仍可辨；不动 decal/model 绘制顺序。
+   `_terrain_active_for` 同步：特殊房 FLOOR 启用 3D 后掉落物抬到 y=6 不埋石板。
+2. **破碎 rubble 模型**（blender_models_rubble.py）：3 群系各 1 件——错缝碎裂石板+
+   发光龟裂缝+崩落碎石棱；贴地 y_min≈0、面数 1824。C++ 按坐标哈希 `rubble_placed(tx,ty)`
+   ≈20% 密度作为额外 MODEL3D 坐在石板顶(y=5)，特殊房与普通房都挂，确定性朝向变化。
+3. **2D 对位 + 色表单一真相**：`special_room_palette.h` 的 `special_room_base_color(type)`
+   供 2D(game_map)与 3D(scene_builder)共用，消除原先两处重复 switch 的颜色漂移；
+   `drawSpecialRoomFloor()` 加裂缝线+碎石点（仅非 triggered）。
+
+## C++ 测试（RED→GREEN）
+
+在 `hd2d_scene_builder_test.cpp` 新增 4 个 gtest（均先 RED 编译失败→GREEN PASS）：
+- `SpecialRoomTintForModel`：重标定色阶、triggered/不可见压暗
+- `SpecialRoomFloorUsesTerrainModel`：只有 FLOOR 转 3D，墙/门保留 quad
+- `RubbleDensityDeterministic`：坐标哈希确定性、20×20≈20% 密度
+- `SpecialRoomPaletteSingleSource`：2D/3D 取同一 SHOP 基色
+
+注：ctest 目标数仍 90（新 TEST 在同一可执行文件内，gtest 内部 10 个测试全过）。
+
+## 闸门
+
+- 新增 `tools/check_p5_assets.js`（rubble 全新资产，用绝对门槛 faces≥300 + bbox x/z±16、y≤6，
+  而非"精修前基线"）；RED 3/3 parse-fail → GREEN 3/3 PASS（faces=1824）。
+- P4 19/19、P3b 17/17、P3 8/8、A22 150/150 均不退化。
+
+## 工程约束修复
+
+改 C++ 后 `fn_length_scan` 报 2 处函数超 40 行（`_emit_terrain_tile` 51 / `_emit_floor_item` 45），
+提取 `_emit_rubble_if_any` / `_emit_special_floor_tint` 两个 helper 后回到 0 超规（纯重构、行为不变，90/90）。
+
+## 审图
+
+- Blender MCP 装配"特殊房地板 + rubble@z5"场景：rubble 碎板坐在群系石板顶、不埋入、不穿模，
+  发光裂缝清晰（对应 C++ y=5 高于石板顶 4.48）。
+- rubble 三群系错缝碎板+发光裂缝形态清晰、配色区分。
+- **实机观感（类型色相乘后的最终亮度、掉落物不埋、墙阴影）建议运行游戏最终确认**——
+  ctest 与目标预览不覆盖 raylib 实际画面。
+
+## 验证
+
+- ctest 90/90（gtest 10 项）；P5 3/3、P4 19/19、P3b 17/17、P3 8/8、A22 150/150；
+  fn_length 0 超规；world_validator 通过；全项目 cmake 构建成功。
+
+---
+
+# P4: 21 件地形审美升级（2026-11-18）
 
 > 用户拍板：群系专属造型语言（真正一眼可辨，不要换色皮肤）；21 件逻辑资产全做；
 > 闸门 bbox 不超基线且面数严格 > 基线；21 张预览全部重生成；"一眼可辨"作为阻塞性验收。
