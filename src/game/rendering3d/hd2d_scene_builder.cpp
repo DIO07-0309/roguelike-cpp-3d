@@ -140,26 +140,53 @@ static Color _unexplored_dim(Color c) {
                  (unsigned char)(c.b * 6 / 10), c.a};
 }
 
-static Color _special_room_tint(const SpecialRoom* sr) {
-    Color base;
-    switch (sr->type) {
-        case SpecialRoomType::ALTAR:      base = {60, 44, 22, 255}; break;
-        case SpecialRoomType::TREASURE:   base = {34, 46, 76, 255}; break;
-        case SpecialRoomType::FOUNTAIN:   base = {28, 56, 34, 255}; break;
-        case SpecialRoomType::SHOP:       base = {62, 56, 24, 255}; break;
-        case SpecialRoomType::BLACKSMITH: base = {68, 40, 28, 255}; break;
-        case SpecialRoomType::LIBRARY:    base = {22, 38, 68, 255}; break;
-        case SpecialRoomType::GAMBLER:    base = {56, 22, 60, 255}; break;
-        case SpecialRoomType::SHRINE:     base = {52, 52, 16, 255}; break;
-        case SpecialRoomType::SECRET:     base = {62, 16, 16, 255}; break;
-        default:                          base = {25, 25, 35, 255}; break;
+// P5: 特殊房 9 色基色 —— 3D 模型 tint 与 2D/decal 共用的单一真相。
+// 注: 这是"设计基色"; 3D 模型 tint 会再乘顶点色, 故 special_room_tint_for_model
+// 在此基色上做重标定(×2.4)以抵消压暗。2D 直接用原值。
+static Color _special_room_base_color(SpecialRoomType type) {
+    switch (type) {
+        case SpecialRoomType::ALTAR:      return {60, 44, 22, 255};
+        case SpecialRoomType::TREASURE:   return {34, 46, 76, 255};
+        case SpecialRoomType::FOUNTAIN:   return {28, 56, 34, 255};
+        case SpecialRoomType::SHOP:       return {62, 56, 24, 255};
+        case SpecialRoomType::BLACKSMITH: return {68, 40, 28, 255};
+        case SpecialRoomType::LIBRARY:    return {22, 38, 68, 255};
+        case SpecialRoomType::GAMBLER:    return {56, 22, 60, 255};
+        case SpecialRoomType::SHRINE:     return {52, 52, 16, 255};
+        case SpecialRoomType::SECRET:     return {62, 16, 16, 255};
+        default:                          return {25, 25, 35, 255};
     }
+}
+
+static Color _special_room_tint(const SpecialRoom* sr) {
+    Color base = _special_room_base_color(sr->type);
     if (sr->triggered) {
         base.r = (unsigned char)(base.r * 0.55f);
         base.g = (unsigned char)(base.g * 0.55f);
         base.b = (unsigned char)(base.b * 0.55f);
     }
     return base;
+}
+
+// P5: 只有 FLOOR 在特殊房里转 3D 地形模型; 墙/门保留 quad (保阴影/轮廓)。
+bool special_room_floor_uses_3d(bool is_floor, bool in_special_room) {
+    return is_floor;  // 特殊房与否不影响 FLOOR 走 3D
+}
+
+// P5: 特殊房类型色烘进 MODEL3D.tint。tint 与顶点色相乘, 故基色重标定 ×2.4,
+// 再乘 triggered(0.55) 与 visible(0.6)。各通道 clamp 到 [1,255] (避免全黑)。
+Color special_room_tint_for_model(const SpecialRoom* sr, bool visible_now) {
+    if (!sr) return WHITE;
+    Color base = _special_room_base_color(sr->type);
+    const float scale = 2.4f * (sr->triggered ? 0.55f : 1.0f)
+                        * (visible_now ? 1.0f : 0.6f);
+    auto ch = [scale](unsigned char v) -> unsigned char {
+        int out = (int)(v * scale);
+        if (out < 1) out = 1;
+        if (out > 255) out = 255;
+        return (unsigned char)out;
+    };
+    return Color{ch(base.r), ch(base.g), ch(base.b), 255};
 }
 
 // ── M6-v2h: 特殊房间中心图标 key (2D room_* 素材同源) ──
@@ -392,9 +419,14 @@ static void _emit_floor_item(HD2DDrawItem& item, const GameMap* map, int tx, int
     if (t == TileType::FLOOR || t == TileType::STAIRS_DOWN) {
         const SpecialRoom* sr = map->get_special_room_at(tx, ty);
         if (sr) {
-            item.tint = _special_room_tint(sr);
-            if (!map->isVisible(tx, ty)) item.tint = _unexplored_dim(item.tint);
-            _emit_special_room_floor(map, tx, ty, item, out);
+            // P5: 特殊房 FLOOR 转 3D 时不再画纯色 decal (会被石板盖住);
+            // type tint 已烘进 MODEL3D.tint。仅非 3D 路径保留 decal。
+            const bool floor_3d = special_room_floor_uses_3d(true, true);
+            if (!floor_3d) {
+                item.tint = _special_room_tint(sr);
+                if (!map->isVisible(tx, ty)) item.tint = _unexplored_dim(item.tint);
+                _emit_special_room_floor(map, tx, ty, item, out);
+            }
         }
     }
     // M6-v2h: 楼梯 tint 换棕金阶调 (2D 60/48/26 系)
@@ -453,7 +485,7 @@ static bool _terrain_model_name(TileType t, const char* biome_short,
 // 主 tile 的全部副作用 (LAVA/特殊房间/门态/fog) 由调用方后续照常处理。
 static void _try_terrain_3d(HD2DDrawItem& item, std::vector<HD2DDrawItem>& out,
                             const char* model_name, bool visible_now,
-                            float model_yaw = 0.0f) {
+                            float model_yaw = 0.0f, const Color* tint_override = nullptr) {
     auto model = _model_cache().get(model_name);
     if (!model) {
         // 墙变体缺资产 → 回退无后缀名 (= v0); 再缺则彻底回退原 quad
@@ -472,8 +504,9 @@ static void _try_terrain_3d(HD2DDrawItem& item, std::vector<HD2DDrawItem>& out,
     m.world_pos = item.world_pos;
     m.sort_y = (float)item.tile_y * TILE_SIZE;
     m.model = model;
-    // 3D 用资产自带顶点色, tint 只承载 fog (可见=白 / 已探索不可见=60%灰)
-    m.tint = visible_now ? WHITE : Color{153, 153, 153, 255};
+    // P5: 特殊房类型色烘进 tint (与顶点色相乘); 否则 tint 只承载 fog。
+    m.tint = tint_override ? *tint_override
+                           : (visible_now ? WHITE : Color{153, 153, 153, 255});
     m.model_yaw = model_yaw;   // 门按 door_axis 转 90°, 墙/地板 0
     out.push_back(m);
 }
@@ -491,9 +524,11 @@ static void _emit_terrain_tile(const GameMap* map, int tx, int ty,
     item.size = (float)TILE_SIZE;
     if (!map->isExplored(tx, ty)) return;   // v1.6: 未探索 → 虚空
     item.tint = _tile_color(t, map->isVisible(tx, ty));
-    // A20: 先决定本格是否用雕饰 3D (特殊房间 / LAVA 不替代)
+    // P5: 特殊房间仅 FLOOR 转 3D (墙/门仍 quad), LAVA 不替代。
     char model_name[64] = {0};
-    const bool use_3d = !map->get_special_room_at(tx, ty)
+    const SpecialRoom* sr_here = map->get_special_room_at(tx, ty);
+    const bool special_floor_3d = (t == TileType::FLOOR) && (sr_here != nullptr);
+    const bool use_3d = (special_floor_3d || !sr_here)
         && _terrain_model_name(t, _terrain_biome_short(map->biome_id()),
                                tx, ty, model_name, sizeof(model_name));
     if (t == TileType::WALL)
@@ -504,8 +539,12 @@ static void _emit_terrain_tile(const GameMap* map, int tx, int ty,
         _emit_floor_item(item, map, tx, ty, floor_tex, has_pal, pal, out, use_3d);
     // 门框: door_axis=1 (贴南北墙) 时转 90° 让正面朝走廊
     const float door_yaw = (t == TileType::DOOR && item.door_axis == 1) ? 90.0f : 0.0f;
-    if (use_3d)
-        _try_terrain_3d(item, out, model_name, map->isVisible(tx, ty), door_yaw);
+    if (use_3d) {
+        Color model_tint = WHITE;
+        if (special_floor_3d)
+            model_tint = special_room_tint_for_model(sr_here, map->isVisible(tx, ty));
+        _try_terrain_3d(item, out, model_name, map->isVisible(tx, ty), door_yaw, &model_tint);
+    }
     out.push_back(item);
     _emit_boss_fov_fog(map, tx, ty, item, out);
 }
@@ -1162,7 +1201,8 @@ float ground_item_model_y(bool terrain_active) {
 // 特殊房间、LAVA、缺资产格会走旧 quad/decal，不能把物品抬高悬空。
 static bool _terrain_active_for(const GameMap* map, int tx, int ty) {
     if (!map) return false;
-    if (map->get_special_room_at(tx, ty)) return false;
+    const bool in_special = map->get_special_room_at(tx, ty) != nullptr;
+    if (in_special && !special_room_floor_uses_3d(true, true)) return false;
     if (map->tile_at(tx, ty) != TileType::FLOOR) return false;
     char name[64];
     if (!_terrain_model_name(map->tile_at(tx, ty), _terrain_biome_short(map->biome_id()),

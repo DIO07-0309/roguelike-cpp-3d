@@ -9,12 +9,22 @@
 // G12-4: 解耦后不再依赖 GameScene —— 任何能填出 SceneView 的场景都能走 3D
 // 红线: 只读视图; 不产生任何 gameplay 副作用; 视觉随机只吃 visual_rng
 // ============================================================
+struct SpecialRoom;  // P5: 特殊房 tint (全局类型, 定义见 world/special_room.h)
+
 namespace hd2d {
 
 // A21: 3D 掉落物摆放高度。A20 雕饰地板是 y=0~4.48 的实体石板(实测),
 // 而掉落物模型是平躺的(y=0~3, 高度≈0); 若仍放 y=0 会被石板完全埋住(看不见)。
 // terrain_active: 该掉落格实际启用了 A20 雕饰地板。返回掉落物 world_pos.y。
 float ground_item_model_y(bool terrain_active);
+
+// P5: 特殊房类型色烘进 3D 地形模型 tint。
+// tint 与模型顶点色相乘, 故基色已重标定; triggered/未探索在同一公式内压暗。
+// visible_now: 当前帧是否可见 (false = 已探索但不可见, 压暗 40%)。
+Color special_room_tint_for_model(const SpecialRoom* sr, bool visible_now);
+
+// P5: 只有特殊房 FLOOR 转 3D 地形模型; 墙/门仍走 quad。
+bool special_room_floor_uses_3d(bool is_floor, bool in_special_room);
 
 // G12-5: tint 默认值只在 hd2d_part_geometry.h 声明一次 (避免 TU 内重复)
 void appendAvatarParts(const std::vector<AvatarPartDraw>& parts, Vector3 feet_world,

@@ -125,3 +125,38 @@ TEST(GameSceneHd2dView, ChallengeArenaPropagatesToView) {
     s->exit_challenge_arena();
     EXPECT_FALSE(s->hd2d_view().in_challenge_arena);
 }
+
+// ── P5: 特殊房类型色烘进 3D 模型 tint ─────────────────────────────
+// tint 与顶点色相乘, 故基色须重标定; triggered/未探索在同一公式内压暗。
+TEST(HD2DSceneBuilder, SpecialRoomTintForModel) {
+    SpecialRoom sr;
+    sr.type = SpecialRoomType::SHOP;
+    sr.triggered = false;
+
+    Color normal = hd2d::special_room_tint_for_model(&sr, true);
+    // 重标定后应明显亮于原始 {62,56,24}, 各通道仍为合法 uint8
+    EXPECT_GE(normal.r, 100);
+    EXPECT_GE(normal.g, 80);
+    EXPECT_GT(normal.b, 0);
+    EXPECT_LE(normal.r, 255);
+
+    sr.triggered = true;
+    Color trig = hd2d::special_room_tint_for_model(&sr, true);
+    EXPECT_LT(trig.r, normal.r) << "triggered 房间应更暗";
+    EXPECT_LT(trig.g, normal.g);
+
+    sr.triggered = false;
+    Color hidden = hd2d::special_room_tint_for_model(&sr, false);
+    EXPECT_LT(hidden.r, normal.r) << "未即时可见(已探索)应更暗";
+    EXPECT_LT(hidden.g, normal.g);
+}
+
+// ── P5: 只有特殊房 FLOOR 转 3D, 墙/门仍走 quad ───────────────────
+TEST(HD2DSceneBuilder, SpecialRoomFloorUsesTerrainModel) {
+    EXPECT_TRUE(hd2d::special_room_floor_uses_3d(true, true))
+        << "特殊房 FLOOR 必须走 3D 地形模型";
+    EXPECT_FALSE(hd2d::special_room_floor_uses_3d(false, true))
+        << "特殊房 WALL/DOOR 必须保留 quad(保阴影/轮廓)";
+    EXPECT_TRUE(hd2d::special_room_floor_uses_3d(true, false))
+        << "普通 FLOOR 本来就走 3D";
+}
