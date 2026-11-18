@@ -119,6 +119,14 @@ def build_armor_leather():
         )
     )
     p.append(part_box("strap", (0, -3.7, 5), (11, 0.6, 1.2), LEATHER_DK, bevel=0.2))
+    # 领下/肩素面补缝线短条 (正面 y≈-3.6, 守 x±10.4 / 高≤16.2 / 引擎 z≤4.3)
+    for i, (x, slant) in enumerate([(-3, -28), (3, 28)]):
+        p.append(_slanted_box("collar_stitch_%d" % i, (x, -3.6, 12.5),
+                              (6, 0.5, 0.6), LEATHER_LT, slant, bevel=0.1))
+    p.append(part_box("collar_seam", (0, -3.6, 12.6), (7, 0.5, 0.5), LEATHER_DK, bevel=0.15))
+    for i, x in enumerate([-4, -2, 0, 2, 4]):
+        p.append(part_sphere("stud_%d" % i, (x, -3.9, 12.6), 0.4, GOLD,
+                             segments=10, rings=6))
     return join_parts(p, "item_armor_leather")
 
 
@@ -140,6 +148,11 @@ def build_armor_chain():
                     scale=(1, 0.4, 1),
                 )
             )
+    # 上胸/腹部补铆环 (沿用环阵, 守 x±10.2 / 高≤16.2 / 引擎 z≤4.3)
+    for row, z in enumerate([12.5, 14.2]):
+        for col, x in enumerate([-6, -3, 0, 3, 6]):
+            p.append(part_sphere("ring_hi_%d_%d" % (row, col), (x, -3.7, z), 0.55,
+                                 IRON, segments=10, rings=6, scale=(1, 0.4, 1)))
     return join_parts(p, "item_armor_chain")
 
 
@@ -163,6 +176,15 @@ def build_armor_iron():
             "chest_plate", (0, -3.8, 9), (9, 0.8, 7), IRON_LT, bevel=0.3, taper=0.85
         )
     )
+    # 胸板刻槽 (细长 box, 正面 y≈-4.15, 守 x±11 / 高≤16.2 / 引擎 z≤4.3)
+    for i, x in enumerate([-3, 0, 3]):
+        p.append(part_box("groove_%d" % i, (x, -4.15, 9), (0.4, 0.15, 5), IRON_DK, bevel=0.05))
+    for i, z in enumerate([7, 11]):
+        p.append(part_box("groove_h_%d" % i, (0, -4.15, z), (7, 0.15, 0.4), IRON_DK, bevel=0.05))
+    # 追加铆钉
+    for side in (-1, 1):
+        p.append(part_sphere("rivet_hi_%d" % side, (side * 5.2, -3.7, 14.6), 0.5,
+                             IRON_LT, segments=10, rings=6))
     return join_parts(p, "item_armor_iron")
 
 
@@ -184,6 +206,13 @@ def build_armor_scale():
                     scale=(1.1, 0.5, 0.8),
                 )
             )
+    # 领下/肋侧补鳞片 (守 x±10.4 / 高≤16.2 / 引擎 z≤4.35)
+    for row, z in enumerate([13.9]):
+        for col in range(5):
+            x = -6.4 + col * 3.2
+            p.append(part_sphere("scale_hi_%d" % col, (x, -3.7, z), 1.1,
+                                 SCALE if col % 2 else SCALE_DK,
+                                 segments=10, rings=6, scale=(1.1, 0.5, 0.8)))
     return join_parts(p, "item_armor_scale")
 
 
@@ -200,6 +229,14 @@ def build_armor_plate():
         )
     )
     p.append(part_box("trim", (0, -3.9, 3), (9, 0.6, 1.0), GOLD, bevel=0.2))
+    # 胸甲分块刻槽 (正面更深 y≈-4.2, 引擎 z≤5.0, 守 x±11.95 / 高≤19)
+    for i, x in enumerate([-4, 0, 4]):
+        p.append(part_box("plate_groove_%d" % i, (x, -4.2, 10), (0.5, 0.3, 6),
+                          PLATE_DK, bevel=0.1))
+    p.append(part_box("abdomen_plate", (0, -4.0, 5), (7, 0.5, 3), GOLD, bevel=0.2))
+    for i, x in enumerate([-5, 5]):
+        p.append(part_sphere("plate_stud_%d" % i, (x, -4.1, 6), 0.5, GOLD,
+                             segments=10, rings=6))
     return join_parts(p, "item_armor_plate")
 
 
@@ -223,6 +260,13 @@ def build_armor_rune():
             scale=(1, 0.4, 1),
         )
     )
+    # 符文次级笔画 + 核心环 (正面更深 y≈-4.3, 引擎 z≤5.02)
+    for i, (x, z, sgn) in enumerate([(-3, 7, -18), (0, 11, 0), (3, 7, 18)]):
+        p.append(_slanted_box("rune_sub_%d" % i, (x, -4.0, z), (2.5, 0.5, 0.5),
+                              RUNE_GLOW, sgn, bevel=0.1))
+    p.append(part_torus("core_ring", (0, -4.3, 9), 2.2, 0.25, RUNE_GLOW,
+                        major_segments=20, minor_segments=8,
+                        rotation=Matrix.Rotation(math.radians(90), 4, "X")))
     return join_parts(p, "item_armor_rune")
 
 
@@ -237,6 +281,15 @@ def build_armor_ice():
     p.append(
         _slanted_box("frost_r", (3, -3.9, 8), (6, 0.6, 0.9), ICE_LT, 25, bevel=0.15)
     )
+    # 胸前垂冰/霜纹 (守 x±10.8 / 高≤20 / 引擎 z≤4.3)
+    for i, (x, slant) in enumerate([(-5, -18), (0, 0), (5, 18)]):
+        p.append(_slanted_box("frost_hi_%d" % i, (x, -3.7, 12), (3, 0.5, 0.8),
+                              ICE_LT, slant, bevel=0.1))
+    for i, x in enumerate([-4, 4]):
+        p.append(_spike("icicle_%d" % i, (x, -3.3, 12), 0.6, 3.0, ICE_LT))
+    for i, (x, z) in enumerate([(-2, 11), (2, 13), (0, 9)]):
+        p.append(part_sphere("snow_%d" % i, (x, -3.8, z), 0.35, ICE_LT,
+                             segments=10, rings=6))
     return join_parts(p, "item_armor_ice")
 
 
