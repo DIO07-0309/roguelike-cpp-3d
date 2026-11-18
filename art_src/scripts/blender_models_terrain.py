@@ -95,7 +95,21 @@ def _spike(name, center, radius, depth, color, point_up=True):
 # 墙/门: 正面高浮雕 (z 在墙面高度范围); 地板/台阶: 只加贴地薄纹 (z≈4, 水平)
 def _biome_decor(p, c, biome, kind):
     if biome == "forgotten_prison":
-        return  # 监牢: 主体砖/苔/拱券已足够, 不加点缀
+        if kind == "floor":
+            # 监牢地面主题: 铁栅格 + 铆钉 + 凿石纹 (贴地 z≈4.3, 守 x/z±16, 高≤4.5)
+            for i, gy in enumerate((-9, 0, 9)):
+                p.append(part_box("grate_bar_x_%d" % i, (0, gy, 4.25),
+                                  (26, 0.9, 0.35), c["grid"], bevel=0.1))
+            for i, gx in enumerate((-9, 0, 9)):
+                p.append(part_box("grate_bar_y_%d" % i, (gx, 0, 4.25),
+                                  (0.9, 26, 0.35), c["grid"], bevel=0.1))
+            for i, (gx, gy) in enumerate([(-9, -9), (-9, 9), (9, -9), (9, 9), (0, 0)]):
+                p.append(part_sphere("grate_rivet_%d" % i, (gx, gy, 4.3), 0.6,
+                                     c["hi"], segments=8, rings=4, scale=(1, 1, 0.3)))
+            for i, (x, y, ang) in enumerate([(-5, -5, 20), (6, 6, -15)]):
+                p.append(part_box("chisel_%d" % i, (x, y, 4.3), (4, 0.6, 0.25),
+                                  c["grid"], bevel=0.08, rotation_z=math.radians(ang)))
+        return  # 其余 kind 的监牢主题留待后续任务
     vertical = kind in ("wall", "door")
     if biome == "ash_volcano":
         if vertical:
@@ -122,18 +136,20 @@ def _biome_decor(p, c, biome, kind):
                     )
                 )
         else:
-            # 地面: 贴地熔岩细缝 (水平短条, 不悬浮)
-            for i, (x, y, ang) in enumerate([(-6, -2, 20), (5, 4, -16), (0, -8, 8)]):
-                p.append(
-                    part_box(
-                        "lava_crack_%d" % i,
-                        (x, y, 4.6),
-                        (5, 0.6, 0.3),
-                        c["glow"],
-                        bevel=0.08,
-                        rotation_z=math.radians(ang),
-                    )
-                )
+            # 火山地面主题: 熔岩池 + 黑曜碎块 + 火星 (贴地 z≈4.3, 守 x/z±16, 高≤4.8)
+            for i, (x, y, ang, sx, sy) in enumerate([
+                (-6, -4, 15, 9, 6), (6, 5, -20, 8, 5), (0, 10, 8, 7, 4)
+            ]):
+                p.append(part_box("lava_pool_%d" % i, (x, y, 4.3),
+                                  (sx, sy, 0.4), c["glow"], bevel=0.15,
+                                  rotation_z=math.radians(ang)))
+            for i, (x, y) in enumerate([(-9, 7), (10, -6), (2, -11)]):
+                p.append(_spike("obsidian_chip_%d" % i, (x, y, 4.2), 1.2, 1.0,
+                                c["face"]))
+            for i, (x, y) in enumerate([(-3, 2), (5, -2), (0, -7)]):
+                p.append(part_sphere("ember_%d" % i, (x, y, 4.5), 0.5,
+                                     c["glow"], segments=8, rings=4,
+                                     scale=(1, 1, 0.5)))
     elif biome == "void_abyss":
         if vertical:
             # 墙面发光符文条 + 紫晶
@@ -161,19 +177,17 @@ def _biome_decor(p, c, biome, kind):
                     )
                 )
         else:
-            # 地面: 贴地幽光符点 (扁球)
-            for i, (x, y) in enumerate([(-6, -3), (6, 4), (0, 8)]):
-                p.append(
-                    part_sphere(
-                        "rune_glow_%d" % i,
-                        (x, y, 4.5),
-                        1.1,
-                        c["glow"],
-                        segments=8,
-                        rings=4,
-                        scale=(1, 1, 0.25),
-                    )
-                )
+            # 虚空地面主题: 符文阵 + 紫晶簇 + 幽光环 (贴地 z≈4.3, 守 x/z±16, 高≤4.8)
+            for i, (x, y, major) in enumerate([(-6, -4, 5), (6, 5, 4), (0, -9, 3)]):
+                p.append(part_torus("rune_circle_%d" % i, (x, y, 4.3), major, 0.28,
+                                    c["glow"], major_segments=16, minor_segments=6))
+            for i, (x, y) in enumerate([(-10, 8), (9, -7), (2, 6), (-3, -11)]):
+                p.append(_spike("crystal_%d" % i, (x, y, 4.2), 1.1, 0.8,
+                                c["glow"]))
+            for i, (x, y) in enumerate([(-2, 0), (8, -2), (-9, -2)]):
+                p.append(part_sphere("void_mote_%d" % i, (x, y, 4.4), 0.6,
+                                     c["glow"], segments=8, rings=4,
+                                     scale=(1, 1, 0.4)))
 
 
 # ══════════════════════════════════════════════════════════════
