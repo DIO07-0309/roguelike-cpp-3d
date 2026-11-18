@@ -5,6 +5,8 @@
 import math
 import os
 
+from mathutils import Matrix
+
 from blender_lib import (
     export_json,
     join_parts,
@@ -79,6 +81,10 @@ def build_broken_cell():
             rotation_z=math.radians(8),
         ),
     ]
+    # 墙上抓痕 (多条斜细条, 落在 x±15 / y 7.8 / 高 ≤12)
+    for i, (x, z, slant) in enumerate([(-12, 8, 15), (-8, 10, -12), (8, 7, 14), (12, 9, -16)]):
+        p.append(_slanted_box("scratch_%d" % i, (x, 7.8, z), (0.5, 0.4, 7),
+                              PRISON_DK, slant, bevel=0.1))
     # 断裂铁栏 (前排)
     for i, x in enumerate([-11, -5.5, 0, 5.5, 11]):
         h = 24 if i in (0, 4) else (10 if i == 2 else 20)
@@ -91,6 +97,17 @@ def build_broken_cell():
         p.append(
             part_sphere("chain_%d" % i, (x, -7.5, z), 1.4, RUST_DK, segments=8, rings=4)
         )
+    # 铁栏锈环 (水平环套竖栏, 守 x±15 / y±11 / 高≤24)
+    for i, x in enumerate([-11, -5.5, 0, 5.5, 11]):
+        h = 24 if i in (0, 4) else (10 if i == 2 else 20)
+        for z in (2.0, h - 3.0):
+            p.append(part_torus("rust_ring_%d_%d" % (i, int(z)), (x, -9, z), 1.3, 0.25,
+                                RUST, major_segments=10, minor_segments=6))
+    # 断链链环 (竖直环)
+    for i, (x, y, z) in enumerate([(-7, -7.5, 12.5), (-5, -7.5, 9.5)]):
+        p.append(part_torus("chain_link_%d" % i, (x, y, z), 1.0, 0.3, RUST_DK,
+                            major_segments=10, minor_segments=6,
+                            rotation=Matrix.Rotation(math.radians(90), 4, "X")))
     # 骸骨
     p.append(
         part_sphere(
@@ -147,6 +164,13 @@ def build_torture_chamber():
         p.append(
             part_box("shackle_%d" % i, (x, 0, 26 - ln), (3, 2, 1.4), RUST, bevel=0.3)
         )
+    # 链环 (竖直环, 串起球链, 守 x±15 / 高≤28.2)
+    horz = Matrix.Rotation(math.radians(90), 4, "X")
+    for i, (x, ln) in enumerate([(-6, 12), (0, 16), (6, 10)]):
+        for k in range(3):
+            z = 26 - (k + 0.5) * ln / 4
+            p.append(part_torus("link_%d_%d" % (i, k), (x, 0, z), 1.1, 0.3, CHAIN,
+                                major_segments=10, minor_segments=6, rotation=horz))
     # 刑具台 + 锈刃
     p.append(part_box("table", (0, -3, 5), (16, 8, 3), PRISON_DK, bevel=0.5))
     p.append(part_box("stain", (0, -3, 6.6), (10, 5, 0.4), RUST_DK, bevel=0.2))
@@ -155,6 +179,12 @@ def build_torture_chamber():
             "blade", (6, -3, 8), (5, 1.2, 2), RUST, -20.0, bevel=0.2, taper=0.4
         )
     )
+    # 第二件刑具: 镜像锈刃 + 火钳 (守 x±15 / y±11 / 高≤28.2)
+    p.append(_slanted_box("blade_2", (-6, -3, 8), (5, 1.2, 2), RUST,
+                          20.0, bevel=0.2, taper=0.4))
+    for i, slant in enumerate((-8, 8)):
+        p.append(_slanted_box("tong_%d" % i, (2, -5, 7), (0.7, 1.0, 6),
+                              RUST_DK, slant, bevel=0.2))
     return join_parts(p, "lm_torture_chamber")
 
 
@@ -164,7 +194,9 @@ def build_collapsed_tunnel():
         part_box("floor", (0, 0, 1), (30, 22, 2), PRISON_DK, bevel=0.5),
         part_box("arch_l", (-13, 6, 12), (4, 6, 22), PRISON_STONE, bevel=0.6),
         part_box("arch_r", (13, 6, 12), (4, 6, 22), PRISON_STONE, bevel=0.6),
-        part_box("lintel", (0, 6, 24), (30, 6, 4), PRISON_LT, bevel=0.5),
+        # 门楣断裂: 两段错位 + 中央缺口 (守住 x[-16.4,15] / 高≤26)
+        part_box("lintel_l", (-9, 6, 23.3), (12, 6, 3.4), PRISON_LT, bevel=0.5),
+        part_box("lintel_r", (8.5, 6, 24), (13, 6, 4), PRISON_LT, bevel=0.5),
     ]
     # 落石堆
     for i, (x, y, z, r) in enumerate(
@@ -191,6 +223,16 @@ def build_collapsed_tunnel():
     # 断裂支撑木
     p.append(_slanted_box("beam_1", (-9, -6, 14), (16, 2, 2), RUST_DK, 28.0, bevel=0.3))
     p.append(_slanted_box("beam_2", (8, -6, 12), (14, 2, 2), RUST_DK, -34.0, bevel=0.3))
+    # 掉落门楣碎块 + 小碎石 (守 x[-16.4,15] / y±11 / 高≤26)
+    p.append(_slanted_box("lintel_fallen", (0, -4, 2.5), (7, 5, 2.5),
+                          PRISON_LT, 14.0, bevel=0.4))
+    for i, (x, y, r) in enumerate([(-11, -7, 1.8), (11, -7, 2.0), (3, 7, 1.6),
+                                   (-3, 7, 1.4), (7, -7, 1.5), (-7, -7, 1.7)]):
+        p.append(part_sphere("rubble_%d" % i, (x, y, 2.0), r, PRISON_STONE,
+                             segments=10, rings=6, scale=(1.0, 0.9, 0.7)))
+    # 支撑木绑绳
+    p.append(_slanted_box("rope_1", (-13, -6, 16), (1.2, 2.3, 2.4), RUST_DK, 28.0, bevel=0.1))
+    p.append(_slanted_box("rope_2", (11, -6, 13), (1.2, 2.3, 2.4), RUST_DK, -34.0, bevel=0.1))
     return join_parts(p, "lm_collapsed_tunnel")
 
 
