@@ -376,6 +376,13 @@ def build_floating_altar():
             "gem", (0, 0, 17.6), 1.5, VOID_GLOW, segments=14, rings=8, scale=(1, 1, 0.7)
         ),
     ]
+    # 空间扭曲环 (水平环, 守 x/y ±9.5 / 高≤22, 置于石板下方避免穿板)
+    for i, (z, major) in enumerate([(9.0, 7.5), (11.0, 8.0)]):
+        p.append(part_torus("distortion_ring_%d" % i, (0, 0, z), major, 0.35, VOID_GLOW,
+                            major_segments=20, minor_segments=8))
+    # 石板顶面幽光符文 (守 x≤7.5 / y≤4.5 / 高≤22)
+    for i, (x, y) in enumerate([(-4, -2), (0, -2), (4, -2), (-4, 2), (0, 2), (4, 2)]):
+        p.append(part_box("rune_%d" % i, (x, y, 16.9), (2.0, 0.5, 0.3), VOID_GLOW, bevel=0.1))
     for i, (x, y) in enumerate([(-7, -4), (7, -4), (-7, 4), (7, 4)]):
         p.append(
             part_cylinder("pillar_%d" % i, (x, y, 18), 1.2, 5, VOID_DK, vertices=6)
@@ -411,6 +418,15 @@ def build_void_crack():
             taper=0.55,
         )
     )
+    # 裂口锯齿边 (守 x±15 / y±11 / 高≤26.104)
+    for i, (x, z, sg) in enumerate([(-4.5, 9, 22), (4.5, 12, -22), (-4.5, 16, 18),
+                                    (4.5, 19, -18), (-4.5, 23, 20)]):
+        p.append(_slanted_box("jag_%d" % i, (x, 4.6, z), (2.2, 1.6, 3.0), VOID_STONE,
+                              sg, bevel=0.3, taper=0.5))
+    # 多层内辉片
+    for i, z in enumerate((12, 18)):
+        p.append(_slanted_box("inner_glow_%d" % i, (0, 4.7, z), (2.4, 0.9, 6.0),
+                              VOID_GLOW, 6.0, bevel=0.2, taper=0.5))
     for i, (x, z, sg) in enumerate([(-8, 8, 1), (7, 11, -1), (-6, 18, 1), (8, 20, -1)]):
         p.append(
             _slanted_box(
@@ -423,10 +439,13 @@ def build_void_crack():
                 taper=0.2,
             )
         )
-    for i, (x, y, z) in enumerate([(-2, 1, 10), (2, 0, 16), (0, 2, 22)]):
-        p.append(
-            part_sphere("wisp_%d" % i, (x, y, z), 1.1, VOID_GLOW, segments=8, rings=4)
-        )
+    for i, (x, y, z) in enumerate([(-2, 1, 10), (2, 0, 16), (0, 2, 22),
+                                   (-1, 1, 13), (1, 1, 19)]):
+        r = 1.1 if i < 3 else 0.9
+        seg = 8 if i < 3 else 10
+        ring = 4 if i < 3 else 6
+        p.append(part_sphere("wisp_%d" % i, (x, y, z), r, VOID_GLOW,
+                             segments=seg, rings=ring))
     return join_parts(p, "lm_void_crack")
 
 
@@ -444,6 +463,14 @@ def build_ancient_gate():
         p.append(
             part_box("rune_%d" % i, (x, 0.0, z), (2.4, 0.8, 2.4), VOID_GLOW, bevel=0.3)
         )
+        # 符文刻纹 (叠在符文正面, 守 x±13 / 引擎 z∈[-6,5] / 高≤30.5)
+        p.append(part_box("rune_cut_%d" % i, (x, -0.55, z), (1.6, 0.3, 1.6),
+                          VOID_LT, bevel=0.1))
+    # 门楣浮雕 + 辉光点 (靠近 y=0, 引擎 z≈0 落在 [-6,5] 内)
+    p.append(part_box("lintel_relief", (0, -0.2, 28), (20, 0.5, 3.0), VOID_LT, bevel=0.2))
+    for i, x in enumerate([-8, -4, 0, 4, 8]):
+        p.append(part_sphere("lintel_glow_%d" % i, (x, -0.55, 28), 0.7,
+                             VOID_GLOW, segments=10, rings=6))
     p.append(
         part_sphere(
             "keystone",
