@@ -10,6 +10,7 @@
 #include "director/boss_system_director.h"     // G12-4: BossSystemDirector::arena
 #include "world/ambient_layer.h"               // G12-4: AmbientCfg / 氛围粒子
 #include "world/special_room.h"                // M6-v2h: SpecialRoom 图标 key
+#include "world/special_room_palette.h"        // P5: 单一色表真相
 #include "entities/player.h"
 #include "components/element_component.h"       // G12-5: ElementType → 骨骼染色/精灵 key
 #include "entities/monster.h"
@@ -140,26 +141,8 @@ static Color _unexplored_dim(Color c) {
                  (unsigned char)(c.b * 6 / 10), c.a};
 }
 
-// P5: 特殊房 9 色基色 —— 3D 模型 tint 与 2D/decal 共用的单一真相。
-// 注: 这是"设计基色"; 3D 模型 tint 会再乘顶点色, 故 special_room_tint_for_model
-// 在此基色上做重标定(×2.4)以抵消压暗。2D 直接用原值。
-static Color _special_room_base_color(SpecialRoomType type) {
-    switch (type) {
-        case SpecialRoomType::ALTAR:      return {60, 44, 22, 255};
-        case SpecialRoomType::TREASURE:   return {34, 46, 76, 255};
-        case SpecialRoomType::FOUNTAIN:   return {28, 56, 34, 255};
-        case SpecialRoomType::SHOP:       return {62, 56, 24, 255};
-        case SpecialRoomType::BLACKSMITH: return {68, 40, 28, 255};
-        case SpecialRoomType::LIBRARY:    return {22, 38, 68, 255};
-        case SpecialRoomType::GAMBLER:    return {56, 22, 60, 255};
-        case SpecialRoomType::SHRINE:     return {52, 52, 16, 255};
-        case SpecialRoomType::SECRET:     return {62, 16, 16, 255};
-        default:                          return {25, 25, 35, 255};
-    }
-}
-
 static Color _special_room_tint(const SpecialRoom* sr) {
-    Color base = _special_room_base_color(sr->type);
+    Color base = special_room_base_color(sr->type);
     if (sr->triggered) {
         base.r = (unsigned char)(base.r * 0.55f);
         base.g = (unsigned char)(base.g * 0.55f);
@@ -173,11 +156,17 @@ bool special_room_floor_uses_3d(bool is_floor, bool in_special_room) {
     return is_floor;  // 特殊房与否不影响 FLOOR 走 3D
 }
 
+// P5: rubble 装饰密度 —— 坐标哈希确定性 ≈20%, 不碰 gameplay RNG。
+bool rubble_placed(int tx, int ty) {
+    const unsigned h = (unsigned)(tx * 73856093) ^ (unsigned)(ty * 19349663);
+    return (h % 100u) < 20u;
+}
+
 // P5: 特殊房类型色烘进 MODEL3D.tint。tint 与顶点色相乘, 故基色重标定 ×2.4,
 // 再乘 triggered(0.55) 与 visible(0.6)。各通道 clamp 到 [1,255] (避免全黑)。
 Color special_room_tint_for_model(const SpecialRoom* sr, bool visible_now) {
     if (!sr) return WHITE;
-    Color base = _special_room_base_color(sr->type);
+    Color base = special_room_base_color(sr->type);
     const float scale = 2.4f * (sr->triggered ? 0.55f : 1.0f)
                         * (visible_now ? 1.0f : 0.6f);
     auto ch = [scale](unsigned char v) -> unsigned char {
@@ -544,6 +533,24 @@ static void _emit_terrain_tile(const GameMap* map, int tx, int ty,
         if (special_floor_3d)
             model_tint = special_room_tint_for_model(sr_here, map->isVisible(tx, ty));
         _try_terrain_3d(item, out, model_name, map->isVisible(tx, ty), door_yaw, &model_tint);
+    }
+    // P5: 破碎碎石装饰 —— FLOOR tile 按坐标哈希≈20% 密度追加一件 rubble 模型,
+    // 坐在石板顶(y≈5, 高于 4.48), 特殊房与普通房都挂。tint 同地形雾色。
+    if (t == TileType::FLOOR && map->isVisible(tx, ty) && rubble_placed(tx, ty)) {
+        char rubble_name[64] = {0};
+        snprintf(rubble_name, sizeof(rubble_name), "terrain_rubble_%s",
+                 _terrain_biome_short(map->biome_id()));
+        if (auto rubble = _model_cache().get(rubble_name)) {
+            HD2DDrawItem r;
+            r.kind = HD2DDrawItem::Kind::MODEL3D;
+            r.world_pos = {(float)tx * TILE_SIZE + TILE_SIZE * 0.5f, 5.0f,
+                           (float)ty * TILE_SIZE + TILE_SIZE * 0.5f};
+            r.sort_y = (float)ty * TILE_SIZE;
+            r.model = rubble;
+            r.tint = WHITE;
+            r.model_yaw = (float)((tx * 7 + ty * 13) % 4) * 90.0f;  // 确定性朝向变化
+            out.push_back(r);
+        }
     }
     out.push_back(item);
     _emit_boss_fov_fog(map, tx, ty, item, out);

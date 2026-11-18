@@ -14,6 +14,7 @@
 #include "scenes/game_scene.h"
 #include "entities/player.h"
 #include "world/game_map.h"
+#include "world/special_room_palette.h"
 #include "data/boss_defs.h"
 #include "data/enemy_defs.h"
 
@@ -159,4 +160,36 @@ TEST(HD2DSceneBuilder, SpecialRoomFloorUsesTerrainModel) {
         << "特殊房 WALL/DOOR 必须保留 quad(保阴影/轮廓)";
     EXPECT_TRUE(hd2d::special_room_floor_uses_3d(true, false))
         << "普通 FLOOR 本来就走 3D";
+}
+
+// ── P5: rubble 密度哈希确定性 + 单一色表真相 ──────────────────────
+TEST(HD2DSceneBuilder, RubbleDensityDeterministic) {
+    EXPECT_EQ(hd2d::rubble_placed(3, 7), hd2d::rubble_placed(3, 7))
+        << "同坐标必须同结果";
+    int placed = 0;
+    for (int x = 0; x < 20; ++x)
+        for (int y = 0; y < 20; ++y)
+            if (hd2d::rubble_placed(x, y)) ++placed;
+    // 20% 密度, 20x20=400 格 → 期望 80 (±20)
+    EXPECT_GE(placed, 60);
+    EXPECT_LE(placed, 100);
+    // 不能所有格都相同
+    bool first = hd2d::rubble_placed(0, 0);
+    bool all_same = true;
+    for (int x = 0; x < 20; ++x)
+        for (int y = 0; y < 20; ++y)
+            if (hd2d::rubble_placed(x, y) != first) all_same = false;
+    EXPECT_FALSE(all_same);
+}
+
+TEST(HD2DSceneBuilder, SpecialRoomPaletteSingleSource) {
+    // 2D 与 3D 都从同一函数取 SHOP 基色
+    Color shop = special_room_base_color(SpecialRoomType::SHOP);
+    EXPECT_EQ(shop.r, 62);
+    EXPECT_EQ(shop.g, 56);
+    EXPECT_EQ(shop.b, 24);
+    // 3D tint 派生自同一基色(重标定后更亮)
+    SpecialRoom sr;
+    sr.type = SpecialRoomType::SHOP;
+    EXPECT_GE(hd2d::special_room_tint_for_model(&sr, true).r, 100);
 }

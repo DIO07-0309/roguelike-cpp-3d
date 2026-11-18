@@ -1,4 +1,5 @@
 #include "game_map.h"
+#include "special_room_palette.h"   // P5: 单一色表真相
 #include "config.h"
 #include "core/logger.h"
 #include "resource_manager.h"                 // M4f: 纹理缓存
@@ -616,19 +617,7 @@ void GameMap::drawFloorContactShadow(int x, int y, float dx, float dy) const {
 
 void GameMap::drawSpecialRoomFloor(int x, int y, float dx, float dy, const SpecialRoom* sr,
                                    float bright, const TileCtx& ctx) const {
-    Color base;
-    switch (sr->type) {
-        case SpecialRoomType::ALTAR:      base = {60, 44, 22, 255}; break;
-        case SpecialRoomType::TREASURE:   base = {34, 46, 76, 255}; break;
-        case SpecialRoomType::FOUNTAIN:   base = {28, 56, 34, 255}; break;
-        case SpecialRoomType::SHOP:       base = {62, 56, 24, 255}; break;
-        case SpecialRoomType::BLACKSMITH: base = {68, 40, 28, 255}; break;
-        case SpecialRoomType::LIBRARY:    base = {22, 38, 68, 255}; break;
-        case SpecialRoomType::GAMBLER:    base = {56, 22, 60, 255}; break;
-        case SpecialRoomType::SHRINE:     base = {52, 52, 16, 255}; break;
-        case SpecialRoomType::SECRET:     base = {62, 16, 16, 255}; break;
-        default: base = {25, 25, 35, 255}; break;
-    }
+    Color base = special_room_base_color(sr->type);  // P5: 与 3D 共用单一真相
     if (sr->triggered) {
         base.r = (unsigned char)(base.r * 0.55f);
         base.g = (unsigned char)(base.g * 0.55f);
@@ -645,6 +634,16 @@ void GameMap::drawSpecialRoomFloor(int x, int y, float dx, float dy, const Speci
                      {dx + mid, dy + mid + half}, inlay);
         DrawTriangle({dx + mid, dy + mid - half}, {dx + mid - half, dy + mid},
                      {dx + mid, dy + mid + half}, inlay);
+        // P5: 最小破碎对位 —— 几条裂缝线 + 碎石点(与 3D rubble 呼应)
+        const Color crack = _dim(Color{(unsigned char)(base.r * 2),
+                                        (unsigned char)(base.g * 2),
+                                        (unsigned char)(base.b * 2), 200}, bright);
+        DrawLine(dx + tile_size * 0.2f, dy + tile_size * 0.3f,
+                 dx + tile_size * 0.45f, dy + tile_size * 0.55f, crack);
+        DrawLine(dx + tile_size * 0.55f, dy + tile_size * 0.6f,
+                 dx + tile_size * 0.8f, dy + tile_size * 0.4f, crack);
+        DrawRectangle(dx + tile_size * 0.25f, dy + tile_size * 0.7f, 4, 3, crack);
+        DrawRectangle(dx + tile_size * 0.7f, dy + tile_size * 0.2f, 3, 4, crack);
     }
     if (x == sr->cx && y == sr->cy) drawSpecialRoomIcon(x, y, dx, dy, sr, bright, ctx);
 }

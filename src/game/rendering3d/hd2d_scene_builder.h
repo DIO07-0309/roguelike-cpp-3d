@@ -25,6 +25,8 @@ Color special_room_tint_for_model(const SpecialRoom* sr, bool visible_now);
 
 // P5: 只有特殊房 FLOOR 转 3D 地形模型; 墙/门仍走 quad。
 bool special_room_floor_uses_3d(bool is_floor, bool in_special_room);
+// P5: rubble 装饰密度(坐标哈希 ≈20%, 确定性), 供渲染与测试共用。
+bool rubble_placed(int tx, int ty);
 
 // G12-5: tint 默认值只在 hd2d_part_geometry.h 声明一次 (避免 TU 内重复)
 void appendAvatarParts(const std::vector<AvatarPartDraw>& parts, Vector3 feet_world,
