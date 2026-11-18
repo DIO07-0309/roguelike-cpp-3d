@@ -202,6 +202,17 @@ def build_lava_rift():
     p.append(part_box("rim_r", (9, 0, 4), (10, 20, 6), OBSIDIAN, bevel=0.8, taper=0.9))
     p.append(part_box("lava", (0, 0, 1.6), (7, 20, 1.2), LAVA, bevel=0.3))
     p.append(part_box("lava_core", (0, 0, 2.0), (4.5, 18, 0.8), LAVA_LT, bevel=0.2))
+    # 龟裂薄片 (地面, 守 x±15 / y±11 / 高≤2.2)
+    for i, (x, y, sx, sy) in enumerate([(-12, -8, 4, 3), (12, 8, 4, 3), (-12, 8, 4, 3),
+                                        (12, -8, 4, 3), (-6, -9, 3, 2), (6, 9, 3, 2)]):
+        p.append(part_box("crack_%d" % i, (x, y, 2.05), (sx, sy, 0.3), LAVA_DK, bevel=0.1))
+    # 熔岩发光细脉
+    for i, (y, sx) in enumerate([(-6, 5), (-2, 4), (2, 4), (6, 5)]):
+        p.append(part_box("vein_%d" % i, (0, y, 2.45), (sx, 0.5, 0.3), LAVA_LT, bevel=0.1))
+    # 小熔岩泡
+    for i, (x, y) in enumerate([(-2, -4), (2, 4), (1, -7)]):
+        p.append(part_sphere("bubble_small_%d" % i, (x, y, 2.7), 0.6, LAVA_LT,
+                             segments=10, rings=6))
     for i, (x, y, r) in enumerate([(-1, -6, 1.6), (1.5, 2, 2.0), (-0.5, 7, 1.4)]):
         p.append(
             part_sphere(
@@ -214,8 +225,10 @@ def build_lava_rift():
                 scale=(1, 1, 0.5),
             )
         )
-    for i, (x, y, h) in enumerate([(-11, -7, 7), (11, 4, 9), (-12, 6, 6)]):
-        p.append(_spike("obsidian_%d" % i, (x, y, 6 + h / 2), 2.2, h, EMBER))
+    for i, (x, y, h) in enumerate([(-11, -7, 7), (11, 4, 9), (-12, 6, 6),
+                                   (8, -8, 6), (-8, 8, 7)]):
+        r = 2.2 if i < 3 else 1.6
+        p.append(_spike("obsidian_%d" % i, (x, y, 6 + h / 2), r, h, EMBER))
     return join_parts(p, "lm_lava_rift")
 
 
@@ -249,6 +262,22 @@ def build_forge_ruins():
         part_cylinder("hammer_handle", (3, -2, 7), 0.8, 10, RUST_DK, vertices=8),
         part_box("hammer_head", (5, -2, 12), (5, 3, 3), CHAIN, bevel=0.4),
     ]
+    # 炉口装饰框 (守 x±15 / 高≤13.5 / y±11)
+    p.append(part_box("mouth_frame_top", (7, 0.5, 8.7), (7, 1.5, 0.8), RUST_DK, bevel=0.2))
+    p.append(part_box("mouth_frame_bot", (7, 0.5, 3.3), (7, 1.5, 0.8), RUST_DK, bevel=0.2))
+    for i, x in enumerate((3.7, 10.3)):
+        p.append(part_box("mouth_frame_side_%d" % i, (x, 0.5, 6), (0.8, 1.5, 5.5),
+                          RUST_DK, bevel=0.2))
+    # 烟囱 (顶 13.4 ≤ 13.5)
+    p.append(part_cylinder("chimney", (7, 5.5, 12.4), 1.5, 2.0, OBSIDIAN, vertices=10))
+    # 铁砧侧面纹 + 散落工具 (地面小件)
+    p.append(part_box("anvil_band", (-6, -4.8, 6), (8, 0.6, 1.6), CHAIN, bevel=0.2))
+    p.append(part_box("tool_bar", (-9, 4, 1.5), (3, 1.2, 1.2), CHAIN, bevel=0.3))
+    p.append(part_box("tool_head", (11, -6, 1.4), (2, 2, 1.4), RUST_DK, bevel=0.3))
+    p.append(part_box("tool_rod", (12.5, -3, 1.5), (0.6, 4, 1.0), CHAIN, bevel=0.2))
+    for i, (x, y, z) in enumerate([(7, 1.2, 4.5), (7, 1.2, 7.5), (7, 1.2, 9.5)]):
+        p.append(part_sphere("ember_%d" % i, (x, y, z), 0.6, LAVA_LT,
+                             segments=10, rings=6))
     return join_parts(p, "lm_forge_ruins")
 
 
@@ -258,6 +287,13 @@ def build_fire_pillar():
         part_cylinder("base", (0, 0, 3), 8, 6, OBSIDIAN, vertices=12),
         part_cylinder("base_lava", (0, 0, 6.2), 6.5, 0.8, LAVA, vertices=12),
     ]
+    # 分层岩块 (贴地, 落在 x/y ±8, 高 0..3 内)
+    for i, (x, y) in enumerate([(5.5, 5.5), (-5.5, 5.5), (5.5, -5.5), (-5.5, -5.5)]):
+        p.append(part_box("base_rock_%d" % i, (x, y, 1.5), (3.5, 3.5, 3), OBSIDIAN, bevel=0.4))
+    # 岩座侧面熔岩裂纹发光薄片 (守 x/y ±8)
+    for i, (x, y, sx, sy) in enumerate([(7.6, 0, 0.5, 3.0), (-7.6, 0, 0.5, 3.0),
+                                        (0, 7.6, 3.0, 0.5), (0, -7.6, 3.0, 0.5)]):
+        p.append(part_box("base_glow_%d" % i, (x, y, 3.2), (sx, sy, 0.5), LAVA, bevel=0.1))
     for i, (z, r, tilt) in enumerate(
         [(10, 5.0, 8), (16, 4.2, -10), (22, 3.2, 12), (28, 2.2, -8)]
     ):
@@ -270,11 +306,19 @@ def build_fire_pillar():
                 LAVA if i % 2 == 0 else LAVA_LT,
             )
         )
+    # 火焰锥间火舌小锥 (高 ≤27.5, x/y ≤4.5)
+    for i, (x, y, z, r) in enumerate([(2.0, 1.5, 13.0, 2.5), (-2.0, -1.5, 19.0, 2.2),
+                                      (1.5, 2.0, 25.0, 1.8)]):
+        p.append(_spike("flame_tongue_%d" % i, (x, y, z), r, 5.0,
+                        LAVA_LT if i % 2 else LAVA))
     p.append(_spike("flame_top", (0, 0, 33), 1.6, 7, LAVA_LT))
-    for i, (x, y, z) in enumerate([(-6, -3, 18), (7, 2, 24), (-4, 4, 30), (5, -5, 12)]):
-        p.append(
-            part_sphere("spark_%d" % i, (x, y, z), 0.9, LAVA_LT, segments=8, rings=4)
-        )
+    for i, (x, y, z) in enumerate([(-6, -3, 18), (7, 2, 24), (-4, 4, 30), (5, -5, 12),
+                                   (6, 5, 16), (-6, -5, 22), (5, 4, 28)]):
+        r = 0.9 if i < 4 else 0.7
+        seg = 8 if i < 4 else 10
+        ring = 4 if i < 4 else 6
+        p.append(part_sphere("spark_%d" % i, (x, y, z), r, LAVA_LT,
+                             segments=seg, rings=ring))
     return join_parts(p, "lm_fire_pillar")
 
 
