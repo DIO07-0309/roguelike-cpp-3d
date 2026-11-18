@@ -1,0 +1,90 @@
+{
+  "item_charm": {
+    "faces": 496,
+    "bbox": {
+      "xmin": -7.15,
+      "xmax": 7.15,
+      "ymin": 0.0,
+      "ymax": 4.9,
+      "zmin": -9.178,
+      "zmax": 6.7
+    }
+  },
+  "item_crossbow": {
+    "faces": 592,
+    "bbox": {
+      "xmin": -13.4,
+      "xmax": 13.4,
+      "ymin": 0.0,
+      "ymax": 4.0,
+      "zmin": -9.77,
+      "zmax": 10.8
+    }
+  },
+  "item_dagger": {
+    "faces": 332,
+    "bbox": {
+      "xmin": -3.75,
+      "xmax": 3.75,
+      "ymin": 0.0,
+      "ymax": 2.4,
+      "zmin": -8.4,
+      "zmax": 10.4
+    }
+  },
+  "item_nunchaku": {
+    "faces": 296,
+    "bbox": {
+      "xmin": -8.103,
+      "xmax": 8.103,
+      "ymin": 0.0,
+      "ymax": 3.38,
+      "zmin": -5.613,
+      "zmax": 5.613
+    }
+  },
+  "item_potion_blue": {
+    "faces": 272,
+    "bbox": {
+      "xmin": -3.804,
+      "xmax": 3.804,
+      "ymin": 0.0,
+      "ymax": 13.7,
+      "zmin": -4.0,
+      "zmax": 4.1
+    }
+  },
+  "item_potion_red": {
+    "faces": 272,
+    "bbox": {
+      "xmin": -3.804,
+      "xmax": 3.804,
+      "ymin": 0.0,
+      "ymax": 13.7,
+      "zmin": -4.0,
+      "zmax": 4.1
+    }
+  },
+  "item_spear": {
+    "faces": 204,
+    "bbox": {
+      "xmin": -2.5,
+      "xmax": 2.5,
+      "ymin": 0.0,
+      "ymax": 3.1,
+      "zmin": -14.5,
+      "zmax": 20.0
+    }
+  },
+  "item_sword": {
+    "faces": 440,
+    "bbox": {
+      "xmin": -4.75,
+      "xmax": 4.75,
+      "ymin": 0.0,
+      "ymax": 3.0,
+      "zmin": -12.1,
+      "zmax": 16.2
+    }
+  }
+}
