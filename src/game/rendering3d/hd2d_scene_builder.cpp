@@ -385,6 +385,19 @@ static void _emit_boss_fov_fog(const GameMap* map, int tx, int ty,
 }
 
 // FLOOR / STAIRS_DOWN / LAVA: 贴图 + tint + 特殊房间 + 楼梯 3D 化 + 装饰
+// P5: 特殊房地板 tint/decal (已从 _emit_floor_item 提取, 控制函数长度)。
+// FLOOR 转 3D 后不再画纯色 decal(type tint 已烘进 MODEL3D.tint); 仅非 3D 路径保留。
+static void _emit_special_floor_tint(const GameMap* map, int tx, int ty, TileType t,
+                                     HD2DDrawItem& item, std::vector<HD2DDrawItem>& out) {
+    if (t != TileType::FLOOR && t != TileType::STAIRS_DOWN) return;
+    const SpecialRoom* sr = map->get_special_room_at(tx, ty);
+    if (!sr) return;
+    if (special_room_floor_uses_3d(true, true)) return;
+    item.tint = _special_room_tint(sr);
+    if (!map->isVisible(tx, ty)) item.tint = _unexplored_dim(item.tint);
+    _emit_special_room_floor(map, tx, ty, item, out);
+}
+
 static void _emit_floor_item(HD2DDrawItem& item, const GameMap* map, int tx, int ty,
                              const TileTexPair& floor_tex, bool has_pal,
                              const TilePalette& pal, std::vector<HD2DDrawItem>& out,
@@ -405,19 +418,7 @@ static void _emit_floor_item(HD2DDrawItem& item, const GameMap* map, int tx, int
     }
     // M6-v2h: 特殊房间地板 tint (2D 九色同源; triggered 压暗 55%)
     // N2: 特殊房间另叠 FLOOR_DECAL 盖住底层贴图
-    if (t == TileType::FLOOR || t == TileType::STAIRS_DOWN) {
-        const SpecialRoom* sr = map->get_special_room_at(tx, ty);
-        if (sr) {
-            // P5: 特殊房 FLOOR 转 3D 时不再画纯色 decal (会被石板盖住);
-            // type tint 已烘进 MODEL3D.tint。仅非 3D 路径保留 decal。
-            const bool floor_3d = special_room_floor_uses_3d(true, true);
-            if (!floor_3d) {
-                item.tint = _special_room_tint(sr);
-                if (!map->isVisible(tx, ty)) item.tint = _unexplored_dim(item.tint);
-                _emit_special_room_floor(map, tx, ty, item, out);
-            }
-        }
-    }
+    _emit_special_floor_tint(map, tx, ty, t, item, out);
     // M6-v2h: 楼梯 tint 换棕金阶调 (2D 60/48/26 系)
     if (t == TileType::STAIRS_DOWN && item.texture.id > 0
         && !map->get_special_room_at(tx, ty))
@@ -500,6 +501,27 @@ static void _try_terrain_3d(HD2DDrawItem& item, std::vector<HD2DDrawItem>& out,
     out.push_back(m);
 }
 
+// P5: 按坐标哈希在 FLOOR tile 上追加破碎碎石模型(≈20% 密度)。
+// 坐在石板顶(y≈5 > 4.48), 特殊房与普通房都挂; tint 用雾色, yaw 确定性变化。
+static void _emit_rubble_if_any(const GameMap* map, int tx, int ty, TileType t,
+                                std::vector<HD2DDrawItem>& out) {
+    if (t != TileType::FLOOR || !map->isVisible(tx, ty) || !rubble_placed(tx, ty)) return;
+    char name[64] = {0};
+    snprintf(name, sizeof(name), "terrain_rubble_%s",
+             _terrain_biome_short(map->biome_id()));
+    auto rubble = _model_cache().get(name);
+    if (!rubble) return;
+    HD2DDrawItem r;
+    r.kind = HD2DDrawItem::Kind::MODEL3D;
+    r.world_pos = {(float)tx * TILE_SIZE + TILE_SIZE * 0.5f, 5.0f,
+                   (float)ty * TILE_SIZE + TILE_SIZE * 0.5f};
+    r.sort_y = (float)ty * TILE_SIZE;
+    r.model = rubble;
+    r.tint = WHITE;
+    r.model_yaw = (float)((tx * 7 + ty * 13) % 4) * 90.0f;
+    out.push_back(r);
+}
+
 // 单格地形: 主 tile (含全部既有副作用) + 可选 A20 雕饰 3D 替代件
 static void _emit_terrain_tile(const GameMap* map, int tx, int ty,
                                const TileTexPair& wall_tex, const TileTexPair& floor_tex,
@@ -534,24 +556,7 @@ static void _emit_terrain_tile(const GameMap* map, int tx, int ty,
             model_tint = special_room_tint_for_model(sr_here, map->isVisible(tx, ty));
         _try_terrain_3d(item, out, model_name, map->isVisible(tx, ty), door_yaw, &model_tint);
     }
-    // P5: 破碎碎石装饰 —— FLOOR tile 按坐标哈希≈20% 密度追加一件 rubble 模型,
-    // 坐在石板顶(y≈5, 高于 4.48), 特殊房与普通房都挂。tint 同地形雾色。
-    if (t == TileType::FLOOR && map->isVisible(tx, ty) && rubble_placed(tx, ty)) {
-        char rubble_name[64] = {0};
-        snprintf(rubble_name, sizeof(rubble_name), "terrain_rubble_%s",
-                 _terrain_biome_short(map->biome_id()));
-        if (auto rubble = _model_cache().get(rubble_name)) {
-            HD2DDrawItem r;
-            r.kind = HD2DDrawItem::Kind::MODEL3D;
-            r.world_pos = {(float)tx * TILE_SIZE + TILE_SIZE * 0.5f, 5.0f,
-                           (float)ty * TILE_SIZE + TILE_SIZE * 0.5f};
-            r.sort_y = (float)ty * TILE_SIZE;
-            r.model = rubble;
-            r.tint = WHITE;
-            r.model_yaw = (float)((tx * 7 + ty * 13) % 4) * 90.0f;  // 确定性朝向变化
-            out.push_back(r);
-        }
-    }
+    _emit_rubble_if_any(map, tx, ty, t, out);
     out.push_back(item);
     _emit_boss_fov_fog(map, tx, ty, item, out);
 }
