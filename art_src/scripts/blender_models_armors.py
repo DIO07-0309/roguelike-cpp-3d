@@ -332,6 +332,25 @@ def build_armor_robe():
                 taper=0.5,
             )
         )
+    # 兜帽内衬 + 面影 (守 x±6.5 / 高[-0.08,19.1] / 引擎深[-4.2,4.76])
+    p.append(part_sphere("hood_lining", (0, -0.3, 15.8), 3.6, SHADOW_DK,
+                         segments=12, rings=8, scale=(1.0, 0.85, 0.75)))
+    p.append(part_box("face_shadow", (0, -3.2, 15.5), (3.2, 0.5, 4),
+                      SHADOW_DK, bevel=0.2))
+    # 前襟次级发光纹
+    for i, x in enumerate([-1.9, 1.9]):
+        p.append(part_box("trim_glow_%d" % i, (x, -3.7, 8.4), (0.5, 0.6, 10),
+                          SHADOW_GLOW, bevel=0.1))
+    # 下摆装饰 + 袖口
+    p.append(part_box("hem_band", (0, 0, 1.2), (12.8, 8.0, 0.8), SHADOW_DK, bevel=0.2))
+    for i, x in enumerate([-5, 5]):
+        p.append(part_box("cuff_%d" % i, (x, -2.0, 9), (2, 2, 1.5), SHADOW_DK, bevel=0.3))
+    # 腰饰
+    p.append(part_box("waist_gem", (0, -4.0, 5.6), (2.5, 0.5, 2),
+                      SHADOW_GLOW, bevel=0.2))
+    for i, x in enumerate([-2.5, 2.5]):
+        p.append(part_sphere("waist_stone_%d" % i, (x, -4.0, 5.6), 0.4,
+                             SHADOW_GLOW, segments=10, rings=6))
     return join_parts(p, "item_armor_robe")
 
 
