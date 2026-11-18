@@ -167,15 +167,24 @@ bool rubble_placed(int tx, int ty) {
 Color special_room_tint_for_model(const SpecialRoom* sr, bool visible_now) {
     if (!sr) return WHITE;
     Color base = special_room_base_color(sr->type);
-    const float scale = 2.4f * (sr->triggered ? 0.55f : 1.0f)
-                        * (visible_now ? 1.0f : 0.6f);
-    auto ch = [scale](unsigned char v) -> unsigned char {
-        int out = (int)(v * scale);
+    int mx = base.r > base.g ? base.r : base.g;
+    if (base.b > mx) mx = base.b;
+    if (mx <= 0) mx = 1;
+    const float dim = (sr->triggered ? 0.55f : 1.0f)
+                      * (visible_now ? 1.0f : 0.6f);
+    auto ch = [mx, dim](unsigned char v) -> unsigned char {
+        int norm = (int)v * 255 / mx;   // 色相拉满
+        int out = (int)(norm * dim);
         if (out < 1) out = 1;
         if (out > 255) out = 255;
         return (unsigned char)out;
     };
     return Color{ch(base.r), ch(base.g), ch(base.b), 255};
+}
+
+// P5 fix: 只有 FLOOR 真走 3D 才跳过 2D 类型色 decal; STAIRS_DOWN/缺资产回退保留。
+bool special_room_tile_decal_needed(bool is_floor_tile, bool use_3d) {
+    return !(is_floor_tile && use_3d);
 }
 
 // ── M6-v2h: 特殊房间中心图标 key (2D room_* 素材同源) ──
@@ -388,11 +397,12 @@ static void _emit_boss_fov_fog(const GameMap* map, int tx, int ty,
 // P5: 特殊房地板 tint/decal (已从 _emit_floor_item 提取, 控制函数长度)。
 // FLOOR 转 3D 后不再画纯色 decal(type tint 已烘进 MODEL3D.tint); 仅非 3D 路径保留。
 static void _emit_special_floor_tint(const GameMap* map, int tx, int ty, TileType t,
-                                     HD2DDrawItem& item, std::vector<HD2DDrawItem>& out) {
+                                     HD2DDrawItem& item, std::vector<HD2DDrawItem>& out,
+                                     bool use_3d) {
     if (t != TileType::FLOOR && t != TileType::STAIRS_DOWN) return;
     const SpecialRoom* sr = map->get_special_room_at(tx, ty);
     if (!sr) return;
-    if (special_room_floor_uses_3d(true, true)) return;
+    if (!special_room_tile_decal_needed(t == TileType::FLOOR, use_3d)) return;
     item.tint = _special_room_tint(sr);
     if (!map->isVisible(tx, ty)) item.tint = _unexplored_dim(item.tint);
     _emit_special_room_floor(map, tx, ty, item, out);
@@ -418,7 +428,7 @@ static void _emit_floor_item(HD2DDrawItem& item, const GameMap* map, int tx, int
     }
     // M6-v2h: 特殊房间地板 tint (2D 九色同源; triggered 压暗 55%)
     // N2: 特殊房间另叠 FLOOR_DECAL 盖住底层贴图
-    _emit_special_floor_tint(map, tx, ty, t, item, out);
+    _emit_special_floor_tint(map, tx, ty, t, item, out, terrain_replaced);
     // M6-v2h: 楼梯 tint 换棕金阶调 (2D 60/48/26 系)
     if (t == TileType::STAIRS_DOWN && item.texture.id > 0
         && !map->get_special_room_at(tx, ty))

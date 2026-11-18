@@ -128,28 +128,39 @@ TEST(GameSceneHd2dView, ChallengeArenaPropagatesToView) {
 }
 
 // ── P5: 特殊房类型色烘进 3D 模型 tint ─────────────────────────────
-// tint 与顶点色相乘, 故基色须重标定; triggered/未探索在同一公式内压暗。
+// 顶点色本身很暗(≈26/255), tint 与之相乘。为不比普通地板更暗且保留九色色相,
+// tint 把基色色相拉满到 max=255(非简单乘系数), 再乘 triggered/visible 压暗。
 TEST(HD2DSceneBuilder, SpecialRoomTintForModel) {
     SpecialRoom sr;
     sr.type = SpecialRoomType::SHOP;
     sr.triggered = false;
 
     Color normal = hd2d::special_room_tint_for_model(&sr, true);
-    // 重标定后应明显亮于原始 {62,56,24}, 各通道仍为合法 uint8
-    EXPECT_GE(normal.r, 100);
-    EXPECT_GE(normal.g, 80);
-    EXPECT_GT(normal.b, 0);
+    // 色相拉满: 最大通道接近 255(SHOP 基色 {62,56,24} → 最大 r=255)
+    EXPECT_GE(normal.r, 250);
     EXPECT_LE(normal.r, 255);
+    // 色相比例保持基色比例 g/r≈56/62, b/r≈24/62
+    EXPECT_NEAR((double)normal.g / normal.r, 56.0 / 62.0, 0.06);
+    EXPECT_NEAR((double)normal.b / normal.r, 24.0 / 62.0, 0.06);
 
     sr.triggered = true;
     Color trig = hd2d::special_room_tint_for_model(&sr, true);
-    EXPECT_LT(trig.r, normal.r) << "triggered 房间应更暗";
-    EXPECT_LT(trig.g, normal.g);
+    EXPECT_NEAR((double)trig.r / normal.r, 0.55, 0.05) << "triggered 压暗 45%";
 
     sr.triggered = false;
     Color hidden = hd2d::special_room_tint_for_model(&sr, false);
-    EXPECT_LT(hidden.r, normal.r) << "未即时可见(已探索)应更暗";
-    EXPECT_LT(hidden.g, normal.g);
+    EXPECT_NEAR((double)hidden.r / normal.r, 0.60, 0.05) << "未即时可见压暗 40%";
+}
+
+// ── P5 fix: 只有"FLOOR 且真走 3D"才跳过 2D tint/decal ─────────────
+// 特殊房 STAIRS_DOWN / 缺资产回退(use_3d=false) 必须保留 2D 类型色。
+TEST(HD2DSceneBuilder, SpecialRoomDecalNeededForNon3dTiles) {
+    EXPECT_FALSE(hd2d::special_room_tile_decal_needed(true, true))
+        << "FLOOR 真走 3D → 跳过 2D decal(石板会盖住)";
+    EXPECT_TRUE(hd2d::special_room_tile_decal_needed(false, true))
+        << "STAIRS_DOWN(非FLOOR) → 保留 2D tint/decal";
+    EXPECT_TRUE(hd2d::special_room_tile_decal_needed(true, false))
+        << "缺资产回退(use_3d=false) → 保留 2D tint/decal";
 }
 
 // ── P5: 只有特殊房 FLOOR 转 3D, 墙/门仍走 quad ───────────────────

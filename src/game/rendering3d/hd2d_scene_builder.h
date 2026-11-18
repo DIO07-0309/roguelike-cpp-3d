@@ -27,6 +27,9 @@ Color special_room_tint_for_model(const SpecialRoom* sr, bool visible_now);
 bool special_room_floor_uses_3d(bool is_floor, bool in_special_room);
 // P5: rubble 装饰密度(坐标哈希 ≈20%, 确定性), 供渲染与测试共用。
 bool rubble_placed(int tx, int ty);
+// P5 fix: 是否仍需画 2D 类型色 tint/decal。只有"FLOOR 且真走 3D"才跳过
+// (石板会盖住 decal); STAIRS_DOWN / 缺资产回退都保留。
+bool special_room_tile_decal_needed(bool is_floor_tile, bool use_3d);
 
 // G12-5: tint 默认值只在 hd2d_part_geometry.h 声明一次 (避免 TU 内重复)
 void appendAvatarParts(const std::vector<AvatarPartDraw>& parts, Vector3 feet_world,
