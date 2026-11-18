@@ -79,7 +79,7 @@ def build_charm():
                 minor_segments=6,
             )
         )
-    parts.append(part_cylinder("pendant", (0, -1.5, 1.1), 5.2, 2.2, GOLD, vertices=12))
+    parts.append(part_cylinder("pendant", (0, -1.5, 1.1), 5.2, 2.2, GOLD, vertices=24))
     parts.append(
         part_sphere(
             "gem",
@@ -93,9 +93,14 @@ def build_charm():
     )
     parts.append(
         part_sphere(
-            "gem_hi", (-1.0, -2.5, 3.9), 1.0, (226, 176, 255), segments=6, rings=4
+            "gem_hi", (-1.0, -2.5, 3.9), 1.0, (226, 176, 255), segments=12, rings=8
         )
     )
+    # 宝石底托环 + 链环内圈装饰 (落在 bbox 内)
+    parts.append(part_torus("gem_seat", (0, -1.5, 1.2), 3.4, 0.4, GOLD,
+                            major_segments=20, minor_segments=8))
+    parts.append(part_torus("chain_inner", (0, 6.8, 0.9), 1.5, 0.35, STEEL,
+                            major_segments=16, minor_segments=8))
     return join_parts(parts, "item_charm")
 
 
@@ -271,4 +276,14 @@ def build_crossbow():
         )
     )
     parts.append(part_box("trigger", (0, 3.8, 0.7), (1.6, 2.2, 1.4), IRON, bevel=0.3))
+    # 弓臂加固片 + 枪托雕纹 (贴合, 落在 bbox 内)
+    for side in (-1, 1):
+        parts.append(part_box("limb_rib", (side * 7.5, -5.5, 2.4), (9.0, 1.0, 0.4),
+                              STEEL_LIGHT, bevel=0.2, rotation_z=math.radians(side * -22)))
+    parts.append(part_box("stock_inlay", (0, 1.5, 3.0), (2.6, 12.0, 0.4), GOLD, bevel=0.2))
+    # 握把/枪托装饰环 (高段数补面, 半径小, 落在 bbox y[0,4] 内)
+    for gy in (-1.0, 4.0):
+        parts.append(part_torus("stock_ring", (0, gy, 1.9), 1.5, 0.28, GOLD,
+                                major_segments=20, minor_segments=8, rotation=_PITCH))
+    parts.append(part_sphere("grip_cap", (0, 6.5, 1.7), 1.3, GOLD, segments=16, rings=12))
     return join_parts(parts, "item_crossbow")
