@@ -133,6 +133,23 @@ def _biome_decor(p, c, biome, kind):
             for x in (-8, -4, 0, 4, 8):
                 p.append(part_sphere("lintel_rivet_%d" % x, (x, -4.0, 31), 0.7,
                                      c["hi"], segments=8, rings=4))
+        elif kind == "wall":
+            # 监牢墙主题: 铁栅窗 + 锁链 + 铆钉盾徽 (正面 y≈-17.5, 导出 z≈17.5 ≤18.7)
+            for i, x in enumerate((-8, 8)):
+                p.append(part_box("iron_window_%d" % i, (x, -17.5, 18),
+                                  (7, 1.0, 9), c["grid"], bevel=0.2))
+                for k, zz in enumerate((15, 18, 21)):
+                    p.append(part_box("window_bar_%d_%d" % (i, k),
+                                      (x, -18.0, zz), (7, 0.5, 0.6),
+                                      c["hi"], bevel=0.1))
+            for i, x in enumerate((-4, 4)):
+                for k in range(3):
+                    p.append(part_sphere("wall_chain_%d_%d" % (i, k),
+                                         (x, -17.8, 26 - k * 2.5), 0.7,
+                                         c["grid"], segments=8, rings=4))
+            p.append(part_sphere("wall_boss", (0, -17.5, 30), 2.0,
+                                 c["hi"], segments=10, rings=6,
+                                 scale=(1, 0.5, 1)))
         return  # 其余 kind 的监牢主题留待后续任务
     vertical = kind in ("wall", "door")
     if biome == "ash_volcano":
@@ -169,6 +186,16 @@ def _biome_decor(p, c, biome, kind):
                 for i, (x, z) in enumerate([(-5, 10), (5, 20), (0, 28)]):
                     p.append(part_sphere("door_ember_%d" % i, (x, -4.2, z), 0.5,
                                          c["glow"], segments=8, rings=4))
+            if kind == "wall":
+                # 火山墙主题: 火山岩层 (深色横带) + 熔岩瀑纹, 压在三变体结构上
+                for i, z in enumerate((12, 22, 32)):
+                    p.append(part_box("rock_strata_%d" % i, (0, -17.6, z),
+                                      (TILE - 4, 1.2, 2.2), c["face"],
+                                      bevel=0.3))
+                for i, x in enumerate((-6, 6)):
+                    p.append(_slanted_box("lava_fall_%d" % i, (x, -17.8, 20),
+                                          (1.6, 0.7, 10), c["glow"], 14,
+                                          bevel=0.15))
         else:
             if kind == "floor":
                 # 火山地面主题: 熔岩池 + 黑曜碎块 + 火星 (贴地 z≈4.3, 守 x/z±16, 高≤4.8)
