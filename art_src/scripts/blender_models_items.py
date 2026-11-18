@@ -90,67 +90,6 @@ def build_charm():
     return join_parts(parts, "item_charm")
 
 
-def build_armor():
-    """重甲: 上窄胸甲主体 + 腰带金扣 + 左右肩甲 + 胸脊 + 领口 (立放)"""
-    parts = []
-    parts.append(
-        part_box("chest", (0, 0, 8.5), (13.0, 7.0, 13.0), IRON, bevel=1.0, taper=0.78)
-    )
-    parts.append(part_box("belt", (0, 0, 1.4), (11.4, 7.6, 2.8), LEATHER, bevel=0.4))
-    parts.append(part_box("buckle", (0, -3.9, 1.4), (2.6, 0.8, 2.0), GOLD, bevel=0.3))
-    for side in (-1, 1):
-        parts.append(
-            part_sphere(
-                "pauldron",
-                (side * 7.2, 0, 13.4),
-                3.8,
-                STEEL,
-                segments=10,
-                rings=6,
-                scale=(1.0, 0.85, 0.70),
-            )
-        )
-    parts.append(
-        part_box(
-            "ridge", (0, -3.4, 9.0), (2.2, 1.2, 9.0), STEEL_LIGHT, bevel=0.4, taper=0.55
-        )
-    )
-    parts.append(
-        part_box("collar", (0, 0, 15.4), (7.0, 6.0, 1.6), IRON_DARK, bevel=0.4)
-    )
-    return join_parts(parts, "item_armor")
-
-
-def build_robe():
-    """布袍: 下摆宽上窄袍身 + 束带 + 前襟饰条 + 兜帽 (冰霜/暗影甲)"""
-    parts = []
-    parts.append(
-        part_box(
-            "gown", (0, 0, 7.6), (12.5, 8.0, 15.2), (58, 72, 132), bevel=0.9, taper=0.50
-        )
-    )
-    parts.append(
-        part_box("sash", (0, 0, 5.6), (13.0, 8.4, 2.2), (140, 160, 210), bevel=0.4)
-    )
-    parts.append(
-        part_box(
-            "front_trim", (0, -3.3, 8.4), (2.4, 1.0, 12.0), (196, 208, 226), bevel=0.3
-        )
-    )
-    parts.append(
-        part_sphere(
-            "hood",
-            (0, 0, 15.8),
-            4.4,
-            (44, 54, 104),
-            segments=10,
-            rings=6,
-            scale=(1.0, 0.85, 0.75),
-        )
-    )
-    return join_parts(parts, "item_robe")
-
-
 def build_dagger():
     """匕首 (平躺): 短刃 + 刃尖 + 宽护手 + 缠柄 + 柄头"""
     parts = []

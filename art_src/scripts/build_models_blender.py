@@ -75,8 +75,6 @@ BUILDERS = {
     "item_potion_red": item_models.build_potion_red,
     "item_potion_blue": item_models.build_potion_blue,
     "item_charm": item_models.build_charm,
-    "item_armor": item_models.build_armor,
-    "item_robe": item_models.build_robe,
     "item_dagger": item_models.build_dagger,
     "item_sword": item_models.build_sword,
     "item_spear": item_models.build_spear,
