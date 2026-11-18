@@ -264,6 +264,15 @@ def _biome_decor(p, c, biome, kind):
                 for i, (x, z) in enumerate([(-5, 8), (5, 16), (0, 26)]):
                     p.append(part_sphere("door_mote_%d" % i, (x, -4.0, z), 0.5,
                                          c["glow"], segments=8, rings=4))
+            if kind == "wall":
+                # 虚空墙主题: 空间裂隙 + 幽光浮雕 + 悬浮紫晶 (正面 y≈-17.5~-17.8, 导出 z≤18)
+                for i, (x, z, ang) in enumerate([(-6, 14, 28), (6, 26, -24), (0, 8, 12)]):
+                    p.append(_slanted_box("rift_%d" % i, (x, -17.6, z),
+                                          (1.4, 0.7, 9), c["grid"], ang, bevel=0.1))
+                for i, (x, z) in enumerate([(-9, 32), (9, 18), (0, 24)]):
+                    p.append(part_sphere("wall_glow_%d" % i, (x, -17.8, z), 1.4,
+                                         c["glow"], segments=10, rings=6,
+                                         scale=(1, 0.4, 1)))
         else:
             if kind == "floor":
                 # 虚空地面主题: 符文阵 + 紫晶簇 + 幽光环 (贴地 z≈4.3, 守 x/z±16, 高≤4.8)
