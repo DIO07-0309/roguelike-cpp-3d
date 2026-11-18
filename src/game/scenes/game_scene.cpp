@@ -2387,6 +2387,10 @@ void GameScene::_log_sim_stuck_samples(const RunResult& s) {
         sim_stuck_early[0], sim_stuck_early[1], sim_stuck_for_max);
     LOG_INFO("[SIM-DIAG] map=%dx%d stuck_tp=%d tp_attempts=%d", game_map->width, game_map->height,
         s.stuck_teleports, sim_tp_attempts);
+    // P6 诊断: sim 整格步进回滚率 — 区分「AI 没给 move」与「给了 move 但 rect 判定拒绝」
+    LOG_INFO("[SIM-DIAG] step attempts=%d rollbacks=%d rollback_pct=%.1f%%",
+        sim_step_attempts, sim_step_rollbacks,
+        sim_step_attempts > 0 ? 100.0f * sim_step_rollbacks / sim_step_attempts : 0.0f);
 }
 
 // 从玩家 tile flood fill, 门状态感知: LOCKED/SEALED 阻断, CLOSED 可穿

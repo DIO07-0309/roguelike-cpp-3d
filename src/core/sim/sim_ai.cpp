@@ -39,6 +39,8 @@ int sim_move_noenemy = 0;
 // G14: 卡死采样 — ...(..., LOCKED门数, 怪4邻可走数)
 int sim_stuck_sample[64][13] = {0};
 int sim_stuck_sample_count = 0;
+int sim_step_attempts = 0;   // P6: sim 整格步进尝试次数
+int sim_step_rollbacks = 0;  // P6: sim 整格步进回滚次数
 // G14: 旋转脱困被墙挡住的次数 (尝试移动但可走性失败)
 int sim_rot_blocked = 0;
 // G14: 卡死时 BFS 朝怪命中/失败次数

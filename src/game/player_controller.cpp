@@ -238,8 +238,10 @@ void PlayerController::_move_normal(GameScene& gs, const Vector2& move, float dt
             _sim_last_step = gs.game_time;
             float dx = move.x * 32.0f, dy = move.y * 32.0f;
             e.position.x += dx; e.position.y += dy; e.sync_rect();
+            sim_step_attempts++;
             if (!gs.game_map->is_rect_walkable(e.rect)) {
                 e.position.x -= dx; e.position.y -= dy; e.sync_rect();
+                sim_step_rollbacks++;   // P6 诊断: tile BFS 可走但 rect 拒绝 → 玩家原地打转
             }
         }
     } else {
