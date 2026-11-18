@@ -109,6 +109,20 @@ def _biome_decor(p, c, biome, kind):
             for i, (x, y, ang) in enumerate([(-5, -5, 20), (6, 6, -15)]):
                 p.append(part_box("chisel_%d" % i, (x, y, 4.3), (4, 0.6, 0.25),
                                   c["grid"], bevel=0.08, rotation_z=math.radians(ang)))
+        elif kind == "stairs":
+            # 监牢楼梯主题: 铁包边踏步 + 锁链栏 (守 x/z±16, 高≤16)
+            for st in range(4):
+                z = 2 + st * 4
+                depth = TILE - 4 - st * 5
+                y = -2 + st * 3
+                p.append(part_box("iron_nosing_%d" % st, (0, y, z + 1.7),
+                                  (depth, 1.2, 0.5), c["grid"], bevel=0.1))
+            for side in (-1, 1):
+                for k in range(4):
+                    p.append(part_sphere("chain_%d_%d" % (side, k),
+                                         (side * 11.5, 4 + k * 3, 9),
+                                         0.7, c["grid"], segments=8, rings=4,
+                                         scale=(0.7, 0.7, 1)))
         return  # 其余 kind 的监牢主题留待后续任务
     vertical = kind in ("wall", "door")
     if biome == "ash_volcano":
@@ -136,20 +150,36 @@ def _biome_decor(p, c, biome, kind):
                     )
                 )
         else:
-            # 火山地面主题: 熔岩池 + 黑曜碎块 + 火星 (贴地 z≈4.3, 守 x/z±16, 高≤4.8)
-            for i, (x, y, ang, sx, sy) in enumerate([
-                (-6, -4, 15, 9, 6), (6, 5, -20, 8, 5), (0, 10, 8, 7, 4)
-            ]):
-                p.append(part_box("lava_pool_%d" % i, (x, y, 4.3),
-                                  (sx, sy, 0.4), c["glow"], bevel=0.15,
-                                  rotation_z=math.radians(ang)))
-            for i, (x, y) in enumerate([(-9, 7), (10, -6), (2, -11)]):
-                p.append(_spike("obsidian_chip_%d" % i, (x, y, 4.2), 1.2, 1.0,
-                                c["face"]))
-            for i, (x, y) in enumerate([(-3, 2), (5, -2), (0, -7)]):
-                p.append(part_sphere("ember_%d" % i, (x, y, 4.5), 0.5,
-                                     c["glow"], segments=8, rings=4,
-                                     scale=(1, 1, 0.5)))
+            if kind == "floor":
+                # 火山地面主题: 熔岩池 + 黑曜碎块 + 火星 (贴地 z≈4.3, 守 x/z±16, 高≤4.8)
+                for i, (x, y, ang, sx, sy) in enumerate([
+                    (-6, -4, 15, 9, 6), (6, 5, -20, 8, 5), (0, 10, 8, 7, 4)
+                ]):
+                    p.append(part_box("lava_pool_%d" % i, (x, y, 4.3),
+                                      (sx, sy, 0.4), c["glow"], bevel=0.15,
+                                      rotation_z=math.radians(ang)))
+                for i, (x, y) in enumerate([(-9, 7), (10, -6), (2, -11)]):
+                    p.append(_spike("obsidian_chip_%d" % i, (x, y, 4.2), 1.2, 1.0,
+                                    c["face"]))
+                for i, (x, y) in enumerate([(-3, 2), (5, -2), (0, -7)]):
+                    p.append(part_sphere("ember_%d" % i, (x, y, 4.5), 0.5,
+                                         c["glow"], segments=8, rings=4,
+                                         scale=(1, 1, 0.5)))
+            elif kind == "stairs":
+                # 火山楼梯主题: 熔岩踏面 + 黑曜侧石 + 火星 (守 x/z±16, 高≤16)
+                for st in range(4):
+                    z = 2 + st * 4
+                    depth = TILE - 4 - st * 5
+                    y = -2 + st * 3
+                    p.append(part_box("lava_tread_%d" % st, (0, y, z + 1.7),
+                                      (depth - 2, 2.0, 0.4), c["glow"], bevel=0.15))
+                for side in (-1, 1):
+                    p.append(_spike("obsidian_rail_%d" % side,
+                                    (side * 11.5, 0, 13), 1.2, 4.0,
+                                    c["face"]))
+                for i, (x, z) in enumerate([(-3, 10), (3, 14)]):
+                    p.append(part_sphere("stair_ember_%d" % i, (x, -2, z), 0.5,
+                                         c["glow"], segments=8, rings=4))
     elif biome == "void_abyss":
         if vertical:
             # 墙面发光符文条 + 紫晶
@@ -177,17 +207,33 @@ def _biome_decor(p, c, biome, kind):
                     )
                 )
         else:
-            # 虚空地面主题: 符文阵 + 紫晶簇 + 幽光环 (贴地 z≈4.3, 守 x/z±16, 高≤4.8)
-            for i, (x, y, major) in enumerate([(-6, -4, 5), (6, 5, 4), (0, -9, 3)]):
-                p.append(part_torus("rune_circle_%d" % i, (x, y, 4.3), major, 0.28,
-                                    c["glow"], major_segments=16, minor_segments=6))
-            for i, (x, y) in enumerate([(-10, 8), (9, -7), (2, 6), (-3, -11)]):
-                p.append(_spike("crystal_%d" % i, (x, y, 4.2), 1.1, 0.8,
-                                c["glow"]))
-            for i, (x, y) in enumerate([(-2, 0), (8, -2), (-9, -2)]):
-                p.append(part_sphere("void_mote_%d" % i, (x, y, 4.4), 0.6,
-                                     c["glow"], segments=8, rings=4,
-                                     scale=(1, 1, 0.4)))
+            if kind == "floor":
+                # 虚空地面主题: 符文阵 + 紫晶簇 + 幽光环 (贴地 z≈4.3, 守 x/z±16, 高≤4.8)
+                for i, (x, y, major) in enumerate([(-6, -4, 5), (6, 5, 4), (0, -9, 3)]):
+                    p.append(part_torus("rune_circle_%d" % i, (x, y, 4.3), major, 0.28,
+                                        c["glow"], major_segments=16, minor_segments=6))
+                for i, (x, y) in enumerate([(-10, 8), (9, -7), (2, 6), (-3, -11)]):
+                    p.append(_spike("crystal_%d" % i, (x, y, 4.2), 1.1, 0.8,
+                                    c["glow"]))
+                for i, (x, y) in enumerate([(-2, 0), (8, -2), (-9, -2)]):
+                    p.append(part_sphere("void_mote_%d" % i, (x, y, 4.4), 0.6,
+                                         c["glow"], segments=8, rings=4,
+                                         scale=(1, 1, 0.4)))
+            elif kind == "stairs":
+                # 虚空楼梯主题: 符文阶 + 紫晶栏 + 幽光浮点 (守 x/z±16, 高≤16)
+                for st in range(4):
+                    z = 2 + st * 4
+                    depth = TILE - 4 - st * 5
+                    y = -2 + st * 3
+                    p.append(part_box("rune_tread_%d" % st, (0, y, z + 1.7),
+                                      (depth - 2, 1.2, 0.4), c["glow"], bevel=0.1))
+                for side in (-1, 1):
+                    p.append(_spike("crystal_rail_%d" % side,
+                                    (side * 11.5, 0, 13), 1.2, 4.0,
+                                    c["glow"]))
+                for i, (x, z) in enumerate([(-4, 8), (4, 12), (0, 15)]):
+                    p.append(part_sphere("stair_mote_%d" % i, (x, -2, z), 0.5,
+                                         c["glow"], segments=8, rings=4))
 
 
 # ══════════════════════════════════════════════════════════════
