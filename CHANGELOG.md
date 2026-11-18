@@ -1,4 +1,80 @@
-﻿# P3: 通用道具精修 + A22 脚本残留清理（2026-11-18）
+﻿# P3-2: 9 地标 + 8 护甲细节微调（2026-11-18）
+
+> 用户拍板：补明确缺口、不设面数门槛；9 地标 + 8 护甲全做；闸门 bbox 不超基线且
+> 面数严格 > 基线；17 张预览全部重生成；完成后同步桌面包并哈希校验。
+
+## 范围与做法
+
+只补审查报告（`docs/superpowers/specs/2026-11-18-p3b-asset-audit.md`）列出的明确缺口：
+docstring 承诺未建模 / 大面积素面的部位。不重新设计造型、不改配色常量、不改协议 A、
+不改资产名、不动护甲共用骨架 `_base_chest` 的尺寸。所有新增顶点落在原 bbox 内。
+
+### 地标（9 件，三群）
+
+- 火山群：fire_pillar 岩座分层岩块+火舌+火花、forge_ruins 炉口框/烟囱/铁砧纹/散落工具、
+  lava_rift 龟裂/发光细脉/小泡+尖柱。
+- 监牢群：broken_cell 墙上抓痕+铁栏锈环+断链环、torture_chamber 竖直链环+镜像刑具/火钳、
+  collapsed_tunnel 断裂门楣+掉落碎块+小碎石+支撑木绑绳（守住既有 x_min −16.414）。
+- 虚空群：floating_altar 石板符文+空间扭曲环、void_crack 锯齿裂边+多层内辉、ancient_gate
+  符文刻纹+门楣浮雕+辉光点（守住 z 非对称深度 [-6,5]）。
+
+### 护甲（8 件）
+
+- 共用骨架 7 件：leather 领下缝线/铆钉、chain 上胸铆环扩展、iron 胸板刻槽/追加铆钉、
+  scale 领下鳞片、plate 胸甲分块刻槽/腹甲/铆钉、rune 次级笔画/核心环、ice 霜纹/垂冰/雪点。
+- robe（独立）：兜帽内衬+面影、前襟次级发光纹、袖口/下摆带、腰饰。
+
+## 面数前 → 后（三角面）
+
+| 资产 | 前 | 后 |
+|---|---:|---:|
+| lm_fire_pillar | 380 | 1604 |
+| lm_lava_rift | 900 | 2320 |
+| lm_forge_ruins | 912 | 2112 |
+| lm_floating_altar | 936 | 2224 |
+| lm_void_crack | 848 | 1804 |
+| lm_collapsed_tunnel | 1248 | 2280 |
+| lm_broken_cell | 1228 | 3004 |
+| lm_ancient_gate | 1416 | 2672 |
+| lm_torture_chamber | 1688 | 3020 |
+| item_armor_robe | 728 | 1852 |
+| item_armor_ice | 990 | 1654 |
+| item_armor_plate | 1002 | 1634 |
+| item_armor_leather | 1058 | 1882 |
+| item_armor_iron | 1130 | 1870 |
+| item_armor_rune | 1158 | 1802 |
+| item_armor_chain | 1310 | 2310 |
+| item_armor_scale | 1310 | 1810 |
+
+## bbox 契约的实测要点
+
+延续 P3 的经验：协议 A 的基础 bbox 是低段数采样所得，半径敏感件（肩球/圆盘/瓶身）
+保持原段数，靠 bbox 内部装饰补细节。本轮所有新增件按各件基线收进正面安全带
+（多数引擎 z≤4.3、plate/rune 因原护心镜/核心前突可到 5.0/5.02）；
+robe 的 y_min=−0.082 基线原样保留（FeetAtGroundLevel 容差 ±0.1）。
+预览相机 azimuth=−52 看到 forge_ruins/ancient_gate 的背面，正面细节用 `look()` 的 −Y 视角另验。
+
+## 闸门
+
+- 新增 `tools/check_p3b_assets.js` + `tools/p3b_baselines.json`（17 件精修前 bbox + 面数）。
+  校验 schema / name==stem / finite（含颜色 v[3..5]）/ faces 严格 > 基线 / 各轴 bbox 不超基线（容差 0.01）。
+  相比 P3 闸门补齐三处健壮性：颜色分量也查 finite、vertices 缺失不抛未捕获异常、严格面数增长证明"确实加了细节"。
+- RED 验证：基线生成于精修前，17 件初始 faces==基线 → 17/17 因 facesGrew 失败（预期）。
+- `node tools/check_p3b_assets.js` → **ASSETS=17 FAILED=0**。
+
+## 预览
+
+9 张 `landmark_preview_*.png` + 8 张 `armor_preview_*.png` 全部用 `preview_one(key)` 重生成；
+逐件审图确认正面细节可见、无穿模、未超包络。
+
+## 验证
+
+- P3b 闸门 17/17；P3 道具闸门 8/8；A22 怪物闸门 150/150（均不退化）；
+  `ctest` 90/90；`fn_length` 0 超规；`world_validator` 通过。
+
+---
+
+# P3: 通用道具精修 + A22 脚本残留清理（2026-11-18）
 
 > 用户拍板：P3-0 + P3-1（清理 + 8 道具精修）、面数统一到 ~1000/件、
 > 闸门只覆盖 8 道具绝对区间。护甲/地标本身健康，本轮不动（P3-2 留待后续）。
