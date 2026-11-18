@@ -1,0 +1,6 @@
+{
+  "_note": "P5 rubble are new assets; gate uses absolute face floor + bbox bounds, not a before-baseline. Values mirror tools/check_p5_assets.js.",
+  "face_min": 300,
+  "bbox": { "xz_half": 16.0, "y_max": 6.0 },
+  "assets": ["terrain_rubble_prison", "terrain_rubble_volcano", "terrain_rubble_void"]
+}
