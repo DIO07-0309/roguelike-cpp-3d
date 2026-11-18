@@ -1,0 +1,189 @@
+{
+  "lm_ancient_gate": {
+    "faces": 1416,
+    "bbox": {
+      "xmin": -13.0,
+      "xmax": 13.0,
+      "ymin": 0.0,
+      "ymax": 30.5,
+      "zmin": -6.0,
+      "zmax": 5.0
+    }
+  },
+  "lm_broken_cell": {
+    "faces": 1228,
+    "bbox": {
+      "xmin": -15.0,
+      "xmax": 15.0,
+      "ymin": 0.0,
+      "ymax": 24.0,
+      "zmin": -11.0,
+      "zmax": 11.0
+    }
+  },
+  "lm_collapsed_tunnel": {
+    "faces": 1248,
+    "bbox": {
+      "xmin": -16.414,
+      "xmax": 15.0,
+      "ymin": 0.0,
+      "ymax": 26.0,
+      "zmin": -11.0,
+      "zmax": 11.0
+    }
+  },
+  "lm_fire_pillar": {
+    "faces": 380,
+    "bbox": {
+      "xmin": -8.0,
+      "xmax": 8.0,
+      "ymin": 0.0,
+      "ymax": 36.5,
+      "zmin": -8.0,
+      "zmax": 8.0
+    }
+  },
+  "lm_floating_altar": {
+    "faces": 936,
+    "bbox": {
+      "xmin": -9.5,
+      "xmax": 9.5,
+      "ymin": 0.0,
+      "ymax": 22.0,
+      "zmin": -9.5,
+      "zmax": 9.5
+    }
+  },
+  "lm_forge_ruins": {
+    "faces": 912,
+    "bbox": {
+      "xmin": -15.0,
+      "xmax": 15.0,
+      "ymin": 0.0,
+      "ymax": 13.5,
+      "zmin": -11.0,
+      "zmax": 11.0
+    }
+  },
+  "lm_lava_rift": {
+    "faces": 900,
+    "bbox": {
+      "xmin": -15.0,
+      "xmax": 15.0,
+      "ymin": 0.0,
+      "ymax": 15.0,
+      "zmin": -11.0,
+      "zmax": 11.0
+    }
+  },
+  "lm_torture_chamber": {
+    "faces": 1688,
+    "bbox": {
+      "xmin": -15.0,
+      "xmax": 15.0,
+      "ymin": 0.0,
+      "ymax": 28.2,
+      "zmin": -11.0,
+      "zmax": 11.0
+    }
+  },
+  "lm_void_crack": {
+    "faces": 848,
+    "bbox": {
+      "xmin": -15.0,
+      "xmax": 15.0,
+      "ymin": 0.0,
+      "ymax": 26.104,
+      "zmin": -11.0,
+      "zmax": 11.0
+    }
+  },
+  "item_armor_chain": {
+    "faces": 1310,
+    "bbox": {
+      "xmin": -10.243,
+      "xmax": 10.243,
+      "ymin": 0.0,
+      "ymax": 16.2,
+      "zmin": -3.8,
+      "zmax": 4.3
+    }
+  },
+  "item_armor_ice": {
+    "faces": 990,
+    "bbox": {
+      "xmin": -10.814,
+      "xmax": 10.814,
+      "ymin": 0.0,
+      "ymax": 20.0,
+      "zmin": -3.8,
+      "zmax": 4.3
+    }
+  },
+  "item_armor_iron": {
+    "faces": 1130,
+    "bbox": {
+      "xmin": -11.004,
+      "xmax": 11.004,
+      "ymin": 0.0,
+      "ymax": 16.2,
+      "zmin": -3.8,
+      "zmax": 4.3
+    }
+  },
+  "item_armor_leather": {
+    "faces": 1058,
+    "bbox": {
+      "xmin": -10.434,
+      "xmax": 10.434,
+      "ymin": 0.0,
+      "ymax": 16.2,
+      "zmin": -3.8,
+      "zmax": 4.3
+    }
+  },
+  "item_armor_plate": {
+    "faces": 1002,
+    "bbox": {
+      "xmin": -11.955,
+      "xmax": 11.955,
+      "ymin": 0.0,
+      "ymax": 19.0,
+      "zmin": -4.25,
+      "zmax": 5.0
+    }
+  },
+  "item_armor_robe": {
+    "faces": 728,
+    "bbox": {
+      "xmin": -6.5,
+      "xmax": 6.5,
+      "ymin": -0.082,
+      "ymax": 19.1,
+      "zmin": -4.2,
+      "zmax": 4.76
+    }
+  },
+  "item_armor_rune": {
+    "faces": 1158,
+    "bbox": {
+      "xmin": -10.814,
+      "xmax": 10.814,
+      "ymin": 0.0,
+      "ymax": 16.2,
+      "zmin": -3.8,
+      "zmax": 5.02
+    }
+  },
+  "item_armor_scale": {
+    "faces": 1310,
+    "bbox": {
+      "xmin": -10.434,
+      "xmax": 10.434,
+      "ymin": 0.0,
+      "ymax": 16.2,
+      "zmin": -3.8,
+      "zmax": 4.35
+    }
+  }
+}
