@@ -123,6 +123,16 @@ def _biome_decor(p, c, biome, kind):
                                          (side * 11.5, 4 + k * 3, 9),
                                          0.7, c["grid"], segments=8, rings=4,
                                          scale=(0.7, 0.7, 1)))
+        elif kind == "door":
+            # 监牢门主题: 铁栅门板 + 铆钉门楣 (正面 Blender y≈-3.5~-4, 导出 z≈3.5~4.7 ≤5.5)
+            for x in (-6, -3, 0, 3, 6):
+                p.append(part_box("grate_bar_%d" % x, (x, -3.5, 17),
+                                  (0.8, 0.5, 22), c["grid"], bevel=0.1))
+            p.append(part_box("grate_cross", (0, -3.6, 17), (14, 0.5, 0.8),
+                              c["grid"], bevel=0.1))
+            for x in (-8, -4, 0, 4, 8):
+                p.append(part_sphere("lintel_rivet_%d" % x, (x, -4.0, 31), 0.7,
+                                     c["hi"], segments=8, rings=4))
         return  # 其余 kind 的监牢主题留待后续任务
     vertical = kind in ("wall", "door")
     if biome == "ash_volcano":
@@ -149,6 +159,16 @@ def _biome_decor(p, c, biome, kind):
                         c["face"],
                     )
                 )
+            if kind == "door":
+                # 火山门主题: 黑曜框 + 熔岩门缝 + 火星 (正面 y≈-3.5~-4.2, 导出 z 远小于 20.1)
+                for side in (-1, 1):
+                    p.append(_spike("door_obsidian_%d" % side,
+                                    (side * 8, -4.0, 17), 1.4, 8.0, c["face"]))
+                p.append(part_box("lava_seam", (0, -3.6, 17), (1.2, 0.5, 20),
+                                  c["glow"], bevel=0.1))
+                for i, (x, z) in enumerate([(-5, 10), (5, 20), (0, 28)]):
+                    p.append(part_sphere("door_ember_%d" % i, (x, -4.2, z), 0.5,
+                                         c["glow"], segments=8, rings=4))
         else:
             if kind == "floor":
                 # 火山地面主题: 熔岩池 + 黑曜碎块 + 火星 (贴地 z≈4.3, 守 x/z±16, 高≤4.8)
@@ -206,6 +226,17 @@ def _biome_decor(p, c, biome, kind):
                         scale=(1, 0.5, 1.4),
                     )
                 )
+            if kind == "door":
+                # 虚空门主题: 符文门阵 + 紫晶拱心 + 幽光浮点 (正面 y≈-3.5~-4.2, 导出 z 远小于 18.6)
+                for i, (x, z, ang) in enumerate([(-5, 12, 18), (0, 20, 0), (5, 12, -18)]):
+                    p.append(_slanted_box("door_rune_%d" % i, (x, -3.6, z),
+                                          (3, 0.5, 1.2), c["glow"], ang, bevel=0.1))
+                p.append(part_sphere("door_keystone", (0, -4.2, 31), 2.0,
+                                     c["glow"], segments=10, rings=6,
+                                     scale=(1, 0.5, 1)))
+                for i, (x, z) in enumerate([(-5, 8), (5, 16), (0, 26)]):
+                    p.append(part_sphere("door_mote_%d" % i, (x, -4.0, z), 0.5,
+                                         c["glow"], segments=8, rings=4))
         else:
             if kind == "floor":
                 # 虚空地面主题: 符文阵 + 紫晶簇 + 幽光环 (贴地 z≈4.3, 守 x/z±16, 高≤4.8)
