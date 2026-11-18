@@ -2,8 +2,27 @@
 #include "data/camera_defs.h"
 #include "game/systems/hit_stop.h"
 #include "game/director/camera_director.h"
+#include "scenes/game_scene.h"
 #include "raylib.h"
 #include "raymath.h"
+
+// ── G25-H 遗留收口: BOSS_CINEMATIC / HitStop / 运镜三段 gate 的
+// sim-mode 跳过语义 —— 抽成纯函数后确定性可测, 不依赖 GL/字体。
+// 运镜/相机更新 needs_camera=true → !sim && camera_def_loaded;
+// hit_stop gate needs_camera=false → !sim。
+TEST(GameSceneGates, PresentationGateAllowedTruthTable) {
+    // 运镜 / 相机更新 (needs_camera=true)
+    EXPECT_TRUE(GameScene::presentation_gate_allowed(false, true, true));
+    EXPECT_FALSE(GameScene::presentation_gate_allowed(true, true, true))
+        << "sim 模式必须跳过运镜 (game_time 确定性)";
+    EXPECT_FALSE(GameScene::presentation_gate_allowed(false, false, true))
+        << "无相机定义时跳过运镜";
+    // HitStop / 表现层冻结 gate (needs_camera=false)
+    EXPECT_TRUE(GameScene::presentation_gate_allowed(false, false, false));
+    EXPECT_TRUE(GameScene::presentation_gate_allowed(false, true, false));
+    EXPECT_FALSE(GameScene::presentation_gate_allowed(true, true, false))
+        << "sim 模式必须跳过顿帧 gate";
+}
 
 TEST(CameraDefs, ParsesValidJson) {
     std::string err;

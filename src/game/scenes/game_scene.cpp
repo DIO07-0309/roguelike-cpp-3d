@@ -1910,14 +1910,14 @@ void GameScene::_begin_boss_battle() {
         game_map->mark_boss_room(boss_tx, boss_ty);
     }
     // A6-T4: Boss 出场触发运镜
-    if (!_sim_mode && _camera_def_loaded) {
+    if (presentation_gate_allowed(_sim_mode, _camera_def_loaded, true)) {
         _camera_director.enter_boss_war();
     }
 }
 
 // G25-H: 表现层 gate — 返回 true 表示本帧在此停住 (不进入世界模拟)
 bool GameScene::_hit_stop_gate(float dt) {
-    if (_sim_mode) return false;
+    if (!presentation_gate_allowed(_sim_mode, _camera_def_loaded, false)) return false;
     _hit_stop.update(dt);
     if (_hit_stop.is_stunned()) {
         _presentation.tick(dt);
@@ -1928,7 +1928,7 @@ bool GameScene::_hit_stop_gate(float dt) {
 
 void GameScene::_tick_camera_director(float dt) {
     // A6-T4: CameraDirector 更新 (wall clock, sim 模式跳过)
-    if (!_sim_mode && _camera_def_loaded) {
+    if (presentation_gate_allowed(_sim_mode, _camera_def_loaded, true)) {
         Vector2 player_pos = {player->entity.rect.x + player->entity.rect.width/2,
                               player->entity.rect.y + player->entity.rect.height/2};
         Vector2 boss_pos = {0, 0};

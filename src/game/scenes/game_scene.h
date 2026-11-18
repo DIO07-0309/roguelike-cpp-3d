@@ -214,6 +214,14 @@ public:
     // A6-T4: 摄像机语言访问器 (3D 渲染器只读)
     bool camera_def_loaded() const { return _camera_def_loaded; }
     bool sim_mode() const { return _sim_mode; }
+    // G25-H 遗留收口: 表现层 gate 是否启用 (纯函数, 确定性可测)。
+    // needs_camera=true (运镜/相机更新): !sim && camera_loaded;
+    // needs_camera=false (HitStop/冻结 gate): !sim。
+    static bool presentation_gate_allowed(bool sim_mode, bool camera_def_loaded,
+                                          bool needs_camera) {
+        if (sim_mode) return false;
+        return !needs_camera || camera_def_loaded;
+    }
     const CameraLanguageDirector& camera_director() const { return _camera_director; }
 
     // G12-4: 组装 3D 只读视图 —— hd2d 渲染器/scene_builder 从此不再依赖本类
