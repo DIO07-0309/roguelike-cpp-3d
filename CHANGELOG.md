@@ -67,6 +67,12 @@ P4 刚做的精致群系 3D 地形，在特殊房一个都用不上——这就�
   非 flat 物件（桶/图腾/岩石）不受影响。
 - **审查 2 个 Important**（已 TDD 修复）：tint×暗顶点色过暗 → 改色相拉满；
   特殊房楼梯/缺资产回退丢类型色 → `special_room_tile_decal_needed` 用真实 use_3d 门控。
+- **Boss 运镜/顿帧 gate 覆盖**（G25-H 遗留收口）：三段 gate（BOSS_CINEMATIC 运镜 /
+  HitStop / 相机更新）此前 sim 模式结构性跳过、集成路径无测试。抽出纯函数
+  `GameScene::presentation_gate_allowed(sim, camera_loaded, needs_camera)` 统一三段判定，
+  `camera_test.cpp` 新增 `GameSceneGates.PresentationGateAllowedTruthTable` 锁定 sim 跳过语义
+  （RED 编译失败→GREEN）；sim 报告 hash 逐字节未变（确定性零漂移）。
+  肉眼验收清单见 `docs/BOSS_CINEMATIC_MANUAL_QA.md`（运镜 zoom/焦点、击杀顿帧、sim 红线）。
 
 ## 验证
 
