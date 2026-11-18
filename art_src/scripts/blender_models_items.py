@@ -144,16 +144,16 @@ def build_sword():
 
 
 def build_spear():
-    """长枪 (平躺): 木杆 + 套筒 + 菱形枪头 + 护环 + 尾鐏"""
+    """长枪 (平躺): 木杆 + 套筒 + 菱形枪头 + 护环 + 尾鐏 + 柄缠带 + 装饰珠"""
     parts = []
     parts.append(
         part_cylinder(
-            "shaft", (0, 1.0, 1.1), 1.1, 24.0, WOOD_DARK, vertices=8, rotation=_PITCH
+            "shaft", (0, 1.0, 1.1), 1.1, 24.0, WOOD_DARK, vertices=20, rotation=_PITCH
         )
     )
     parts.append(
         part_cylinder(
-            "socket", (0, -11.8, 1.6), 1.5, 2.6, IRON_DARK, vertices=8, rotation=_PITCH
+            "socket", (0, -11.8, 1.6), 1.5, 2.6, IRON_DARK, vertices=20, rotation=_PITCH
         )
     )
     parts.append(
@@ -168,49 +168,41 @@ def build_spear():
     parts.append(part_box("collar", (0, -13.2, 1.6), (5.0, 1.2, 1.4), IRON, bevel=0.3))
     parts.append(
         part_cylinder(
-            "butt", (0, 13.4, 1.5), 1.4, 2.2, IRON_DARK, vertices=8, rotation=_PITCH
+            "butt", (0, 13.4, 1.5), 1.4, 2.2, IRON_DARK, vertices=20, rotation=_PITCH
         )
     )
+    # 柄缠带 (ring) + 装饰珠 — 全部落在原 bbox x[-2.5,2.5] z[0,3.1] 内
+    for gy in (-7.0, -4.0, 6.0, 9.0):
+        parts.append(part_torus("wrap", (0, gy, 1.5), 1.15, 0.28, LEATHER,
+                                major_segments=16, minor_segments=8, rotation=_PITCH))
+    parts.append(part_sphere("ornament", (0, -3.0, 1.55), 0.85, GOLD,
+                             segments=16, rings=12))
+    parts.append(part_sphere("ornament", (0, 11.0, 1.55), 0.85, GOLD,
+                             segments=16, rings=12))
     return join_parts(parts, "item_spear")
 
 
 def build_nunchaku():
-    """双截棍 (平躺): 两根八字短棍 + 三节链环"""
+    """双截棍 (平躺): 两根八字短棍 + 三节链环 + 端头配重"""
     parts = []
     for side, ang in ((-1, 20), (1, -20)):
         rot = Matrix.Rotation(math.radians(ang), 3, "Z") @ _PITCH
         parts.append(
             part_cylinder(
-                "stick", (side * 5.0, 0, 1.3), 1.3, 11.0, WOOD, vertices=8, rotation=rot
+                "stick", (side * 5.0, 0, 1.3), 1.3, 11.0, WOOD, vertices=20, rotation=rot
             )
         )
+        # 端头配重珠 (落在 bbox x[-8.1,8.1] z[0,3.38] 内)
+        parts.append(part_sphere("cap", (side * 5.0, 0, 1.5), 0.65, IRON_DARK,
+                                 segments=16, rings=12))
     for index, y in enumerate((-1.9, 0.0, 1.9)):
-        if index % 2 == 0:
-            parts.append(
-                part_torus(
-                    "chain",
-                    (0, y, 1.7),
-                    1.3,
-                    0.4,
-                    IRON_DARK,
-                    major_segments=8,
-                    minor_segments=5,
-                    rotation=_PITCH,
-                )
-            )
-        else:
-            parts.append(
-                part_torus(
-                    "chain",
-                    (0, y, 0.9),
-                    1.3,
-                    0.4,
-                    IRON_DARK,
-                    major_segments=8,
-                    minor_segments=5,
-                )
-            )
+        zc = 1.7
+        parts.append(
+            part_torus("chain", (0, y, zc), 1.3, 0.4, IRON_DARK,
+                       major_segments=8, minor_segments=5, rotation=_PITCH)
+        )
     return join_parts(parts, "item_nunchaku")
+
 
 
 def build_crossbow():
