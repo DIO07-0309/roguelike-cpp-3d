@@ -1,4 +1,90 @@
-﻿# P3-2: 9 地标 + 8 护甲细节微调（2026-11-18）
+﻿# P4: 21 件地形审美升级（2026-11-18）
+
+> 用户拍板：群系专属造型语言（真正一眼可辨，不要换色皮肤）；21 件逻辑资产全做；
+> 闸门 bbox 不超基线且面数严格 > 基线；21 张预览全部重生成；"一眼可辨"作为阻塞性验收。
+
+## 同质化根源（本轮要解决的病根）
+
+`blender_models_terrain.py` 的 4 个 builder（wall/floor/stairs/door）几何骨架三群系**完全共用**，
+只换 `PALETTES` 配色；群系差异全压在 `_biome_decor` 的几根小点缀上（监牢甚至直接 `return`
+不加）。结果三个群系的 floor/stairs/door/wall 几乎一样，只是颜色不同。
+
+## 群系专属造型语言
+
+把每类地形的群系点缀从"几根小细条"升级为**主题造型层**，压在原几何骨架 / 墙三变体结构上、
+不覆盖结构差异：
+
+| 群系 | floor | stairs | door | wall |
+|---|---|---|---|---|
+| 监牢（灰白） | 铁栅格+铆钉+凿石纹 | 铁包边踏步+锁链 | 铁栅门板+铆钉门楣 | 铁栅窗+锁链+铆钉盾徽 |
+| 火山（橙棕） | 熔岩池+黑曜碎块+火星 | 熔岩踏面+黑曜侧石+火星 | 黑曜框+熔岩门缝+火星 | 熔岩瀑纹+岩层横带+黑曜刺 |
+| 虚空（紫） | 符文环阵+紫晶簇+幽光点 | 符文阶+紫晶栏+幽光浮点 | 符文门阵+紫晶拱心+幽光 | 空间裂隙+幽光球+紫晶 |
+
+墙的 v0 拱券 / v1 纯砖 / v2 浮雕盾徽三种结构差异保留，主题层压在其上。
+
+## 面数前 → 后（三角面，19 个磁盘 JSON）
+
+| 资产 | 前 | 后 |
+|---|---:|---:|
+| terrain_floor_prison | 732 | 1836 |
+| terrain_floor_volcano | 1056 | 1260 |
+| terrain_floor_void | 876 | 1532 |
+| terrain_stairs_prison | 1188 | 2004 |
+| terrain_stairs_volcano | 1512 | 1756 |
+| terrain_stairs_void | 1332 | 1804 |
+| terrain_door_prison | 1252 | 2140 |
+| terrain_door_volcano | 1616 | 1908 |
+| terrain_door_void | 1704 | 2272 |
+| terrain_wall_prison | 2700 | 3952 |
+| terrain_wall_prison_v1 | 2376 | 3628 |
+| terrain_wall_prison_v2 | 2016 | 3268 |
+| terrain_wall_volcano | 3064 | 3604 |
+| terrain_wall_volcano_v1 | 2740 | 3280 |
+| terrain_wall_volcano_v2 | 2380 | 2920 |
+| terrain_wall_void | 3152 | 3776 |
+| terrain_wall_void_v0 | 3152 | 3776 |
+| terrain_wall_void_v1 | 2828 | 3452 |
+| terrain_wall_void_v2 | 2468 | 3092 |
+
+## bbox 契约与实测要点
+
+- 地形是 32×32 tile，**bbox 不得外扩**（否则破坏网格拼接）；贴地 y_min=0；各件深度基线不同
+  （如 door: prison zmax 5.5 / volcano 20.1 / void 18.618；wall v1 zmax 18.7 最紧），
+  主题件按各件基线逐件收。
+- 低段数采样 bbox 经验延续：半径敏感件保持段数，靠 bbox 内部装饰补面。
+- 实战修正：监牢 wall_boss 初版导出 z 19.1 超 prison_v1 基线 18.7 → 收紧；
+  void floor 初版 y_max 4.80 超基线 4.78 → 收紧紫晶刺/符文环。
+
+## 闸门
+
+- 新增 `tools/check_p4_assets.js` + `tools/p4_baselines.json`：**19 个磁盘文件**（不是 21 逻辑件），
+  基线从精修前 JSON 实测生成（§1.3 区间值个别不准，如 v1 墙 zmax 实为 18.7）。
+  prison/volcano 的 wall v0 无独立文件、由无后缀基准代偿（基准精修即 v0 精修）；void 有独立 v0。
+- RED 验证：19 件初始 faces==基线 → 19/19 因 facesGrew 失败（预期）。
+- `node tools/check_p4_assets.js` → **ASSETS=19 FAILED=0**。
+
+## 阻塞性审图（本轮核心验收）
+
+每类地形把三群系并排 `look()`，通过标准=缩略图 2 秒内可分辨群系归属、主题元素清晰可辨；
+未达标则迭代重做。四类全部通过：
+- floor：铁栅格 / 熔岩池 / 符文环阵
+- stairs：铁包边 / 熔岩踏面 / 符文阶（主题识别靠踏步包边；侧向件被既有高栏柱遮挡，已账本记录）
+- door：铁栅门板 / 熔岩门缝+黑曜 / 符文门阵+紫晶
+- wall：铁栅窗 / 熔岩瀑纹 / 空间裂隙，且 v0/v1/v2 结构差异保留
+最终 4 类×3 群系 12 件全家福同框确认。
+
+## 预览
+
+21 张 `terrain_preview_*.png` 全部重生成（含 prison_v0 / volcano_v0 / void_v0 三张别名图）。
+
+## 验证
+
+- P4 闸门 19/19；P3b 17/17；P3 8/8；A22 150/150（均不退化）；
+  `ctest` 90/90；`fn_length` 0 超规；`world_validator` 通过。
+
+---
+
+# P3-2: 9 地标 + 8 护甲细节微调（2026-11-18）
 
 > 用户拍板：补明确缺口、不设面数门槛；9 地标 + 8 护甲全做；闸门 bbox 不超基线且
 > 面数严格 > 基线；17 张预览全部重生成；完成后同步桌面包并哈希校验。
