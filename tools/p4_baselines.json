@@ -1,0 +1,211 @@
+{
+  "terrain_door_prison": {
+    "faces": 1252,
+    "bbox": {
+      "xmin": -16.0,
+      "xmax": 16.0,
+      "ymin": 0.0,
+      "ymax": 34.5,
+      "zmin": -4.5,
+      "zmax": 5.5
+    }
+  },
+  "terrain_door_void": {
+    "faces": 1704,
+    "bbox": {
+      "xmin": -16.0,
+      "xmax": 16.0,
+      "ymin": 0.0,
+      "ymax": 34.5,
+      "zmin": -4.5,
+      "zmax": 18.618
+    }
+  },
+  "terrain_door_volcano": {
+    "faces": 1616,
+    "bbox": {
+      "xmin": -16.0,
+      "xmax": 16.0,
+      "ymin": 0.0,
+      "ymax": 34.5,
+      "zmin": -4.5,
+      "zmax": 20.1
+    }
+  },
+  "terrain_floor_prison": {
+    "faces": 732,
+    "bbox": {
+      "xmin": -16.0,
+      "xmax": 16.0,
+      "ymin": 0.0,
+      "ymax": 4.48,
+      "zmin": -16.0,
+      "zmax": 16.0
+    }
+  },
+  "terrain_floor_void": {
+    "faces": 876,
+    "bbox": {
+      "xmin": -16.0,
+      "xmax": 16.0,
+      "ymin": 0.0,
+      "ymax": 4.775,
+      "zmin": -16.0,
+      "zmax": 16.0
+    }
+  },
+  "terrain_floor_volcano": {
+    "faces": 1056,
+    "bbox": {
+      "xmin": -16.0,
+      "xmax": 16.0,
+      "ymin": 0.0,
+      "ymax": 4.75,
+      "zmin": -16.0,
+      "zmax": 16.0
+    }
+  },
+  "terrain_stairs_prison": {
+    "faces": 1188,
+    "bbox": {
+      "xmin": -16.0,
+      "xmax": 16.0,
+      "ymin": 0.0,
+      "ymax": 16.0,
+      "zmin": -16.0,
+      "zmax": 16.0
+    }
+  },
+  "terrain_stairs_void": {
+    "faces": 1332,
+    "bbox": {
+      "xmin": -16.0,
+      "xmax": 16.0,
+      "ymin": 0.0,
+      "ymax": 16.0,
+      "zmin": -16.0,
+      "zmax": 16.0
+    }
+  },
+  "terrain_stairs_volcano": {
+    "faces": 1512,
+    "bbox": {
+      "xmin": -16.0,
+      "xmax": 16.0,
+      "ymin": 0.0,
+      "ymax": 16.0,
+      "zmin": -16.0,
+      "zmax": 16.0
+    }
+  },
+  "terrain_wall_prison": {
+    "faces": 2700,
+    "bbox": {
+      "xmin": -16.5,
+      "xmax": 16.5,
+      "ymin": 0.0,
+      "ymax": 42.5,
+      "zmin": -16.5,
+      "zmax": 19.3
+    }
+  },
+  "terrain_wall_prison_v1": {
+    "faces": 2376,
+    "bbox": {
+      "xmin": -16.5,
+      "xmax": 16.5,
+      "ymin": 0.0,
+      "ymax": 42.5,
+      "zmin": -16.5,
+      "zmax": 18.7
+    }
+  },
+  "terrain_wall_prison_v2": {
+    "faces": 2016,
+    "bbox": {
+      "xmin": -16.5,
+      "xmax": 16.5,
+      "ymin": 0.0,
+      "ymax": 42.5,
+      "zmin": -16.5,
+      "zmax": 20.092
+    }
+  },
+  "terrain_wall_void": {
+    "faces": 3152,
+    "bbox": {
+      "xmin": -16.5,
+      "xmax": 16.5,
+      "ymin": 0.0,
+      "ymax": 42.5,
+      "zmin": -16.5,
+      "zmax": 19.3
+    }
+  },
+  "terrain_wall_void_v0": {
+    "faces": 3152,
+    "bbox": {
+      "xmin": -16.5,
+      "xmax": 16.5,
+      "ymin": 0.0,
+      "ymax": 42.5,
+      "zmin": -16.5,
+      "zmax": 19.3
+    }
+  },
+  "terrain_wall_void_v1": {
+    "faces": 2828,
+    "bbox": {
+      "xmin": -16.5,
+      "xmax": 16.5,
+      "ymin": 0.0,
+      "ymax": 42.5,
+      "zmin": -16.5,
+      "zmax": 18.7
+    }
+  },
+  "terrain_wall_void_v2": {
+    "faces": 2468,
+    "bbox": {
+      "xmin": -16.5,
+      "xmax": 16.5,
+      "ymin": 0.0,
+      "ymax": 42.5,
+      "zmin": -16.5,
+      "zmax": 20.092
+    }
+  },
+  "terrain_wall_volcano": {
+    "faces": 3064,
+    "bbox": {
+      "xmin": -16.5,
+      "xmax": 16.5,
+      "ymin": 0.0,
+      "ymax": 42.5,
+      "zmin": -16.5,
+      "zmax": 20.1
+    }
+  },
+  "terrain_wall_volcano_v1": {
+    "faces": 2740,
+    "bbox": {
+      "xmin": -16.5,
+      "xmax": 16.5,
+      "ymin": 0.0,
+      "ymax": 42.5,
+      "zmin": -16.5,
+      "zmax": 20.1
+    }
+  },
+  "terrain_wall_volcano_v2": {
+    "faces": 2380,
+    "bbox": {
+      "xmin": -16.5,
+      "xmax": 16.5,
+      "ymin": 0.0,
+      "ymax": 42.5,
+      "zmin": -16.5,
+      "zmax": 20.1
+    }
+  }
+}
