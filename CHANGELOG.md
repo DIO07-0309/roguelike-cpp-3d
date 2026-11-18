@@ -56,6 +56,18 @@ P4 刚做的精致群系 3D 地形，在特殊房一个都用不上——这就�
 - **实机观感（类型色相乘后的最终亮度、掉落物不埋、墙阴影）建议运行游戏最终确认**——
   ctest 与目标预览不覆盖 raylib 实际画面。
 
+### 收尾修复（审查 + 用户追问）
+
+- **陷阱可见性**（用户追问"地板陷阱是不是落下了"）：只读调查确认 P5 没落下陷阱——
+  唯一陷阱 tile 是 LAVA（已被 3D 化排除）；尖刺/毒池是独立 ArenaObject 且生成时排除特殊房。
+  但发现**既有遗留**：贴地陷阱（尖刺/毒池 3D 模型与 billboard）硬编码 y=0.08，
+  在 A20 石板顶 4.48 之下被埋（A20 引入 3D 地形时就存在，非 P5 引入）。
+  修复：`arena_flat_object_y(terrain_active)`——有 3D 石板格抬到 y=5（同 rubble），
+  无石板格保持 0.08 避免悬空；3D 模型与 billboard 两路径都改；补 gtest `ArenaFlatObjectLiftedOnTerrain`。
+  非 flat 物件（桶/图腾/岩石）不受影响。
+- **审查 2 个 Important**（已 TDD 修复）：tint×暗顶点色过暗 → 改色相拉满；
+  特殊房楼梯/缺资产回退丢类型色 → `special_room_tile_decal_needed` 用真实 use_3d 门控。
+
 ## 验证
 
 - ctest 90/90（gtest 10 项）；P5 3/3、P4 19/19、P3b 17/17、P3 8/8、A22 150/150；
