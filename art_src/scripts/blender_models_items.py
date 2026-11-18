@@ -52,6 +52,15 @@ def _potion(liquid, name):
     parts.append(
         part_box("label", (0, -3.85, 3.2), (4.8, 0.5, 3.6), (238, 234, 220), bevel=0.2)
     )
+    # 标签浮雕边框 (贴合正面 label, 落在 bbox 内)
+    parts.append(part_box("label_frame", (0, -3.85, 3.2), (4.6, 0.3, 2.8), GOLD, bevel=0.1))
+    parts.append(part_box("label_stripe", (0, -3.95, 3.2), (3.6, 0.2, 0.6), liquid, bevel=0.1))
+    # 瓶身底部刻纹环
+    parts.append(part_torus("base_ring", (0, 0, 0.5), 3.5, 0.28, GLASS,
+                            major_segments=20, minor_segments=8))
+    for gz in (2.0, 4.0):
+        parts.append(part_torus("body_ring", (0, 0, gz), 3.5, 0.25, liquid,
+                                major_segments=20, minor_segments=8))
     return join_parts(parts, name)
 
 
@@ -108,12 +117,14 @@ def build_dagger():
     )
     parts.append(
         part_cylinder(
-            "grip", (0, 5.0, 1.0), 1.0, 3.4, WOOD_DARK, vertices=8, rotation=_PITCH
+            "grip", (0, 5.0, 1.0), 1.0, 3.4, WOOD_DARK, vertices=16, rotation=_PITCH
         )
     )
-    parts.append(
-        part_sphere("pommel", (0, 7.2, 1.2), 1.2, IRON_DARK, segments=8, rings=6)
-    )
+    parts.append(part_sphere("pommel", (0, 7.2, 1.2), 1.2, IRON_DARK, segments=16, rings=12))
+    for gy in (4.0, 5.0, 6.0):
+        parts.append(part_torus("wrap", (0, gy, 1.15), 0.95, 0.18, LEATHER,
+                                major_segments=16, minor_segments=8, rotation=_PITCH))
+    parts.append(part_box("guard_trim", (0, 2.6, 1.1), (7.5, 1.0, 0.5), GOLD, bevel=0.2))
     return join_parts(parts, "item_dagger")
 
 
@@ -136,10 +147,14 @@ def build_sword():
     parts.append(part_box("guard", (0, 4.6, 0.9), (9.5, 1.8, 1.8), GOLD, bevel=0.5))
     parts.append(
         part_cylinder(
-            "grip", (0, 7.6, 1.15), 1.15, 5.0, LEATHER, vertices=8, rotation=_PITCH
+            "grip", (0, 7.6, 1.15), 1.15, 5.0, LEATHER, vertices=16, rotation=_PITCH
         )
     )
-    parts.append(part_sphere("pommel", (0, 10.6, 1.5), 1.5, GOLD, segments=8, rings=6))
+    parts.append(part_sphere("pommel", (0, 10.6, 1.5), 1.5, GOLD, segments=16, rings=12))
+    for gy in (6.0, 7.6, 9.2):
+        parts.append(part_torus("wrap", (0, gy, 1.25), 1.0, 0.18, LEATHER,
+                                major_segments=16, minor_segments=8, rotation=_PITCH))
+    parts.append(part_box("guard_trim", (0, 4.6, 1.3), (9.5, 1.0, 0.5), STEEL_LIGHT, bevel=0.2))
     return join_parts(parts, "item_sword")
 
 
