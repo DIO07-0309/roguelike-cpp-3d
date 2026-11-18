@@ -1290,8 +1290,15 @@ static void _build_ground_items(const hd2d::SceneView& view, std::vector<HD2DDra
     }
 }
 
+// P5-fix2: 贴地陷阱高度 —— 与掉落物同理, A20 石板顶 ≈4.48,
+// 有 3D 石板时抬到 5.0 (高于石板, 与 rubble 一致), 否则贴地 0.08。
+float arena_flat_object_y(bool terrain_active) {
+    return terrain_active ? 5.0f : 0.08f;
+}
+
 // A15: Arena billboard 回退 (程序化贴图; POOL/SPIKE 贴地 decal)
-static void _emit_arena_billboard(const ArenaObject& ao, std::vector<HD2DDrawItem>& out) {
+static void _emit_arena_billboard(const ArenaObject& ao, bool terrain_active,
+                                  std::vector<HD2DDrawItem>& out) {
     auto& res = ResourceManager::inst();
     int type_idx = static_cast<int>(ao.type);
     char key[32];
@@ -1310,7 +1317,7 @@ static void _emit_arena_billboard(const ArenaObject& ao, std::vector<HD2DDrawIte
     if (ao.type == ArenaObjectType::POISON_POOL ||
         ao.type == ArenaObjectType::SPIKE) {
         item.kind = HD2DDrawItem::Kind::FLOOR_DECAL;
-        item.world_pos.y = 0.08f;
+        item.world_pos.y = arena_flat_object_y(terrain_active);
         item.size = TILE_SIZE;
     } else {
         item.kind = HD2DDrawItem::Kind::ENTITY_BILLBOARD;
@@ -1320,7 +1327,8 @@ static void _emit_arena_billboard(const ArenaObject& ao, std::vector<HD2DDrawIte
 }
 
 // A15: Arena 道具 → 真 3D 模型; false = 缺资产, 回退 billboard (桶脉冲 tint 保留)
-static bool _try_arena_model(const ArenaObject& ao, std::vector<HD2DDrawItem>& out) {
+static bool _try_arena_model(const ArenaObject& ao, bool terrain_active,
+                             std::vector<HD2DDrawItem>& out) {
     const char* mname = _arena_model_name(ao.type);
     if (!mname) return false;
     auto model = _model_cache().get(mname);
@@ -1329,7 +1337,7 @@ static bool _try_arena_model(const ArenaObject& ao, std::vector<HD2DDrawItem>& o
     const float wz = (float)ao.tile_y * TILE_SIZE + TILE_SIZE * 0.5f;
     const bool flat = (ao.type == ArenaObjectType::POISON_POOL ||
                        ao.type == ArenaObjectType::SPIKE);
-    _append_model(model, {wx, flat ? 0.08f : 0.0f, wz},
+    _append_model(model, {wx, flat ? arena_flat_object_y(terrain_active) : 0.0f, wz},
                   (float)ao.tile_y * TILE_SIZE, 0.0f, flat ? 0.0f : 16.0f, out);
     out.back().tint = _arena_pulse_tint(ao);
     return true;
@@ -1344,8 +1352,10 @@ static void _build_arena_objects(const hd2d::SceneView& view, std::vector<HD2DDr
     for (const auto& ao : map->arena_objects) {
         if (!ao.active) continue;
         if (!map->isVisible(ao.tile_x, ao.tile_y)) continue;
-        if (_try_arena_model(ao, out)) continue;
-        _emit_arena_billboard(ao, out);
+        // P5-fix2: arena 陷阱在 FLOOR 格上, 若该格有 A20 3D 石板则抬到石板顶。
+        const bool terrain_active = _terrain_active_for(map, ao.tile_x, ao.tile_y);
+        if (_try_arena_model(ao, terrain_active, out)) continue;
+        _emit_arena_billboard(ao, terrain_active, out);
     }
 }
 

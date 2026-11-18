@@ -204,3 +204,14 @@ TEST(HD2DSceneBuilder, SpecialRoomPaletteSingleSource) {
     sr.type = SpecialRoomType::SHOP;
     EXPECT_GE(hd2d::special_room_tint_for_model(&sr, true).r, 100);
 }
+
+// ── P5-fix2: 贴地陷阱(尖刺/毒池)在有 3D 石板的格子上必须抬到石板顶 ──
+// 石板顶 y≈4.48; 陷阱原本贴地 y=0.08 会被埋。无石板格保持贴地避免悬空。
+TEST(HD2DSceneBuilder, ArenaFlatObjectLiftedOnTerrain) {
+    EXPECT_FLOAT_EQ(hd2d::arena_flat_object_y(false), 0.08f)
+        << "无 3D 石板的格子保持贴地";
+    EXPECT_GT(hd2d::arena_flat_object_y(true), 4.48f)
+        << "有 3D 石板时陷阱须高于石板顶 4.48";
+    EXPECT_LE(hd2d::arena_flat_object_y(true), 6.0f)
+        << "不应过高悬空";
+}

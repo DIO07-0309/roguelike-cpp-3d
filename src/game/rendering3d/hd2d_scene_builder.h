@@ -30,6 +30,9 @@ bool rubble_placed(int tx, int ty);
 // P5 fix: 是否仍需画 2D 类型色 tint/decal。只有"FLOOR 且真走 3D"才跳过
 // (石板会盖住 decal); STAIRS_DOWN / 缺资产回退都保留。
 bool special_room_tile_decal_needed(bool is_floor_tile, bool use_3d);
+// P5-fix2: 贴地 arena 陷阱(尖刺/毒池)的摆放高度。有 3D 石板格抬到石板顶之上,
+// 无石板格保持贴地(避免悬空)。
+float arena_flat_object_y(bool terrain_active);
 
 // G12-5: tint 默认值只在 hd2d_part_geometry.h 声明一次 (避免 TU 内重复)
 void appendAvatarParts(const std::vector<AvatarPartDraw>& parts, Vector3 feet_world,
