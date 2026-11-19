@@ -1,7 +1,22 @@
 # sim AI 卡死修复立项设计（2026-11-19）
 
-状态：**待用户确认方案**
+状态：**方案已确认 + builder 审查完成**（2026-11-19）
 依赖诊断：`docs/SIM_STUCK_DIAGNOSIS.md`（四轮诊断，根因已锁定）
+
+### Builder 审查纳入的关键约束
+
+- **game_time 换层归零**（game_scene.cpp:395）：tracker 必须自行检测 `t < _last_time` 回退并重置内部计时，否则跨层后 hunting 永久失效（最高危）。
+- **门控作用域**：`if (hunting()) return nullopt;` **只能加在 `_eval_move_loot_and_rooms` 开头**，
+  绝不上移到 best_action/_evaluate_move——否则误禁 recovery/dodge/heal 导致残血追怪送死。
+- **observe 时序**：钩子在 `_cached_frame != _frame` 分支内（sim_ai.cpp:1501）每帧恰好一次；
+  读到上一帧 game_time（单帧滞后，单调），契约测试固定此语义。
+- **HP 口径对齐**：tracker 统计的 hp_sum 必须与 `_stuck_progress`（sim_ai.cpp:1014-1017）完全一致
+  （只统计 is_alive 怪的 current_hp），否则 hunting 与看门狗互相打架。
+- **Golden baseline**：行为改动后 GOLDEN-001（golden_baseline_test.cpp:72-95）必碎，须重采集基线 +
+  commit message 说明玩法为何变；GOLDEN-003 确定性仍须通过（新行为也要稳定）。
+- **跨局/跨层清零**：tracker 状态在 `start()`/构造清零，不依赖 `_cached_frame`。
+- **真修复判定**：验证时观察 `sim_progress_src`/`sim_tp_attempts`，确认卡死率下降是"真修复"而非"延迟结算"。
+- 2D 不同步（已冻结）。
 
 ## 1. 根因（诊断已锁定）
 
