@@ -17,7 +17,7 @@
 
 **目标**：5 件全部精修到面数 ≥1000（照 P3 门槛），造型更丰富（细节层次清晰），bbox 不超原值。
 **约束**：
-- 协议 A（Z-up，y=高度，导出 y↔高度）；bbox 各件不超原基线（容差 0.01）；贴地 y_min 保持（rock 基线 -0.1）
+- 协议 A（Z-up，y=高度，导出 y↔高度）；bbox 各件不超原基线（容差 0.01）；贴地 y_min 保持（rock 基线 -0.08）
 - 不改资产名、不改配色常量、不改 gameplay/映射（ArenaObjectType → 模型名不变）
 - 用现有 palette 键新增细节，不引入新颜色常量
 - 遵守 CLAUDE.md 全部规范（函数≤40 行、单一职责、语义命名、改前影响分析、改后 Code Review、单次≤300 行、可维护性优先）
@@ -38,7 +38,7 @@
 
 ## 4. 闸门（本类此前无质量锁）
 
-新建 `tools/check_arena_assets.js` + `tools/p4_baselines.json` 同模式基线：
+新建 `tools/check_arena_assets.js` + `tools/arena_baselines.json` 同模式基线：
 - 校验 5 件 schema/name/finite（位置+颜色）/面数 ≥1000 / bbox ≤ 基线
 - 基线从当前 5 件 JSON 实测生成（精修前）
 

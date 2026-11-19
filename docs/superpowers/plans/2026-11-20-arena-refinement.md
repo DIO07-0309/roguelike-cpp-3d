@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- 协议 A（Z-up，导出 y=高度）；bbox 各轴不超基线（容差 0.01）；贴地保持（rock y_min=-0.1）
+- 协议 A（Z-up，导出 y=高度）；bbox 各轴不超基线（容差 0.01）；贴地保持（rock y_min=-0.08）
 - 面数 ≥1000（用户沿用 P3 门槛）；不改资产名/配色常量/gameplay 映射
 - 用现有 palette 键，不新增颜色常量；半径敏感件保持段数
 - CLAUDE.md 规范：函数≤40 行、单一职责、语义命名、改前影响分析、改后 Code Review、单次≤300 行、可维护性优先
@@ -24,7 +24,7 @@
 
 - 面数不足（rock/spike 原 196/272 需大幅补面）→ Task 1 闸门 faces≥1000
 - bbox 撑破（细节外扩）→ 闸门 bbox 六向
-- 贴地契约破坏（rock y_min=-0.1）→ 闸门 y_min + mesh_asset_test
+- 贴地契约破坏（rock y_min=-0.08）→ 闸门 y_min + mesh_asset_test
 - 半径敏感件提段撑破 bbox → 保持原段数，靠内部装饰补面
 
 ---
