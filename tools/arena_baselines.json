@@ -1,0 +1,57 @@
+{
+  "arena_barrel": {
+    "faces": 472,
+    "bbox": {
+      "xmin": -10.5,
+      "xmax": 10.5,
+      "ymin": 0.0,
+      "ymax": 28.656,
+      "zmin": -10.139,
+      "zmax": 10.139
+    }
+  },
+  "arena_pool": {
+    "faces": 792,
+    "bbox": {
+      "xmin": -13.695,
+      "xmax": 14.081,
+      "ymin": 0.0,
+      "ymax": 5.4,
+      "zmin": -13.757,
+      "zmax": 12.981
+    }
+  },
+  "arena_rock": {
+    "faces": 196,
+    "bbox": {
+      "xmin": -8.345,
+      "xmax": 11.194,
+      "ymin": -0.08,
+      "ymax": 13.6,
+      "zmin": -8.072,
+      "zmax": 8.072
+    }
+  },
+  "arena_spike": {
+    "faces": 272,
+    "bbox": {
+      "xmin": -13.0,
+      "xmax": 13.0,
+      "ymin": 0.0,
+      "ymax": 13.0,
+      "zmin": -13.0,
+      "zmax": 13.0
+    }
+  },
+  "arena_totem": {
+    "faces": 468,
+    "bbox": {
+      "xmin": -8.5,
+      "xmax": 8.5,
+      "ymin": 0.0,
+      "ymax": 33.225,
+      "zmin": -8.5,
+      "zmax": 8.5
+    }
+  }
+}
