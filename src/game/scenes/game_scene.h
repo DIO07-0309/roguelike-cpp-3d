@@ -684,6 +684,7 @@ private:
     void _fill_sim_enemies_fought(RunResult& s);
     void _log_sim_action_counters();
     void _log_sim_move_branch_counters();
+    void _dump_surviving_monsters();  // P6: 看门狗结算时 dump 存活怪状态
     void _log_sim_stuck_samples(const RunResult& s);
     std::vector<char> _sim_reach_from_player();
     void _dump_sim_reachability();

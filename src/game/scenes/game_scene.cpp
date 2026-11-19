@@ -2283,6 +2283,7 @@ void GameScene::_classify_sim_outcome(RunResult& s) {
             s.outcome = RunOutcome::DEATH_MONSTER;
     } else {
         s.outcome = RunOutcome::STUCK_RECOVERED;  // 存活但被强制结算
+        if (_sim_ai) _dump_surviving_monsters();  // P6 诊断: 存活怪位置/HP/可达性
     }
 }
 
@@ -2337,6 +2338,31 @@ void GameScene::_log_sim_action_counters() {
         sim_action_counts[3]*100/tot, sim_action_counts[4]*100/tot, sim_action_counts[5]*100/tot,
         sim_action_counts[6]*100/tot, sim_action_counts[7]*100/tot);
     for (int i = 0; i < 8; i++) sim_action_counts[i] = 0;
+}
+
+// P6 诊断: 看门狗结算时 dump 存活怪的 tile/HP/距玩家/可达性 —— 定位"最后几只怪清不掉"。
+void GameScene::_dump_surviving_monsters() {
+    if (!game_map || !player) return;
+    auto [ptx, pty] = game_map->pixel_to_tile(
+        player->entity.rect.x + player->entity.rect.width / 2,
+        player->entity.rect.y + player->entity.rect.height / 2);
+    int alive = 0;
+    auto reach = _sim_reach_from_player();  // P6: 从玩家 flood, 判断怪是否真可达
+    int w = game_map->width;
+    for (auto& m : monsters) {
+        if (!m || !m->combat.is_alive) continue;
+        if (++alive > 8) break;  // 只 dump 前 8 只, 避免刷屏
+        auto [tx, ty] = game_map->pixel_to_tile(
+            m->entity.rect.x + m->entity.rect.width / 2,
+            m->entity.rect.y + m->entity.rect.height / 2);
+        float dist = hypotf((float)(tx - ptx), (float)(ty - pty));
+        bool path_reach = (tx >= 0 && ty >= 0 && tx < w && ty < (int)reach.size() / w)
+                          && reach[ty * w + tx] != 0;
+        LOG_INFO("[SIM-DIAG] alive#%d mon=(%d,%d) hp=%d/%d dist=%.0ft path_reach=%d boss=%d",
+                 alive, tx, ty, m->combat.current_hp, m->combat.max_hp,
+                 dist, (int)path_reach, (int)m->is_boss);
+    }
+    LOG_INFO("[SIM-DIAG] surviving_total=%d player=(%d,%d)", (int)monsters.size(), ptx, pty);
 }
 
 // G14: 移动分支/楼梯归因 — recovery/loot/room/approach/stand + BFS 失败率
