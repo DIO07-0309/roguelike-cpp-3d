@@ -63,6 +63,10 @@ const nlohmann::json* run_at(const nlohmann::json& report, size_t i) {
 // ⚠ 注: `--sim-build none` 实际会跑成"1 局指定 + 3 局随机 build"
 //   (SimRunner 的 all_builds/随机分支行为), 故 4 局 build 不同 —
 //   这不影响确定性, 但意味着改 build 相关逻辑会让前 3 局结果变化。
+// ═ P6 清怪模式基线更新 (2026-11-19) ═
+//   CombatFocusTracker: 僵持≥8s 无怪掉血 → 临时禁 loot/room 评分强制追怪。
+//   玩法有意改变: 清怪尾段不再被 loot/room 压制, run1/2/3 kills/dmg 漂移,
+//   卡死率 254→239 (300 局)。run0 未触及僵持分支, 保持不变。
 // ═ A15-Guard 基线更新 (2026-10-28) ═
 //   F1 新增守卫互动 NPC (可对话), spawn_floor_npcs 在 sim 主循环同样执行,
 //   守卫占位使固定 seed 的随机 build 局 (run1-3) 结果漂移 — 玩法被有意改变。
@@ -75,8 +79,8 @@ TEST(GoldenBaseline, FixedSeedOutcomeIsMatchesBaseline) {
     ASSERT_GE(r["runs"].size(), 4u) << "sim 未产出 4 局";
 
     const int    base_floor[] = {2, 3, 4, 4};
-    const int    base_kills[] = {8, 13, 15, 14};
-    const long   base_dmg[]   = {183, 59, 72, 363};
+    const int    base_kills[] = {8, 11, 16, 15};
+    const long   base_dmg[]   = {183, 127, 51, 291};
     const char*  base_weapon[] = {"crossbow_rare", "sword_common",
                                   "dagger_rare", "sword_common"};
 
