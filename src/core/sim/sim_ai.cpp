@@ -10,6 +10,7 @@
 #include "ai/mcts/mcts_search.h"
 #include "ai/mcts/action.h"
 #include "sim_ai_teleport.h"      // P0-M2: room-domain teleport contract
+#include "combat_focus_tracker.h"          // P6: 清怪僵持检测
 #include "world/room_manager.h"   // P0-M2: room_at for teleport logging
 #include <cmath>
 #include <cstring>
@@ -138,6 +139,7 @@ DecisionAgent::DecisionAgent() {}
 
 void DecisionAgent::start(const Player* player) {
     _frame = 0; _dir_timer = 0; _current_dir = -1;
+    _combat_focus.reset();   // P6: 跨局清零
     _resolve_profile(player);
 }
 
@@ -766,6 +768,9 @@ std::optional<float> DecisionAgent::_eval_move_recovery(int dir, const Player* p
 std::optional<float> DecisionAgent::_eval_move_loot_and_rooms(
         int dir, const Player* p, float dist, float reach_px,
         const GameMap* map) const {
+    // P6: 纯追怪模式 — 僵持时跳过 loot/room 方向分, 让 approach 驱动追远怪。
+    // 绝不上移到此函数之外(否则误禁 recovery/dodge/heal 致残血送死)。
+    if (_combat_focus.hunting()) return std::nullopt;
     if (!map || dist <= reach_px + 32.0f) return std::nullopt;
     // P1-A2: 战斗间隙捡地面物品 — 比特殊房更近的直接资源, 优先级更高 (0.7 > 0.6)
     // G13: 间隙判定对齐真实射程 — 原 160px 硬编码, crossbow 射程 320px 时 AI 在
@@ -1499,6 +1504,15 @@ bool DecisionAgent::is_action_just_pressed(const char* action_name,
 
     // Q3.1: 同帧内所有动作名查询共享同一次 best_action 结果
     if (_cached_frame != _frame) {
+        // P6: 每帧观测战斗状态(口径同 _stuck_progress: 只统计存活怪 current_hp)。
+        float hp_sum = 0.0f;
+        int alive_count = 0;
+        for (const Monster* m : monsters) {
+            if (!m || !m->combat.is_alive) continue;
+            hp_sum += (float)m->combat.current_hp;
+            ++alive_count;
+        }
+        _combat_focus.observe(hp_sum, alive_count, (float)_game_time);
         _cached_best = best_action(player, monsters, map, stairs_active, boss_intro_active);
         _cached_frame = _frame;
         sim_action_counts[_action_bucket(_cached_best)]++;   // G13: 动作分布诊断

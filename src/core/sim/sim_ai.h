@@ -1,5 +1,6 @@
 ﻿#pragma once
 #include <cstdint>
+#include "core/sim/combat_focus_tracker.h"   // P6: 清怪僵持检测
 #include <vector>
 #include <string>
 #include <optional>
@@ -199,6 +200,7 @@ private:
     mutable float _last_px = -1.0f, _last_py = -1.0f;
     mutable float _last_hp_sum = -1.0f;                    // 换血检测 (玩家 HP)
     mutable float _last_mon_sum = -1.0f;                   // 怪 HP 总和变化检测 (战斗输出)
+    CombatFocusTracker _combat_focus;  // P6: 长时间无怪掉血→纯追怪
     mutable int _last_alive_count = -1;                    // 存活怪数变化检测 (卡死 progress)
     mutable int _loot_last_tx = -999, _loot_last_ty = -999;     // 搜刮卡死看门狗
     mutable float _loot_stuck_since = -1.0f;
