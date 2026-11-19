@@ -1,4 +1,53 @@
-﻿# P5: 特殊房间地板/墙壁破碎感升级（2026-11-19）
+﻿# P6: sim AI 卡死修复 — CombatFocusTracker（2026-11-19）
+
+> 用户诉求：修 sim AI 卡死（四轮诊断后立项）。方案：加独立 CombatFocusTracker，
+> 僵持时临时禁 loot/room 强制追怪。
+
+## 根因（四轮诊断，见 docs/SIM_STUCK_DIAGNOSIS.md）
+
+sim 300 局 84.7% STUCK_RECOVERED。逐层排除：① 楼梯可达=0 是伪信号（楼梯未激活）→
+② rect 步进回滚仅 1.6% → ③ 攻击判定正常（贴脸 96%、atk 64%、有伤害）→
+④ **存活怪满血（AI 从未打到）、9~29 格外、path_reach=1（可达），AI 不主动追**——
+在 loot(0.7)/room(0.5) 与 approach(0.6) 间摇摆，且 `_stuck_progress` 把"玩家移动"当进展，
+游荡重置计时，看门狗拖到 120s 才结算。
+
+## 方案
+
+新增 `CombatFocusTracker`（src/core/sim/，纯值输入 hp_sum/alive/game_time，单一职责）：
+- 无怪掉血持续 ≥8s 且仍有存活怪 → hunting=true
+- 怪 HP 下降 / 存活数下降 / 无怪 / 换层时间回退 → 退出或重置
+- DecisionAgent 组合它：每帧 observe（口径同 `_stuck_progress`），
+  **仅在 `_eval_move_loot_and_rooms` 开头**门控（绝不上移，避免误禁 recovery/dodge/heal），
+  僵持时跳过 loot/room 评分让 approach 驱动追远怪。
+- 不动卡死判定 / 平衡参数 / 120s 看门狗兜底。
+
+## 效果（诚实）
+
+- 300 局卡死率 **254→239（约 6% 改善）**，avg_floor 3.49→4.01，**win_rate 仍 0**。
+- 阈值实验：3s 时 avg_floor 4.47（更深）但卡死率同 239 不变 → 说明剩余卡死不是阈值问题，
+  回退 8s 保守值（少误伤正常战斗资源获取）。
+- **结论**：方向对但幅度有限，根因比 hunt 阈值更深（剩余 239 局仍需后续诊断）。
+
+## 契约测试
+
+`CombatFocusTracker` 6 条纯值契约（HuntingAfterNoDamage / ResetsOnDamage /
+ResetsOnMonsterDeath / ResetsOnTimeRollback / NoHuntWhenNoMonsters / ResetClearsState），
+新增独立测试目标 combat_focus_tracker_test（ctest 目标 90→91）。
+
+## Golden baseline
+
+行为改动后 GOLDEN-001 重采集（P6 清怪模式，玩法有意改变）：
+floor{2,3,4,4} / kills{8,11,16,15} / dmg{183,127,51,291} / weapon 不变。
+GOLDEN-003 同 seed 确定性通过（新行为稳定）。
+
+## 验证
+
+ctest 91/91；fn_length 0；world_validator 通过；P4 19/19、P3b 17/17 闸门不退化；
+全项目构建成功。
+
+---
+
+# P5: 特殊房间地板/墙壁破碎感升级（2026-11-19）
 
 > 用户诉求：房间花雕精致丰富，但特殊房地板/墙壁是"一大块色块"，要改；
 > 用属于地牢的"破碎感"去丰富地板和墙壁。拍板：特殊房+普通地板都加、改 C++ 放开 3D 路径、
