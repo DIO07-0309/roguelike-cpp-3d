@@ -130,6 +130,35 @@ TDD + 完整回归，不是诊断轮能安全交付的。
 根因锁定在 sim AI 决策/卡死判定语义。未改任何 gameplay 行为；
 仅加诊断计数器（e39adb9）与存活怪 dump，sim hash 与基线逐字节一致、ctest 90/90。
 
+## 第五轮诊断（2026-11-19，P7: hunt 触发/追怪行为）
+
+加了 hunt 计数器（enters/frames/approach_frames）+ 存活怪 dump，并做了一次门控实验：
+
+**诊断数据（P6 现状，8s 阈值）**：
+```
+hunt enters=33 frames=42590 approach_frames=3631 approach_pct=8.5%   ← hunt 触发了, 但只有 8.5% 帧在追
+```
+即 P6 的 hunt 模式**虽然触发**，但 AI 绝大多数帧没选 move——门控"禁 loot/room"后，
+`_eval_move_in_range`（sim_ai.cpp:809-839）的"射程内站桩 0 分"仍压制 approach
+（远程 build ideal_dist≈10格, 9格内怪被判"该站桩"）。
+
+**门控实验**（临时让 hunt 也跳过 `_eval_move_in_range` 站桩分支）：
+```
+approach_pct 8.5% → 70.0%                    ← AI 终于真的在追了
+avg_floor 4.01 → 4.44
+STUCK_RECOVERED 239 → 237                    ← 卡死率几乎不变!
+存活怪仍满血, 距离 12~37 格, player 停在角落 (9,11)
+```
+
+**决定性结论**：即便 AI 全程在追（approach 70%），也**清不完散布在 12~37 格外的怪**——
+卡死的 239 局不是"AI 不追怪"能解决的。根因是 sim 探索/寻路/预算的系统性问题
+（地图 40x30、怪散布远、120s 预算 + 可能的 BFS 震荡），不是单点 bug。
+故**回退该实验门控**（approach 70% 却卡死不变, 且改变远程 build 正常战斗行为有风险）。
+
+**最终判定**：sim AI 卡死是系统性问题, 单点修补（禁 loot/room、禁站桩、调阈值）均无效或微弱。
+需整体 redesign（探索策略/怪分布/预算/目标选择协同）, 不是可在本会话安全交付的改动。
+P6 的 CombatFocusTracker 保留为"部分缓解 + 诊断基础设施", 不再加新门控。
+
 ## 产物
 
 - `reports/balance_report.json`（300 局测量，被最后一次 300 局对照覆盖，数字同上）

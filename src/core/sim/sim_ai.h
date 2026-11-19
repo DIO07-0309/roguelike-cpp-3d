@@ -309,6 +309,9 @@ extern int sim_stuck_bfs_fail;       // G14: 卡死 BFS 朝怪失败数
 extern int sim_tp_attempts;          // G14: 传送尝试次数
 extern int sim_step_attempts;        // P6 诊断: sim 整格步进尝试次数
 extern int sim_step_rollbacks;       // P6 诊断: sim 整格步进回滚次数(rect 判定拒绝)
+extern int sim_hunt_enters;          // P7 诊断: hunt 模式进入次数
+extern int sim_hunt_frames;          // P7 诊断: hunt 期间帧数
+extern int sim_hunt_approach_frames; // P7 诊断: hunt 期间 approach 动作帧数
 extern int sim_progress_src[4];      // G26: _stuck_progress 四信号归因
 extern int sim_stuck_early[2];       // G26: _stuck_escape 早退归因
 extern double sim_stuck_for_max;     // G26: 单段 stuck_for 观测最大值

@@ -2417,6 +2417,10 @@ void GameScene::_log_sim_stuck_samples(const RunResult& s) {
     LOG_INFO("[SIM-DIAG] step attempts=%d rollbacks=%d rollback_pct=%.1f%%",
         sim_step_attempts, sim_step_rollbacks,
         sim_step_attempts > 0 ? 100.0f * sim_step_rollbacks / sim_step_attempts : 0.0f);
+    // P7 诊断: hunt 是否触发 + 触发后是否真的在追(approach 帧占比)
+    LOG_INFO("[SIM-DIAG] hunt enters=%d frames=%d approach_frames=%d approach_pct=%.1f%%",
+        sim_hunt_enters, sim_hunt_frames, sim_hunt_approach_frames,
+        sim_hunt_frames > 0 ? 100.0f * sim_hunt_approach_frames / sim_hunt_frames : 0.0f);
 }
 
 // 从玩家 tile flood fill, 门状态感知: LOCKED/SEALED 阻断, CLOSED 可穿

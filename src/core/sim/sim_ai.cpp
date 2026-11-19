@@ -42,6 +42,9 @@ int sim_stuck_sample[64][13] = {0};
 int sim_stuck_sample_count = 0;
 int sim_step_attempts = 0;   // P6: sim 整格步进尝试次数
 int sim_step_rollbacks = 0;  // P6: sim 整格步进回滚次数
+int sim_hunt_enters = 0;          // P7: hunt 进入次数
+int sim_hunt_frames = 0;          // P7: hunt 期间帧数
+int sim_hunt_approach_frames = 0; // P7: hunt 期间 approach 帧数
 // G14: 旋转脱困被墙挡住的次数 (尝试移动但可走性失败)
 int sim_rot_blocked = 0;
 // G14: 卡死时 BFS 朝怪命中/失败次数
@@ -1512,8 +1515,16 @@ bool DecisionAgent::is_action_just_pressed(const char* action_name,
             hp_sum += (float)m->combat.current_hp;
             ++alive_count;
         }
+        const bool was_hunting = _combat_focus.hunting();
         _combat_focus.observe(hp_sum, alive_count, (float)_game_time);
+        if (_combat_focus.hunting()) {
+            ++sim_hunt_frames;
+            if (!was_hunting) ++sim_hunt_enters;
+        }
         _cached_best = best_action(player, monsters, map, stairs_active, boss_intro_active);
+        // P7: hunt 期间是否真的选了 approach(追怪) 动作
+        if (_combat_focus.hunting() && _cached_best.rfind("move_", 0) == 0)
+            ++sim_hunt_approach_frames;
         _cached_frame = _frame;
         sim_action_counts[_action_bucket(_cached_best)]++;   // G13: 动作分布诊断
     }
