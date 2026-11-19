@@ -56,10 +56,12 @@ const nlohmann::json* run_at(const nlohmann::json& report, size_t i) {
 // 覆盖: 地牢生成 / 刷怪 / 战斗判定 / 掉落 / 楼层推进 / 结算
 //
 // 基线采集: `roguelike_cpp.exe --sim 4 --sim-seed 4242 --sim-build none`
-//   run0 floor=2  kills=8   dmg=183 turns=10533 weapon=crossbow_rare
-//   run1 floor=4  kills=14  dmg=196 turns=2     weapon=spear_legendary
-//   run2 floor=5  kills=18  dmg=145 turns=323   weapon=dagger_rare
-//   run3 floor=2  kills=4   dmg=45  turns=6478  weapon=sword_common
+//   当前实际值 (P6 后, 见下方 P6 基线更新):
+//   run0 floor=2  kills=8   dmg=183 weapon=crossbow_rare
+//   run1 floor=3  kills=11  dmg=127 weapon=sword_common
+//   run2 floor=4  kills=16  dmg=51  weapon=dagger_rare
+//   run3 floor=4  kills=15  dmg=291 weapon=sword_common
+//   (历史值 A15-Guard 时代曾为 run1 spear_legendary / run2 floor5 / run3 floor2, 已漂移)
 // ⚠ 注: `--sim-build none` 实际会跑成"1 局指定 + 3 局随机 build"
 //   (SimRunner 的 all_builds/随机分支行为), 故 4 局 build 不同 —
 //   这不影响确定性, 但意味着改 build 相关逻辑会让前 3 局结果变化。
