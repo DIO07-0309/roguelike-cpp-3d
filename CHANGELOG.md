@@ -1,4 +1,45 @@
-﻿# P6: sim AI 卡死修复 — CombatFocusTracker（2026-11-19）
+﻿# arena 5 件道具精修（2026-11-20）
+
+> 用户拍板：arena 5 件 + 沿用惯例验收。这是全库面数最低、从未精修的一类。
+
+## 现状与根因
+
+`blender_models_arena.py` 的 5 件是 A14 原版，从未审美精修，全库面数最低
+（爆炸桶 472 / 治疗图腾 468 / 岩石 196 / 尖刺 272 / 毒池 792，均值 440）。
+它们是战斗房高频可见物，P5 只做过尖刺/毒池的位置抬升（可见性修复），零造型投入。
+盘点确认这是唯一"从未精修"的整件类别之一（另一是 guard/chest/altar/spring，本轮未做）。
+
+## 造型方案（bbox 内加细节，面数 ≥1000）
+
+每件加一个 `_detail_xxx(parts)` helper（≤40 行），用低段数 torus/sphere/box 补面：
+- 爆炸桶：三道铁箍环+8 铆钉+红色警示斜纹+底圈+引信火星 → 1760 面
+- 治疗图腾：三道符文腰带环+眉鼻口面部浮雕+底座分层+4 垂饰 → 1600 面
+- 岩石：4 碎裂棱面环+3 苔痕+5 小碎石+2 裂缝 → 1436 面
+- 尖刺：10 倒刺环+5 血槽+6 基板格栅+4 铆钉帽+3 锈斑 → 3236 面
+- 毒池：3 涟漪环+8 气泡+8 边缘结晶+3 漂浮碎屑 → 2716 面
+
+半径敏感件保持段数，细节收紧在原 bbox 内（收紧 2 轮解决 barrel/totem/rock 首版越界）。
+
+## 闸门
+
+此前 arena 只有 `mesh_asset_test` 的存在/贴地契约，无质量锁。
+新增 `tools/check_arena_assets.js` + `tools/arena_baselines.json`（精修前实测）：
+schema/name/finite(含颜色)/faces≥1000/bbox≤基线（容差 0.01）。
+RED 5/5 faces<1000 → GREEN 5/5。
+
+## 审图
+
+Blender MCP 装配 5 件并排 `look()`：铁桶/图腾/碎石/倒刺板/毒池造型层次清晰、
+配色区分、无穿模、贴地正常。
+
+## 验证
+
+ctest 91/91；fn_length 0；world_validator 通过；
+arena 5/5、P3 8/8、P3b 17/17、P4 19/19、A22 150/150 闸门不退化。
+
+---
+
+# P6: sim AI 卡死修复 — CombatFocusTracker（2026-11-19）
 
 > 用户诉求：修 sim AI 卡死（四轮诊断后立项）。方案：加独立 CombatFocusTracker，
 > 僵持时临时禁 loot/room 强制追怪。
