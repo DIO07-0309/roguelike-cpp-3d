@@ -810,11 +810,11 @@ def _banner_detail(parts):
                              segments=8, rings=4, scale=(1, 0.4, 1)))
     # 布面褶皱竖条
     for x in (-4.5, 4.5):
-        parts.append(part_box("fold_%d" % x, (x, -0.3, 33.0), (0.8, 0.3, 7.0),
+        parts.append(part_box("fold_%g" % x, (x, -0.3, 33.0), (0.8, 0.3, 7.0),
                               CLOTH_BLUE_DARK, bevel=0.1))
     # 旗底金流苏
     for x in (-5, -2.5, 0, 2.5, 5):
-        parts.append(part_sphere("tassel_%d" % x, (x, 0.4, 28.8), 0.7, GOLD,
+        parts.append(part_sphere("tassel_%g" % x, (x, 0.4, 28.8), 0.7, GOLD,
                                  segments=8, rings=4, scale=(1, 0.5, 1)))
     # 旗杆金属缠带
     for z in (8.0, 16.0, 24.0):
