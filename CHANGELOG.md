@@ -1,4 +1,39 @@
-﻿# 一怪一形（A22 深化）第一批 13 种（2026-11-21）
+﻿# 一怪一形第二批 — 剩余 13 种（2026-11-21）
+
+> 用户"继续" = 补第一批未覆盖的 13 种非 pilot 怪。方案完全同构第一批（包络内特征件、深拷贝 merge、--unique 闸门）。
+
+## 范围
+
+humanoid 11 种（archer/goblin_hunter 撞色对、shaman、dark_mage、blood_priest、summoner、
+necromancer、tank、charger、bomber、elite_orc）+ slime 2 种（frost_slime/elite_slime）。
+orb(4) 与 construct(2) 的非 pilot 怪在第一批已全部覆盖。
+
+其中 archer / goblin_hunter 以及第一批的 bone_soldier / skeleton_archer 是配色完全相同的撞色对——
+必须靠造型差异区分，本轮用长耳形状+目色（archer 木弓 vs goblin_hunter 猎网）分开。
+
+## 方案（同构第一批）
+
+SIGNATURE_DETAILS 再注册 13 种 `_sig`（head 全覆盖 + weapon/torso 按身份），
+`_signature_refinements` 逐槽深拷贝 pilot list、签名槽整槽替换，利用 `:1529` continue 跳过族拷贝。
+特征件包络内（head y3~5 / torso 4~6.5 / weapon 5~8），被 _refine clamp 在 base bbox 内。
+闸门 SIGNATURES / FAMILY_PILOT 扩展到 26 种，--unique 覆盖全 26 签名怪。
+
+**第二批后：30 种怪 = 4 pilot（各自独立配方）+ 26 签名字（独立配方），全部一怪一形。**
+
+## 闸门
+
+`node tools/check_ground_item_assets.js --unique` → UNIQUE ids=26 FAILED=0；
+`--all` → CHECKED=150 FAILED=0。baselines.json 未动。
+
+## 验证
+
+ctest 91/91；fn_length 0；world_validator；P3b/P4/arena/props/guard_banner 闸门不退化。
+审图：8 种代表头并排 + slime 精英系，撞色对靠造型区分、特征件正面朝相机、无穿模。
+包络内方案限制仍在（表面细节差异、非剪影巨变），不变。
+
+---
+
+# 一怪一形（A22 深化）第一批 13 种（2026-11-21）
 
 > 用户指定做"一怪一形"。拍板：第一批强身份 13 种、包络内特征件、闸门加 --unique。
 
