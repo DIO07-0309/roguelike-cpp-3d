@@ -65,6 +65,26 @@ def _orbit(center, pivot, angle_x):
     return tuple(Vector(pivot) + (Matrix.Rotation(angle_x, 3, "X") @ local))
 
 
+def _chest_detail(parts, used):
+    """宝箱雕饰层: 箱面浮雕框 + 铁箍卷草 + 锁周雕饰 + 角包铁。"""
+    wood = WOOD_OLD_DARK if used else WOOD_DARK
+    accent = IRON_RUST if used else IRON
+    for z in (4.0, 9.0):
+        parts.append(part_box("panel_frame_%d" % z, (0, -7.7, z),
+                              (13.0, 0.5, 3.4), wood, bevel=0.25))
+    for x in (-7.0, 7.0):
+        parts.append(part_box("corner_plate_%g" % x, (x, -7.7, 6.4),
+                              (2.6, 0.6, 11.0), accent, bevel=0.3))
+    for x in (-6.0, 6.0):
+        for z in (4.2, 9.2):
+            parts.append(part_sphere("scroll_%g_%g" % (x, z), (x, -7.6, z), 0.8,
+                                     GOLD if not used else IRON_RUST,
+                                     segments=8, rings=4, scale=(1, 0.4, 1)))
+    parts.append(part_torus("lock_wreath", (0, -7.0, 8.0), 1.2, 0.25,
+                            GOLD if not used else IRON_RUST,
+                            major_segments=12, minor_segments=6))
+
+
 def build_chest(used=False):
     """宝箱: 木板箱身 + 弧形箱盖 + 铁箍铆钉 + 金锁; used=开盖空箱"""
     wood = WOOD_OLD if used else WOOD
@@ -197,7 +217,29 @@ def build_chest(used=False):
                     bevel=0.5,
                 )
             )
+    _chest_detail(parts, used)
     return join_parts(parts, "chest_open" if used else "chest")
+
+
+def _altar_detail(parts, used):
+    """祭坛雕饰层: 柱身符文环 + 顶板雕纹 + 底座莲瓣 + 核心光环。"""
+    stone = STONE_USED_LIGHT if used else STONE_BLUE_LIGHT
+    glow = CORE_EMBER if used else CORE_GLOW
+    for z in (9.0, 16.0, 18.4):
+        parts.append(part_torus("pillar_ring_%g" % z, (0, 0, z), 5.3, 0.4,
+                                stone, major_segments=12, minor_segments=6))
+    for x in (-6.0, 0.0, 6.0):
+        parts.append(part_box("cap_glyph_%g" % x, (x, -6.1, 21.4),
+                              (1.0, 0.4, 2.0), glow, bevel=0.15))
+    for i in range(8):
+        ang = 2.0 * math.pi * i / 8.0
+        parts.append(part_sphere("petal_%d" % i,
+                                 (math.cos(ang) * 8.4, math.sin(ang) * 7.2, 3.6),
+                                 1.4, stone, segments=8, rings=4,
+                                 scale=(1.0, 0.6, 0.5)))
+    parts.append(part_torus("core_aura", (0, -4.4, 12.0), 3.9, 0.3,
+                            glow, major_segments=12, minor_segments=6,
+                            rotation=Matrix.Rotation(math.radians(90), 3, "X")))
 
 
 def build_altar(used=False):
@@ -334,7 +376,33 @@ def build_altar(used=False):
                     bevel=0.3,
                 )
             )
+    _altar_detail(parts, used)
     return join_parts(parts, "altar_used" if used else "altar")
+
+
+def _spring_detail(parts, used):
+    """泉水雕饰层: 石环刻纹 + 多层涟漪 + 桶箍 + 岸边花草。"""
+    stone = STONE_USED_LIGHT if used else STONE_LIGHT
+    water = MUD_DARK if used else WATER_LIGHT
+    for i in range(9):
+        ang = 2.0 * math.pi * i / 9.0 + 0.2
+        r = 12.0 + (1.1 if i % 3 == 0 else 0.0)
+        parts.append(part_sphere("carve_%d" % i,
+                                 (math.cos(ang) * r, math.sin(ang) * r, 5.4),
+                                 1.1, stone, segments=8, rings=4,
+                                 scale=(1.0, 0.5, 0.7)))
+    for z, major in ((5.4, 7.4), (5.5, 4.2), (5.6, 1.6)):
+        parts.append(part_torus("ripple_ex_%g" % z, (0, 0, z), major, 0.25,
+                                water, major_segments=14, minor_segments=6))
+    if not used:
+        for z in (2.4, 5.6):
+            parts.append(part_torus("barrel_carve_%g" % z, (-15.0, 4.0, z),
+                                    3.5, 0.28, IRON,
+                                    major_segments=12, minor_segments=6))
+    for i, (x, y) in enumerate([(-9, 10), (2, 11), (10, 8), (-11, -6)]):
+        parts.append(part_sphere("bloom_%d" % i, (x, y, 2.2), 0.9,
+                                 MOSS_DRY if used else CORE_GLOW,
+                                 segments=8, rings=4, scale=(1, 1, 0.6)))
 
 
 def build_spring(used=False):
@@ -488,4 +556,5 @@ def build_spring(used=False):
                 bevel=0.3,
             )
         )
+    _spring_detail(parts, used)
     return join_parts(parts, "spring_dry" if used else "spring")
