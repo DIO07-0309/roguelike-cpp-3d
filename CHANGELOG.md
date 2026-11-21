@@ -14,7 +14,7 @@ orb(4) 与 construct(2) 的非 pilot 怪在第一批已全部覆盖。
 ## 方案（同构第一批）
 
 SIGNATURE_DETAILS 再注册 13 种 `_sig`（head 全覆盖 + weapon/torso 按身份），
-`_signature_refinements` 逐槽深拷贝 pilot list、签名槽整槽替换，利用 `:1529` continue 跳过族拷贝。
+`_signature_refinements` 逐槽深拷贝 pilot list、签名槽整槽替换，利用 `:2035` continue 跳过族拷贝。
 特征件包络内（head y3~5 / torso 4~6.5 / weapon 5~8），被 _refine clamp 在 base bbox 内。
 闸门 SIGNATURES / FAMILY_PILOT 扩展到 26 种，--unique 覆盖全 26 签名怪。
 
@@ -49,7 +49,7 @@ A22 的 `_REFINE_FAMILY`（blender_models_monsters.py）用 `dict(REFINEMENTS[pi
 在族拷贝循环前（`:1527` 后 `:1528` 前）新增：
 - `SIGNATURE_DETAILS` + `_sig()` 注册 13 种签名怪的 head（全覆盖）+ weapon/torso（按身份）配方
 - `_signature_refinements(id)` 助手：逐槽 `list()` 深拷贝 pilot list、签名槽整槽替换——
-  绝不共享可变 list（验证过 pilot orc 未被污染）。利用 `:1529` 的 `continue` 跳过族拷贝。
+  绝不共享可变 list（验证过 pilot orc 未被污染）。利用 `:2035` 的 `continue` 跳过族拷贝。
 - 特征件用 part_box/prism/sphere/torus 放正面 +Y（head y3~5 / torso 4~6.5 / weapon 5~8），
   被 `_refine` clamp 在 base bbox 内（包络内，不改外轮廓）。
 
