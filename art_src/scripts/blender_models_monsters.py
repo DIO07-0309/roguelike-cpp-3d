@@ -7,7 +7,14 @@
 import math
 import os
 
-from blender_lib import part_box, part_cylinder, part_sphere, part_prism, join_parts
+from blender_lib import (
+    part_box,
+    part_cylinder,
+    part_sphere,
+    part_prism,
+    part_torus,
+    join_parts,
+)
 from blender_models_player import export_part_json
 
 # ── 30 种怪物配置: family + 配色 (采样自 mon_*_part_*.png) ──
@@ -1515,7 +1522,6 @@ REFINEMENTS["orc"] = {
 }
 
 
-
 # A22b: 同族配方复用 — 4 族样板配方直接套用到同族其他怪物。
 # 同族共享 builder (几何基线完全相同), 仅 _color(name) 配色不同,
 # 因此复用样板配方即可得到结构一致、配色各异的精修结果。
@@ -1545,42 +1551,403 @@ def _sig(mon, head, weapon=None, torso=None):
 
 
 # ── 第一批 1/2: humanoid 强身份 ──
-_sig("night_stalker",  # 兽首尖耳+尖牙+兽目; 爪刃
-     [lambda c: part_prism("beast_ear", (-3.0, 4.4, 5.6), [(-2, 0), (2, 0), (0, 4)], 1.1, c["shadow"], bevel=0.2),
-      lambda c: part_prism("beast_fang", (0.0, 4.6, 1.0), [(-1, 0), (1, 0), (0, -3)], 0.9, (230, 226, 200), bevel=0.1),
-      lambda c: part_sphere("beast_eye", (0.0, 4.8, 3.2), 1.3, c["eye"], segments=9, rings=5)],
-     weapon=[lambda c: part_prism("claw", (0.0, 6.0, 2.0), [(-3, 0), (3, 0), (0, 7)], 1.2, IRON, bevel=0.2),
-             lambda c: part_sphere("claw_socket", (0.0, 5.0, -2.0), 1.1, c["shadow"], segments=9, rings=5)])
-_sig("skeleton_archer",  # 骷髅黑眼窝+额裂; 骨弓
-     [lambda c: part_box("skull_brow", (0.0, 4.6, 4.0), (8.0, 1.3, 1.5), (200, 198, 180), bevel=0.3),
-      lambda c: part_box("eye_socket_l", (-2.3, 4.9, 2.0), (2.4, 0.8, 2.4), (30, 28, 26), bevel=0.2),
-      lambda c: part_box("eye_socket_r", (2.3, 4.9, 2.0), (2.4, 0.8, 2.4), (30, 28, 26), bevel=0.2)],
-     weapon=[lambda c: part_torus("bone_bow", (0.0, 6.0, -4.0), 5.0, 0.7, (214, 210, 190), major_segments=11, minor_segments=5),
-             lambda c: part_box("bone_string", (0.0, 6.4, -4.0), (0.5, 0.5, 11.0), c["trim"], bevel=0.1)])
-_sig("bone_soldier",  # 破胸甲+红眼窝; 锈剑
-     [lambda c: part_box("broken_helm", (0.0, 4.4, 4.6), (9.0, 1.4, 2.0), IRON_RUST, bevel=0.3),
-      lambda c: part_sphere("red_eye_l", (-2.4, 4.8, 1.8), 1.1, (220, 50, 40), segments=9, rings=5),
-      lambda c: part_sphere("red_eye_r", (2.4, 4.8, 1.8), 1.1, (220, 50, 40), segments=9, rings=5)],
-     weapon=[lambda c: part_prism("rusty_sword", (0.0, 6.0, 0.0), [(-1.5, 0), (1.5, 0), (0, 10)], 1.0, IRON_RUST, bevel=0.2),
-             lambda c: part_box("sword_guard", (0.0, 5.6, -3.0), (6.0, 1.0, 0.8), GOLD, bevel=0.2)])
+_sig(
+    "night_stalker",  # 兽首尖耳+尖牙+兽目; 爪刃
+    [
+        lambda c: part_prism(
+            "beast_ear",
+            (-3.0, 4.4, 5.6),
+            [(-2, 0), (2, 0), (0, 4)],
+            1.1,
+            c["shadow"],
+            bevel=0.2,
+        ),
+        lambda c: part_prism(
+            "beast_fang",
+            (0.0, 4.6, 1.0),
+            [(-1, 0), (1, 0), (0, -3)],
+            0.9,
+            (230, 226, 200),
+            bevel=0.1,
+        ),
+        lambda c: part_sphere(
+            "beast_eye", (0.0, 4.8, 3.2), 1.3, c["eye"], segments=9, rings=5
+        ),
+    ],
+    weapon=[
+        lambda c: part_prism(
+            "claw", (0.0, 6.0, 2.0), [(-3, 0), (3, 0), (0, 7)], 1.2, IRON, bevel=0.2
+        ),
+        lambda c: part_sphere(
+            "claw_socket", (0.0, 5.0, -2.0), 1.1, c["shadow"], segments=9, rings=5
+        ),
+    ],
+)
+_sig(
+    "skeleton_archer",  # 骷髅黑眼窝+额裂; 骨弓
+    [
+        lambda c: part_box(
+            "skull_brow", (0.0, 4.6, 4.0), (8.0, 1.3, 1.5), (200, 198, 180), bevel=0.3
+        ),
+        lambda c: part_box(
+            "eye_socket_l", (-2.3, 4.9, 2.0), (2.4, 0.8, 2.4), (30, 28, 26), bevel=0.2
+        ),
+        lambda c: part_box(
+            "eye_socket_r", (2.3, 4.9, 2.0), (2.4, 0.8, 2.4), (30, 28, 26), bevel=0.2
+        ),
+    ],
+    weapon=[
+        lambda c: part_torus(
+            "bone_bow",
+            (0.0, 6.0, -4.0),
+            5.0,
+            0.7,
+            (214, 210, 190),
+            major_segments=11,
+            minor_segments=5,
+        ),
+        lambda c: part_box(
+            "bone_string", (0.0, 6.4, -4.0), (0.5, 0.5, 11.0), c["trim"], bevel=0.1
+        ),
+    ],
+)
+_sig(
+    "bone_soldier",  # 破胸甲+红眼窝; 锈剑
+    [
+        lambda c: part_box(
+            "broken_helm", (0.0, 4.4, 4.6), (9.0, 1.4, 2.0), IRON, bevel=0.3
+        ),
+        lambda c: part_sphere(
+            "red_eye_l", (-2.4, 4.8, 1.8), 1.1, (220, 50, 40), segments=9, rings=5
+        ),
+        lambda c: part_sphere(
+            "red_eye_r", (2.4, 4.8, 1.8), 1.1, (220, 50, 40), segments=9, rings=5
+        ),
+    ],
+    weapon=[
+        lambda c: part_prism(
+            "rusty_sword",
+            (0.0, 6.0, 0.0),
+            [(-1.5, 0), (1.5, 0), (0, 10)],
+            1.0,
+            IRON,
+            bevel=0.2,
+        ),
+        lambda c: part_box(
+            "sword_guard", (0.0, 5.6, -3.0), (6.0, 1.0, 0.8), GOLD, bevel=0.2
+        ),
+    ],
+)
 
 # ── 第一批 2/2: humanoid 暗影 + orb 雷暴 ──
-_sig("shadow_assassin",  # 头巾斗篷+幽蓝双刃
-     [lambda c: part_prism("hood_point", (0.0, 4.4, 6.2), [(-3, 0), (3, 0), (0, 4)], 1.3, c["shadow"], bevel=0.2),
-      lambda c: part_box("face_wrap", (0.0, 4.9, 2.4), (7.0, 0.9, 2.6), c["main"], bevel=0.2),
-      lambda c: part_sphere("assassin_eye", (0.0, 5.0, 3.4), 1.0, (90, 190, 240), segments=9, rings=5)],
-     weapon=[lambda c: part_prism("blue_blade_l", (-2.0, 6.0, 2.0), [(-1, 0), (1, 0), (0, 9)], 0.8, (90, 190, 240), bevel=0.1),
-             lambda c: part_prism("blue_blade_r", (2.0, 6.0, 2.0), [(-1, 0), (1, 0), (0, 9)], 0.8, (90, 190, 240), bevel=0.1)])
-_sig("shadow_stalker",  # 幽灵锯齿披风+红眼 (torso 签名)
-     [lambda c: part_sphere("ghost_eye", (0.0, 4.6, 3.0), 1.4, (230, 60, 70), segments=9, rings=5),
-      lambda c: part_prism("ghost_crest", (0.0, 4.2, 6.0), [(-4, 0), (4, 0), (0, 5)], 1.0, c["shadow"], bevel=0.2)],
-     torso=[lambda c: part_prism("cape_tooth_1", (-6.0, 6.0, -7.0), [(-3, 0), (3, 0), (0, -5)], 1.0, c["shadow"], bevel=0.2),
-            lambda c: part_prism("cape_tooth_2", (6.0, 6.0, -7.0), [(-3, 0), (3, 0), (0, -5)], 1.0, c["shadow"], bevel=0.2)])
-_sig("storm_elemental",  # 雷云体+落雷 (torso 签名)
-     [lambda c: part_sphere("storm_eye", (0.0, 3.6, 2.0), 1.5, c["eye"], segments=9, rings=5),
-      lambda c: part_prism("cloud_peak", (0.0, 3.2, 5.0), [(-4, 0), (4, 0), (0, 4)], 1.2, c["main"], bevel=0.2)],
-     torso=[lambda c: part_prism("bolt_main", (0.0, 6.4, 2.0), [(-2, 4), (2, 4), (0, -4)], 1.1, c["eye"], bevel=0.15),
-            lambda c: part_prism("cloud_hem", (0.0, 5.8, -7.0), [(-7, 0), (7, 0), (0, -4)], 1.0, c["shadow"], bevel=0.2)])
+_sig(
+    "shadow_assassin",  # 头巾斗篷+幽蓝双刃
+    [
+        lambda c: part_prism(
+            "hood_point",
+            (0.0, 4.4, 6.2),
+            [(-3, 0), (3, 0), (0, 4)],
+            1.3,
+            c["shadow"],
+            bevel=0.2,
+        ),
+        lambda c: part_box(
+            "face_wrap", (0.0, 4.9, 2.4), (7.0, 0.9, 2.6), c["main"], bevel=0.2
+        ),
+        lambda c: part_sphere(
+            "assassin_eye", (0.0, 5.0, 3.4), 1.0, (90, 190, 240), segments=9, rings=5
+        ),
+    ],
+    weapon=[
+        lambda c: part_prism(
+            "blue_blade_l",
+            (-2.0, 6.0, 2.0),
+            [(-1, 0), (1, 0), (0, 9)],
+            0.8,
+            (90, 190, 240),
+            bevel=0.1,
+        ),
+        lambda c: part_prism(
+            "blue_blade_r",
+            (2.0, 6.0, 2.0),
+            [(-1, 0), (1, 0), (0, 9)],
+            0.8,
+            (90, 190, 240),
+            bevel=0.1,
+        ),
+    ],
+)
+_sig(
+    "shadow_stalker",  # 幽灵锯齿披风+红眼 (torso 签名)
+    [
+        lambda c: part_sphere(
+            "ghost_eye", (0.0, 4.6, 3.0), 1.4, (230, 60, 70), segments=9, rings=5
+        ),
+        lambda c: part_prism(
+            "ghost_crest",
+            (0.0, 4.2, 6.0),
+            [(-4, 0), (4, 0), (0, 5)],
+            1.0,
+            c["shadow"],
+            bevel=0.2,
+        ),
+    ],
+    torso=[
+        lambda c: part_prism(
+            "cape_tooth_1",
+            (-6.0, 6.0, -7.0),
+            [(-3, 0), (3, 0), (0, -5)],
+            1.0,
+            c["shadow"],
+            bevel=0.2,
+        ),
+        lambda c: part_prism(
+            "cape_tooth_2",
+            (6.0, 6.0, -7.0),
+            [(-3, 0), (3, 0), (0, -5)],
+            1.0,
+            c["shadow"],
+            bevel=0.2,
+        ),
+    ],
+)
+_sig(
+    "storm_elemental",  # 雷云体+落雷 (torso 签名)
+    [
+        lambda c: part_sphere(
+            "storm_eye", (0.0, 3.6, 2.0), 1.5, c["eye"], segments=9, rings=5
+        ),
+        lambda c: part_prism(
+            "cloud_peak",
+            (0.0, 3.2, 5.0),
+            [(-4, 0), (4, 0), (0, 4)],
+            1.2,
+            c["main"],
+            bevel=0.2,
+        ),
+    ],
+    torso=[
+        lambda c: part_prism(
+            "bolt_main",
+            (0.0, 6.4, 2.0),
+            [(-2, 4), (2, 4), (0, -4)],
+            1.1,
+            c["eye"],
+            bevel=0.15,
+        ),
+        lambda c: part_prism(
+            "cloud_hem",
+            (0.0, 5.8, -7.0),
+            [(-7, 0), (7, 0), (0, -4)],
+            1.0,
+            c["shadow"],
+            bevel=0.2,
+        ),
+    ],
+)
+
+# ── 第二批: orb / slime / construct + humanoid 冰卫铁卫 ──
+_sig(
+    "lightning_orb",  # 交叉电弧+四向尖刺 (球头)
+    [
+        lambda c: part_prism(
+            "arc_x",
+            (0.0, 3.4, 1.0),
+            [(-4, 0), (4, 0), (0, 1)],
+            0.7,
+            c["eye"],
+            bevel=0.1,
+            rotation_z=0.5,
+        ),
+        lambda c: part_prism(
+            "arc_z",
+            (0.0, 3.6, 1.0),
+            [(-4, 0), (4, 0), (0, 1)],
+            0.7,
+            c["eye"],
+            bevel=0.1,
+            rotation_z=-0.5,
+        ),
+        lambda c: part_sphere(
+            "orb_core", (0.0, 3.0, 1.0), 1.6, c["eye"], segments=11, rings=6
+        ),
+    ],
+)
+_sig(
+    "void_walker",  # 白瞳+斜向紫裂隙 (torso 签名)
+    [
+        lambda c: part_sphere(
+            "void_pupil", (0.0, 3.6, 1.5), 1.3, (240, 240, 250), segments=11, rings=6
+        ),
+        lambda c: part_prism(
+            "face_rift",
+            (0.0, 3.2, 3.4),
+            [(-2, 0), (2, 0), (0, 3)],
+            0.8,
+            c["eye"],
+            bevel=0.1,
+        ),
+    ],
+    torso=[
+        lambda c: part_prism(
+            "body_rift",
+            (0.0, 6.2, 3.0),
+            [(-3, 5), (3, 5), (0, -5)],
+            0.9,
+            c["eye"],
+            bevel=0.15,
+        ),
+        lambda c: part_sphere(
+            "void_core", (0.0, 6.6, -2.0), 1.8, c["shadow"], segments=11, rings=6
+        ),
+    ],
+)
+_sig(
+    "blood_leech",  # 前端吸盘+环节 (torso 签名)
+    [
+        lambda c: part_torus(
+            "sucker",
+            (0.0, 5.0, 2.0),
+            2.0,
+            0.6,
+            c["eye"],
+            major_segments=13,
+            minor_segments=5,
+        ),
+        lambda c: part_sphere(
+            "leech_eye", (0.0, 4.6, -1.0), 1.0, (240, 60, 50), segments=9, rings=5
+        ),
+    ],
+    torso=[
+        lambda c: part_torus(
+            "segment_1",
+            (0.0, 6.0, 6.0),
+            4.0,
+            0.7,
+            c["main"],
+            major_segments=13,
+            minor_segments=5,
+        ),
+        lambda c: part_torus(
+            "segment_2",
+            (0.0, 6.0, 0.0),
+            5.0,
+            0.7,
+            c["shadow"],
+            major_segments=13,
+            minor_segments=5,
+        ),
+    ],
+)
+_sig(
+    "poison_wyrm",  # 蛇头+毒牙+背毒泡 (weapon 签名)
+    [
+        lambda c: part_prism(
+            "snout",
+            (0.0, 5.0, 2.4),
+            [(-2, 0), (2, 0), (0, 4)],
+            1.0,
+            c["main"],
+            bevel=0.2,
+        ),
+        lambda c: part_sphere(
+            "snake_eye", (0.0, 5.4, 1.4), 1.1, c["eye"], segments=9, rings=5
+        ),
+    ],
+    weapon=[
+        lambda c: part_prism(
+            "fang",
+            (0.0, 5.5, 0.0),
+            [(-1, 0), (1, 0), (0, -4)],
+            0.7,
+            c["eye"],
+            bevel=0.1,
+        ),
+        lambda c: part_sphere(
+            "venom_bubble", (0.0, 5.0, -2.0), 1.0, c["eye"], segments=9, rings=5
+        ),
+    ],
+)
+_sig(
+    "stone_guardian",  # 符文眼+胸符 (torso 签名, vs golem 魔核)
+    [
+        lambda c: part_box(
+            "rune_eye_l", (-2.4, 4.2, 2.0), (2.0, 0.9, 2.0), c["eye"], bevel=0.2
+        ),
+        lambda c: part_box(
+            "rune_eye_r", (2.4, 4.2, 2.0), (2.0, 0.9, 2.0), c["eye"], bevel=0.2
+        ),
+    ],
+    torso=[
+        lambda c: part_prism(
+            "chest_rune",
+            (0.0, 7.0, 2.0),
+            [(-3, 0), (3, 0), (0, 6)],
+            0.9,
+            c["eye"],
+            bevel=0.2,
+        ),
+        lambda c: part_box(
+            "stone_seam", (0.0, 6.6, -4.0), (10.0, 0.8, 0.7), c["shadow"], bevel=0.1
+        ),
+    ],
+)
+_sig(
+    "ice_warden",  # 三峰冰晶冠+冰瞳 (torso 签名)
+    [
+        lambda c: part_prism(
+            "ice_crown_c",
+            (0.0, 4.0, 6.0),
+            [(-2, 0), (2, 0), (0, 5)],
+            1.0,
+            c["eye"],
+            bevel=0.15,
+        ),
+        lambda c: part_prism(
+            "ice_crown_l",
+            (-3.2, 4.0, 4.6),
+            [(-2, 0), (2, 0), (0, 4)],
+            0.9,
+            c["eye"],
+            bevel=0.15,
+        ),
+        lambda c: part_sphere(
+            "ice_pupil", (0.0, 4.6, 2.0), 1.2, c["eye"], segments=10, rings=6
+        ),
+    ],
+    torso=[
+        lambda c: part_sphere(
+            "ice_core", (0.0, 6.2, 3.0), 2.0, c["eye"], segments=12, rings=7
+        ),
+        lambda c: part_prism(
+            "ice_hem",
+            (0.0, 6.0, -7.0),
+            [(-6, 0), (6, 0), (0, -4)],
+            0.9,
+            c["eye"],
+            bevel=0.15,
+        ),
+    ],
+)
+_sig(
+    "iron_sentinel",  # 一字蓝目镜+胸前中缝 (torso 签名)
+    [
+        lambda c: part_box(
+            "visor", (0.0, 4.6, 2.4), (9.0, 1.0, 2.0), c["eye"], bevel=0.2
+        ),
+        lambda c: part_box(
+            "helm_crest", (0.0, 4.0, 6.0), (1.4, 0.9, 3.4), c["shadow"], bevel=0.1
+        ),
+    ],
+    torso=[
+        lambda c: part_box(
+            "chest_seam", (0.0, 6.4, 3.0), (0.8, 0.8, 14.0), c["eye"], bevel=0.1
+        ),
+        lambda c: part_box(
+            "rank_plate", (0.0, 6.6, -3.0), (6.0, 0.8, 3.0), IRON, bevel=0.2
+        ),
+    ],
+)
 
 
 def _signature_refinements(mon_id):
@@ -1600,7 +1967,9 @@ for _mon, _meta in MONSTERS.items():
         continue
     _pilot = _REFINE_FAMILY.get(_meta[0])
     if _pilot:
-        REFINEMENTS[_mon] = dict(REFINEMENTS[_pilot])  # 浅拷贝, 避免日后按名改动联动全族
+        REFINEMENTS[_mon] = dict(
+            REFINEMENTS[_pilot]
+        )  # 浅拷贝, 避免日后按名改动联动全族
 
 FAMILIES = {"humanoid": HUMANOID, "orb": ORB, "slime": SLIME, "construct": CONSTRUCT}
 
