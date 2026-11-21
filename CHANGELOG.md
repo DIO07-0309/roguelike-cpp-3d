@@ -1,4 +1,49 @@
-﻿# chest/altar/spring 6 件精修（2026-11-21）
+﻿# 一怪一形（A22 深化）第一批 13 种（2026-11-21）
+
+> 用户指定做"一怪一形"。拍板：第一批强身份 13 种、包络内特征件、闸门加 --unique。
+
+## 根因
+
+A22 的 `_REFINE_FAMILY`（blender_models_monsters.py）用 `dict(REFINEMENTS[pilot])` 浅拷贝：
+5 个槽的 lambda 列表是同一批对象，只换 `_color(name)` 配色。实测 26/30 怪与同族样板
+"几何语义等价"——同槽顶点坐标多重集哈希相同、面数相同、只有顶点色不同。
+2D 层本来每怪一形（`m5_sprite_gen.py` 逐怪有特征注释），是 3D 族拷贝把身份压平了。
+
+## 方案
+
+在族拷贝循环前（`:1527` 后 `:1528` 前）新增：
+- `SIGNATURE_DETAILS` + `_sig()` 注册 13 种签名怪的 head（全覆盖）+ weapon/torso（按身份）配方
+- `_signature_refinements(id)` 助手：逐槽 `list()` 深拷贝 pilot list、签名槽整槽替换——
+  绝不共享可变 list（验证过 pilot orc 未被污染）。利用 `:1529` 的 `continue` 跳过族拷贝。
+- 特征件用 part_box/prism/sphere/torus 放正面 +Y（head y3~5 / torso 4~6.5 / weapon 5~8），
+  被 `_refine` clamp 在 base bbox 内（包络内，不改外轮廓）。
+
+13 种造型（包络内可辨）：夜行猎手兽首尖耳+利爪、骷髅弓手黑眼窝+骨弓、骨兵红眼窝+锈剑、
+暗影刺客头巾+幽蓝双刃、暗影潜伏者幽灵披风、雷暴元素落雷、电光之核交叉电弧、虚空行者紫裂隙、
+鲜血水蛭吸盘环节、毒液蠕虫蛇头毒牙、石像守卫符文石甲、冰狱守卫三峰冰晶冠、铁卫一字目镜。
+
+## 闸门 --unique
+
+`check_ground_item_assets.js --unique`：直接读 JSON、对 13 种的 head（+签名 weapon/torso）算
+顶点坐标多重集 sha256（免疫 bmesh 面序非确定性，先断言顶点数相等防假 RED），同族内两两不同。
+排除 arm/leg（merge 保留 pilot 几何，全槽比会永远 RED）。baselines.json 不动。
+RED：当前 26 只克隆 → 40 FAIL（identical to pilot / COLLIDES）；GREEN：13 种签名后 FAILED=0。
+
+## 范围声明（诚实）
+
+本轮只解决 **13 种**强身份怪；其余 17 种仍与 pilot 共享几何（语义等价）。
+包络内特征件只能改表面细节、不能改外轮廓剪影（如 night_stalker 是"兽首+利爪"表面细节，
+不是真正四足兽形——那要改 FAMILIES/ANCHORS/clamp，超出本轮范围）。
+
+## 验证
+
+`--unique` 13 FAILED=0；`--all` CHECKED=150 FAILED=0；ctest 91/91；
+fn_length 0；world_validator；P3/P3b/P4/P5/arena/guard/props 闸门不退化。
+审图：humanoid 7 种头部并排 + 3 种近景，造型差异可辨、正面细节朝相机、无穿模。
+
+---
+
+# chest/altar/spring 6 件精修（2026-11-21）
 
 > 用户指定做这 6 件（各两态）。这 3 类是最后一个"从未精修"的整件类别（A14 原版）。
 
