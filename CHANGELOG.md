@@ -25,7 +25,7 @@ A22 的 `_REFINE_FAMILY`（blender_models_monsters.py）用 `dict(REFINEMENTS[pi
 ## 闸门 --unique
 
 `check_ground_item_assets.js --unique`：直接读 JSON、对 13 种的 head（+签名 weapon/torso）算
-顶点坐标多重集 sha256（免疫 bmesh 面序非确定性，先断言顶点数相等防假 RED），同族内两两不同。
+顶点坐标多重集 sha256（免疫 bmesh 面序非确定性；与 pilot 比对时先断言顶点数相等），同族内两两不同。
 排除 arm/leg（merge 保留 pilot 几何，全槽比会永远 RED）。baselines.json 不动。
 RED：当前 26 只克隆 → 40 FAIL（identical to pilot / COLLIDES）；GREEN：13 种签名后 FAILED=0。
 

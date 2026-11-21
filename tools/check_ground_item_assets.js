@@ -43,7 +43,7 @@ function coordHash(file) {
 }
 
 function runUnique() {
-  let failed = 0;
+  // 使用模块级 failed (与 150 项 schema/finite/cap 检查合并), 不单独 process.exit。
   const ids = Object.keys(SIGNATURES);
   // 按 slot 分组比较: 同族内两两不同 + 与 pilot 不同。
   for (const slot of ['head','weapon','torso']) {
@@ -67,7 +67,6 @@ function runUnique() {
     }
   }
   console.log(`UNIQUE ids=${ids.length} FAILED=${failed}`);
-  process.exit(failed === 0 ? 0 : 1);
 }
 
 const dir = 'assets/models';
