@@ -63,28 +63,23 @@ function coordHash(file) {
 function runUnique() {
   // 使用模块级 failed (与 150 项 schema/finite/cap 检查合并), 不单独 process.exit。
   const ids = Object.keys(SIGNATURES);
-  // 按 slot 分组比较: 同族内两两不同 + 与 pilot 不同。
+  // 按 slot 分组比较: 签名怪两两不同 + 4 pilot 彼此不同 + 与各自 pilot 不同。
+  const pilots = [...new Set(Object.values(FAMILY_PILOT))];  // orc/fire_imp/slime/golem
   for (const slot of ['head','weapon','torso']) {
     const group = ids.filter(id => SIGNATURES[id].includes(slot));
-    if (group.length < 2) continue;
+    const candidates = [...new Set([...group, ...pilots])];   // 纳入 4 pilot 全局比较
+    if (candidates.length < 2) continue;
     const seen = new Map(); // hash -> id
-    for (const id of group) {
+    for (const id of candidates) {
       const r = coordHash(`assets/models/mon_${id}_part_${slot}.json`);
       if (r.err) { console.log(`FAIL ${id}/${slot}: ${r.err}`); failed++; continue; }
       if (seen.has(r.hash)) {
         console.log(`FAIL ${id}/${slot} hash=${r.hash} COLLIDES with ${seen.get(r.hash)} (cloning)`);
         failed++;
       } else seen.set(r.hash, id);
-      // 与 pilot 比
-      const pilot = FAMILY_PILOT[id];
-      const pr = coordHash(`assets/models/mon_${pilot}_part_${slot}.json`);
-      if (!pr.err && pr.count === r.count && pr.hash === r.hash) {
-        console.log(`FAIL ${id}/${slot} identical to pilot ${pilot} (cloning)`);
-        failed++;
-      }
     }
   }
-  console.log(`UNIQUE ids=${ids.length} FAILED=${failed}`);
+  console.log(`UNIQUE ids=${ids.length} pilots=${pilots.length} FAILED=${failed}`);
 }
 
 const dir = 'assets/models';
