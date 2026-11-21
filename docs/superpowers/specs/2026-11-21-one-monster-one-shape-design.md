@@ -1,7 +1,17 @@
 # 一怪一形（A22 深化）立项设计（2026-11-21）
 
-状态：**已确认（用户拍板 3 项，全按推荐）**
+状态：**已确认（用户拍板 3 项，全按推荐）+ builder 审查完成**
 依赖调查：`docs/superpowers/specs/2026-11-17-modeling-audit.md` + 本轮只读盘点（§1）
+
+### Builder 审查纳入的关键修正
+
+- **gate 只比 head+签名槽，排除 arm/leg**（最高）：merge 保留 pilot 的 arm/leg 几何，全槽两两比必然碰撞永远 RED。head 13/13 全覆盖 + weapon/torso 按签名定义比。
+- **坐标预算**：head y∈[3,5]（base ymax≈5.6）、torso y∈[4,6.5]（ymax≈6.8）、weapon y∈[5,8]。spec 原"y 4~10"会把 head/torso 细节 clamp 压成贴片。细节留 10-20% 余量，靠位置/数量/不对称/不同基元分段数制造哈希与视觉差异。
+- **night_stalker 预期**：包络内做不到真匍匐兽形，下调为"兽首尖耳+尖牙+利爪"表面细节（骨架仍 humanoid），审图按此标准。
+- **执行顺序**：merge 注入循环必须在 `_REFINE_FAMILY` 定义（:1522-1527）之后、族拷贝循环（:1528）之前，利用 `:1529` continue 跳过。
+- **merge 深拷贝**：`{slot: list(details)}` 逐槽复制 list，签名槽整槽替换；绝不共享可变 list（否则污染 pilot 全族）。
+- **--unique 哈希**：直接读 `assets/models/mon_*_part_*.json`（注入用 `REFINEMENTS[_mon]` 正则匹配不到）；量化坐标多重集 sha256（免疫 bmesh 面序非确定性）；先断言两侧顶点数相等避免假 RED。
+- **范围诚实**：只解决 13 种；其余 17 只仍与 pilot 共享几何，验收说明写清，避免误读为"全 30 已去重"。
 
 ## 0. 用户拍板
 
@@ -42,7 +52,7 @@
 ## 3. 约束与落地
 
 - **不改机制**：利用 `:1529` 的 `if _mon in REFINEMENTS: continue`——在 `:1519` 前显式写 `REFINEMENTS[id]` 即跳过族拷贝。
-- **包络内**：细节用 part_* 基元、Blender 局部 +Y（约 4~10，保证导出 mesh y<0 正面），被 `_refine`（:1015-1026）clamp 进基础部件 bbox。不改 clamp、不改 FAMILIES/ANCHORS。
+- **包络内**：细节用 part_* 基元、Blender 局部 +Y（head 3~5 / torso 4~6.5 / weapon 5~8，保证导出 mesh y<0 正面且不被 clamp 压平），被 `_refine`（:1015-1026）clamp 进基础部件 bbox。不改 clamp、不改 FAMILIES/ANCHORS。
 - **数据结构**：新增 `SIGNATURE_DETAILS = {id: {slot: [callables]}}` + merge 助手——先 `{s: list(d) for s,d in REFINEMENTS[pilot].items()}` **复制列表**，再对 head/weapon 换成新列表。绝不共享可变列表（否则改掉 pilot 全族）。
 - **面数**：当前最大单槽 2176，cap 4000，余量充足。
 - **不改清单**：_refine/build_parts 签名、协议 B、JSON schema、ground_item_baselines.json、resources、引擎。
@@ -50,8 +60,10 @@
 
 ## 4. 闸门 --unique
 
-`tools/check_ground_item_assets.js` 加 `--unique`：同族 13 种逐槽比较**顶点坐标多重集哈希**（面索引哈希受 bmesh 非确定性影响，不用）。
-哈希稳定：对坐标量化后排序拼接算 hash。断言同族内每种怪的每个槽哈希两两不同（即不再 cloning）。
+`tools/check_ground_item_assets.js` 加 `--unique`：直接读 JSON、对 **head（13/13）+ weapon/torso（按签名）** 逐槽比较
+**顶点坐标多重集 sha256**（面索引哈希受 bmesh 非确定性影响，不用；**排除 arm/leg**——它们保留 pilot 几何必然相同）。
+比较前先断言两侧顶点数相等（避免重三角化假 RED）。哈希对坐标量化后排序拼接，免疫 bmesh 面序非确定性。
+RED：当前 26 只克隆 head 哈希=pilot → FAIL；GREEN：13 种签名后互不相同 → PASS。
 baselines.json 不动（保持"原始 A17 基线"语义）。
 
 ## 5. 验收
