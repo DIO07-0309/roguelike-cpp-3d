@@ -1949,6 +1949,75 @@ _sig(
     ],
 )
 
+# ── 第二批 1/2: humanoid 弱线索/撞色对 (7 种) ──
+_sig("archer",  # 长耳+木弓+皮甲 (撞色对: 与goblin_hunter配色同, 靠造型分)
+     [lambda c: part_prism("elf_ear", (-3.6, 4.2, 4.4), [(-1, 0), (1, 0), (0, 6)], 0.8, c["main"], bevel=0.1),
+      lambda c: part_sphere("archer_eye", (0.0, 4.6, 2.6), 1.1, c["eye"], segments=9, rings=5)],
+     weapon=[lambda c: part_torus("wood_bow", (0.0, 5.6, -3.0), 5.0, 0.6, c["main"], major_segments=11, minor_segments=5),
+             lambda c: part_box("bow_string", (0.0, 6.0, -3.0), (0.5, 0.5, 11.0), (210, 200, 170), bevel=0.1)])
+_sig("goblin_hunter",  # 长耳+黄目+背后猎网 (撞色对)
+     [lambda c: part_prism("hunter_ear", (-3.6, 4.0, 5.0), [(-1, 0), (1, 0), (0, 7)], 0.8, c["light"], bevel=0.1),
+      lambda c: part_prism("hunter_ear_r", (3.6, 4.0, 5.0), [(-1, 0), (1, 0), (0, 7)], 0.8, c["light"], bevel=0.1)],
+     weapon=[lambda c: part_box("hunt_net", (0.0, 6.0, 0.0), (7.0, 0.7, 8.0), c["trim"], bevel=0.2),
+             lambda c: part_sphere("net_knot", (0.0, 6.4, 0.0), 1.0, c["eye"], segments=9, rings=5)])
+_sig("shaman",  # 图腾杖+羽毛头饰+面具 (torso 签名)
+     [lambda c: part_prism("feather", (0.0, 4.2, 6.0), [(-1, 0), (1, 0), (0, 5)], 0.7, c["eye"], bevel=0.1),
+      lambda c: part_box("mask", (0.0, 4.8, 2.0), (7.0, 1.0, 4.0), c["trim"], bevel=0.2)],
+     torso=[lambda c: part_cylinder("totem_pole", (0.0, 6.2, 4.0), 1.0, 12.0, c["main"], vertices=7),
+            lambda c: part_sphere("totem_head", (0.0, 6.4, 9.0), 1.6, c["eye"], segments=9, rings=5)])
+_sig("dark_mage",  # 兜帽紫瞳+悬浮法球
+     [lambda c: part_prism("hood", (0.0, 4.0, 5.0), [(-4, 0), (4, 0), (0, 5)], 1.2, c["shadow"], bevel=0.2),
+      lambda c: part_sphere("purple_pupil", (0.0, 4.7, 2.4), 1.2, c["eye"], segments=10, rings=6)],
+     weapon=[lambda c: part_sphere("orb", (0.0, 6.4, 2.0), 2.0, c["eye"], segments=12, rings=7),
+             lambda c: part_torus("orb_ring", (0.0, 6.0, 2.0), 2.6, 0.3, GOLD, major_segments=11, minor_segments=5)])
+_sig("blood_priest",  # 红袍面纱+金十字 (torso 签名)
+     [lambda c: part_box("veil", (0.0, 4.8, 3.0), (8.0, 0.9, 5.0), c["main"], bevel=0.2),
+      lambda c: part_sphere("priest_eye", (0.0, 5.0, 2.0), 1.0, c["eye"], segments=9, rings=5)],
+     torso=[lambda c: part_box("gold_cross_v", (0.0, 6.4, 2.0), (1.2, 0.8, 6.0), GOLD, bevel=0.2),
+            lambda c: part_box("gold_cross_h", (0.0, 6.4, 2.0), (5.0, 0.8, 1.2), GOLD, bevel=0.2)])
+_sig("summoner",  # 符文冠+召唤法杖
+     [lambda c: part_prism("rune_crown", (0.0, 4.0, 6.0), [(-3, 0), (3, 0), (0, 5)], 1.0, c["eye"], bevel=0.15),
+      lambda c: part_sphere("summoner_eye", (0.0, 4.7, 2.4), 1.1, c["eye"], segments=9, rings=5)],
+     weapon=[lambda c: part_cylinder("staff", (0.0, 6.0, 0.0), 0.8, 14.0, c["main"], vertices=7),
+             lambda c: part_sphere("staff_orb", (0.0, 6.2, 7.0), 1.6, c["eye"], segments=10, rings=6)])
+_sig("necromancer",  # 绿袍兜帽+骷髅脸+绿瞳
+     [lambda c: part_prism("necro_hood", (0.0, 4.0, 5.4), [(-4, 0), (4, 0), (0, 5)], 1.1, c["shadow"], bevel=0.2),
+      lambda c: part_box("skull_face", (0.0, 4.8, 2.0), (6.0, 0.9, 4.0), (200, 196, 170), bevel=0.2),
+      lambda c: part_sphere("necro_eye", (0.0, 5.0, 2.2), 1.0, c["eye"], segments=9, rings=5)],
+     weapon=[lambda c: part_cylinder("bone_staff", (0.0, 6.0, 0.0), 0.7, 15.0, (210, 204, 180), vertices=7),
+             lambda c: part_sphere("skull_top", (0.0, 6.2, 7.5), 1.8, (200, 196, 170), segments=10, rings=6)])
+
+# ── 第二批 2/2: humanoid 战士系 + slime 精英系 (6 种) ──
+_sig("tank",  # 厚肩甲+铁面罩+塔盾 (torso 签名)
+     [lambda c: part_box("iron_mask", (0.0, 4.6, 2.4), (9.0, 1.0, 5.0), IRON, bevel=0.3),
+      lambda c: part_box("mask_slit", (0.0, 5.0, 2.4), (7.0, 0.6, 0.8), c["eye"], bevel=0.1)],
+     torso=[lambda c: part_box("tower_shield", (-9.0, 6.2, 2.0), (2.0, 1.2, 16.0), IRON, bevel=0.4),
+            lambda c: part_sphere("shield_boss", (-9.0, 6.6, 2.0), 2.0, GOLD, segments=9, rings=5)])
+_sig("charger",  # 铁刺+冲锋斧
+     [lambda c: part_prism("helm_spike", (0.0, 4.0, 6.4), [(-2, 0), (2, 0), (0, 4)], 0.9, IRON, bevel=0.1),
+      lambda c: part_sphere("charge_eye", (0.0, 4.8, 2.6), 1.1, c["eye"], segments=9, rings=5)],
+     weapon=[lambda c: part_prism("war_axe", (0.0, 6.0, 0.0), [(-3, 3), (3, 3), (2, -3), (-2, -3)], 1.2, IRON, bevel=0.2),
+             lambda c: part_box("axe_grip", (0.0, 5.6, -5.0), (1.0, 0.8, 6.0), c["main"], bevel=0.1)])
+_sig("bomber",  # 圆腹+引信+炸弹背囊 (torso 签名)
+     [lambda c: part_sphere("bomb_head", (0.0, 4.0, 2.0), 3.0, c["main"], segments=12, rings=7),
+      lambda c: part_cylinder("fuse", (0.0, 4.6, 6.0), 0.5, 3.0, (220, 200, 120), vertices=6)],
+     torso=[lambda c: part_sphere("bomb_belly", (0.0, 6.4, 0.0), 5.0, c["main"], segments=14, rings=8),
+            lambda c: part_cylinder("bomb_fuse", (0.0, 6.6, 8.0), 0.6, 4.0, (220, 200, 120), vertices=6)])
+_sig("elite_orc",  # 铁灰重甲+肩刺+獠牙
+     [lambda c: part_prism("elite_tusk_l", (-3.4, 4.8, 1.0), [(-1, 0), (1, 0), (0, -4)], 0.8, (230, 224, 200), bevel=0.1),
+      lambda c: part_prism("elite_tusk_r", (3.4, 4.8, 1.0), [(-1, 0), (1, 0), (0, -4)], 0.8, (230, 224, 200), bevel=0.1),
+      lambda c: part_box("elite_crest", (0.0, 4.0, 6.4), (2.0, 1.0, 2.4), IRON, bevel=0.2)],
+     weapon=[lambda c: part_prism("elite_blade", (0.0, 6.0, 0.0), [(-2, 0), (2, 0), (0, 11)], 1.1, IRON, bevel=0.2),
+             lambda c: part_sphere("elite_rune", (0.0, 6.2, 4.0), 1.2, c["eye"], segments=9, rings=5)])
+_sig("frost_slime",  # 冰核+顶部三根冰晶尖 (slime head 窄: x±3 z[-0.4,4.2])
+     [lambda c: part_prism("ice_tip_1", (0.0, 5.4, 3.2), [(-1, 0), (1, 0), (0, 3)], 0.6, (180, 230, 255), bevel=0.1),
+      lambda c: part_prism("ice_tip_2", (-1.8, 5.0, 2.4), [(-1, 0), (1, 0), (0, 2)], 0.5, (180, 230, 255), bevel=0.1),
+      lambda c: part_sphere("ice_core", (0.0, 5.6, 1.0), 1.2, (180, 230, 255), segments=10, rings=6)])
+_sig("elite_slime",  # 金冠三尖+冠珠红
+     [lambda c: part_prism("crown_1", (0.0, 5.4, 3.0), [(-1, 0), (1, 0), (0, 3)], 0.6, GOLD, bevel=0.1),
+      lambda c: part_prism("crown_2", (-1.8, 5.0, 2.4), [(-1, 0), (1, 0), (0, 2)], 0.5, GOLD, bevel=0.1),
+      lambda c: part_sphere("crown_jewel", (0.0, 5.8, 1.4), 1.0, (230, 60, 50), segments=9, rings=5)])
+
 
 def _signature_refinements(mon_id):
     """逐槽深拷贝 pilot list, 签名槽整槽替换; 绝不共享可变 list。"""

@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-// P6 一怪一形: --unique 检查 13 种签名怪的 head+签名槽顶点坐标多重集哈希互不相同。
+// P6 一怪一形: --unique 检查 26 种签名怪的 head+签名槽顶点坐标多重集哈希互不相同。
 // 直接读 JSON (注入用 REFINEMENTS[_mon] 正则匹配不到); 排除 arm/leg (merge 保留 pilot 几何)。
 const SIGNATURES = {
   night_stalker:  ['head','weapon'],
@@ -22,14 +22,32 @@ const SIGNATURES = {
   stone_guardian: ['head','torso'],
   ice_warden:     ['head','torso'],
   iron_sentinel:  ['head','torso'],
+  // 第二批 (剩余 13 种)
+  archer:         ['head','weapon'],
+  goblin_hunter:  ['head','weapon'],
+  shaman:         ['head','torso'],
+  dark_mage:      ['head','weapon'],
+  blood_priest:   ['head','torso'],
+  summoner:       ['head','weapon'],
+  necromancer:    ['head','weapon'],
+  tank:           ['head','torso'],
+  charger:        ['head','weapon'],
+  bomber:         ['head','torso'],
+  elite_orc:      ['head','weapon'],
+  frost_slime:    ['head'],
+  elite_slime:    ['head'],
 };
-// 每族的 pilot (签名怪必须与它不同); construct 只有 stone_guardian 一种签名。
+// 每族的 pilot (签名怪必须与它不同)。
 const FAMILY_PILOT = {
   night_stalker:'orc', skeleton_archer:'orc', bone_soldier:'orc',
   shadow_assassin:'orc', shadow_stalker:'orc', ice_warden:'orc', iron_sentinel:'orc',
   storm_elemental:'fire_imp', lightning_orb:'fire_imp', void_walker:'fire_imp',
   blood_leech:'slime', poison_wyrm:'slime',
   stone_guardian:'golem',
+  // 第二批
+  archer:'orc', goblin_hunter:'orc', shaman:'orc', dark_mage:'orc', blood_priest:'orc',
+  summoner:'orc', necromancer:'orc', tank:'orc', charger:'orc', bomber:'orc', elite_orc:'orc',
+  frost_slime:'slime', elite_slime:'slime',
 };
 
 function coordHash(file) {
