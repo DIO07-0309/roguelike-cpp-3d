@@ -66,6 +66,29 @@
 RED：当前 26 只克隆 head 哈希=pilot → FAIL；GREEN：13 种签名后互不相同 → PASS。
 baselines.json 不动（保持"原始 A17 基线"语义）。
 
+## 2b. 第二批（2026-11-21 延续，用户"继续"）
+
+第一批后用户要求继续，补剩余 13 种非 pilot 怪。方案完全同构（包络内特征件、深拷贝 merge、--unique 闸门扩展到 26 种）：
+
+| id | 中文名 | 族 | 2D 线索 → 3D 特征件 |
+|---|---|---|---|
+| archer | 哥布林弓手 | humanoid | 长耳+木弓+皮甲（撞色对, 与goblin_hunter配色同） |
+| goblin_hunter | 哥布林猎手 | humanoid | 长耳+黄目+背后猎网（撞色对） |
+| shaman | 哥布林萨满 | humanoid | 图腾杖+羽毛头饰+面具 |
+| dark_mage | 暗术师 | humanoid | 兜帽紫瞳+悬浮法球 |
+| blood_priest | 血祭司 | humanoid | 红袍面纱+胸口金十字+血滴杖 |
+| summoner | 哥布林召唤师 | humanoid | 符文冠+召唤法杖 |
+| necromancer | 亡语者 | humanoid | 绿袍兜帽+骷髅脸+绿瞳+骨杖 |
+| tank | 重甲兽人 | humanoid | 厚重肩甲+铁面罩+塔盾 |
+| charger | 冲锋兽人 | humanoid | 铁刺+冲锋斧+前倾姿态暗示 |
+| bomber | 爆炸史莱姆 | humanoid | 圆腹+引信+炸弹背囊 |
+| elite_orc | 精英兽人 | humanoid | 铁灰重甲+肩刺+獠牙 |
+| frost_slime | 冰霜史莱姆 | slime | 冰核+顶部三根冰晶尖 |
+| elite_slime | 精英史莱姆 | slime | 金冠三尖+冠珠红+亮翠体 |
+
+第二批后：30 种怪 = 4 pilot（各自独立配方）+ 26 签名字（独立配方），全部一怪一形。
+闸门的 --unique 从 13 扩到 26 种。范围声明更新：全 30 种一怪一形（不再是"只13种"）。
+
 ## 5. 验收
 
 - `node tools/check_ground_item_assets.js --all` → CHECKED=150 FAILED=0
