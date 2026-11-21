@@ -1525,6 +1525,76 @@ _REFINE_FAMILY = {
     "slime": "slime",
     "construct": "golem",
 }
+# ══════════════════════════════════════════════════════════════
+# A22b-一怪一形: 强身份怪的独立签名细节 (包络内特征件)。
+# _sig(mon, head, weapon?, torso?) 注册签名槽; merge 助手逐槽 list() 深拷贝
+# pilot list 后整槽替换签名槽 — 绝不共享可变 list(否则污染 pilot 全族)。
+# 细节坐标在 base bbox 内、正面 +Y(head 3~5 / torso 4~6.5 / weapon 5~8),
+# 不同基元/坐标/分段数制造哈希与视觉差异。
+# ══════════════════════════════════════════════════════════════
+SIGNATURE_DETAILS = {}
+
+
+def _sig(mon, head, weapon=None, torso=None):
+    spec = {"head": head}
+    if weapon is not None:
+        spec["weapon"] = weapon
+    if torso is not None:
+        spec["torso"] = torso
+    SIGNATURE_DETAILS[mon] = spec
+
+
+# ── 第一批 1/2: humanoid 强身份 ──
+_sig("night_stalker",  # 兽首尖耳+尖牙+兽目; 爪刃
+     [lambda c: part_prism("beast_ear", (-3.0, 4.4, 5.6), [(-2, 0), (2, 0), (0, 4)], 1.1, c["shadow"], bevel=0.2),
+      lambda c: part_prism("beast_fang", (0.0, 4.6, 1.0), [(-1, 0), (1, 0), (0, -3)], 0.9, (230, 226, 200), bevel=0.1),
+      lambda c: part_sphere("beast_eye", (0.0, 4.8, 3.2), 1.3, c["eye"], segments=9, rings=5)],
+     weapon=[lambda c: part_prism("claw", (0.0, 6.0, 2.0), [(-3, 0), (3, 0), (0, 7)], 1.2, IRON, bevel=0.2),
+             lambda c: part_sphere("claw_socket", (0.0, 5.0, -2.0), 1.1, c["shadow"], segments=9, rings=5)])
+_sig("skeleton_archer",  # 骷髅黑眼窝+额裂; 骨弓
+     [lambda c: part_box("skull_brow", (0.0, 4.6, 4.0), (8.0, 1.3, 1.5), (200, 198, 180), bevel=0.3),
+      lambda c: part_box("eye_socket_l", (-2.3, 4.9, 2.0), (2.4, 0.8, 2.4), (30, 28, 26), bevel=0.2),
+      lambda c: part_box("eye_socket_r", (2.3, 4.9, 2.0), (2.4, 0.8, 2.4), (30, 28, 26), bevel=0.2)],
+     weapon=[lambda c: part_torus("bone_bow", (0.0, 6.0, -4.0), 5.0, 0.7, (214, 210, 190), major_segments=11, minor_segments=5),
+             lambda c: part_box("bone_string", (0.0, 6.4, -4.0), (0.5, 0.5, 11.0), c["trim"], bevel=0.1)])
+_sig("bone_soldier",  # 破胸甲+红眼窝; 锈剑
+     [lambda c: part_box("broken_helm", (0.0, 4.4, 4.6), (9.0, 1.4, 2.0), IRON_RUST, bevel=0.3),
+      lambda c: part_sphere("red_eye_l", (-2.4, 4.8, 1.8), 1.1, (220, 50, 40), segments=9, rings=5),
+      lambda c: part_sphere("red_eye_r", (2.4, 4.8, 1.8), 1.1, (220, 50, 40), segments=9, rings=5)],
+     weapon=[lambda c: part_prism("rusty_sword", (0.0, 6.0, 0.0), [(-1.5, 0), (1.5, 0), (0, 10)], 1.0, IRON_RUST, bevel=0.2),
+             lambda c: part_box("sword_guard", (0.0, 5.6, -3.0), (6.0, 1.0, 0.8), GOLD, bevel=0.2)])
+
+# ── 第一批 2/2: humanoid 暗影 + orb 雷暴 ──
+_sig("shadow_assassin",  # 头巾斗篷+幽蓝双刃
+     [lambda c: part_prism("hood_point", (0.0, 4.4, 6.2), [(-3, 0), (3, 0), (0, 4)], 1.3, c["shadow"], bevel=0.2),
+      lambda c: part_box("face_wrap", (0.0, 4.9, 2.4), (7.0, 0.9, 2.6), c["main"], bevel=0.2),
+      lambda c: part_sphere("assassin_eye", (0.0, 5.0, 3.4), 1.0, (90, 190, 240), segments=9, rings=5)],
+     weapon=[lambda c: part_prism("blue_blade_l", (-2.0, 6.0, 2.0), [(-1, 0), (1, 0), (0, 9)], 0.8, (90, 190, 240), bevel=0.1),
+             lambda c: part_prism("blue_blade_r", (2.0, 6.0, 2.0), [(-1, 0), (1, 0), (0, 9)], 0.8, (90, 190, 240), bevel=0.1)])
+_sig("shadow_stalker",  # 幽灵锯齿披风+红眼 (torso 签名)
+     [lambda c: part_sphere("ghost_eye", (0.0, 4.6, 3.0), 1.4, (230, 60, 70), segments=9, rings=5),
+      lambda c: part_prism("ghost_crest", (0.0, 4.2, 6.0), [(-4, 0), (4, 0), (0, 5)], 1.0, c["shadow"], bevel=0.2)],
+     torso=[lambda c: part_prism("cape_tooth_1", (-6.0, 6.0, -7.0), [(-3, 0), (3, 0), (0, -5)], 1.0, c["shadow"], bevel=0.2),
+            lambda c: part_prism("cape_tooth_2", (6.0, 6.0, -7.0), [(-3, 0), (3, 0), (0, -5)], 1.0, c["shadow"], bevel=0.2)])
+_sig("storm_elemental",  # 雷云体+落雷 (torso 签名)
+     [lambda c: part_sphere("storm_eye", (0.0, 3.6, 2.0), 1.5, c["eye"], segments=9, rings=5),
+      lambda c: part_prism("cloud_peak", (0.0, 3.2, 5.0), [(-4, 0), (4, 0), (0, 4)], 1.2, c["main"], bevel=0.2)],
+     torso=[lambda c: part_prism("bolt_main", (0.0, 6.4, 2.0), [(-2, 4), (2, 4), (0, -4)], 1.1, c["eye"], bevel=0.15),
+            lambda c: part_prism("cloud_hem", (0.0, 5.8, -7.0), [(-7, 0), (7, 0), (0, -4)], 1.0, c["shadow"], bevel=0.2)])
+
+
+def _signature_refinements(mon_id):
+    """逐槽深拷贝 pilot list, 签名槽整槽替换; 绝不共享可变 list。"""
+    pilot = _REFINE_FAMILY[MONSTERS[mon_id][0]]
+    merged = {slot: list(details) for slot, details in REFINEMENTS[pilot].items()}
+    for slot, details in SIGNATURE_DETAILS[mon_id].items():
+        merged[slot] = list(details)
+    return merged
+
+
+for _mon in SIGNATURE_DETAILS:
+    REFINEMENTS[_mon] = _signature_refinements(_mon)
+
 for _mon, _meta in MONSTERS.items():
     if _mon in REFINEMENTS:
         continue
