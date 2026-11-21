@@ -801,6 +801,32 @@ def build_guard_interacted():
     return join_parts([obj] + extra, "guard_interacted")
 
 
+def _banner_detail(parts):
+    """旗帜精修层: 金色盾徽 + 褶皱 + 流苏 + 杆缠带 + 顶球光环 + 基座。"""
+    # 旗面金色盾徽 (十字)
+    parts.append(part_box("emblem_v", (0, -0.3, 33.0), (1.2, 0.3, 5.0), GOLD, bevel=0.2))
+    parts.append(part_box("emblem_h", (0, -0.3, 33.0), (4.6, 0.3, 1.2), GOLD, bevel=0.2))
+    parts.append(part_sphere("emblem_boss", (0, -0.5, 33.0), 1.0, GOLD_LIGHT,
+                             segments=8, rings=4, scale=(1, 0.4, 1)))
+    # 布面褶皱竖条
+    for x in (-4.5, 4.5):
+        parts.append(part_box("fold_%d" % x, (x, -0.3, 33.0), (0.8, 0.3, 7.0),
+                              CLOTH_BLUE_DARK, bevel=0.1))
+    # 旗底金流苏
+    for x in (-5, -2.5, 0, 2.5, 5):
+        parts.append(part_sphere("tassel_%d" % x, (x, 0.4, 28.8), 0.7, GOLD,
+                                 segments=8, rings=4, scale=(1, 0.5, 1)))
+    # 旗杆金属缠带
+    for z in (8.0, 16.0, 24.0):
+        parts.append(part_torus("pole_band_%d" % z, (0, 0, z), 0.95, 0.25,
+                                GOLD, major_segments=12, minor_segments=6))
+    # 顶球光环 + 杆底基座
+    parts.append(part_torus("finial_ring", (0, 0, 39.5), 1.0, 0.25, GOLD,
+                            major_segments=12, minor_segments=6))
+    parts.append(part_cylinder("pole_base", (0, 0, 1.2), 1.2, 2.4, IRON_DARK,
+                               vertices=10))
+
+
 def build_guard_banner():
     # 守卫旗帜: 深蓝布面 + 金色边框, 挂在高杆上 (场景道具)
     # pole center z=20, depth 40 → 底部贴地 z=0, 顶 z=40
@@ -812,4 +838,6 @@ def build_guard_banner():
         "guard_flag_trim", (0, 0.2, 33.0), (14.6, 0.2, 8.6), GOLD, bevel=0.1
     )
     finial = part_sphere("guard_finial", (0, 0, 41.0), 1.4, GOLD, segments=12, rings=8)
-    return join_parts([pole, flag, trim, finial], "guard_banner")
+    parts = [pole, flag, trim, finial]
+    _banner_detail(parts)
+    return join_parts(parts, "guard_banner")

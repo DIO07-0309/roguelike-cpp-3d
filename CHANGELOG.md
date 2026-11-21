@@ -1,4 +1,44 @@
-﻿# arena 5 件道具精修（2026-11-20）
+﻿# guard_banner 精修（2026-11-21）
+
+> 用户指定做 guard_banner（380 面，全库倒数）。单件精修，沿用惯例验收。
+
+## 现状
+
+`blender_models_npc.py:build_guard_banner()` 原版仅 4 件：旗杆+旗面+金边+顶球，380 面。
+与两个精修过的守卫（guard_alert 9092 面 / guard_interacted 8768 面）放在一起明显单调。
+`guard_banner` 是场景道具（守卫旗帜），bbox x±7.3、高 0~42.4、深 ±1.4（旗面很薄）。
+
+## 精修（bbox 内，面数 380→1664）
+
+`_banner_detail()` helper（单一职责，≤40 行）：
+- 旗面正面金色十字盾徽（竖+横+球心）——首版放在背面，审图发现后移到正面（-Y）
+- 2 条布面褶皱竖条
+- 旗底 5 颗金流苏
+- 旗杆 3 道金属缠带
+- 顶球光环 + 杆底基座
+
+细节全部收紧在 bbox 内（顶球光环/杆缠带/基座首版深度到 ±2.6 超界，收紧后 ±1.4 内）。
+低段数 torus/sphere/box 补面，不提半径敏感件段数。
+
+## 闸门
+
+新增 `tools/check_guard_banner.js` + `tools/guard_banner_baseline.json`（精修前实测 380 面）：
+schema/name/finite(含颜色)/faces≥1000/bbox≤基线（容差 0.01）。
+RED 380<1000 → GREEN 1664 PASS。
+
+## 审图
+
+Blender MCP 并排 look()：3 件（alert / interacted / banner）风格协调；
+旗帜金十字纹章在正面清晰、金边流苏/杆缠带/基座到位、无穿模。
+
+## 验证
+
+ctest 91/91；fn_length 0；world_validator 通过；
+guard_banner 1/1、arena 5/5、P4 19/19 闸门不退化。
+
+---
+
+# arena 5 件道具精修（2026-11-20）
 
 > 用户拍板：arena 5 件 + 沿用惯例验收。这是全库面数最低、从未精修的一类。
 

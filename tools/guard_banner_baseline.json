@@ -1,0 +1,13 @@
+{
+  "guard_banner": {
+    "faces": 380,
+    "bbox": {
+      "xmin": -7.3,
+      "xmax": 7.3,
+      "ymin": 0.0,
+      "ymax": 42.4,
+      "zmin": -1.4,
+      "zmax": 1.4
+    }
+  }
+}
