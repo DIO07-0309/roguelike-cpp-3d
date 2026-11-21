@@ -4,6 +4,71 @@
 // Default: only monsters with a REFINEMENTS entry in the script; --all: every monster.
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
+
+// P6 一怪一形: --unique 检查 13 种签名怪的 head+签名槽顶点坐标多重集哈希互不相同。
+// 直接读 JSON (注入用 REFINEMENTS[_mon] 正则匹配不到); 排除 arm/leg (merge 保留 pilot 几何)。
+const SIGNATURES = {
+  night_stalker:  ['head','weapon'],
+  skeleton_archer:['head','weapon'],
+  bone_soldier:   ['head','weapon'],
+  shadow_assassin:['head','weapon'],
+  shadow_stalker: ['head','torso'],
+  storm_elemental:['head','torso'],
+  lightning_orb:  ['head'],
+  void_walker:    ['head','torso'],
+  blood_leech:    ['head','torso'],
+  poison_wyrm:    ['head','weapon'],
+  stone_guardian: ['head','torso'],
+  ice_warden:     ['head','torso'],
+  iron_sentinel:  ['head','torso'],
+};
+// 每族的 pilot (签名怪必须与它不同); construct 只有 stone_guardian 一种签名。
+const FAMILY_PILOT = {
+  night_stalker:'orc', skeleton_archer:'orc', bone_soldier:'orc',
+  shadow_assassin:'orc', shadow_stalker:'orc', ice_warden:'orc', iron_sentinel:'orc',
+  storm_elemental:'fire_imp', lightning_orb:'fire_imp', void_walker:'fire_imp',
+  blood_leech:'slime', poison_wyrm:'slime',
+  stone_guardian:'golem',
+};
+
+function coordHash(file) {
+  let d;
+  try { d = JSON.parse(fs.readFileSync(file, 'utf8')); }
+  catch (e) { return { err: e.message }; }
+  // 顶点坐标 (x,y,z) round(,3) 已固化; 排序拼接 → 多重集哈希, 免疫 bmesh 面序非确定性。
+  const coords = d.vertices.map(v => `${v[0]},${v[1]},${v[2]}`).sort();
+  const h = crypto.createHash('sha256').update(coords.join('|')).digest('hex').slice(0, 16);
+  return { hash: h, count: d.vertices.length };
+}
+
+function runUnique() {
+  let failed = 0;
+  const ids = Object.keys(SIGNATURES);
+  // 按 slot 分组比较: 同族内两两不同 + 与 pilot 不同。
+  for (const slot of ['head','weapon','torso']) {
+    const group = ids.filter(id => SIGNATURES[id].includes(slot));
+    if (group.length < 2) continue;
+    const seen = new Map(); // hash -> id
+    for (const id of group) {
+      const r = coordHash(`assets/models/mon_${id}_part_${slot}.json`);
+      if (r.err) { console.log(`FAIL ${id}/${slot}: ${r.err}`); failed++; continue; }
+      if (seen.has(r.hash)) {
+        console.log(`FAIL ${id}/${slot} hash=${r.hash} COLLIDES with ${seen.get(r.hash)} (cloning)`);
+        failed++;
+      } else seen.set(r.hash, id);
+      // 与 pilot 比
+      const pilot = FAMILY_PILOT[id];
+      const pr = coordHash(`assets/models/mon_${pilot}_part_${slot}.json`);
+      if (!pr.err && pr.count === r.count && pr.hash === r.hash) {
+        console.log(`FAIL ${id}/${slot} identical to pilot ${pilot} (cloning)`);
+        failed++;
+      }
+    }
+  }
+  console.log(`UNIQUE ids=${ids.length} FAILED=${failed}`);
+  process.exit(failed === 0 ? 0 : 1);
+}
 
 const dir = 'assets/models';
 const slots = ['head', 'torso', 'arm', 'leg', 'weapon'];
@@ -48,5 +113,7 @@ for (const name of names) {
     }
   }
 }
+if (process.argv.includes('--unique')) runUnique();
+
 console.log(`CHECKED=${names.length * slots.length} MONSTERS=${names.length} FAILED=${failed}`);
 process.exit(failed === 0 ? 0 : 1);
