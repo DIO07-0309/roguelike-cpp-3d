@@ -95,7 +95,7 @@ F15 镜像 Boss 读你的行为画像（攻防倾向/走位偏好/技能习惯�
 
 ## 技术细节（开发者看这）
 
-- **72 个 ctest 全绿** · 确定性模拟器（同种子字节级复现，`--sim N` 批量平衡评估）
+- **91 个 ctest 全绿** · 确定性模拟器（同种子字节级复现，`--sim N` 批量平衡评估）
 - **AI 研究平台**：行为树 / MCTS / Q-Learning / 镜像学习（行为克隆 + n-gram 战术链 + Thompson 采样五层仲裁）
 - **架构**：组合优于继承（5 Director 组合）、EventBus 45 事件、数据驱动 Registry、函数 ≤40 行规范
 
@@ -106,11 +106,11 @@ F15 镜像 Boss 读你的行为画像（攻防倾向/走位偏好/技能习惯�
 诚实清单：
 
 - **美术** — 程序化像素 + Kenney CC0 素材；v1.4.14 起 30 怪全一怪一图 + 三群系专属墙地贴图，但均为生成/占位级，非商业美术
-- **手感** — 实时动作（攻击间隔 0.5s），无翻滚/无锁定；打击感三件套就位但数值以研究平衡为主（胜率区间 6-10%）
+- **手感** — 实时动作（攻击间隔 0.5s），翻滚闪避已就位（Shift+方向，0.7s 冷却，无无敌帧）、无锁定；打击感三件套就位但数值以研究平衡为主（胜率区间 6-10%）
 - **平台** — Windows 实机验证；macOS/Linux 构建规范见 `docs/G4_PLATFORM_BIBLE.md`，未实机验证
 - **输入** — 键盘 only
 - **确定性已知项** — sim 批量间歇分岔已于 v1.4.15 修复（P1-C8/RNG-002：VFX 视觉掷骰误吃 gameplay rng 流，32 批并行验证零分岔）；`combat_coordinator.cpp` 时停 pre_hp 裸指针快照列清理候选
-- **截图/GIF** — README 已有 HD-2D 实机截图（F1/F6/F11 三群系）；GIF/Trailer 仍为占位，录制清单见 `docs/RELEASE_CHECKLIST.md` 附录 A（v1.5.x 补）
+- **截图/GIF** — README 已有 HD-2D 实机截图（F1/F6/F11 三群系）；GIF/Trailer 仍为占位（真实欠账，非已交付项），录制清单见 `docs/RELEASE_CHECKLIST.md` 附录 A（待补）
 
 ## License
 
@@ -120,9 +120,11 @@ F15 镜像 Boss 读你的行为画像（攻防倾向/走位偏好/技能习惯�
 
 ## CHANGELOG
 
+> 历史条目的「开发版，未发布」标记记录的是当时状态，其后均已交付；2026-11 批次只记入仓库 CHANGELOG.md，本段按里程碑补录摘要（见本段末尾）。
+
 - A13（开发版，未发布）：**玩家形象体素化 v1 — 2D 部件贴图运行时转真 3D 网格**（已默认接入游戏, 点 3D 模式即体素化身; `--no-voxel-avatar` 回退纸偶, `--voxel-avatar` 兼容保留）—— 铁律：正面逐像素保留原画，深度只在 3D 侧雕刻（边缘距离深度场 + 墨线薄壁 + 披风下摆加厚），规则与 Blender 侧 `art_src/scripts/voxel_lib.py` 逐条一致。新增 `resources/voxel_parts.json` 参数、`src/data/voxel_part_defs.*` 加载器、`src/game/rendering3d/part_voxelizer.*`（纯函数层 + GL 上传层）；网格挂骨骼纸偶同基（广告牌基矩阵，与四边形路径同缩放/旋转/镜像，元素染色与残影 alpha 走材质色），阴影 pass 暂保留四边形剪影。**引擎侧与 Blender 脚本逐件面数一致性单测钉死**（leg 1054 / arm 386 / weapon 424 / torso 2288 / head 1602 / cape 2230）——测试揪出并修复贴图行序翻转 bug（raylib/stb 图像数据为顶行在前，此前 cape 下摆落在错误一端才会暴露）。游戏内面明暗增强（侧面调深约一成、顶面调亮约两成，正面=原画逐像素不动，全屏差异仅 6352px 且全在角色轮廓内）随默认接入一同入库。85/85 CTest、World Validator 0 错 0 警、fn_length 0 超规；怪物批量体素化在后续批次。
 
-- A13-M2（开发版，未发布）：**全量怪物 / Boss 体素化 — 共享网格缓存接入**（玩家体素管线的第二阶段）—— **186 个部件件全部走体素**（30 普通怪 + 6 Boss 的 5 槽部件 arm/head/leg/torso/weapon，共 185 件 + 玩家 6 件 = 191 件全量参考）。设计：**同骨架类型共享一份网格**（`VoxelMeshLibrary` 懒建缓存，键 = `parts_key/slot@pivot`，同类怪只建一次、多实例借用不释放；失败也缓存空网格 → 该件回退纸偶，不影响其他槽），槽位参数**统一玩家默认 + per-skeleton JSON 覆盖**（`voxel_parts.json` 新增可选 `overrides` 段，合并语义：未写字段继承默认槽，hem 显式写 = 整体替换，覆盖未知槽 = 解析报错）。新增 `src/data/voxel_part_defs.*` 的 `find_for` / `voxel_parts_key_from_skeleton`（骨架路径 → `mon_orc`）、`src/game/animation/voxel_mesh_library.*`、`SkeletonAvatar::set_borrowed_voxel_parts`（借用网格，析构不释放）、`AvatarDirector::_attach_voxel`（挂在 `tick_monsters` 建 avatar 成功后，失败静默回退）。玩家仍走自有所有权路径未动。**面数一致性单测扩到全量**：`art_src/scripts/voxel_batch_counts.py` 用 Blender 批量生成 191 件参考面数到 `art_src/preview/voxel_faces_ref.json`（玩家 6 件先与硬编码基线自检通过才输出），`VoxelizerParity.AllPartsMatchBlenderBatchCounts` 逐件与引擎比对（65ms）。取证：游戏内实际跑出 `attach mon_slime 7/7 nonempty`、`attach mon_orc 7/7 nonempty`（面数逐件非零 = 挂载成功），同一帧 `--no-voxel-avatar` 对照图中怪物为平滑纸片、默认版为体素块面（差异图 `A13-M2_monster_voxel.png` 存桌面包根）。85/85 CTest（voxelizer_test 10 用例）、World Validator 0 错 0 警、fn_length 0 超规。
+- A13-M2（开发版，未发布）：**全量怪物 / Boss 体素化 — 共享网格缓存接入**（玩家体素管线的第二阶段）—— **186 个部件件全部走体素**（30 普通怪 + 6 Boss 的 5 槽部件 arm/head/leg/torso/weapon，共 180 件 + 玩家 6 件 = 186 件全量参考）。设计：**同骨架类型共享一份网格**（`VoxelMeshLibrary` 懒建缓存，键 = `parts_key/slot@pivot`，同类怪只建一次、多实例借用不释放；失败也缓存空网格 → 该件回退纸偶，不影响其他槽），槽位参数**统一玩家默认 + per-skeleton JSON 覆盖**（`voxel_parts.json` 新增可选 `overrides` 段，合并语义：未写字段继承默认槽，hem 显式写 = 整体替换，覆盖未知槽 = 解析报错）。新增 `src/data/voxel_part_defs.*` 的 `find_for` / `voxel_parts_key_from_skeleton`（骨架路径 → `mon_orc`）、`src/game/animation/voxel_mesh_library.*`、`SkeletonAvatar::set_borrowed_voxel_parts`（借用网格，析构不释放）、`AvatarDirector::_attach_voxel`（挂在 `tick_monsters` 建 avatar 成功后，失败静默回退）。玩家仍走自有所有权路径未动。**面数一致性单测扩到全量**：`art_src/scripts/voxel_batch_counts.py` 用 Blender 批量生成 186 件参考面数到 `art_src/preview/voxel_faces_ref.json`（玩家 6 件先与硬编码基线自检通过才输出），`VoxelizerParity.AllPartsMatchBlenderBatchCounts` 逐件与引擎比对（65ms）。取证：游戏内实际跑出 `attach mon_slime 7/7 nonempty`、`attach mon_orc 7/7 nonempty`（面数逐件非零 = 挂载成功），同一帧 `--no-voxel-avatar` 对照图中怪物为平滑纸片、默认版为体素块面（差异图 `A13-M2_monster_voxel.png` 存桌面包根）。85/85 CTest（voxelizer_test 10 用例）、World Validator 0 错 0 警、fn_length 0 超规。
 
   > 取证方法备注：怪物在迷雾未探索房间内，正常自动截图抓不到同框；取证时用临时环境变量把首怪挪到玩家旁 3 格截图，验收后已移除全部临时插桩并回滚存档。
 
@@ -135,13 +137,7 @@ F15 镜像 Boss 读你的行为画像（攻防倾向/走位偏好/技能习惯�
   - 资产格式：`assets/models/<name>.json` = `vertices:[x,y,z,r,g,b]` + `faces:[i,j,k]`（可选 `normals`；引擎默认按面绕序算平面法线，rlgl 默认材质不消费法线故默认不写，省 40% 体积）。
   - 引擎侧：`src/data/mesh_asset.*`（纯数据加载器 + `mesh_asset_path`/`mesh_asset_exists`，可无窗口单测；**退化面只跳过自身、不废掉整个模型**，全退化才报错）、`src/game/rendering3d/model_cache.*`（按名懒加载 + GPU 上传；缺失/损坏缓存空指针 → 静默回退纸片）、`HD2DDrawItem::Kind::MODEL3D` + `HD2DRenderer::_draw_model`（世界变换 = 平移(脚底) × 绕Y旋转 × 缩放；与体素件共用顶点色材质）、`_build_npcs`（NPC 有模型 → 3D 低模）与 `_emit_room_prop`（9 类特殊房间实物落位房间中心格，按 `triggered` 选两态）。2D 层配合：HD2D 下若该 NPC 存在模型则**让位**给 3D 层（`mesh_asset_exists` 判定），模型缺失仍照旧画纸片。
   - 踩坑记录：① 四边形面引用不连续 → 加载期必须把面**展开**为每面独占 3 顶点，否则网格串错面（表现为模型上下颠倒）；② 倒角偶发**零面积面** → 导出期过滤 + 加载期跳过，别整模判废；③ **Blender 5.x 节点名本地化（中文）** → 查节点必须按 `bl_idname`，按英文名找不到会静默建成第二套节点、渲染实际用默认白材质；④ Blender 会缓存已导入模块，迭代建模脚本需 `importlib.reload`；⑤ 旋转体（翻倒木桶/开盖）要按铰点轨道算中心，否则会扎进地面（`FeetAtGroundLevel` 用例兜底）。
-  - 验证：`mesh_asset_test` 7 用例（44 件资产加载 / 面展开 / 退化面跳过 / 法线归一 / 脚底贴地 / 损坏资产拒绝 / 路径存在性）；**86/86 CTest**、World Validator 0 错 0 警、fn_length 0 超规。游戏内实证：NPC（真实房间位置）与宝箱/祭坛/泉水及三种残迹均以真 3D 网格渲染并带烘焙明暗（Blender 出图 `A14_blender_preview.png` / `A14_blender_preview_game.png` / `A14_blender_preview_states.png` / `A14_blender_closeup.png` 存桌面包根）。
-  - 建模管线（**Blender 为主**）：`art_src/scripts/blender_lib.py`（bmesh 基元库：倒角箱体 / 柱 / 锥 / 低模球 / 圆环 / 任意截面拉伸 + 逐面材质 + JSON 导出）、`blender_models_npc.py`（4 个 NPC 共用人形骨架 + 差异化配件：白球颅骨 + 眼白/瞳孔/眉/鼻/嘴、发型与发缕、围兜/挎包/尖帽(带帽檐+扣带)/胡子/铁砧(带角)/锤子 等）、`blender_models_props.py`（宝箱 = 木箱 + 板缝 + 三段拱盖 + 铁箍铆钉 + 金锁锁孔 + 箱脚；祭坛 = 阶梯底座 + 八棱凹槽柱 + 顶板 + 发光绿核 + 符文 + 苔藓；泉水 = 9 块不规则石 + 池底 + 水面双涟漪 + 木桶）、`blender_scene.py`（相机/三点日光/地面/EEVEE 渲染）、`build_models_blender.py`（主流程：建模 → 导出 → 出图 → 存 .blend）。**驱动器 `tools/blender_client.py`** 直连 Blender 的 MCP 插件 socket（`127.0.0.1:9876`，协议 = JSON 命令：`execute_code` / `get_viewport_screenshot`），使"改脚本 → 立刻在 Blender 里出图 → 再改"成为可循环的实时工作流（`blender --background -P` 同样可跑）。
-  - 关键约定：**引擎无实时光照**（rlgl 默认材质只做 顶点色×贴图），所以方向明暗**必须烘进顶点色** —— 导出时按面法线主轴套用与 A13 体素同一套 SHADE 表（正面 1.00 / 背 0.45 / 侧 0.62 / 顶 1.55 / 底 0.30）+ 逐面轻微色扰动（石/木斑驳）。这也是"预览图好看但游戏里是平剪纸"最容易踩的坑。
-  - 资产格式：`assets/models/<name>.json` = `vertices:[x,y,z,r,g,b]` + `faces:[i,j,k]`（可选 `normals`；引擎默认按面绕序算平面法线，rlgl 默认材质不消费法线故默认不写，省 40% 体积）。
-  - 引擎侧：`src/data/mesh_asset.*`（纯数据加载器 + `mesh_asset_path`/`mesh_asset_exists`，可无窗口单测；**退化面只跳过自身、不废掉整个模型**，全退化才报错）、`src/game/rendering3d/model_cache.*`（按名懒加载 + GPU 上传；缺失/损坏缓存空指针 → 静默回退纸片）、`HD2DDrawItem::Kind::MODEL3D` + `HD2DRenderer::_draw_model`（世界变换 = 平移(脚底) × 绕Y旋转 × 缩放；与体素件共用顶点色材质）、`_build_npcs`（NPC 有模型 → 3D 低模）与 `_emit_room_prop`（特殊房间实物落位房间中心格）。2D 层配合：HD2D 下若该 NPC 存在模型则**让位**给 3D 层（`mesh_asset_exists` 判定），模型缺失仍照旧画纸片。
-  - 踩坑记录：① 四边形面引用不连续 → 加载期必须把面**展开**为每面独占 3 顶点，否则网格串错面（表现为模型上下颠倒）；② 倒角偶发**零面积面** → 导出期过滤 + 加载期跳过，别整模判废；③ **Blender 5.x 节点名本地化（中文）** → 查节点必须按 `bl_idname`，按英文名找不到会静默建成第二套节点、渲染实际用默认白材质；④ Blender 会缓存已导入模块，迭代建模脚本需 `importlib.reload`。
-  - 验证：`mesh_asset_test` 7 用例（7 件资产加载 / 面展开 / 退化面跳过 / 法线归一 / 脚底贴地 / 损坏资产拒绝 / 路径存在性）；**86/86 CTest**、World Validator 0 错 0 警、fn_length 0 超规。游戏内实证：宝箱/铁匠/祭坛/泉水/NPC 均以真 3D 网格渲染并带烘焙明暗（Blender 出图 `A14_blender_preview.png` / `A14_blender_preview_game.png` 存桌面包根）。
+  - 验证：`mesh_asset_test` 10 用例（81 件资产加载 / 面展开 / 退化面跳过 / 法线归一 / 脚底贴地 / 损坏资产拒绝 / 路径存在性 / 9 地标 / 8 护甲 / 地形变体）；**91/91 CTest**、World Validator 0 错 0 警、fn_length 0 超规。游戏内实证：NPC（真实房间位置）与宝箱/祭坛/泉水及三种残迹均以真 3D 网格渲染并带烘焙明暗（Blender 出图 `A14_blender_preview.png` / `A14_blender_preview_game.png` / `A14_blender_preview_states.png` / `A14_blender_closeup.png` 存桌面包根）。
 
 - P8（汉中 3D 城市管线，开发版，未发布）：**M10-M16 检查点终检交付（8/8 台账收口）** —— 窗扩面 OSM143+地标5 / 河滨 2273 栋廉价窗 / 屋顶 14m 低配 / 公交 300m 推导 328 站 / 绿篱补全 95.05% / 万家灯火+路面 shader / 4K 英雄贴图+CJK 站牌字集 + 终检双 build。面数 **2,413,344 → 2,670,559**（+257,215，红线 2,950,000，余 279,441，T10 门开）；探针 `MANIFEST_ALL_DONE day=26 night=26 turn=120 gate=PASS`（+P8 新增 13 张）；断言双 PASS、`T8FACES_ALL_PASS`、frame 1.390s L0；交付 5 件 SHA256 见 `deliverables/hanzhong/report.md` §10（$tmp `5b6762a`）。
 - G53（开发版，未发布）：**函数长度债全部清零** —— 分两阶段共拆分 30+ 个函数，全仓超规 **68→0**（`tools/fn_length_scan.py` 阈 >40 报 0）。阶段一：存档 / 模拟报表 / RL 训练 / 输入 / 资源 / 结局 共 12 个函数拆分，**68→52**。
@@ -561,6 +557,8 @@ F15 镜像 Boss 读你的行为画像（攻防倾向/走位偏好/技能习惯�
 
 ## 星标路线
 
+> v1.15.0 起的版本行为里程碑编号，已补打对应 tag `v1.15`~`v1.21`（2026-11-22，指向各批次收官 commit）；表中 v1.6~v1.14 的「已发 Release / 已打 tag」为当时记录。
+
 | 版本 | 里程碑 |
 |------|--------|
 | v1.0.0 | 五项 Stable 冻结验收（API/Save/Mod/Regression/Performance） |
@@ -591,4 +589,13 @@ F15 镜像 Boss 读你的行为画像（攻防倾向/走位偏好/技能习惯�
 - A15-Guard 守卫互动 NPC（2 状态：警戒/已交互休息）+ 配套旗帜道具：设计文档 docs/superpowers/specs/2026-10-28-guard-npc-design.md、实现计划 docs/superpowers/plans/2026-10-28-guard-npc-plan.md；blender_models_npc.py 已追加 build_guard_alert/build_guard_interacted/build_guard_banner（_common 身体 + 头盔/肩甲/胸甲/盾牌/书卷配件，标准高 47 与 npc_1 一致）；build_models_blender.py 已注册到 BUILDERS；mesh_asset_test 已注册并通过；已用 blender-MCP 导出 guard_alert.json/guard_interacted.json/guard_banner.json（44→47 件），预览确认露脸头盔/盾牌/书卷/金边旗帜；**已接入游戏**：F1（GUARD_FLOOR）新增可对话守卫，对话前 guard_alert、对话后保留并切 guard_interacted（npc_system 增加 is_guard_floor/npc_model_key，get_npc_config 增 F1 守卫，spawn_floor_npcs/npc_views/_build_npcs 对守卫不跳过 finished，交互提示/对话头像保留），守卫旁立 guard_banner 旗帜；新增 tests/world/guard_npc_test.cpp（4 例）锁住接入不变量；golden_baseline 基线随 F1 守卫有意更新（归因验证：移除守卫后 seed 4242 恢复旧基线）；ctest 88/88、fn_length 0 超规、validator 0/0。
 
 - A16-Player 玩家完整骨骼动画低模：设计文档 docs/superpowers/specs/2026-10-28-player-lowpoly-design.md、实现计划 docs/superpowers/plans/2026-10-28-player-lowpoly-plan.md；`blender_models_player.py` 用 blender_lib 手工建模 6 个唯一低模部件（leg/torso/head/arm/weapon/cape），经 `build_player_parts.py` 无头 Blender 导出 `assets/models/player_part_*.json`（广告牌局部空间：原点=骨骼锚点 pivot、x=宽度、y=深度（负=朝相机）、z=高度，与体素同槽位键）；玩家调色板采样自 `player_part_*.png`（主甲 99,111,133 / 亮甲 149,166,183 / 暗部 63,38,49 / 深靴 70,66,84 / 钢刃 205,220,222 / 金饰 175,129,88 / 红宝石 154,48,62 / 披风基白 226,228,234 元素染色）；**接入游戏**：`PlayerAvatar::_setup_lowpoly_parts` 按 `voxel_slot_from_path` 槽位加载 6 件 mesh 替换 A13 体素（骨骼+AvatarAnimator idle/walk/attack/hit 全复用，任一缺失回退体素再回退纸偶）；`model_cache` 暴露 `build_gpu_mesh_asset`；`--no-voxel-avatar` 语义不变；新增 tests/rendering/player_part_asset_test.cpp（3 例：6 件加载合法性 + 坐标约定锁定 + 槽位键一致，不进 mesh_asset_test 贴地校验）；装配预览 `art_src/preview/blender_preview_player.png` / `_figure.png` / `_figure_3q.png`（蓝灰盔甲骑士：大头+宽胸甲+腰带+双腿+腰前持剑+背后白披风）；ctest 89/89、fn_length 0 超规、validator 0/0、golden_baseline 不变（低模只改渲染几何不改 gameplay）。
+
+- **2026-11 资产精修与闸门批次（摘要，详情见仓库 `CHANGELOG.md`）**：
+  - **一怪一形两批（11-21）** — 4 pilot + 26 签名字覆盖全 30 怪，`check_ground_item_assets.js --unique` 坐标哈希 26 签名两两不同、`--all` 150 件 FAILED=0；包络内特征件 + 深拷贝 merge。
+  - **精修资产闸门补齐（11-22）** — 统一 `check_refined_assets.js` + 基线表锁 61 件此前无闸门的已精修资产（19 房间摆件 / 30 Boss 部件 / 6 玩家部件 / 4 NPC / 2 守卫状态）；面数 ≥ 基线 / bbox ≤ 基线 / 各轴跨度 ≥ 基线 50%，负向自测两项可拦退化。
+  - **房间/竞技场/道具精修（11-20~21）** — arena 5 件、guard_banner、chest/altar/spring 两态 6 件，各有独立闸门（FAILED=0）。
+  - **群系主题化 P3~P6（11-18~19）** — P3 通用道具 8 + A22 残留清理、P3-2 9 地标+8 护甲微调、P4 21 件地形审美升级、P5 房间地板/墙壁破碎感、P6 sim AI CombatFocusTracker（**仅部分缓解**，卡死根因仍未修，见 `docs/SIM_STUCK_DIAGNOSIS.md`）。
+  - **A22/A22b 怪物全量精修（11-17）** — 30 怪 P0+P1 样板 + P2 全量，一怪一形前置。
+  - **A16-Boss / A17-Monster / A18-Landmark / A19-Armor / A20-Terrain / A21-Fix（11-01~17）** — 六 Boss 部件、30 怪手建低模、9 地标、8 护甲专属掉落、三群系雕饰地形、掉落物「看不见/捡不到」双根因修复。
+  - 门禁全程：ctest **91/91**、fn_length 0 超规、World Validator 0 错 0 警、全部独立闸门 FAILED=0。
 
