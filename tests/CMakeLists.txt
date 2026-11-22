@@ -92,6 +92,7 @@ add_roguelike_test(hd2d_ground_item_test rendering/hd2d_ground_item_test.cpp)
 add_roguelike_test(voxelizer_test rendering/voxelizer_test.cpp)
 # A14: 真 3D 模型资产 (NPC/道具低模) 合法性 + 加载器 round-trip
 add_roguelike_test(mesh_asset_test rendering/mesh_asset_test.cpp)
+add_roguelike_test(relic_acquisition_vfx_test rendering/relic_acquisition_vfx_test.cpp)  # 圣物获得演出契约
 # A16-Player: 玩家低模部件 (广告牌局部空间) 合法性 + 坐标约定 + 槽位键一致
 add_roguelike_test(player_part_asset_test rendering/player_part_asset_test.cpp)
 add_roguelike_test(damage_type_test combat/damage_type_test.cpp)

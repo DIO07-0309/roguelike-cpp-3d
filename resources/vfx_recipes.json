@@ -2,262 +2,1914 @@
   "_comment": "G5.8.8 VFX Recipes — staged sequences with delay + sfx + camera fields",
   "_description": "delay=0 means immediate. Steps with delay>0 are scheduled via Timeline for dramatic sequencing.",
   "presets": {
-    "default":  { "pulse": [255,200,50],  "arc": [255,180,60],  "bolt": [255,160,30],  "spark": [255,220,100] },
-    "fire":     { "pulse": [255,140,0],   "arc": [255,100,30],  "bolt": [255,80,20],   "spark": [255,180,40] },
-    "ice":      { "pulse": [80,200,255],   "arc": [140,230,255], "bolt": [100,220,255],  "spark": [180,240,255] },
-    "lightning":{ "pulse": [220,200,40],   "arc": [255,240,80],  "bolt": [255,220,60],   "spark": [255,250,120] },
-    "poison":   { "pulse": [100,200,50],   "arc": [140,230,80],  "bolt": [80,200,60],    "spark": [160,240,100] },
-    "time":     { "pulse": [180,160,220],  "arc": [200,180,240], "bolt": [160,140,200],  "spark": [210,190,240] },
-    "heal":     { "pulse": [80,220,120],   "arc": [120,255,160], "bolt": [60,200,90],    "spark": [160,255,180] },
-    "shadow":   { "pulse": [140,80,200],   "arc": [170,120,230], "bolt": [110,60,180],   "spark": [190,140,230] },
-    "bleed":    { "pulse": [200,40,40],    "arc": [230,70,50],   "bolt": [170,30,30],    "spark": [240,90,70] },
-    "white":    { "pulse": [200,200,200],  "arc": [230,230,230], "bolt": [180,180,180],  "spark": [240,240,240] },
-    "summon":   { "pulse": [180,140,220],  "arc": [210,170,250], "bolt": [150,110,200],  "spark": [220,180,250] }
+    "default": {
+      "pulse": [
+        255,
+        200,
+        50
+      ],
+      "arc": [
+        255,
+        180,
+        60
+      ],
+      "bolt": [
+        255,
+        160,
+        30
+      ],
+      "spark": [
+        255,
+        220,
+        100
+      ]
+    },
+    "fire": {
+      "pulse": [
+        255,
+        140,
+        0
+      ],
+      "arc": [
+        255,
+        100,
+        30
+      ],
+      "bolt": [
+        255,
+        80,
+        20
+      ],
+      "spark": [
+        255,
+        180,
+        40
+      ]
+    },
+    "ice": {
+      "pulse": [
+        80,
+        200,
+        255
+      ],
+      "arc": [
+        140,
+        230,
+        255
+      ],
+      "bolt": [
+        100,
+        220,
+        255
+      ],
+      "spark": [
+        180,
+        240,
+        255
+      ]
+    },
+    "lightning": {
+      "pulse": [
+        220,
+        200,
+        40
+      ],
+      "arc": [
+        255,
+        240,
+        80
+      ],
+      "bolt": [
+        255,
+        220,
+        60
+      ],
+      "spark": [
+        255,
+        250,
+        120
+      ]
+    },
+    "poison": {
+      "pulse": [
+        100,
+        200,
+        50
+      ],
+      "arc": [
+        140,
+        230,
+        80
+      ],
+      "bolt": [
+        80,
+        200,
+        60
+      ],
+      "spark": [
+        160,
+        240,
+        100
+      ]
+    },
+    "time": {
+      "pulse": [
+        180,
+        160,
+        220
+      ],
+      "arc": [
+        200,
+        180,
+        240
+      ],
+      "bolt": [
+        160,
+        140,
+        200
+      ],
+      "spark": [
+        210,
+        190,
+        240
+      ]
+    },
+    "heal": {
+      "pulse": [
+        80,
+        220,
+        120
+      ],
+      "arc": [
+        120,
+        255,
+        160
+      ],
+      "bolt": [
+        60,
+        200,
+        90
+      ],
+      "spark": [
+        160,
+        255,
+        180
+      ]
+    },
+    "shadow": {
+      "pulse": [
+        140,
+        80,
+        200
+      ],
+      "arc": [
+        170,
+        120,
+        230
+      ],
+      "bolt": [
+        110,
+        60,
+        180
+      ],
+      "spark": [
+        190,
+        140,
+        230
+      ]
+    },
+    "bleed": {
+      "pulse": [
+        200,
+        40,
+        40
+      ],
+      "arc": [
+        230,
+        70,
+        50
+      ],
+      "bolt": [
+        170,
+        30,
+        30
+      ],
+      "spark": [
+        240,
+        90,
+        70
+      ]
+    },
+    "white": {
+      "pulse": [
+        200,
+        200,
+        200
+      ],
+      "arc": [
+        230,
+        230,
+        230
+      ],
+      "bolt": [
+        180,
+        180,
+        180
+      ],
+      "spark": [
+        240,
+        240,
+        240
+      ]
+    },
+    "summon": {
+      "pulse": [
+        180,
+        140,
+        220
+      ],
+      "arc": [
+        210,
+        170,
+        250
+      ],
+      "bolt": [
+        150,
+        110,
+        200
+      ],
+      "spark": [
+        220,
+        180,
+        250
+      ]
+    }
   },
   "recipes": {
     "melee_hit": {
-      "sfx": "melee", "hit_sfx": "hit", "camera_shake": 0,
+      "sfx": "melee",
+      "hit_sfx": "hit",
+      "camera_shake": 0,
       "steps": [
-        { "kind": "pulse", "radius": 48, "duration": 0.35, "delay": 0.0 },
-        { "kind": "spark", "count": 4, "duration": 0.25, "delay": 0.0 }
+        {
+          "kind": "pulse",
+          "radius": 48,
+          "duration": 0.35,
+          "delay": 0.0
+        },
+        {
+          "kind": "spark",
+          "count": 4,
+          "duration": 0.25,
+          "delay": 0.0
+        }
       ]
     },
     "skill_slash": {
-      "sfx": "slash", "hit_sfx": "hit", "camera_shake": 2,
+      "sfx": "slash",
+      "hit_sfx": "hit",
+      "camera_shake": 2,
       "steps": [
-        { "kind": "slash_arc", "radius": 72, "duration": 0.35, "delay": 0.0 },
-        { "kind": "spark", "count": 4, "duration": 0.28, "delay": 0.08 },
-        { "kind": "cone", "radius": 64, "duration": 0.30, "delay": 0.15 }
+        {
+          "kind": "slash_arc",
+          "radius": 72,
+          "duration": 0.35,
+          "delay": 0.0
+        },
+        {
+          "kind": "spark",
+          "count": 4,
+          "duration": 0.28,
+          "delay": 0.08
+        },
+        {
+          "kind": "cone",
+          "radius": 64,
+          "duration": 0.3,
+          "delay": 0.15
+        }
       ]
     },
     "skill_fireball": {
-      "sfx": "bolt", "hit_sfx": "hit", "camera_shake": 4,
+      "sfx": "bolt",
+      "hit_sfx": "hit",
+      "camera_shake": 4,
       "steps": [
-        { "kind": "bolt", "radius": 0, "duration": 0.45, "delay": 0.0 },
-        { "kind": "pulse", "radius": 48, "duration": 0.40, "layers": 3, "layer_delay": 0.08, "delay": 0.06 },
-        { "kind": "spark", "count": 14, "duration": 0.40, "delay": 0.15 }
+        {
+          "kind": "bolt",
+          "radius": 0,
+          "duration": 0.45,
+          "delay": 0.0
+        },
+        {
+          "kind": "pulse",
+          "radius": 48,
+          "duration": 0.4,
+          "layers": 3,
+          "layer_delay": 0.08,
+          "delay": 0.06
+        },
+        {
+          "kind": "spark",
+          "count": 14,
+          "duration": 0.4,
+          "delay": 0.15
+        }
       ]
     },
     "skill_heal": {
-      "sfx": "heal", "hit_sfx": "", "camera_shake": 0,
+      "sfx": "heal",
+      "hit_sfx": "",
+      "camera_shake": 0,
       "steps": [
-        { "kind": "pulse", "radius": 48, "duration": 0.50, "delay": 0.0 },
-        { "kind": "spark", "count": 10, "duration": 0.60, "delay": 0.10 }
+        {
+          "kind": "pulse",
+          "radius": 48,
+          "duration": 0.5,
+          "delay": 0.0
+        },
+        {
+          "kind": "spark",
+          "count": 10,
+          "duration": 0.6,
+          "delay": 0.1
+        }
       ]
     },
     "skill_ice_nova": {
-      "sfx": "ice_crack", "hit_sfx": "hit", "camera_shake": 5,
+      "sfx": "ice_crack",
+      "hit_sfx": "hit",
+      "camera_shake": 5,
       "steps": [
-        { "kind": "pulse", "radius": 120, "duration": 0.50, "layers": 3, "layer_delay": 0.06, "delay": 0.0 },
-        { "kind": "pulse", "radius": 180, "duration": 0.35, "delay": 0.12 },
-        { "kind": "spark", "count": 20, "duration": 0.50, "delay": 0.25 },
-        { "kind": "flash", "radius": 140, "duration": 0.15, "delay": 0.35 }
+        {
+          "kind": "pulse",
+          "radius": 120,
+          "duration": 0.5,
+          "layers": 3,
+          "layer_delay": 0.06,
+          "delay": 0.0
+        },
+        {
+          "kind": "pulse",
+          "radius": 180,
+          "duration": 0.35,
+          "delay": 0.12
+        },
+        {
+          "kind": "spark",
+          "count": 20,
+          "duration": 0.5,
+          "delay": 0.25
+        },
+        {
+          "kind": "flash",
+          "radius": 140,
+          "duration": 0.15,
+          "delay": 0.35
+        }
       ]
     },
     "skill_chain_lightning": {
-      "sfx": "lightning", "hit_sfx": "hit", "camera_shake": 3,
+      "sfx": "lightning",
+      "hit_sfx": "hit",
+      "camera_shake": 3,
       "steps": [
-        { "kind": "bolt", "radius": 0, "duration": 0.30, "delay": 0.0 },
-        { "kind": "spark", "count": 8, "duration": 0.22, "delay": 0.06 },
-        { "kind": "pulse", "radius": 32, "duration": 0.25, "layers": 2, "layer_delay": 0.04, "delay": 0.10 },
-        { "kind": "spark", "count": 6, "duration": 0.20, "delay": 0.16 }
+        {
+          "kind": "bolt",
+          "radius": 0,
+          "duration": 0.3,
+          "delay": 0.0
+        },
+        {
+          "kind": "spark",
+          "count": 8,
+          "duration": 0.22,
+          "delay": 0.06
+        },
+        {
+          "kind": "pulse",
+          "radius": 32,
+          "duration": 0.25,
+          "layers": 2,
+          "layer_delay": 0.04,
+          "delay": 0.1
+        },
+        {
+          "kind": "spark",
+          "count": 6,
+          "duration": 0.2,
+          "delay": 0.16
+        }
       ]
     },
     "boss_cone_attack": {
-      "sfx": "slash", "hit_sfx": "hit", "camera_shake": 6,
+      "sfx": "slash",
+      "hit_sfx": "hit",
+      "camera_shake": 6,
       "steps": [
-        { "kind": "pulse", "radius": 48, "duration": 0.50, "delay": 0.0 },
-        { "kind": "pulse", "radius": 80, "duration": 0.45, "delay": 0.10 },
-        { "kind": "pulse", "radius": 120, "duration": 0.40, "delay": 0.20 },
-        { "kind": "spark", "count": 12, "duration": 0.50, "delay": 0.25 }
+        {
+          "kind": "pulse",
+          "radius": 48,
+          "duration": 0.5,
+          "delay": 0.0
+        },
+        {
+          "kind": "pulse",
+          "radius": 80,
+          "duration": 0.45,
+          "delay": 0.1
+        },
+        {
+          "kind": "pulse",
+          "radius": 120,
+          "duration": 0.4,
+          "delay": 0.2
+        },
+        {
+          "kind": "spark",
+          "count": 12,
+          "duration": 0.5,
+          "delay": 0.25
+        }
       ]
     },
     "boss_circle_aoe": {
-      "sfx": "bolt", "hit_sfx": "hit", "camera_shake": 8,
+      "sfx": "bolt",
+      "hit_sfx": "hit",
+      "camera_shake": 8,
       "steps": [
-        { "kind": "pulse", "radius": 60, "duration": 0.50, "layers": 3, "layer_delay": 0.08, "delay": 0.0 },
-        { "kind": "spark", "count": 16, "duration": 0.50, "delay": 0.15 }
+        {
+          "kind": "pulse",
+          "radius": 60,
+          "duration": 0.5,
+          "layers": 3,
+          "layer_delay": 0.08,
+          "delay": 0.0
+        },
+        {
+          "kind": "spark",
+          "count": 16,
+          "duration": 0.5,
+          "delay": 0.15
+        }
       ]
     },
     "boss_summon": {
-      "sfx": "summon", "hit_sfx": "", "camera_shake": 2,
+      "sfx": "summon",
+      "hit_sfx": "",
+      "camera_shake": 2,
       "steps": [
-        { "kind": "pulse", "radius": 50, "duration": 0.60, "layers": 3, "layer_delay": 0.12, "delay": 0.0 },
-        { "kind": "spark", "count": 10, "duration": 0.50, "delay": 0.20 }
+        {
+          "kind": "pulse",
+          "radius": 50,
+          "duration": 0.6,
+          "layers": 3,
+          "layer_delay": 0.12,
+          "delay": 0.0
+        },
+        {
+          "kind": "spark",
+          "count": 10,
+          "duration": 0.5,
+          "delay": 0.2
+        }
       ]
     },
     "time_stop": {
-      "sfx": "timestop", "hit_sfx": "", "camera_shake": 0,
+      "sfx": "timestop",
+      "hit_sfx": "",
+      "camera_shake": 0,
       "steps": [
-        { "kind": "pulse", "radius": 400, "duration": 1.00, "delay": 0.0, "color": "time" },
-        { "kind": "pulse", "radius": 600, "duration": 0.80, "delay": 0.20, "color": "time" },
-        { "kind": "pulse", "radius": 900, "duration": 0.60, "delay": 0.40, "color": "time" }
+        {
+          "kind": "pulse",
+          "radius": 400,
+          "duration": 1.0,
+          "delay": 0.0,
+          "color": "time"
+        },
+        {
+          "kind": "pulse",
+          "radius": 600,
+          "duration": 0.8,
+          "delay": 0.2,
+          "color": "time"
+        },
+        {
+          "kind": "pulse",
+          "radius": 900,
+          "duration": 0.6,
+          "delay": 0.4,
+          "color": "time"
+        }
       ]
     },
     "skill_the_world": {
-      "sfx": "timestop", "hit_sfx": "", "camera_shake": 3,
+      "sfx": "timestop",
+      "hit_sfx": "",
+      "camera_shake": 3,
       "steps": [
-        { "kind": "flash", "radius": 140, "duration": 0.15, "delay": 0.0, "color": "time" },
-        { "kind": "pulse", "radius": 120, "duration": 0.50, "layers": 3, "layer_delay": 0.06, "delay": 0.08, "color": "time" },
-        { "kind": "pulse", "radius": 220, "duration": 0.40, "delay": 0.20, "color": "time" },
-        { "kind": "spark", "count": 18, "duration": 0.50, "delay": 0.30, "color": "time" }
+        {
+          "kind": "flash",
+          "radius": 140,
+          "duration": 0.15,
+          "delay": 0.0,
+          "color": "time"
+        },
+        {
+          "kind": "pulse",
+          "radius": 120,
+          "duration": 0.5,
+          "layers": 3,
+          "layer_delay": 0.06,
+          "delay": 0.08,
+          "color": "time"
+        },
+        {
+          "kind": "pulse",
+          "radius": 220,
+          "duration": 0.4,
+          "delay": 0.2,
+          "color": "time"
+        },
+        {
+          "kind": "spark",
+          "count": 18,
+          "duration": 0.5,
+          "delay": 0.3,
+          "color": "time"
+        }
       ]
     },
     "skill_meteor": {
-      "sfx": "bolt", "hit_sfx": "hit", "camera_shake": 6,
+      "sfx": "bolt",
+      "hit_sfx": "hit",
+      "camera_shake": 6,
       "steps": [
-        { "kind": "bolt", "radius": 0, "duration": 0.45, "delay": 0.0, "color": "fire" },
-        { "kind": "shockwave", "radius": 90, "duration": 0.55, "layers": 3, "layer_delay": 0.08, "delay": 0.05, "color": "fire" },
-        { "kind": "pulse", "radius": 70, "duration": 0.50, "layers": 3, "layer_delay": 0.06, "delay": 0.10, "color": "fire" },
-        { "kind": "spark", "count": 16, "duration": 0.55, "delay": 0.18, "color": "fire" },
-        { "kind": "flash", "radius": 90, "duration": 0.18, "delay": 0.22, "color": "fire" }
+        {
+          "kind": "bolt",
+          "radius": 0,
+          "duration": 0.45,
+          "delay": 0.0,
+          "color": "fire"
+        },
+        {
+          "kind": "shockwave",
+          "radius": 90,
+          "duration": 0.55,
+          "layers": 3,
+          "layer_delay": 0.08,
+          "delay": 0.05,
+          "color": "fire"
+        },
+        {
+          "kind": "pulse",
+          "radius": 70,
+          "duration": 0.5,
+          "layers": 3,
+          "layer_delay": 0.06,
+          "delay": 0.1,
+          "color": "fire"
+        },
+        {
+          "kind": "spark",
+          "count": 16,
+          "duration": 0.55,
+          "delay": 0.18,
+          "color": "fire"
+        },
+        {
+          "kind": "flash",
+          "radius": 90,
+          "duration": 0.18,
+          "delay": 0.22,
+          "color": "fire"
+        }
       ]
     },
     "skill_blood_slash": {
-      "sfx": "slash", "hit_sfx": "hit", "camera_shake": 2,
+      "sfx": "slash",
+      "hit_sfx": "hit",
+      "camera_shake": 2,
       "steps": [
-        { "kind": "slash_arc", "radius": 72, "duration": 0.35, "delay": 0.0, "color": "bleed" },
-        { "kind": "spark", "count": 6, "duration": 0.30, "delay": 0.10, "color": "bleed" },
-        { "kind": "cone", "radius": 60, "duration": 0.30, "delay": 0.16, "color": "bleed" }
+        {
+          "kind": "slash_arc",
+          "radius": 72,
+          "duration": 0.35,
+          "delay": 0.0,
+          "color": "bleed"
+        },
+        {
+          "kind": "spark",
+          "count": 6,
+          "duration": 0.3,
+          "delay": 0.1,
+          "color": "bleed"
+        },
+        {
+          "kind": "cone",
+          "radius": 60,
+          "duration": 0.3,
+          "delay": 0.16,
+          "color": "bleed"
+        }
       ]
     },
     "skill_frost_edge": {
-      "sfx": "slash", "hit_sfx": "hit", "camera_shake": 2,
+      "sfx": "slash",
+      "hit_sfx": "hit",
+      "camera_shake": 2,
       "steps": [
-        { "kind": "slash_arc", "radius": 72, "duration": 0.35, "delay": 0.0, "color": "ice" },
-        { "kind": "spark", "count": 6, "duration": 0.30, "delay": 0.10, "color": "ice" },
-        { "kind": "cone", "radius": 60, "duration": 0.30, "delay": 0.16, "color": "ice" }
+        {
+          "kind": "slash_arc",
+          "radius": 72,
+          "duration": 0.35,
+          "delay": 0.0,
+          "color": "ice"
+        },
+        {
+          "kind": "spark",
+          "count": 6,
+          "duration": 0.3,
+          "delay": 0.1,
+          "color": "ice"
+        },
+        {
+          "kind": "cone",
+          "radius": 60,
+          "duration": 0.3,
+          "delay": 0.16,
+          "color": "ice"
+        }
       ]
     },
     "skill_shadow_slice": {
-      "sfx": "slash", "hit_sfx": "hit", "camera_shake": 3,
+      "sfx": "slash",
+      "hit_sfx": "hit",
+      "camera_shake": 3,
       "steps": [
-        { "kind": "slash_arc", "radius": 64, "duration": 0.35, "delay": 0.0, "color": "shadow" },
-        { "kind": "smoke", "count": 5, "duration": 0.55, "delay": 0.08, "color": "shadow" },
-        { "kind": "flash", "radius": 50, "duration": 0.16, "delay": 0.18, "color": "shadow" },
-        { "kind": "spark", "count": 8, "duration": 0.35, "delay": 0.24, "color": "shadow" }
+        {
+          "kind": "slash_arc",
+          "radius": 64,
+          "duration": 0.35,
+          "delay": 0.0,
+          "color": "shadow"
+        },
+        {
+          "kind": "smoke",
+          "count": 5,
+          "duration": 0.55,
+          "delay": 0.08,
+          "color": "shadow"
+        },
+        {
+          "kind": "flash",
+          "radius": 50,
+          "duration": 0.16,
+          "delay": 0.18,
+          "color": "shadow"
+        },
+        {
+          "kind": "spark",
+          "count": 8,
+          "duration": 0.35,
+          "delay": 0.24,
+          "color": "shadow"
+        }
       ]
     },
     "skill_self_heal": {
-      "sfx": "heal", "hit_sfx": "", "camera_shake": 0,
+      "sfx": "heal",
+      "hit_sfx": "",
+      "camera_shake": 0,
       "steps": [
-        { "kind": "pulse", "radius": 48, "duration": 0.55, "delay": 0.0, "color": "heal" },
-        { "kind": "spark", "count": 10, "duration": 0.60, "delay": 0.10, "color": "heal" }
+        {
+          "kind": "pulse",
+          "radius": 48,
+          "duration": 0.55,
+          "delay": 0.0,
+          "color": "heal"
+        },
+        {
+          "kind": "spark",
+          "count": 10,
+          "duration": 0.6,
+          "delay": 0.1,
+          "color": "heal"
+        }
       ]
     },
     "skill_blood_pact": {
-      "sfx": "heal", "hit_sfx": "", "camera_shake": 1,
+      "sfx": "heal",
+      "hit_sfx": "",
+      "camera_shake": 1,
       "steps": [
-        { "kind": "pulse", "radius": 48, "duration": 0.50, "layers": 2, "layer_delay": 0.08, "delay": 0.0, "color": "bleed" },
-        { "kind": "spark", "count": 8, "duration": 0.50, "delay": 0.12, "color": "heal" },
-        { "kind": "flash", "radius": 40, "duration": 0.15, "delay": 0.20, "color": "heal" }
+        {
+          "kind": "pulse",
+          "radius": 48,
+          "duration": 0.5,
+          "layers": 2,
+          "layer_delay": 0.08,
+          "delay": 0.0,
+          "color": "bleed"
+        },
+        {
+          "kind": "spark",
+          "count": 8,
+          "duration": 0.5,
+          "delay": 0.12,
+          "color": "heal"
+        },
+        {
+          "kind": "flash",
+          "radius": 40,
+          "duration": 0.15,
+          "delay": 0.2,
+          "color": "heal"
+        }
       ]
     },
     "skill_blizzard_ward": {
-      "sfx": "heal", "hit_sfx": "", "camera_shake": 1,
+      "sfx": "heal",
+      "hit_sfx": "",
+      "camera_shake": 1,
       "steps": [
-        { "kind": "pulse", "radius": 48, "duration": 0.55, "layers": 3, "layer_delay": 0.10, "delay": 0.0, "color": "ice" },
-        { "kind": "spark", "count": 10, "duration": 0.55, "delay": 0.15, "color": "ice" },
-        { "kind": "flash", "radius": 40, "duration": 0.15, "delay": 0.25, "color": "ice" }
+        {
+          "kind": "pulse",
+          "radius": 48,
+          "duration": 0.55,
+          "layers": 3,
+          "layer_delay": 0.1,
+          "delay": 0.0,
+          "color": "ice"
+        },
+        {
+          "kind": "spark",
+          "count": 10,
+          "duration": 0.55,
+          "delay": 0.15,
+          "color": "ice"
+        },
+        {
+          "kind": "flash",
+          "radius": 40,
+          "duration": 0.15,
+          "delay": 0.25,
+          "color": "ice"
+        }
       ]
     },
     "skill_blood_frenzy": {
-      "sfx": "slash", "hit_sfx": "hit", "camera_shake": 4,
+      "sfx": "slash",
+      "hit_sfx": "hit",
+      "camera_shake": 4,
       "steps": [
-        { "kind": "pulse", "radius": 56, "duration": 0.45, "layers": 3, "layer_delay": 0.07, "delay": 0.0, "color": "bleed" },
-        { "kind": "pulse", "radius": 90, "duration": 0.40, "delay": 0.12, "color": "bleed" },
-        { "kind": "spark", "count": 20, "duration": 0.50, "delay": 0.20, "color": "bleed" },
-        { "kind": "flash", "radius": 70, "duration": 0.16, "delay": 0.28, "color": "bleed" }
+        {
+          "kind": "pulse",
+          "radius": 56,
+          "duration": 0.45,
+          "layers": 3,
+          "layer_delay": 0.07,
+          "delay": 0.0,
+          "color": "bleed"
+        },
+        {
+          "kind": "pulse",
+          "radius": 90,
+          "duration": 0.4,
+          "delay": 0.12,
+          "color": "bleed"
+        },
+        {
+          "kind": "spark",
+          "count": 20,
+          "duration": 0.5,
+          "delay": 0.2,
+          "color": "bleed"
+        },
+        {
+          "kind": "flash",
+          "radius": 70,
+          "duration": 0.16,
+          "delay": 0.28,
+          "color": "bleed"
+        }
       ]
     },
     "skill_summon_spirit": {
-      "sfx": "bolt", "hit_sfx": "", "camera_shake": 2,
+      "sfx": "bolt",
+      "hit_sfx": "",
+      "camera_shake": 2,
       "steps": [
-        { "kind": "pulse", "radius": 50, "duration": 0.60, "layers": 3, "layer_delay": 0.12, "delay": 0.0, "color": "summon" },
-        { "kind": "spark", "count": 10, "duration": 0.55, "delay": 0.20, "color": "summon" },
-        { "kind": "flash", "radius": 60, "duration": 0.18, "delay": 0.30, "color": "summon" }
+        {
+          "kind": "pulse",
+          "radius": 50,
+          "duration": 0.6,
+          "layers": 3,
+          "layer_delay": 0.12,
+          "delay": 0.0,
+          "color": "summon"
+        },
+        {
+          "kind": "spark",
+          "count": 10,
+          "duration": 0.55,
+          "delay": 0.2,
+          "color": "summon"
+        },
+        {
+          "kind": "flash",
+          "radius": 60,
+          "duration": 0.18,
+          "delay": 0.3,
+          "color": "summon"
+        }
       ]
     },
     "level_up": {
-      "sfx": "levelup", "hit_sfx": "", "camera_shake": 1,
+      "sfx": "levelup",
+      "hit_sfx": "",
+      "camera_shake": 1,
       "steps": [
-        { "kind": "pulse", "radius": 80, "duration": 0.70, "delay": 0.0 },
-        { "kind": "spark", "count": 20, "duration": 0.60, "delay": 0.15 },
-        { "kind": "flash", "radius": 100, "duration": 0.20, "delay": 0.30 }
+        {
+          "kind": "pulse",
+          "radius": 80,
+          "duration": 0.7,
+          "delay": 0.0
+        },
+        {
+          "kind": "spark",
+          "count": 20,
+          "duration": 0.6,
+          "delay": 0.15
+        },
+        {
+          "kind": "flash",
+          "radius": 100,
+          "duration": 0.2,
+          "delay": 0.3
+        }
       ]
     },
     "boss_phase2": {
-      "sfx": "hit", "hit_sfx": "", "camera_shake": 10,
+      "sfx": "hit",
+      "hit_sfx": "",
+      "camera_shake": 10,
       "steps": [
-        { "kind": "flash", "radius": 120, "duration": 0.12, "delay": 0.0 },
-        { "kind": "flash", "radius": 250, "duration": 0.20, "delay": 0.08 },
-        { "kind": "pulse", "radius": 200, "duration": 0.80, "layers": 3, "layer_delay": 0.10, "delay": 0.25 },
-        { "kind": "spark", "count": 30, "duration": 0.70, "delay": 0.40 },
-        { "kind": "pulse", "radius": 350, "duration": 0.50, "delay": 0.70 }
+        {
+          "kind": "flash",
+          "radius": 120,
+          "duration": 0.12,
+          "delay": 0.0
+        },
+        {
+          "kind": "flash",
+          "radius": 250,
+          "duration": 0.2,
+          "delay": 0.08
+        },
+        {
+          "kind": "pulse",
+          "radius": 200,
+          "duration": 0.8,
+          "layers": 3,
+          "layer_delay": 0.1,
+          "delay": 0.25
+        },
+        {
+          "kind": "spark",
+          "count": 30,
+          "duration": 0.7,
+          "delay": 0.4
+        },
+        {
+          "kind": "pulse",
+          "radius": 350,
+          "duration": 0.5,
+          "delay": 0.7
+        }
       ]
     },
     "fire_hit": {
-      "sfx": "hit", "hit_sfx": "", "camera_shake": 1,
+      "sfx": "hit",
+      "hit_sfx": "",
+      "camera_shake": 1,
       "steps": [
-        { "kind": "pulse", "radius": 32, "duration": 0.32, "delay": 0.0, "color": "fire" },
-        { "kind": "spark", "count": 4, "duration": 0.28, "delay": 0.05, "color": "fire" }
+        {
+          "kind": "pulse",
+          "radius": 32,
+          "duration": 0.32,
+          "delay": 0.0,
+          "color": "fire"
+        },
+        {
+          "kind": "spark",
+          "count": 4,
+          "duration": 0.28,
+          "delay": 0.05,
+          "color": "fire"
+        }
       ]
     },
     "fire_critical": {
-      "sfx": "hit", "hit_sfx": "", "camera_shake": 5,
+      "sfx": "hit",
+      "hit_sfx": "",
+      "camera_shake": 5,
       "steps": [
-        { "kind": "explosion", "radius": 34, "duration": 0.42, "count": 12, "delay": 0.0, "color": "fire" },
-        { "kind": "flash", "radius": 40, "duration": 0.16, "delay": 0.06, "color": "fire" },
-        { "kind": "spark", "count": 12, "duration": 0.45, "delay": 0.12, "color": "fire" }
+        {
+          "kind": "explosion",
+          "radius": 34,
+          "duration": 0.42,
+          "count": 12,
+          "delay": 0.0,
+          "color": "fire"
+        },
+        {
+          "kind": "flash",
+          "radius": 40,
+          "duration": 0.16,
+          "delay": 0.06,
+          "color": "fire"
+        },
+        {
+          "kind": "spark",
+          "count": 12,
+          "duration": 0.45,
+          "delay": 0.12,
+          "color": "fire"
+        }
       ]
     },
     "fire_upgrade": {
-      "sfx": "hit", "hit_sfx": "", "camera_shake": 2,
+      "sfx": "hit",
+      "hit_sfx": "",
+      "camera_shake": 2,
       "steps": [
-        { "kind": "pulse", "radius": 44, "duration": 0.55, "layers": 3, "layer_delay": 0.08, "delay": 0.0, "color": "fire" },
-        { "kind": "spark", "count": 12, "duration": 0.50, "delay": 0.15, "color": "fire" }
+        {
+          "kind": "pulse",
+          "radius": 44,
+          "duration": 0.55,
+          "layers": 3,
+          "layer_delay": 0.08,
+          "delay": 0.0,
+          "color": "fire"
+        },
+        {
+          "kind": "spark",
+          "count": 12,
+          "duration": 0.5,
+          "delay": 0.15,
+          "color": "fire"
+        }
       ]
     },
     "ice_slow": {
-      "sfx": "hit", "hit_sfx": "", "camera_shake": 0,
+      "sfx": "hit",
+      "hit_sfx": "",
+      "camera_shake": 0,
       "steps": [
-        { "kind": "pulse", "radius": 30, "duration": 0.35, "delay": 0.0, "color": "ice" },
-        { "kind": "spark", "count": 4, "duration": 0.30, "delay": 0.06, "color": "ice" }
+        {
+          "kind": "pulse",
+          "radius": 30,
+          "duration": 0.35,
+          "delay": 0.0,
+          "color": "ice"
+        },
+        {
+          "kind": "spark",
+          "count": 4,
+          "duration": 0.3,
+          "delay": 0.06,
+          "color": "ice"
+        }
       ]
     },
     "ice_freeze": {
-      "sfx": "hit", "hit_sfx": "", "camera_shake": 3,
+      "sfx": "hit",
+      "hit_sfx": "",
+      "camera_shake": 3,
       "steps": [
-        { "kind": "shockwave", "radius": 44, "duration": 0.45, "layers": 2, "layer_delay": 0.06, "delay": 0.0, "color": "ice" },
-        { "kind": "flash", "radius": 36, "duration": 0.15, "delay": 0.08, "color": "ice" },
-        { "kind": "spark", "count": 10, "duration": 0.40, "delay": 0.14, "color": "ice" }
+        {
+          "kind": "shockwave",
+          "radius": 44,
+          "duration": 0.45,
+          "layers": 2,
+          "layer_delay": 0.06,
+          "delay": 0.0,
+          "color": "ice"
+        },
+        {
+          "kind": "flash",
+          "radius": 36,
+          "duration": 0.15,
+          "delay": 0.08,
+          "color": "ice"
+        },
+        {
+          "kind": "spark",
+          "count": 10,
+          "duration": 0.4,
+          "delay": 0.14,
+          "color": "ice"
+        }
       ]
     },
     "ice_upgrade": {
-      "sfx": "hit", "hit_sfx": "", "camera_shake": 2,
+      "sfx": "hit",
+      "hit_sfx": "",
+      "camera_shake": 2,
       "steps": [
-        { "kind": "pulse", "radius": 44, "duration": 0.55, "layers": 3, "layer_delay": 0.08, "delay": 0.0, "color": "ice" },
-        { "kind": "spark", "count": 12, "duration": 0.50, "delay": 0.15, "color": "ice" }
+        {
+          "kind": "pulse",
+          "radius": 44,
+          "duration": 0.55,
+          "layers": 3,
+          "layer_delay": 0.08,
+          "delay": 0.0,
+          "color": "ice"
+        },
+        {
+          "kind": "spark",
+          "count": 12,
+          "duration": 0.5,
+          "delay": 0.15,
+          "color": "ice"
+        }
       ]
     },
     "poison_apply": {
-      "sfx": "hit", "hit_sfx": "", "camera_shake": 0,
+      "sfx": "hit",
+      "hit_sfx": "",
+      "camera_shake": 0,
       "steps": [
-        { "kind": "pulse", "radius": 30, "duration": 0.35, "delay": 0.0, "color": "poison" },
-        { "kind": "spark", "count": 4, "duration": 0.30, "delay": 0.06, "color": "poison" }
+        {
+          "kind": "pulse",
+          "radius": 30,
+          "duration": 0.35,
+          "delay": 0.0,
+          "color": "poison"
+        },
+        {
+          "kind": "spark",
+          "count": 4,
+          "duration": 0.3,
+          "delay": 0.06,
+          "color": "poison"
+        }
       ]
     },
     "poison_tick": {
-      "sfx": "", "hit_sfx": "", "camera_shake": 0,
+      "sfx": "",
+      "hit_sfx": "",
+      "camera_shake": 0,
       "steps": [
-        { "kind": "pulse", "radius": 22, "duration": 0.30, "delay": 0.0, "color": "poison" }
+        {
+          "kind": "pulse",
+          "radius": 22,
+          "duration": 0.3,
+          "delay": 0.0,
+          "color": "poison"
+        }
       ]
     },
     "poison_upgrade": {
-      "sfx": "hit", "hit_sfx": "", "camera_shake": 2,
+      "sfx": "hit",
+      "hit_sfx": "",
+      "camera_shake": 2,
       "steps": [
-        { "kind": "pulse", "radius": 44, "duration": 0.55, "layers": 3, "layer_delay": 0.08, "delay": 0.0, "color": "poison" },
-        { "kind": "spark", "count": 12, "duration": 0.50, "delay": 0.15, "color": "poison" }
+        {
+          "kind": "pulse",
+          "radius": 44,
+          "duration": 0.55,
+          "layers": 3,
+          "layer_delay": 0.08,
+          "delay": 0.0,
+          "color": "poison"
+        },
+        {
+          "kind": "spark",
+          "count": 12,
+          "duration": 0.5,
+          "delay": 0.15,
+          "color": "poison"
+        }
+      ]
+    },
+    "relic_gain_frozen_crystal": {
+      "sfx": "ice_crack",
+      "hit_sfx": "",
+      "camera_shake": 2,
+      "description": "Relic acquisition VFX: frozen_crystal",
+      "steps": [
+        {
+          "kind": "ring",
+          "duration": 0.4,
+          "delay": 0.0,
+          "color": "ice",
+          "radius": 36,
+          "layers": 2
+        },
+        {
+          "kind": "spark",
+          "duration": 0.4,
+          "delay": 0.1,
+          "color": "ice",
+          "count": 4
+        },
+        {
+          "kind": "flash",
+          "duration": 0.4,
+          "delay": 0.18,
+          "color": "ice",
+          "radius": 24
+        }
+      ]
+    },
+    "relic_gain_glacier_shard": {
+      "sfx": "ice_crack",
+      "hit_sfx": "",
+      "camera_shake": 2,
+      "description": "Relic acquisition VFX: glacier_shard",
+      "steps": [
+        {
+          "kind": "spark",
+          "duration": 0.4,
+          "delay": 0.0,
+          "color": "ice",
+          "count": 4
+        },
+        {
+          "kind": "ring",
+          "duration": 0.4,
+          "delay": 0.06,
+          "color": "ice",
+          "radius": 30,
+          "layers": 1
+        },
+        {
+          "kind": "flash",
+          "duration": 0.4,
+          "delay": 0.14,
+          "color": "ice",
+          "radius": 18
+        }
+      ]
+    },
+    "relic_gain_winter_crown": {
+      "sfx": "ice_crack",
+      "hit_sfx": "",
+      "camera_shake": 2,
+      "description": "Relic acquisition VFX: winter_crown",
+      "steps": [
+        {
+          "kind": "ring",
+          "duration": 0.4,
+          "delay": 0.0,
+          "color": "ice",
+          "radius": 28,
+          "layers": 3
+        },
+        {
+          "kind": "aura",
+          "duration": 0.4,
+          "delay": 0.12,
+          "color": "ice",
+          "radius": 40,
+          "layers": 1
+        }
+      ]
+    },
+    "relic_gain_absolute_zero": {
+      "sfx": "ice_crack",
+      "hit_sfx": "",
+      "camera_shake": 2,
+      "description": "Relic acquisition VFX: absolute_zero",
+      "steps": [
+        {
+          "kind": "ring",
+          "duration": 0.4,
+          "delay": 0.0,
+          "color": "ice",
+          "radius": 20,
+          "layers": 1
+        },
+        {
+          "kind": "explosion",
+          "duration": 0.4,
+          "delay": 0.1,
+          "color": "ice",
+          "radius": 34,
+          "count": 10
+        },
+        {
+          "kind": "flash",
+          "duration": 0.4,
+          "delay": 0.22,
+          "color": "ice",
+          "radius": 48
+        }
+      ]
+    },
+    "relic_gain_storm_caller": {
+      "sfx": "lightning",
+      "hit_sfx": "",
+      "camera_shake": 2,
+      "description": "Relic acquisition VFX: storm_caller",
+      "steps": [
+        {
+          "kind": "bolt",
+          "duration": 0.4,
+          "delay": 0.0,
+          "color": "lightning",
+          "count": 4
+        },
+        {
+          "kind": "flash",
+          "duration": 0.4,
+          "delay": 0.08,
+          "color": "lightning",
+          "radius": 40
+        },
+        {
+          "kind": "spark",
+          "duration": 0.4,
+          "delay": 0.12,
+          "color": "lightning",
+          "count": 4
+        }
+      ]
+    },
+    "relic_gain_lightning_rod": {
+      "sfx": "lightning",
+      "hit_sfx": "",
+      "camera_shake": 2,
+      "description": "Relic acquisition VFX: lightning_rod",
+      "steps": [
+        {
+          "kind": "lightning",
+          "duration": 0.4,
+          "delay": 0.0,
+          "color": "lightning",
+          "count": 3,
+          "radius": 44,
+          "target_dist": 44
+        },
+        {
+          "kind": "aura",
+          "duration": 0.4,
+          "delay": 0.1,
+          "color": "lightning",
+          "radius": 30,
+          "layers": 1
+        }
+      ]
+    },
+    "relic_gain_divine_storm": {
+      "sfx": "lightning",
+      "hit_sfx": "",
+      "camera_shake": 2,
+      "description": "Relic acquisition VFX: divine_storm",
+      "steps": [
+        {
+          "kind": "lightning",
+          "duration": 0.4,
+          "delay": 0.0,
+          "color": "lightning",
+          "count": 5,
+          "radius": 56,
+          "target_dist": 56
+        },
+        {
+          "kind": "lightning",
+          "duration": 0.4,
+          "delay": 0.06,
+          "color": "lightning",
+          "count": 3,
+          "radius": 40,
+          "target_dist": 40
+        },
+        {
+          "kind": "flash",
+          "duration": 0.4,
+          "delay": 0.14,
+          "color": "lightning",
+          "radius": 52
+        }
+      ]
+    },
+    "relic_gain_crimson_blade": {
+      "sfx": "slash",
+      "hit_sfx": "",
+      "camera_shake": 2,
+      "description": "Relic acquisition VFX: crimson_blade",
+      "steps": [
+        {
+          "kind": "slash_arc",
+          "duration": 0.4,
+          "delay": 0.0,
+          "color": "blood",
+          "count": 4
+        },
+        {
+          "kind": "spark",
+          "duration": 0.4,
+          "delay": 0.08,
+          "color": "blood",
+          "count": 4
+        }
+      ]
+    },
+    "relic_gain_sacrificial_dagger": {
+      "sfx": "slash",
+      "hit_sfx": "",
+      "camera_shake": 2,
+      "description": "Relic acquisition VFX: sacrificial_dagger",
+      "steps": [
+        {
+          "kind": "ring",
+          "duration": 0.4,
+          "delay": 0.0,
+          "color": "bleed",
+          "radius": 26,
+          "layers": 2
+        },
+        {
+          "kind": "spark",
+          "duration": 0.4,
+          "delay": 0.1,
+          "color": "bleed",
+          "count": 4
+        }
+      ]
+    },
+    "relic_gain_hemoplague": {
+      "sfx": "slash",
+      "hit_sfx": "",
+      "camera_shake": 2,
+      "description": "Relic acquisition VFX: hemoplague",
+      "steps": [
+        {
+          "kind": "smoke",
+          "duration": 0.4,
+          "delay": 0.0,
+          "color": "bleed",
+          "count": 4
+        },
+        {
+          "kind": "ring",
+          "duration": 0.4,
+          "delay": 0.08,
+          "color": "bleed",
+          "radius": 44,
+          "layers": 2
+        },
+        {
+          "kind": "spark",
+          "duration": 0.4,
+          "delay": 0.16,
+          "color": "bleed",
+          "count": 4
+        }
+      ]
+    },
+    "relic_gain_shadow_cloak": {
+      "sfx": "bolt",
+      "hit_sfx": "",
+      "camera_shake": 2,
+      "description": "Relic acquisition VFX: shadow_cloak",
+      "steps": [
+        {
+          "kind": "smoke",
+          "duration": 0.4,
+          "delay": 0.0,
+          "color": "shadow",
+          "count": 4
+        },
+        {
+          "kind": "aura",
+          "duration": 0.4,
+          "delay": 0.12,
+          "color": "shadow",
+          "radius": 34,
+          "layers": 1
+        }
+      ]
+    },
+    "relic_gain_assassin_mark": {
+      "sfx": "bolt",
+      "hit_sfx": "",
+      "camera_shake": 2,
+      "description": "Relic acquisition VFX: assassin_mark",
+      "steps": [
+        {
+          "kind": "slash_arc",
+          "duration": 0.4,
+          "delay": 0.0,
+          "color": "shadow",
+          "count": 4
+        },
+        {
+          "kind": "flash",
+          "duration": 0.4,
+          "delay": 0.1,
+          "color": "shadow",
+          "radius": 30
+        },
+        {
+          "kind": "spark",
+          "duration": 0.4,
+          "delay": 0.14,
+          "color": "shadow",
+          "count": 4
+        }
+      ]
+    },
+    "relic_gain_night_veil": {
+      "sfx": "bolt",
+      "hit_sfx": "",
+      "camera_shake": 2,
+      "description": "Relic acquisition VFX: night_veil",
+      "steps": [
+        {
+          "kind": "smoke",
+          "duration": 0.4,
+          "delay": 0.0,
+          "color": "shadow",
+          "count": 4
+        },
+        {
+          "kind": "ring",
+          "duration": 0.4,
+          "delay": 0.1,
+          "color": "shadow",
+          "radius": 38,
+          "layers": 2
+        }
+      ]
+    },
+    "relic_gain_chrono_stone": {
+      "sfx": "timestop",
+      "hit_sfx": "",
+      "camera_shake": 2,
+      "description": "Relic acquisition VFX: chrono_stone",
+      "steps": [
+        {
+          "kind": "ring",
+          "duration": 0.4,
+          "delay": 0.0,
+          "color": "time",
+          "radius": 34,
+          "layers": 3
+        },
+        {
+          "kind": "spark",
+          "duration": 0.4,
+          "delay": 0.12,
+          "color": "time",
+          "count": 4
+        }
+      ]
+    },
+    "relic_gain_paradox_orb": {
+      "sfx": "timestop",
+      "hit_sfx": "",
+      "camera_shake": 2,
+      "description": "Relic acquisition VFX: paradox_orb",
+      "steps": [
+        {
+          "kind": "ring",
+          "duration": 0.4,
+          "delay": 0.0,
+          "color": "time",
+          "radius": 46,
+          "layers": 2
+        },
+        {
+          "kind": "flash",
+          "duration": 0.4,
+          "delay": 0.14,
+          "color": "time",
+          "radius": 36
+        },
+        {
+          "kind": "spark",
+          "duration": 0.4,
+          "delay": 0.2,
+          "color": "time",
+          "count": 4
+        }
+      ]
+    },
+    "relic_gain_chaos_dice": {
+      "sfx": "heal",
+      "hit_sfx": "",
+      "camera_shake": 2,
+      "description": "Relic acquisition VFX: chaos_dice",
+      "steps": [
+        {
+          "kind": "spark",
+          "duration": 0.4,
+          "delay": 0.0,
+          "color": "gold",
+          "count": 4
+        },
+        {
+          "kind": "flash",
+          "duration": 0.4,
+          "delay": 0.1,
+          "color": "gold",
+          "radius": 26
+        },
+        {
+          "kind": "ring",
+          "duration": 0.4,
+          "delay": 0.04,
+          "color": "gold",
+          "radius": 22,
+          "layers": 1
+        }
+      ]
+    },
+    "relic_gain_magic_quill": {
+      "sfx": "heal",
+      "hit_sfx": "",
+      "camera_shake": 2,
+      "description": "Relic acquisition VFX: magic_quill",
+      "steps": [
+        {
+          "kind": "spark",
+          "duration": 0.4,
+          "delay": 0.0,
+          "color": "white",
+          "count": 4
+        },
+        {
+          "kind": "slash_arc",
+          "duration": 0.4,
+          "delay": 0.08,
+          "color": "white",
+          "count": 4
+        }
+      ]
+    },
+    "relic_gain_god_hand": {
+      "sfx": "heal",
+      "hit_sfx": "",
+      "camera_shake": 2,
+      "description": "Relic acquisition VFX: god_hand",
+      "steps": [
+        {
+          "kind": "aura",
+          "duration": 0.4,
+          "delay": 0.0,
+          "color": "holy",
+          "radius": 48,
+          "layers": 1
+        },
+        {
+          "kind": "ring",
+          "duration": 0.4,
+          "delay": 0.1,
+          "color": "holy",
+          "radius": 52,
+          "layers": 2
+        },
+        {
+          "kind": "flash",
+          "duration": 0.4,
+          "delay": 0.2,
+          "color": "holy",
+          "radius": 44
+        }
+      ]
+    },
+    "relic_gain_bastion_shield": {
+      "sfx": "heal",
+      "hit_sfx": "",
+      "camera_shake": 2,
+      "description": "Relic acquisition VFX: bastion_shield",
+      "steps": [
+        {
+          "kind": "aura",
+          "duration": 0.4,
+          "delay": 0.0,
+          "color": "holy",
+          "radius": 42,
+          "layers": 1
+        },
+        {
+          "kind": "ring",
+          "duration": 0.4,
+          "delay": 0.08,
+          "color": "holy",
+          "radius": 36,
+          "layers": 2
+        }
+      ]
+    },
+    "relic_gain_unyielding": {
+      "sfx": "heal",
+      "hit_sfx": "",
+      "camera_shake": 2,
+      "description": "Relic acquisition VFX: unyielding",
+      "steps": [
+        {
+          "kind": "ring",
+          "duration": 0.4,
+          "delay": 0.0,
+          "color": "gold",
+          "radius": 30,
+          "layers": 2
+        },
+        {
+          "kind": "flash",
+          "duration": 0.4,
+          "delay": 0.16,
+          "color": "gold",
+          "radius": 50
+        }
+      ]
+    },
+    "relic_gain_iron_determination": {
+      "sfx": "heal",
+      "hit_sfx": "",
+      "camera_shake": 2,
+      "description": "Relic acquisition VFX: iron_determination",
+      "steps": [
+        {
+          "kind": "aura",
+          "duration": 0.4,
+          "delay": 0.0,
+          "color": "white",
+          "radius": 38,
+          "layers": 1
+        },
+        {
+          "kind": "spark",
+          "duration": 0.4,
+          "delay": 0.1,
+          "color": "white",
+          "count": 4
+        }
+      ]
+    },
+    "relic_gain_phoenix_rebirth": {
+      "sfx": "bolt",
+      "hit_sfx": "",
+      "camera_shake": 2,
+      "description": "Relic acquisition VFX: phoenix_rebirth",
+      "steps": [
+        {
+          "kind": "explosion",
+          "duration": 0.4,
+          "delay": 0.0,
+          "color": "fire",
+          "radius": 46,
+          "count": 12
+        },
+        {
+          "kind": "spark",
+          "duration": 0.4,
+          "delay": 0.12,
+          "color": "fire",
+          "count": 4
+        },
+        {
+          "kind": "flash",
+          "duration": 0.4,
+          "delay": 0.22,
+          "color": "fire",
+          "radius": 54
+        }
+      ]
+    },
+    "relic_gain_phoenix_feather": {
+      "sfx": "bolt",
+      "hit_sfx": "",
+      "camera_shake": 2,
+      "description": "Relic acquisition VFX: phoenix_feather",
+      "steps": [
+        {
+          "kind": "spark",
+          "duration": 0.4,
+          "delay": 0.0,
+          "color": "fire",
+          "count": 4
+        },
+        {
+          "kind": "ring",
+          "duration": 0.4,
+          "delay": 0.08,
+          "color": "fire",
+          "radius": 26,
+          "layers": 1
+        }
+      ]
+    },
+    "relic_gain_soul_chain": {
+      "sfx": "summon",
+      "hit_sfx": "",
+      "camera_shake": 2,
+      "description": "Relic acquisition VFX: soul_chain",
+      "steps": [
+        {
+          "kind": "ring",
+          "duration": 0.4,
+          "delay": 0.0,
+          "color": "summon",
+          "radius": 24,
+          "layers": 3
+        },
+        {
+          "kind": "spark",
+          "duration": 0.4,
+          "delay": 0.1,
+          "color": "summon",
+          "count": 4
+        }
+      ]
+    },
+    "relic_gain_necromancer_tome": {
+      "sfx": "summon",
+      "hit_sfx": "",
+      "camera_shake": 2,
+      "description": "Relic acquisition VFX: necromancer_tome",
+      "steps": [
+        {
+          "kind": "ring",
+          "duration": 0.4,
+          "delay": 0.0,
+          "color": "summon",
+          "radius": 32,
+          "layers": 2
+        },
+        {
+          "kind": "smoke",
+          "duration": 0.4,
+          "delay": 0.1,
+          "color": "summon",
+          "count": 4
+        }
+      ]
+    },
+    "relic_gain_swarm_queen": {
+      "sfx": "heal",
+      "hit_sfx": "",
+      "camera_shake": 2,
+      "description": "Relic acquisition VFX: swarm_queen",
+      "steps": [
+        {
+          "kind": "spark",
+          "duration": 0.4,
+          "delay": 0.0,
+          "color": "poison",
+          "count": 4
+        },
+        {
+          "kind": "smoke",
+          "duration": 0.4,
+          "delay": 0.1,
+          "color": "poison",
+          "count": 4
+        }
+      ]
+    },
+    "relic_gain_spirit_army": {
+      "sfx": "summon",
+      "hit_sfx": "",
+      "camera_shake": 2,
+      "description": "Relic acquisition VFX: spirit_army",
+      "steps": [
+        {
+          "kind": "ring",
+          "duration": 0.4,
+          "delay": 0.0,
+          "color": "summon",
+          "radius": 40,
+          "layers": 3
+        },
+        {
+          "kind": "spark",
+          "duration": 0.4,
+          "delay": 0.14,
+          "color": "summon",
+          "count": 4
+        },
+        {
+          "kind": "aura",
+          "duration": 0.4,
+          "delay": 0.2,
+          "color": "summon",
+          "radius": 46,
+          "layers": 1
+        }
+      ]
+    },
+    "relic_gain_ignition_ring": {
+      "sfx": "bolt",
+      "hit_sfx": "",
+      "camera_shake": 2,
+      "description": "Relic acquisition VFX: ignition_ring",
+      "steps": [
+        {
+          "kind": "ring",
+          "duration": 0.4,
+          "delay": 0.0,
+          "color": "fire",
+          "radius": 28,
+          "layers": 2
+        },
+        {
+          "kind": "spark",
+          "duration": 0.4,
+          "delay": 0.1,
+          "color": "fire",
+          "count": 4
+        },
+        {
+          "kind": "flash",
+          "duration": 0.4,
+          "delay": 0.16,
+          "color": "fire",
+          "radius": 30
+        }
+      ]
+    },
+    "relic_gain_inferno_core": {
+      "sfx": "bolt",
+      "hit_sfx": "",
+      "camera_shake": 2,
+      "description": "Relic acquisition VFX: inferno_core",
+      "steps": [
+        {
+          "kind": "explosion",
+          "duration": 0.4,
+          "delay": 0.0,
+          "color": "fire",
+          "radius": 40,
+          "count": 14
+        },
+        {
+          "kind": "shockwave",
+          "duration": 0.4,
+          "delay": 0.12,
+          "color": "fire",
+          "radius": 56,
+          "count": 3
+        }
+      ]
+    },
+    "relic_gain_venom_vein": {
+      "sfx": "heal",
+      "hit_sfx": "",
+      "camera_shake": 2,
+      "description": "Relic acquisition VFX: venom_vein",
+      "steps": [
+        {
+          "kind": "beam",
+          "duration": 0.4,
+          "delay": 0.0,
+          "color": "poison",
+          "count": 4,
+          "radius": 0,
+          "target_dist": 40
+        },
+        {
+          "kind": "spark",
+          "duration": 0.4,
+          "delay": 0.1,
+          "color": "poison",
+          "count": 4
+        }
+      ]
+    },
+    "relic_gain_plague_heart": {
+      "sfx": "heal",
+      "hit_sfx": "",
+      "camera_shake": 2,
+      "description": "Relic acquisition VFX: plague_heart",
+      "steps": [
+        {
+          "kind": "ring",
+          "duration": 0.4,
+          "delay": 0.0,
+          "color": "poison",
+          "radius": 38,
+          "layers": 2
+        },
+        {
+          "kind": "smoke",
+          "duration": 0.4,
+          "delay": 0.12,
+          "color": "poison",
+          "count": 4
+        },
+        {
+          "kind": "flash",
+          "duration": 0.4,
+          "delay": 0.18,
+          "color": "poison",
+          "radius": 34
+        }
       ]
     }
   }

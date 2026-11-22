@@ -1,4 +1,34 @@
-﻿# P0 文档事实纠错 + CHANGELOG 补更（2026-11-22）
+﻿# 圣物获得演出（Relic Acquisition VFX）— 31 件（2026-11-23）
+
+> 用户拍板只做「获得时视觉演出」，不实现圣物玩法效果。设计文档 `docs/superpowers/specs/2026-11-23-relic-acquisition-vfx-design.md`。
+
+## 范围与边界
+
+审计确认 31 个圣物在代码中零触发逻辑（仅 `relics.json` 文案），故无玩法事件可挂。唯一可靠入口 `RELIC_GAIN` 只在 Boss 掉落 emit（约 1/10 获得路径）。用户三选一拍板：**表现层内部 hook 全覆盖**——`Player::add_relic` 末尾 fire hook，覆盖宝箱/事件/任务/商店/读档/Boss 全部路径，不经过 EventBus（避免触发攻击进化改玩法）。
+
+## 实现
+
+- `relic_vfx_hook.h/.cpp`：全局函数指针 hook，默认空 = no-op（sim/tests 零副作用）。
+- `relic_acquisition_vfx.h/.cpp`：薄层，`load` 26 行 / `process_queue` 19 行。读到 31 映射 → hook 回调把 `{id 深拷贝, 玩家中心坐标}` 入队 → 每帧 drain → `VFXServer::play_recipe` + accent tint(75/25) + `spawn_label` → 写入 `active_effects`。
+- `resources/relic_acquisition_vfx.json`：31 映射（recipe/accent/label/motif/future 规划）。
+- `resources/vfx_recipes.json`：追加 31 条 `relic_gain_<id>` recipe，全用合法 kind（**不用不存在的 pulse**），内容签名两两不同。火毒四件（引燃之戒/炼狱核心/毒脉/瘟疫之心）按用户补齐完整差异化设计。
+- 接入：`GameScene::_ready` 非 sim 时 install、析构 uninstall、`_process_element_events` drain；`player.cpp` 防重 return 之后 fire（重复获得不误播）。
+
+## 约束落实
+
+6 条硬约束全过：不改玩法参数/不虚构事件/表现层不改状态。sim 零副作用经三重确认（`_apply_cli_to_game` 早于场景创建置 `g_sim_mode` + hook 不注册 + golden baseline 逐字节不变）；VFX 走独立 `visual_rng` 不碰 gameplay rng；存档 `rlc:id,scope` 未动；tint 只写 effect 颜色。
+
+## 验证与 Review
+
+ctest **92/92**（新增 `relic_acquisition_vfx_test` 8 例：31 映射完整/合法 kind/两两不同/no-op hook/队列 drain/unmapped 忽略/uninstall 清空/无注册零队列）；sim golden baseline Passed；fn_length 0 超规；validator 0 错 0 警；游戏启动 4s 无崩溃无 VFX 报错；fresh reviewer PASS 无 BLOCKER/MAJOR，3 个 MINOR（中心坐标/负向测试/文档状态）已修。
+
+## 遗留（未来触发演出，文档规划未实现）
+
+绝对零度冻结碎裂、凤凰系复活、天罚连锁雷击、血疫传染、进层隐身、召唤法阵等——需玩法层先 emit 对应事件，届时复用本轮同名 recipe，不重造特效。
+
+---
+
+# P0 文档事实纠错 + CHANGELOG 补更（2026-11-22）
 
 > 全面缺口搜查的 P0 项：README 事实错误、规范 7（CHANGELOG 停更）违规、桌面包嵌套自复制目录、版本表无 tag。用户拍板"全部都做"。
 

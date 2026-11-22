@@ -29,6 +29,7 @@
 #include "systems/weapon_executor.h"  // G9.1
 #include "systems/first_hint.h"       // G10.8-B4: 首遇提示
 #include "vfx_server.h"              // G9: spear lightning VFX
+#include "relic_acquisition_vfx.h"   // 圣物获得演出 (表现层 hook, 不改玩法)
 #include "data/weapon_defs.h"        // G9: Boss drop
 #include "systems/collision_utils.h"
 #include "core/sim/sim_ai.h"         // G5.6
@@ -85,6 +86,7 @@ GameScene::~GameScene() {
     _boss.unregister_events();
     _gameplay.unregister_events();
     _presentation.unregister_events();
+    RelicAcquisitionVfx::uninstall();
 }
 
 // ============================================================
@@ -148,6 +150,9 @@ void GameScene::_draw_event_ui(int sw, int sh) { _interaction.draw_event_ui(sw, 
 // GameScene 实现
 // ============================================================
 void GameScene::_ready() {
+    // 圣物获得演出: sim 不渲染, 不注册 hook (零确定性副作用)
+    if (!g_sim_mode) RelicAcquisitionVfx::install();
+
     // D6: 场景入树时绑定Director
     _boss.init_events();
     _gameplay.init_events();
@@ -1685,6 +1690,9 @@ void GameScene::_process_element_events() {
     for (auto& ev : _elem_events)
         _emit_element_vfx(ev);
     _elem_events.clear();
+
+    // 圣物获得演出: 把 hook 队列 drain 到 active_effects (纯表现, 不改玩法)
+    RelicAcquisitionVfx::process_queue(active_effects);
 }
 
 void GameScene::_emit_element_vfx(const GameEvent& ev) {

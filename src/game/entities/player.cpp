@@ -5,6 +5,7 @@
 #include "resource_manager.h"                 // M4f.2
 #include "game/rendering/sprite_renderer.h"   // M4f.2
 #include "systems/relic_effect_processor.h"
+#include "relic_vfx_hook.h"                       // 表现层: 获得圣物演出 (纯通知, 不改状态)
 #include "world/game_map.h"                    // G10.6-B C1: 朝墙视觉查询
 #include <cmath>
 #include <algorithm>
@@ -404,6 +405,10 @@ void Player::add_relic(const std::string& id, PersistenceScope scope) {
         if (r.id == id) return;
     relics.push_back({id, scope});
     RelicEffectProcessor::apply_passive_for_relic(this, id);
+    // 表现层通知: hook 为空时 no-op (sim/tests 零副作用), 不触碰玩法状态/RNG/存档
+    fire_relic_vfx_hook(id,
+        entity.rect.x + entity.rect.width / 2,
+        entity.rect.y + entity.rect.height / 2);
 }
 
 void Player::remove_relic(const std::string& id) {

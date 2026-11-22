@@ -1,0 +1,438 @@
+{
+  "_comment": "31 圣物获得演出映射；recipe 见 vfx_recipes.json；future 为本轮不实现的触发规划",
+  "_count": 31,
+  "frozen_crystal": {
+    "recipe": "relic_gain_frozen_crystal",
+    "accent": [
+      112,
+      223,
+      255
+    ],
+    "label": "冰晶",
+    "motif": "shard_growth",
+    "future": {
+      "event": "ATTACK_SLOW_APPLY",
+      "status": "planned"
+    }
+  },
+  "glacier_shard": {
+    "recipe": "relic_gain_glacier_shard",
+    "accent": [
+      217,
+      247,
+      255
+    ],
+    "label": "冰川碎片",
+    "motif": "shard_burst",
+    "future": {
+      "event": "ICE_DAMAGE_DEALT",
+      "status": "planned"
+    }
+  },
+  "winter_crown": {
+    "recipe": "relic_gain_winter_crown",
+    "accent": [
+      40,
+      127,
+      174
+    ],
+    "label": "寒冬王冠",
+    "motif": "crown_rings",
+    "future": {
+      "event": "FREEZE_DAMAGE_BONUS",
+      "status": "planned"
+    }
+  },
+  "absolute_zero": {
+    "recipe": "relic_gain_absolute_zero",
+    "accent": [
+      255,
+      255,
+      255
+    ],
+    "label": "绝对零度",
+    "motif": "freeze_shatter",
+    "future": {
+      "event": "FREEZE_EXECUTE",
+      "status": "planned"
+    }
+  },
+  "storm_caller": {
+    "recipe": "relic_gain_storm_caller",
+    "accent": [
+      255,
+      230,
+      109
+    ],
+    "label": "风暴呼唤",
+    "motif": "sky_strike",
+    "future": {
+      "event": "LIGHTNING_TIMER",
+      "status": "planned"
+    }
+  },
+  "lightning_rod": {
+    "recipe": "relic_gain_lightning_rod",
+    "accent": [
+      84,
+      125,
+      255
+    ],
+    "label": "避雷针",
+    "motif": "current_walk",
+    "future": {
+      "event": "LIGHTNING_DAMAGE",
+      "status": "planned"
+    }
+  },
+  "divine_storm": {
+    "recipe": "relic_gain_divine_storm",
+    "accent": [
+      167,
+      139,
+      250
+    ],
+    "label": "天罚风暴",
+    "motif": "forked_chains",
+    "future": {
+      "event": "SHOCK_CHAIN",
+      "status": "planned"
+    }
+  },
+  "crimson_blade": {
+    "recipe": "relic_gain_crimson_blade",
+    "accent": [
+      200,
+      16,
+      46
+    ],
+    "label": "猩红之刃",
+    "motif": "red_slash",
+    "future": {
+      "event": "BLEED_APPLY",
+      "status": "planned"
+    }
+  },
+  "sacrificial_dagger": {
+    "recipe": "relic_gain_sacrificial_dagger",
+    "accent": [
+      114,
+      13,
+      36
+    ],
+    "label": "血祭匕首",
+    "motif": "blood_circle",
+    "future": {
+      "event": "HP_SACRIFICE",
+      "status": "planned"
+    }
+  },
+  "hemoplague": {
+    "recipe": "relic_gain_hemoplague",
+    "accent": [
+      255,
+      51,
+      79
+    ],
+    "label": "血疫",
+    "motif": "blood_mist",
+    "future": {
+      "event": "BLEED_SPREAD",
+      "status": "planned"
+    }
+  },
+  "shadow_cloak": {
+    "recipe": "relic_gain_shadow_cloak",
+    "accent": [
+      68,
+      32,
+      95
+    ],
+    "label": "暗影斗篷",
+    "motif": "fade_out",
+    "future": {
+      "event": "INVISIBILITY_APPLY",
+      "status": "planned"
+    }
+  },
+  "assassin_mark": {
+    "recipe": "relic_gain_assassin_mark",
+    "accent": [
+      99,
+      87,
+      200
+    ],
+    "label": "刺客印记",
+    "motif": "dagger_shade",
+    "future": {
+      "event": "STEALTH_BONUS",
+      "status": "planned"
+    }
+  },
+  "night_veil": {
+    "recipe": "relic_gain_night_veil",
+    "accent": [
+      20,
+      16,
+      29
+    ],
+    "label": "夜幕",
+    "motif": "dark_veil",
+    "future": {
+      "event": "LOW_HP_VEIL",
+      "status": "planned"
+    }
+  },
+  "chrono_stone": {
+    "recipe": "relic_gain_chrono_stone",
+    "accent": [
+      255,
+      209,
+      102
+    ],
+    "label": "时之石",
+    "motif": "time_dial",
+    "future": {
+      "event": "COOLDOWN_REDUCE",
+      "status": "planned"
+    }
+  },
+  "paradox_orb": {
+    "recipe": "relic_gain_paradox_orb",
+    "accent": [
+      141,
+      120,
+      255
+    ],
+    "label": "悖论宝珠",
+    "motif": "time_paradox",
+    "future": {
+      "event": "TIMESTOP_END",
+      "status": "planned"
+    }
+  },
+  "chaos_dice": {
+    "recipe": "relic_gain_chaos_dice",
+    "accent": [
+      201,
+      162,
+      39
+    ],
+    "label": "混沌骰子",
+    "motif": "dice_roll",
+    "future": {
+      "event": "SKILL_NO_COOLDOWN",
+      "status": "planned"
+    }
+  },
+  "magic_quill": {
+    "recipe": "relic_gain_magic_quill",
+    "accent": [
+      233,
+      245,
+      255
+    ],
+    "label": "魔力羽毛笔",
+    "motif": "quill_stroke",
+    "future": {
+      "event": "COOLDOWN_REDUCE_MAGIC",
+      "status": "planned"
+    }
+  },
+  "god_hand": {
+    "recipe": "relic_gain_god_hand",
+    "accent": [
+      255,
+      230,
+      160
+    ],
+    "label": "神之手",
+    "motif": "god_palm",
+    "future": {
+      "event": "FATAL_BLOCK",
+      "status": "planned"
+    }
+  },
+  "bastion_shield": {
+    "recipe": "relic_gain_bastion_shield",
+    "accent": [
+      118,
+      185,
+      232
+    ],
+    "label": "堡垒之盾",
+    "motif": "shield_guard",
+    "future": {
+      "event": "DEFENSE_SHIELD",
+      "status": "planned"
+    }
+  },
+  "unyielding": {
+    "recipe": "relic_gain_unyielding",
+    "accent": [
+      255,
+      113,
+      56
+    ],
+    "label": "不屈",
+    "motif": "last_stand",
+    "future": {
+      "event": "MORTAL_BLOCK",
+      "status": "planned"
+    }
+  },
+  "iron_determination": {
+    "recipe": "relic_gain_iron_determination",
+    "accent": [
+      154,
+      167,
+      181
+    ],
+    "label": "钢铁意志",
+    "motif": "iron_skin",
+    "future": {
+      "event": "DEFENSE_BUFF",
+      "status": "planned"
+    }
+  },
+  "phoenix_rebirth": {
+    "recipe": "relic_gain_phoenix_rebirth",
+    "accent": [
+      179,
+      57,
+      18
+    ],
+    "label": "凤凰涅槃",
+    "motif": "phoenix_wings",
+    "future": {
+      "event": "RESURRECT_FULL",
+      "status": "planned"
+    }
+  },
+  "phoenix_feather": {
+    "recipe": "relic_gain_phoenix_feather",
+    "accent": [
+      255,
+      192,
+      56
+    ],
+    "label": "凤凰羽毛",
+    "motif": "single_feather",
+    "future": {
+      "event": "DEATH_1HP",
+      "status": "planned"
+    }
+  },
+  "soul_chain": {
+    "recipe": "relic_gain_soul_chain",
+    "accent": [
+      121,
+      232,
+      219
+    ],
+    "label": "灵魂锁链",
+    "motif": "soul_links",
+    "future": {
+      "event": "SUMMON_ATTACK_BONUS",
+      "status": "planned"
+    }
+  },
+  "necromancer_tome": {
+    "recipe": "relic_gain_necromancer_tome",
+    "accent": [
+      155,
+      123,
+      202
+    ],
+    "label": "亡灵之书",
+    "motif": "tome_rise",
+    "future": {
+      "event": "KILL_RESURRECT",
+      "status": "planned"
+    }
+  },
+  "swarm_queen": {
+    "recipe": "relic_gain_swarm_queen",
+    "accent": [
+      163,
+      217,
+      119
+    ],
+    "label": "虫群女王",
+    "motif": "swarm_nest",
+    "future": {
+      "event": "SUMMON_SWARM",
+      "status": "planned"
+    }
+  },
+  "spirit_army": {
+    "recipe": "relic_gain_spirit_army",
+    "accent": [
+      244,
+      213,
+      141
+    ],
+    "label": "亡灵大军",
+    "motif": "army_circles",
+    "future": {
+      "event": "FLOOR_SUMMON",
+      "status": "planned"
+    }
+  },
+  "ignition_ring": {
+    "recipe": "relic_gain_ignition_ring",
+    "accent": [
+      255,
+      122,
+      36
+    ],
+    "label": "引燃之戒",
+    "motif": "burning_ring",
+    "future": {
+      "event": "BURN_DURATION",
+      "status": "planned"
+    }
+  },
+  "inferno_core": {
+    "recipe": "relic_gain_inferno_core",
+    "accent": [
+      201,
+      58,
+      32
+    ],
+    "label": "炼狱核心",
+    "motif": "infernova",
+    "future": {
+      "event": "FIRE_KILL_NOVA",
+      "status": "planned"
+    }
+  },
+  "venom_vein": {
+    "recipe": "relic_gain_venom_vein",
+    "accent": [
+      130,
+      217,
+      79
+    ],
+    "label": "毒脉",
+    "motif": "venom_vein",
+    "future": {
+      "event": "POISON_TICK_BONUS",
+      "status": "planned"
+    }
+  },
+  "plague_heart": {
+    "recipe": "relic_gain_plague_heart",
+    "accent": [
+      197,
+      255,
+      99
+    ],
+    "label": "瘟疫之心",
+    "motif": "plague_heart",
+    "future": {
+      "event": "AURA_POISON",
+      "status": "planned"
+    }
+  }
+}
