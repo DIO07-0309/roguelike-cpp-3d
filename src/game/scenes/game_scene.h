@@ -106,8 +106,8 @@ struct MirrorPanelCtx {
 // ============================================================
 // GameScene — 核心游戏场景（替代 game.py 的 PLAYING 状态）
 // ============================================================
-enum class GameState { TITLE, PLAYING, BOSS_INTRO, BOSS_CINEMATIC,
-                       FLOOR_SELECT, TUTORIAL, DEATH, VICTORY };
+// FLOOR_SELECT/TUTORIAL/DEATH/VICTORY 已删除: 零引用, 同名功能由独立 Scene 类承担
+enum class GameState { TITLE, PLAYING, BOSS_INTRO, BOSS_CINEMATIC };
 
 // Batch 3I: WorldMode — 主地牢 / 挑战竞技场 切换
 enum class WorldMode : uint8_t {

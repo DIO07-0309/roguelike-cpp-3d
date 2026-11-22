@@ -29,11 +29,25 @@ def ids_from(data, key="id") -> set:
     if isinstance(data, list):
         return {item[key] for item in data if key in item}
     if isinstance(data, dict):
+        # items.json is {"rarity":..., "items":[...]}; extract nested list ids.
+        if "items" in data and isinstance(data["items"], list):
+            return {item[key] for item in data["items"] if key in item}
         return set(data.keys())
     return set()
 
 
-def err(msg): errors.append(msg)
+def items_list(data):
+    """items.json is a dict wrapper; other callers may pass a plain list."""
+    if isinstance(data, dict):
+        if "items" not in data or not isinstance(data["items"], list):
+            err("STRUCTURE: items.json missing 'items' list")
+            return []
+        return data["items"]
+    return data if isinstance(data, list) else []
+
+
+def err(msg):
+    errors.append(msg)
 
 
 def check_ref(ref, valid_set, label, context=""):
@@ -44,22 +58,22 @@ def check_ref(ref, valid_set, label, context=""):
 # ═══ Load ═══
 print(f"[Validator] Scanning {RES_DIR}/ ...")
 
-enemies    = load_json("enemies.json") or []
-bosses     = load_json("bosses.json") or {}
-skills     = load_json("skills.json") or []
-buffs      = load_json("buffs.json") or []
-relics     = load_json("relics.json") or []
-items      = load_json("items.json") or []
-biomes     = load_json("biomes.json") or []
-landmarks  = load_json("landmarks.json") or []
+enemies = load_json("enemies.json") or []
+bosses = load_json("bosses.json") or {}
+skills = load_json("skills.json") or []
+buffs = load_json("buffs.json") or []
+relics = load_json("relics.json") or []
+items = load_json("items.json") or []
+biomes = load_json("biomes.json") or []
+landmarks = load_json("landmarks.json") or []
 encounters = load_json("encounters.json") or []
 bio_events = load_json("biome_events.json") or []
-vfx        = load_json("vfx_recipes.json") or {}
-floor_cfg  = load_json("floor_config.json") or []
-floor_nar  = load_json("floor_narrative.json") or []
-quests     = load_json("quests.json") or []
-dialogues  = load_json("dialogues.json") or []
-endings    = load_json("endings.json") or []
+vfx = load_json("vfx_recipes.json") or {}
+floor_cfg = load_json("floor_config.json") or []
+floor_nar = load_json("floor_narrative.json") or []
+quests = load_json("quests.json") or []
+dialogues = load_json("dialogues.json") or []
+endings = load_json("endings.json") or []
 meta_nodes = load_json("meta_nodes.json") or []
 
 world_files = {}
@@ -69,33 +83,63 @@ for wf in ["world/prison.json", "world/volcano.json", "world/abyss.json"]:
         world_files[wf] = data
 
 # ID sets
-enemy_ids     = ids_from(enemies)
-boss_ids      = ids_from(bosses) | {"5", "10", "15"}
-skill_ids     = ids_from(skills)
-buff_ids      = ids_from(buffs)
-relic_ids     = ids_from(relics)
-item_ids      = ids_from(items)
-biome_ids     = ids_from(biomes)
-landmark_ids  = ids_from(landmarks)
+enemy_ids = ids_from(enemies)
+boss_ids = ids_from(bosses) | {"5", "10", "15"}
+skill_ids = ids_from(skills)
+buff_ids = ids_from(buffs)
+relic_ids = ids_from(relics)
+item_ids = ids_from(items)
+biome_ids = ids_from(biomes)
+landmark_ids = ids_from(landmarks)
 encounter_ids = ids_from(encounters)
-vfx_recipes   = set(vfx.get("recipes", {}).keys()) if isinstance(vfx, dict) else set()
+vfx_recipes = set(vfx.get("recipes", {}).keys()) if isinstance(vfx, dict) else set()
 
-valid_bgm        = {"title", "select", "dungeon", "boss", "prison", "volcano", "abyss"}
-valid_triggers   = {"floor_enter", "room_enter", "wall_interact", "entity_interact", "boss_dead", "item_use", "talk"}
-valid_enc_types  = {"event", "npc", "trader", "quest_giver"}
-valid_eff_kinds  = {"buff","relic","equipment","skill_level","heal","relic_from_pool","none","trade","set_flag","set_meta_flag"}
-valid_risk_kinds = {"spawn","hp_loss","debuff","confuse","none"}
+valid_bgm = {"title", "select", "dungeon", "boss", "prison", "volcano", "abyss"}
+valid_triggers = {
+    "floor_enter",
+    "room_enter",
+    "wall_interact",
+    "entity_interact",
+    "boss_dead",
+    "item_use",
+    "talk",
+}
+valid_enc_types = {"event", "npc", "trader", "quest_giver"}
+valid_eff_kinds = {
+    "buff",
+    "relic",
+    "equipment",
+    "skill_level",
+    "heal",
+    "relic_from_pool",
+    "none",
+    "trade",
+    "set_flag",
+    "set_meta_flag",
+}
+valid_risk_kinds = {"spawn", "hp_loss", "debuff", "confuse", "none"}
 
-print(f"  {len(enemy_ids)} enemies, {len(boss_ids)} bosses, {len(skill_ids)} skills, "
-      f"{len(buff_ids)} buffs, {len(relic_ids)} relics, {len(item_ids)} items, "
-      f"{len(biome_ids)} biomes, {len(landmark_ids)} landmarks, "
-      f"{len(encounter_ids)} encounters")
+print(
+    f"  {len(enemy_ids)} enemies, {len(boss_ids)} bosses, {len(skill_ids)} skills, "
+    f"{len(buff_ids)} buffs, {len(relic_ids)} relics, {len(item_ids)} items, "
+    f"{len(biome_ids)} biomes, {len(landmark_ids)} landmarks, "
+    f"{len(encounter_ids)} encounters"
+)
 
 
 # ── Boss defs 自检 (B4: GOLEM 挑战房压轴 boss) ──
 VALID_BOSS_SKILLS = {"charge", "shockwave", "summon", "barrage", "cone", "blink"}
-VALID_COMBO_CMDS = {"normal", "charge", "shockwave", "summon", "defend",
-                    "barrage", "cone", "blink", "whirlwind"}
+VALID_COMBO_CMDS = {
+    "normal",
+    "charge",
+    "shockwave",
+    "summon",
+    "defend",
+    "barrage",
+    "cone",
+    "blink",
+    "whirlwind",
+}
 
 if isinstance(bosses, dict):
     _boss_list = list(bosses.values())
@@ -108,8 +152,10 @@ _boss_by_id = {b.get("id"): b for b in _boss_list if b.get("id")}
 # get_boss_def_for_floor 是硬编码 switch (boss_defs.cpp:170-176), 目标必须存在
 for _fl, _fid in ((5, "shadow_knight"), (10, "fire_demon"), (15, "demon_lord")):
     if _fid not in _boss_by_id:
-        err("bosses.json: get_boss_def_for_floor(%d) 硬编码 '%s' 但 JSON 无该条目"
-            % (_fl, _fid))
+        err(
+            "bosses.json: get_boss_def_for_floor(%d) 硬编码 '%s' 但 JSON 无该条目"
+            % (_fl, _fid)
+        )
 
 # BossType 映射一致性: get_boss_def_for_type(4) -> "golem" (boss_defs.cpp:185)
 if "golem" not in _boss_by_id:
@@ -124,23 +170,26 @@ else:
     _ids = [_s.get("id") for _s in _g.get("skills", [])]
     for _req in ("charge", "shockwave"):
         if _req not in _ids:
-            err("bosses.json [golem].skills 缺 '%s' — ai->_%s 参数无法被覆盖"
-                % (_req, _req))
+            err(
+                "bosses.json [golem].skills 缺 '%s' — ai->_%s 参数无法被覆盖"
+                % (_req, _req)
+            )
     if _g.get("skill_cycle_bias") in (4, 6):
-        err("bosses.json [golem].skill_cycle_bias=%s 会让 _next_cycle_skill "
-            "返回 Summon, 与纯 tank 定位冲突" % _g.get("skill_cycle_bias"))
+        err(
+            "bosses.json [golem].skill_cycle_bias=%s 会让 _next_cycle_skill "
+            "返回 Summon, 与纯 tank 定位冲突" % _g.get("skill_cycle_bias")
+        )
     if _g.get("is_summoner"):
-        warnings.append("bosses.json [golem].is_summoner=true — 该字段只用于显示串, "
-                        "不 gating 召唤")
+        warnings.append(
+            "bosses.json [golem].is_summoner=true — 该字段只用于显示串, 不 gating 召唤"
+        )
     for _i, _s in enumerate(_g.get("skills", [])):
         if _s.get("id") not in VALID_BOSS_SKILLS:
-            err("bosses.json [golem].skills[%d].id '%s' 非法"
-                % (_i, _s.get("id")))
+            err("bosses.json [golem].skills[%d].id '%s' 非法" % (_i, _s.get("id")))
     for _ci, _c in enumerate(_g.get("combos", [])):
         for _cmd in _c.get("commands", []):
             if _cmd not in VALID_COMBO_CMDS:
-                err("bosses.json [golem].combos[%d].commands '%s' 非法"
-                    % (_ci, _cmd))
+                err("bosses.json [golem].combos[%d].commands '%s' 非法" % (_ci, _cmd))
 
 
 # ═══ Step 1: Basic cross-references ═══
@@ -148,8 +197,8 @@ for b in biomes:
     ctx = f"biomes.json [{b['id']}]"
     for e in b.get("enemy_pool", []):
         check_ref(e, enemy_ids, f"{ctx} enemy_pool", ctx)
-    check_ref(b.get("boss_id",""), boss_ids, f"{ctx} boss_id", ctx)
-    check_ref(b.get("bgm",""), valid_bgm, f"{ctx} bgm", ctx)
+    check_ref(b.get("boss_id", ""), boss_ids, f"{ctx} boss_id", ctx)
+    check_ref(b.get("bgm", ""), valid_bgm, f"{ctx} bgm", ctx)
     # A2.2: ambient.style 白名单 + ambient.texture 文件存在 (从仓库根运行)
     amb = b.get("ambient", {})
     style = amb.get("style", "")
@@ -174,17 +223,23 @@ for enc in encounters:
     for node in enc.get("dialogue", []):
         node_ids.add(node["id"])
         for c in node.get("choices", []):
-            eff = c.get("effect","none")
-            rsk = c.get("risk","none")
-            for val, label in [(eff,"effect"),(rsk,"risk")]:
-                if val not in ("","none") and ":" in val:
-                    check_ref(val.split(":")[0], valid_eff_kinds|valid_risk_kinds,
-                              f"{ctx} node[{node['id']}] {label}.kind", ctx)
+            eff = c.get("effect", "none")
+            rsk = c.get("risk", "none")
+            for val, label in [(eff, "effect"), (rsk, "risk")]:
+                if val not in ("", "none") and ":" in val:
+                    check_ref(
+                        val.split(":")[0],
+                        valid_eff_kinds | valid_risk_kinds,
+                        f"{ctx} node[{node['id']}] {label}.kind",
+                        ctx,
+                    )
     for node in enc.get("dialogue", []):
         for c in node.get("choices", []):
-            nxt = c.get("next","end")
+            nxt = c.get("next", "end")
             if nxt != "end" and nxt not in node_ids:
-                err(f"BROKEN NEXT: {ctx} node[{node['id']}] '{c['text'][:20]}' → '{nxt}'")
+                err(
+                    f"BROKEN NEXT: {ctx} node[{node['id']}] '{c['text'][:20]}' → '{nxt}'"
+                )
 
 if isinstance(bio_events, list):
     for bev in bio_events:
@@ -192,114 +247,175 @@ if isinstance(bio_events, list):
         check_ref(bev["biome"], biome_ids, f"{ctx} biome", ctx)
 
 for fc in floor_cfg:
-    f = fc.get("floor",0)
+    f = fc.get("floor", 0)
     if f < 1 or f > 15:
         err(f"floor_config.json: floor {f} out of range")
 
 for fn in floor_nar:
-    f = fn.get("floor",0)
+    f = fn.get("floor", 0)
     if f < 1 or f > 15:
         err(f"floor_narrative.json: floor {f} out of range")
 
 
 # ═══ Step 2: Colon-delimited effect/risk refs ═══
 def check_colon(val, idx, kind, valid_set, ctx):
-    if val in ("","none"): return
+    if val in ("", "none"):
+        return
     parts = val.split(":")
     if kind == "spawn":
-        if len(parts) >= 2: check_ref(parts[1], valid_set, f"{ctx} spawn target", ctx)
-    elif kind in ("buff","debuff"):
-        if len(parts) >= 2: check_ref(parts[1], valid_set, f"{ctx} {kind} target", ctx)
+        if len(parts) >= 2:
+            check_ref(parts[1], valid_set, f"{ctx} spawn target", ctx)
+    elif kind in ("buff", "debuff"):
+        if len(parts) >= 2:
+            check_ref(parts[1], valid_set, f"{ctx} {kind} target", ctx)
     elif kind == "equipment":
-        if len(parts) >= 2 and parts[1] not in ("rare","epic","legendary","common"):
+        if len(parts) >= 2 and parts[1] not in ("rare", "epic", "legendary", "common"):
             err(f"INVALID RARITY: '{val}' in {ctx}")
-    elif kind not in ("potion","skill_level","relic","hp_loss","confuse","heal",
-                      "relic_from_pool","set_flag","set_meta_flag","trade","none"):
+    elif kind not in (
+        "potion",
+        "skill_level",
+        "relic",
+        "hp_loss",
+        "confuse",
+        "heal",
+        "relic_from_pool",
+        "set_flag",
+        "set_meta_flag",
+        "trade",
+        "none",
+    ):
         err(f"UNKNOWN TOKEN: '{kind}' in '{val}' at {ctx}")
 
+
 for src_list in [encounters, bio_events]:
-    if not isinstance(src_list, list): continue
+    if not isinstance(src_list, list):
+        continue
     for item in src_list:
         ctx = f"[{item['id']}]"
         for node in item.get("dialogue", []):
             for c in node.get("choices", []):
-                for fld in ("effect","risk"):
-                    val = c.get(fld,"none")
-                    if val not in ("","none") and ":" in val:
-                        check_colon(val,0,val.split(":")[0],
-                                    enemy_ids|buff_ids,
-                                    f"{item['id']} node[{node['id']}] {fld}")
+                for fld in ("effect", "risk"):
+                    val = c.get(fld, "none")
+                    if val not in ("", "none") and ":" in val:
+                        check_colon(
+                            val,
+                            0,
+                            val.split(":")[0],
+                            enemy_ids | buff_ids,
+                            f"{item['id']} node[{node['id']}] {fld}",
+                        )
         for c in item.get("choices", []):
-            for fld in ("effect","risk"):
-                val = c.get(fld,"none")
-                if val not in ("","none") and ":" in val:
-                    check_colon(val,0,val.split(":")[0],
-                                enemy_ids|buff_ids,
-                                f"{item['id']} choice {fld}")
+            for fld in ("effect", "risk"):
+                val = c.get(fld, "none")
+                if val not in ("", "none") and ":" in val:
+                    check_colon(
+                        val,
+                        0,
+                        val.split(":")[0],
+                        enemy_ids | buff_ids,
+                        f"{item['id']} choice {fld}",
+                    )
 
 
 # ═══ Step 3: Enemy/skill/item internal refs ═══
 for enemy in enemies:
     for eb in enemy.get("elite_buffs", []):
-        bv = eb.get("buff","")
+        bv = eb.get("buff", "")
         if bv == "":
             err(f"EMPTY BUFF: enemies.json [{enemy['id']}] elite_buffs")
         elif bv not in buff_ids:
             err(f"BROKEN REF: enemies.json [{enemy['id']}] elite_buffs buff '{bv}'")
     for oh in enemy.get("on_hit", []):
-        bv = oh.get("buff","")
+        bv = oh.get("buff", "")
         if bv and bv not in buff_ids:
             err(f"BROKEN REF: enemies.json [{enemy['id']}] on_hit buff '{bv}'")
 
 for sk in skills:
     for tr in sk.get("triggers", []):
-        bv = tr.get("buff","")
+        bv = tr.get("buff", "")
         if bv and bv not in buff_ids:
             err(f"BROKEN REF: skills.json [{sk['id']}] trigger buff '{bv}'")
 
-for it in items:
-    for ref_field, id_set, label in [("buff_id", buff_ids, "buff"), ("skill_id", skill_ids, "skill")]:
+for it in items_list(items):
+    for ref_field, id_set, label in [
+        ("buff_id", buff_ids, "buff"),
+        ("skill_id", skill_ids, "skill"),
+    ]:
         if ref_field in it and it[ref_field]:
             check_ref(it[ref_field], id_set, f"items.json [{it['id']}] {ref_field}")
 
 for wf_path, wf in world_files.items():
-    b = wf.get("biome",{})
-    if b.get("id","") not in biome_ids:
-        err(f"BROKEN REF: {wf_path} biome.id '{b.get('id','')}'")
+    b = wf.get("biome", {})
+    if b.get("id", "") not in biome_ids:
+        err(f"BROKEN REF: {wf_path} biome.id '{b.get('id', '')}'")
 
 
 # ═══ Step 4: Coverage warnings ═══
 for b in biomes:
-    if not b.get("enemy_pool"): warnings.append(f"biomes.json [{b['id']}]: empty enemy_pool")
-    if not b.get("boss_id"):    warnings.append(f"biomes.json [{b['id']}]: no boss_id")
+    if not b.get("enemy_pool"):
+        warnings.append(f"biomes.json [{b['id']}]: empty enemy_pool")
+    if not b.get("boss_id"):
+        warnings.append(f"biomes.json [{b['id']}]: no boss_id")
 
 lm_count = defaultdict(int)
-for lm in landmarks: lm_count[lm["biome"]] += 1
+for lm in landmarks:
+    lm_count[lm["biome"]] += 1
 for bid in biome_ids:
-    if lm_count.get(bid,0) == 0:
+    if lm_count.get(bid, 0) == 0:
         warnings.append(f"biome '{bid}': no landmarks")
     elif lm_count[bid] < 2:
         warnings.append(f"biome '{bid}': only {lm_count[bid]} landmark(s)")
 
 enc_count = defaultdict(int)
-for enc in encounters: enc_count[enc["biome"]] += 1
+for enc in encounters:
+    enc_count[enc["biome"]] += 1
 for bid in biome_ids:
-    if enc_count.get(bid,0) == 0:
+    if enc_count.get(bid, 0) == 0:
         warnings.append(f"biome '{bid}': no encounters")
 
 
 # ═══ G5.8.8: VFX recipe 完整性 ═══
-valid_vfx_kinds = {"ring","beam","bolt","lightning","explosion","shockwave",
-                   "slash_arc","smoke","spark","aura","flash","cone","pulse"}
-valid_vfx_colors = {"default","fire","ice","lightning","poison","time","heal",
-                    "shadow","bleed","white","summon","blood","nature","holy",
-                    "void","gold","red"}
+valid_vfx_kinds = {
+    "ring",
+    "beam",
+    "bolt",
+    "lightning",
+    "explosion",
+    "shockwave",
+    "slash_arc",
+    "smoke",
+    "spark",
+    "aura",
+    "flash",
+    "cone",
+}
+valid_vfx_colors = {
+    "default",
+    "fire",
+    "ice",
+    "lightning",
+    "poison",
+    "time",
+    "heal",
+    "shadow",
+    "bleed",
+    "white",
+    "summon",
+    "blood",
+    "nature",
+    "holy",
+    "void",
+    "gold",
+    "red",
+}
 
 elements_data = load_json("elements.json") or {}
-elements_list = elements_data.get("elements", []) if isinstance(elements_data, dict) else []
+elements_list = (
+    elements_data.get("elements", []) if isinstance(elements_data, dict) else []
+)
 
 for el in elements_list:
-    ctx = f"elements.json [{el.get('id','')}]"
+    ctx = f"elements.json [{el.get('id', '')}]"
     for slot, ref in (el.get("vfx") or {}).items():
         check_ref(ref, vfx_recipes, f"{ctx} vfx.{slot}", "in vfx_recipes.json")
 
@@ -307,16 +423,20 @@ for rid, recipe in (vfx.get("recipes") or {}).items():
     for i, step in enumerate(recipe.get("steps", [])):
         kind = step.get("kind")
         if kind and kind not in valid_vfx_kinds:
-            err(f"BAD VFX KIND: {rid} step {i} kind '{kind}' (valid: {sorted(valid_vfx_kinds)})")
+            err(
+                f"BAD VFX KIND: {rid} step {i} kind '{kind}' (valid: {sorted(valid_vfx_kinds)})"
+            )
         color = step.get("color")
         if color and color not in valid_vfx_colors:
-            err(f"BAD VFX COLOR: {rid} step {i} color '{color}' (valid: {sorted(valid_vfx_colors)})")
+            err(
+                f"BAD VFX COLOR: {rid} step {i} color '{color}' (valid: {sorted(valid_vfx_colors)})"
+            )
 
 
 # ═══ D2: Enemy projectile 配置完整性 ═══
 ranged_types = {"archer", "shaman"}
 for e in enemies:
-    ctx = f"enemies.json [{e.get('id','')}]"
+    ctx = f"enemies.json [{e.get('id', '')}]"
     pj = e.get("projectile")
     if e.get("type") in ranged_types and not pj:
         warnings.append(f"{ctx}: ranged type '{e.get('type')}' has no projectile block")
@@ -343,7 +463,11 @@ if skel and anim:
         if p.get("bone") not in bone_names:
             err(f"player_skeleton parts[{i}]: unknown bone '{p.get('bone')}'")
         part_file = str(p.get("file", "")).replace("\\", "/")
-        part_file = part_file[len("assets/sprites/"):] if part_file.startswith("assets/sprites/") else part_file
+        part_file = (
+            part_file[len("assets/sprites/") :]
+            if part_file.startswith("assets/sprites/")
+            else part_file
+        )
         sprite = os.path.join("assets", "sprites", part_file)
         if not os.path.exists(sprite):
             err(f"player_skeleton parts[{i}]: missing art {sprite}")
@@ -360,12 +484,18 @@ if skel and anim:
                 err(f"player_anim [{cname}]: track '{tr.get('bone')}' has no keys")
                 continue
             if abs(ks[-1].get("t", -1) - clip.get("dur", 0)) > 1e-3:
-                err(f"player_anim [{cname}]: track '{tr.get('bone')}' last key t != dur")
+                err(
+                    f"player_anim [{cname}]: track '{tr.get('bone')}' last key t != dur"
+                )
             if ks[0].get("t", -1) > 1e-3:
-                warnings.append(f"player_anim [{cname}]: track '{tr.get('bone')}' first key t != 0")
+                warnings.append(
+                    f"player_anim [{cname}]: track '{tr.get('bone')}' first key t != 0"
+                )
             ts = [k.get("t", 0) for k in ks]
             if ts != sorted(ts):
-                err(f"player_anim [{cname}]: track '{tr.get('bone')}' keys not sorted by t")
+                err(
+                    f"player_anim [{cname}]: track '{tr.get('bone')}' keys not sorted by t"
+                )
     for need in ("idle", "walk", "attack", "hit"):
         if need not in anim.get("animations", {}):
             err(f"player_anim: required clip '{need}' missing")
@@ -378,7 +508,9 @@ if cam:
         z = bw.get(zoom_key, {})
         fs = z.get("fov_scale", 0)
         if fs <= 0.1 or fs > 2.0:
-            err(f"boss_camera: boss_war.{zoom_key}.fov_scale {fs} out of range (0.1, 2.0]")
+            err(
+                f"boss_camera: boss_war.{zoom_key}.fov_scale {fs} out of range (0.1, 2.0]"
+            )
         if z.get("duration", 0) < 0:
             err(f"boss_camera: boss_war.{zoom_key}.duration must be >= 0")
     ls = bw.get("lerp_speed", 0)
@@ -414,7 +546,9 @@ else:
     challenge_only = set()
 
     if len(slot_list) != 12:
-        err(f"enemy_slots.json: slots 数量 {len(slot_list)} != 12 (需与 FloorConfig::enemy_weights[12] 对齐)")
+        err(
+            f"enemy_slots.json: slots 数量 {len(slot_list)} != 12 (需与 FloorConfig::enemy_weights[12] 对齐)"
+        )
     for i, sl in enumerate(slot_list):
         ctx = f"enemy_slots.json slot[{i}] {sl.get('archetype', '?')}"
         cands = sl.get("candidates", [])
@@ -423,33 +557,54 @@ else:
         for c in cands:
             cid = c.get("id", "")
             if cid not in enemy_ids and cid not in alias_keys:
-                err(f"BROKEN REF: {ctx} candidate '{cid}' not in enemies.json / aliases")
+                err(
+                    f"BROKEN REF: {ctx} candidate '{cid}' not in enemies.json / aliases"
+                )
             if c.get("weight", 0) <= 0:
                 err(f"{ctx} candidate '{cid}': weight must be > 0")
             fl = c.get("floors")
-            if fl is not None and (not isinstance(fl, list) or len(fl) != 2
-                                   or fl[0] <= 0 or fl[1] > 15 or fl[0] > fl[1]):
+            if fl is not None and (
+                not isinstance(fl, list)
+                or len(fl) != 2
+                or fl[0] <= 0
+                or fl[1] > 15
+                or fl[0] > fl[1]
+            ):
                 err(f"{ctx} candidate '{cid}': floors {fl} 非法 (需闭区间 1..15)")
             reachable.update(_resolve(cid))
 
-    for bi, bm in enumerate(spawn_pools.get("biomes", []) if isinstance(spawn_pools, dict) else []):
+    for bi, bm in enumerate(
+        spawn_pools.get("biomes", []) if isinstance(spawn_pools, dict) else []
+    ):
         ctx = f"challenge_pools.json biome[{bi}]"
         fl = bm.get("floors")
-        if not isinstance(fl, list) or len(fl) != 2 or fl[0] <= 0 or fl[1] > 15 or fl[0] > fl[1]:
+        if (
+            not isinstance(fl, list)
+            or len(fl) != 2
+            or fl[0] <= 0
+            or fl[1] > 15
+            or fl[0] > fl[1]
+        ):
             err(f"{ctx}: floors {fl} 非法 (需闭区间 1..15)")
         for wi, wv in enumerate(bm.get("waves", [])):
             if not wv:
                 err(f"{ctx} wave[{wi}]: 空池")
             for x in wv:
                 if x not in enemy_ids and x not in alias_keys:
-                    err(f"BROKEN REF: {ctx} wave[{wi}] '{x}' not in enemies.json / aliases")
+                    err(
+                        f"BROKEN REF: {ctx} wave[{wi}] '{x}' not in enemies.json / aliases"
+                    )
                 challenge_only.update(_resolve(x))
 
     for e in sorted(enemy_ids - reachable - challenge_only):
-        err(f"UNREACHABLE: enemies.json '{e}' 不在 enemy_slots.json 或 challenge_pools.json (运行时永不刷出)")
+        err(
+            f"UNREACHABLE: enemies.json '{e}' 不在 enemy_slots.json 或 challenge_pools.json (运行时永不刷出)"
+        )
     only_challenge = sorted((challenge_only - reachable) & enemy_ids)
-    print(f"  [INFO] spawn: {len(enemy_ids)} enemies, 直达 {len(reachable & enemy_ids)}, "
-          f"仅经挑战房(需钥匙) {len(only_challenge)}: {', '.join(only_challenge)}")
+    print(
+        f"  [INFO] spawn: {len(enemy_ids)} enemies, 直达 {len(reachable & enemy_ids)}, "
+        f"仅经挑战房(需钥匙) {len(only_challenge)}: {', '.join(only_challenge)}"
+    )
 
 # ═══ Step 5: Quest reward refs ═══
 # 背景: quest_manager._auto_complete 会发放 relic/buff, 但 quests.json 从未被交叉校验过。
@@ -458,19 +613,60 @@ _quest_rel_count = 0
 for q in quests:
     r = q.get("reward", {}) or {}
     if r.get("relic_id"):
-        check_ref(r["relic_id"], relic_ids, f"quests.json [{q.get('id','?')}] reward.relic_id")
+        check_ref(
+            r["relic_id"],
+            relic_ids,
+            f"quests.json [{q.get('id', '?')}] reward.relic_id",
+        )
         _quest_rel_count += 1
     if r.get("buff_id"):
-        check_ref(r["buff_id"], buff_ids, f"quests.json [{q.get('id','?')}] reward.buff_id")
+        check_ref(
+            r["buff_id"], buff_ids, f"quests.json [{q.get('id', '?')}] reward.buff_id"
+        )
         _quest_rel_count += 1
 if _quest_rel_count:
     print(f"  [INFO] quests: {_quest_rel_count} 条奖励引用已校验 (relic/buff)")
 
 
+# ═══ G-new: weapon_def_id + 圣物获得演出引用交叉校验 ═══
+weapons_data = load_json("weapons.json") or {}
+if isinstance(weapons_data, dict) and not isinstance(weapons_data.get("weapons"), list):
+    err("STRUCTURE: weapons.json missing 'weapons' list")
+weapons_list = (
+    weapons_data.get("weapons", []) if isinstance(weapons_data, dict) else weapons_data
+)
+weapon_def_ids = {w["id"] for w in weapons_list if isinstance(w, dict) and "id" in w}
+for it in items_list(items):
+    wid = it.get("weapon_def_id")
+    if wid:
+        check_ref(
+            wid,
+            weapon_def_ids,
+            f"items.json [{it.get('id')}] weapon_def_id",
+            "in weapons.json",
+        )
+
+relic_vfx = load_json("relic_acquisition_vfx.json") or {}
+relic_vfx_entries = {k: v for k, v in relic_vfx.items() if not str(k).startswith("_")}
+for rid, entry in relic_vfx_entries.items():
+    if rid not in relic_ids:
+        err(f"BROKEN REF: relic_acquisition_vfx.json [{rid}] not in relics.json")
+    recipe_id = entry.get("recipe") if isinstance(entry, dict) else None
+    if recipe_id:
+        check_ref(
+            recipe_id,
+            vfx_recipes,
+            f"relic_acquisition_vfx.json [{rid}] recipe",
+            "in vfx_recipes.json",
+        )
+if relic_vfx_entries:
+    print(f"  [INFO] relic acquisition VFX: {len(relic_vfx_entries)} 映射已校验")
+
+
 # ═══ Report ═══
-print(f"\n{'='*60}")
+print(f"\n{'=' * 60}")
 print(f"  WORLD VALIDATOR REPORT")
-print(f"{'='*60}")
+print(f"{'=' * 60}")
 print(f"  Resources: {RES_DIR}")
 print(f"  Files:    20+ JSON")
 print(f"  Errors:   {len(errors)}")
@@ -489,5 +685,5 @@ if warnings:
 if not errors and not warnings:
     print(f"\n  All checks passed. World is valid.")
 
-print(f"{'='*60}")
+print(f"{'=' * 60}")
 exit(0 if not errors else 1)

@@ -131,7 +131,7 @@ struct BossModifierHook {
 };
 
 // ── Arena ──
-enum class DangerType { LAVA, SHADOW_WALL, VOID_CRACK, FIRE_COLUMN, SOUL_POOL, SPIKE_ZONE };
+enum class DangerType { LAVA, SHADOW_WALL, VOID_CRACK, FIRE_COLUMN };
 
 struct DangerZone {
     DangerType type;
@@ -156,8 +156,8 @@ enum class EncounterPhase { OPENING, PRESSURE, CONTROL, LAST_STAND, ENDED };
 // ═══════════════════════════════════════════════════════════════
 // F10.2: WeakPoint type + lifecycle state
 // ═══════════════════════════════════════════════════════════════
-enum class WeakPointType { CORE, SHIELD, ENGINE, TOTEM };
-enum class WeakPointState { SPAWNED, ACTIVE, BROKEN, DISABLED };
+enum class WeakPointType { CORE };
+enum class WeakPointState { ACTIVE, BROKEN };  // BROKEN 保留: F10.2 生命周期状态, 待补写入
 
 // ═══════════════════════════════════════════════════════════════
 // F10.1: BossArenaState — domain-boss arena cycle

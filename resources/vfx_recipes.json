@@ -252,7 +252,7 @@
       "camera_shake": 0,
       "steps": [
         {
-          "kind": "pulse",
+          "kind": "ring",
           "radius": 48,
           "duration": 0.35,
           "delay": 0.0
@@ -302,7 +302,7 @@
           "delay": 0.0
         },
         {
-          "kind": "pulse",
+          "kind": "ring",
           "radius": 48,
           "duration": 0.4,
           "layers": 3,
@@ -323,7 +323,7 @@
       "camera_shake": 0,
       "steps": [
         {
-          "kind": "pulse",
+          "kind": "ring",
           "radius": 48,
           "duration": 0.5,
           "delay": 0.0
@@ -342,7 +342,7 @@
       "camera_shake": 5,
       "steps": [
         {
-          "kind": "pulse",
+          "kind": "ring",
           "radius": 120,
           "duration": 0.5,
           "layers": 3,
@@ -350,7 +350,7 @@
           "delay": 0.0
         },
         {
-          "kind": "pulse",
+          "kind": "ring",
           "radius": 180,
           "duration": 0.35,
           "delay": 0.12
@@ -387,7 +387,7 @@
           "delay": 0.06
         },
         {
-          "kind": "pulse",
+          "kind": "ring",
           "radius": 32,
           "duration": 0.25,
           "layers": 2,
@@ -408,19 +408,19 @@
       "camera_shake": 6,
       "steps": [
         {
-          "kind": "pulse",
+          "kind": "ring",
           "radius": 48,
           "duration": 0.5,
           "delay": 0.0
         },
         {
-          "kind": "pulse",
+          "kind": "ring",
           "radius": 80,
           "duration": 0.45,
           "delay": 0.1
         },
         {
-          "kind": "pulse",
+          "kind": "ring",
           "radius": 120,
           "duration": 0.4,
           "delay": 0.2
@@ -439,7 +439,7 @@
       "camera_shake": 8,
       "steps": [
         {
-          "kind": "pulse",
+          "kind": "ring",
           "radius": 60,
           "duration": 0.5,
           "layers": 3,
@@ -460,7 +460,7 @@
       "camera_shake": 2,
       "steps": [
         {
-          "kind": "pulse",
+          "kind": "ring",
           "radius": 50,
           "duration": 0.6,
           "layers": 3,
@@ -481,21 +481,21 @@
       "camera_shake": 0,
       "steps": [
         {
-          "kind": "pulse",
+          "kind": "ring",
           "radius": 400,
           "duration": 1.0,
           "delay": 0.0,
           "color": "time"
         },
         {
-          "kind": "pulse",
+          "kind": "ring",
           "radius": 600,
           "duration": 0.8,
           "delay": 0.2,
           "color": "time"
         },
         {
-          "kind": "pulse",
+          "kind": "ring",
           "radius": 900,
           "duration": 0.6,
           "delay": 0.4,
@@ -516,7 +516,7 @@
           "color": "time"
         },
         {
-          "kind": "pulse",
+          "kind": "ring",
           "radius": 120,
           "duration": 0.5,
           "layers": 3,
@@ -525,7 +525,7 @@
           "color": "time"
         },
         {
-          "kind": "pulse",
+          "kind": "ring",
           "radius": 220,
           "duration": 0.4,
           "delay": 0.2,
@@ -562,7 +562,7 @@
           "color": "fire"
         },
         {
-          "kind": "pulse",
+          "kind": "ring",
           "radius": 70,
           "duration": 0.5,
           "layers": 3,
@@ -683,7 +683,7 @@
       "camera_shake": 0,
       "steps": [
         {
-          "kind": "pulse",
+          "kind": "ring",
           "radius": 48,
           "duration": 0.55,
           "delay": 0.0,
@@ -704,7 +704,7 @@
       "camera_shake": 1,
       "steps": [
         {
-          "kind": "pulse",
+          "kind": "ring",
           "radius": 48,
           "duration": 0.5,
           "layers": 2,
@@ -734,7 +734,7 @@
       "camera_shake": 1,
       "steps": [
         {
-          "kind": "pulse",
+          "kind": "ring",
           "radius": 48,
           "duration": 0.55,
           "layers": 3,
@@ -764,7 +764,7 @@
       "camera_shake": 4,
       "steps": [
         {
-          "kind": "pulse",
+          "kind": "ring",
           "radius": 56,
           "duration": 0.45,
           "layers": 3,
@@ -773,7 +773,7 @@
           "color": "bleed"
         },
         {
-          "kind": "pulse",
+          "kind": "ring",
           "radius": 90,
           "duration": 0.4,
           "delay": 0.12,
@@ -801,7 +801,7 @@
       "camera_shake": 2,
       "steps": [
         {
-          "kind": "pulse",
+          "kind": "ring",
           "radius": 50,
           "duration": 0.6,
           "layers": 3,
@@ -831,7 +831,7 @@
       "camera_shake": 1,
       "steps": [
         {
-          "kind": "pulse",
+          "kind": "ring",
           "radius": 80,
           "duration": 0.7,
           "delay": 0.0
@@ -868,7 +868,7 @@
           "delay": 0.08
         },
         {
-          "kind": "pulse",
+          "kind": "ring",
           "radius": 200,
           "duration": 0.8,
           "layers": 3,
@@ -882,7 +882,7 @@
           "delay": 0.4
         },
         {
-          "kind": "pulse",
+          "kind": "ring",
           "radius": 350,
           "duration": 0.5,
           "delay": 0.7
@@ -895,7 +895,7 @@
       "camera_shake": 1,
       "steps": [
         {
-          "kind": "pulse",
+          "kind": "ring",
           "radius": 32,
           "duration": 0.32,
           "delay": 0.0,
@@ -945,7 +945,7 @@
       "camera_shake": 2,
       "steps": [
         {
-          "kind": "pulse",
+          "kind": "ring",
           "radius": 44,
           "duration": 0.55,
           "layers": 3,
@@ -968,7 +968,7 @@
       "camera_shake": 0,
       "steps": [
         {
-          "kind": "pulse",
+          "kind": "ring",
           "radius": 30,
           "duration": 0.35,
           "delay": 0.0,
@@ -1019,7 +1019,7 @@
       "camera_shake": 2,
       "steps": [
         {
-          "kind": "pulse",
+          "kind": "ring",
           "radius": 44,
           "duration": 0.55,
           "layers": 3,
@@ -1042,7 +1042,7 @@
       "camera_shake": 0,
       "steps": [
         {
-          "kind": "pulse",
+          "kind": "ring",
           "radius": 30,
           "duration": 0.35,
           "delay": 0.0,
@@ -1063,7 +1063,7 @@
       "camera_shake": 0,
       "steps": [
         {
-          "kind": "pulse",
+          "kind": "ring",
           "radius": 22,
           "duration": 0.3,
           "delay": 0.0,
@@ -1077,7 +1077,7 @@
       "camera_shake": 2,
       "steps": [
         {
-          "kind": "pulse",
+          "kind": "ring",
           "radius": 44,
           "duration": 0.55,
           "layers": 3,

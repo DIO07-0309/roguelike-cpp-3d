@@ -5,7 +5,7 @@
 // 保证每30秒至少一种反馈 (战斗/奖励/剧情/事件)
 // ============================================================
 
-enum class FlowState { COMBAT, EXPLORE, EVENT, REWARD, STORY };
+// FlowState 已删除: 全仓零引用, FlowDirector 只用 FlowTimer 字段与字面量
 
 struct FlowTimer {
     float combat = 0.0f;    // 距上次战斗 (秒)

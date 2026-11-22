@@ -1,4 +1,36 @@
-﻿# 圣物获得演出（Relic Acquisition VFX）— 31 件（2026-11-23）
+﻿# P1 剩余三项：技能占位标记 + 死枚举清理 + validator 盲点修复（2026-11-23）
+
+> 用户拍板：孤儿技能标记未实现占位、死枚举只删可安全删除的、validator 修 bug + 低风险检查。
+
+## 1. 4 孤儿技能标记占位
+
+`resources/skills.json` 的 `frost_armor/lightning_reflex/blood_thirst/summon_contract` 加 `implemented:false` + note。
+审计发现它们零引用（4 条活调用点全 `base_only=true`、随机技能函数本身是死代码、无 charm/进化引用），且 `values_per_level` 是死数据（C++ 硬编码覆盖）。标记后不碰玩法/sim 基线。
+
+## 2. 死枚举清理（只删可安全删除的）
+
+- `FlowState` 整枚举、`DangerType::SOUL_POOL/SPIKE_ZONE`、`WeakPointType::SHIELD/ENGINE/TOTEM`
+- `WeakPointState` 留 `ACTIVE/BROKEN`（BROKEN 为 F10.2 生命周期保留）
+- `DamageType` 删 POISON/FIRE/ICE/LIGHTNING，显式保留 `PHYSICAL=0/MAGICAL=1/TRUE=6`（零数值漂移）
+- `GameState` 删 4 尾值（功能由独立 Scene 类承担）
+- `GameEventType` 删 12 个零引用事件（unordered_map 键，漂移无害）
+
+保留所有有未来契约的：`ProjectilePhase`（测试固定数值）、`QuestType`、`GameFlowState`、`Status::RUNNING`、遗物 5 孤立值、`PLAYER_DEAD`/`ITEM_PICKUP`/`BOSS_PHASE2` 等规划事件。修正前次审计两处错误：未 emit 事件实为 19 个（非 11）；`ProjectilePhase` 被测试引用不可删。
+
+## 3. validator 盲点修复
+
+- `ids_from()` dict 分支拆出嵌套 `items` 列表 → 打印从 `2 items` 变 **31 items**；items 引用校验从死代码变生效（31 件 buff_id/skill_id 全部有效）
+- `pulse` 假合法：33 处 recipe step `kind:"pulse"`→`"ring"`（分发表本无 pulse，此前静默不渲染；改后开始渲染属预期视觉修复），validator 白名单移除 pulse
+- 新增 `weapon_def_id`→weapons.json、`relic_acquisition_vfx`↔relics/recipes 双向校验（31 映射）
+- 新增 `items_list`/weapons 结构异常保护
+
+## 验证与 Review
+
+ctest **92/92**、sim golden baseline Passed（删的枚举不进 sim）、fn_length 0 超规、validator 0 错 0 警。fresh reviewer 判定代码 PASS 无 BLOCKER/MAJOR：pulse→ring 仅改 kind 字节级可证、枚举删除全仓零真实引用、DamageType 无数值漂移、存档/sim 零影响。5 个 MINOR 已修（注释措辞、WeakPointState 注释、结构保护、CHANGELOG、桌面同步）。
+
+---
+
+# 圣物获得演出（Relic Acquisition VFX）— 31 件（2026-11-23）
 
 > 用户拍板只做「获得时视觉演出」，不实现圣物玩法效果。设计文档 `docs/superpowers/specs/2026-11-23-relic-acquisition-vfx-design.md`。
 

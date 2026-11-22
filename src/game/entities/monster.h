@@ -74,7 +74,7 @@ public:
     // F10.2: Weak point (WeaponExecutor can target this)
     bool is_weak_point = false;
     int  weak_point_type = 0;            // WeakPointType as int (0=CORE)
-    int  weak_point_state = 0;           // WeakPointState as int (0=SPAWNED)
+    int  weak_point_state = 0;           // WeakPointState as int (0=ACTIVE, 1=BROKEN)
     void* _weak_point_owner = nullptr;   // Boss* that spawned this core
 
     bool kill_processed = false;   // P0-A: 防止 on_monster_killed 重复触发 (defensive guard)

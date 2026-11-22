@@ -9,13 +9,12 @@ enum class GameEventType {
     NONE = 0,
 
     // ── 玩家 ──
-    PLAYER_ATTACK,
-    PLAYER_DAMAGED,
+    // PLAYER_ATTACK/PLAYER_DAMAGED 已删 (零 emit/订阅; 旧设计文档仍有提及, 未来如需按文档接事件再恢复)
     PLAYER_DEAD,
     PLAYER_LEVEL_UP,
 
     // ── 怪物 ──
-    MONSTER_SPAWN,
+    // MONSTER_SPAWN 已删
     MONSTER_DIED,
     MONSTER_ATTACK,  // Q4.4: 怪物攻击 (近战/远程) — 驱动攻击音效
 
@@ -26,8 +25,7 @@ enum class GameEventType {
     BOSS_DEAD,
 
     // ── 物品 / Relic ──
-    ITEM_PICKUP,
-    ITEM_USE,
+    ITEM_PICKUP,   // 规划: BATCH_3A 经济设计, 保留
     RELIC_GAIN,
 
     // ── G1: Attack Evolution ──
@@ -39,25 +37,16 @@ enum class GameEventType {
     // ── G1: Rule Chain ──
     BOSS_RULE_ACTIVATED,
 
-    // ── Buff ──
-    BUFF_APPLIED,
-    BUFF_EXPIRED,
-
-    // ── 特殊房间 ──
-    SPECIAL_ROOM_ENTER,
-    SPECIAL_ROOM_TRIGGER,
-
-    // ── NPC / 对话 ──
-    NPC_DIALOGUE_START,
-    NPC_DIALOGUE_END,
+    // ── Buff ── (BUFF_APPLIED/BUFF_EXPIRED 已删: 零引用)
+    // ── 特殊房间 ── (SPECIAL_ROOM_ENTER/TRIGGER 已删: 零引用)
+    // ── NPC / 对话 ── (NPC_DIALOGUE_START/END 已删: 零引用)
 
     // ── 任务 ──
     QUEST_ACCEPT,
     QUEST_COMPLETE,
 
     // ── 楼层 ──
-    FLOOR_ENTER,
-    FLOOR_CLEAR,
+    FLOOR_ENTER,   // FLOOR_CLEAR 已删: 零引用
 
     // ── Batch 2C: Room Encounter ──
     ROOM_LOCKED,   // 房间封门 (进入有怪房)
@@ -86,10 +75,10 @@ enum class GameEventType {
     WEAK_POINT_BREAK,
 
     // ── 游戏 ──
-    GAME_CLEAR,
-    GAME_OVER,
+    GAME_CLEAR,     // 结局流程契约, 保留
+    GAME_OVER,      // 结局流程契约, 保留
     ENDING_REACHED,
-    META_GAIN,
+    // META_GAIN 已删: 零引用
 
     COUNT
 };
