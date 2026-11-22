@@ -1,4 +1,36 @@
-﻿# 一怪一形第二批 — 剩余 13 种（2026-11-21）
+﻿# 精修资产闸门补齐 — 61 件（2026-11-22）
+
+> 全面缺口搜查结论：资产本体健康（零孤儿、零未精修 builder 产物、validator 0 error），
+> 但 61 件已精修资产只有 load/坐标契约，缺 face 下限 / bbox 上限 / schema 闸门。本轮补齐。
+
+## 范围
+
+19 房间摆件（`room_*`）+ 30 Boss 部件（`boss_*`）+ 6 玩家部件（`player_part_*`）
++ 4 NPC（`npc_*`）+ 2 守卫状态（`guard_alert` / `guard_interacted`）。
+`guard_banner` 已有独立闸门，不重复纳入。
+
+## 方案
+
+统一闸门 `tools/check_refined_assets.js` + 基线表 `tools/refined_asset_baselines.json`（64 行，每件带 group 字段）。
+校验逻辑抽成单一 `checkAsset()`（37 行），检查 schema / name / finite(pos+color) / faces ≥ 基线 / bbox ≤ 基线 / 各轴跨度 ≥ 基线 50%（容差取 `_meta.tolerance`）。跨度下限拦住"面数不变但几何塌缩"型退化；另含 null/标量资产守卫与 `_meta.count` 一致性校验。
+基线锁每件**当前磁盘值**而非统一下限：面数跨度 244～9296，`room_challenge_banner_used`(244)、`room_shop_used`(664)
+是刻意的残迹简化，统一下限会误杀。改动资产须显式更新基线，与既有独立 node 闸门模式一致（不进 ctest）。
+
+## 闸门与验证
+
+`node tools/check_refined_assets.js` → `ASSETS=61 FAILED=0` exit 0。
+负向自测两项：① 基线 `room_challenge_banner.faces` 临时 +1 → `faces:false` / `FAILED=1` / exit 1；
+② 基线 `room_challenge_banner.bbox.xmax` 临时放大 → `bbox:true` 但 `extent:false` / `FAILED=1` / exit 1；均恢复后 61/61。
+审图：房间摆件合照、Boss 重甲、玩家盾剑、守卫横幅 4 张代表预览均完整，与锁定状态相符。
+未改任何资产 JSON / schema / gameplay / RNG / 存档；只新增 2 个 tools 文件。
+
+## 遗留（本轮不展开）
+
+预览覆盖不全（NPC 3/4 无特写、Boss/怪物只有整身无分件图）；README CHANGELOG 自 2026-10-28 停更（独立 P0 缺口）。
+
+---
+
+# 一怪一形第二批 — 剩余 13 种（2026-11-21）
 
 > 用户"继续" = 补第一批未覆盖的 13 种非 pilot 怪。方案完全同构第一批（包络内特征件、深拷贝 merge、--unique 闸门）。
 
