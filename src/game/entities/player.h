@@ -68,7 +68,6 @@ public:
     Player(float x, float y, float spd, int hp, int atk, int pdef, int mdef);
 
     void reset_attack_timers();
-    int attack_target(Player* target, double game_time);
 
     // 移动
     Vector2 handle_input(const InputMap& input);

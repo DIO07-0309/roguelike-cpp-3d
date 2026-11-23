@@ -1,5 +1,6 @@
 #include "sim_runner.h"
 #include "build_score.h"  // G7.4: BuildType enum
+#include "sim_diagnostics.h"  // P3: 卡死诊断聚合
 #include <cstdio>
 #include <fstream>
 #include <algorithm>
@@ -13,6 +14,7 @@ void SimRunner::begin(const SimulationConfig& cfg) {
     _cfg = cfg;
     _report = BalanceReport{};
     _report.runs.reserve(cfg.runs);
+    sim_diag_reset();  // P3: 每批次清空诊断聚合器
     printf("[SIM] Starting %d runs (seed_start=%u)\n", cfg.runs, cfg.seed_start);
 }
 
@@ -350,6 +352,29 @@ std::string BalanceReport::to_json() const {
     append_report_dashboard(*this, j);
     append_report_groups(*this, j);
     append_report_runs(*this, j);
+    // P3: 卡死诊断聚合 (纯值, 既有计数器汇总, 不改 gameplay/RNG)
+    {
+        const auto& d = sim_diag_totals();
+        json dg = json::object();
+        dg["runs_accumulated"] = d.runs;
+        dg["hunt_enters"] = d.hunt_enters;
+        dg["hunt_frames"] = d.hunt_frames;
+        dg["hunt_approach_frames"] = d.hunt_approach;
+        json mb = json::object();
+        mb["rec"] = d.move_rec; mb["loot"] = d.move_loot; mb["room"] = d.move_room;
+        mb["approach"] = d.move_appr; mb["stand"] = d.move_stand;
+        dg["move_branch"] = mb;
+        dg["bfs_fail"] = d.bfs_fail;
+        json ps = json::object();
+        ps["move"] = d.progress_move; ps["mon_hp"] = d.progress_monhp;
+        ps["player_hp"] = d.progress_php; ps["alive"] = d.progress_alive;
+        dg["progress_src"] = ps;
+        dg["step_attempts"] = d.step_attempts;
+        dg["step_rollbacks"] = d.step_rollbacks;
+        dg["stuck_bfs_hit"] = d.stuck_bfs_hit;
+        dg["stuck_bfs_fail"] = d.stuck_bfs_fail;
+        j["diagnostics"] = dg;
+    }
     return j.dump(2);
 }
 

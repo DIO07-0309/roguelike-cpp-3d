@@ -49,11 +49,6 @@ Player::Player(float x, float y, float spd, int hp, int atk, int pdef, int mdef)
 // Q3.2 平衡: lvl²×20 → lvl×30+50 — 前期升级更快, 玩家到 F5 可达 Lv4-6 (原 Lv3)
 int Player::calc_xp_for_level(int lvl) { return lvl * 30 + 50; }
 
-int Player::attack_target(Player* target, double game_time) {
-    (void)target; (void)game_time;
-    return 0; // 玩家打怪物用 combat_system
-}
-
 void Player::reset_attack_timers() {
     _last_attack_time = -999.0f;
     _last_skill_time = -999.0f;   // M4e

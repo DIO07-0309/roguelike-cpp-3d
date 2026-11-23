@@ -53,13 +53,8 @@ void GameplaySystemDirector::init_events() {
             if (ev.str_val) run_stats.relics_collected++;
             (void)ev.int_val;
         }, "Gameplay", this);
-    EventBus::inst().subscribe(GameEventType::FLOOR_ENTER,
-        [this](const GameEvent& ev) {
-            (void)ev;  // reserved: world state updates
-        }, "Gameplay", this);
 }
 
 void GameplaySystemDirector::unregister_events() {
     EventBus::inst().unsubscribe(GameEventType::RELIC_GAIN, this);
-    EventBus::inst().unsubscribe(GameEventType::FLOOR_ENTER, this);
 }

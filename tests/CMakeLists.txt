@@ -97,6 +97,11 @@ add_roguelike_test(relic_acquisition_vfx_test rendering/relic_acquisition_vfx_te
 add_roguelike_test(player_part_asset_test rendering/player_part_asset_test.cpp)
 add_roguelike_test(damage_type_test combat/damage_type_test.cpp)
 add_roguelike_test(projectile_test  combat/projectile_test.cpp)
+# P3-A: 纯函数/状态机盲区补测 (零 gameplay/RNG/sim 基线影响)
+add_roguelike_test(replay_test             core/replay_test.cpp)
+add_roguelike_test(pure_state_machines_test core/pure_state_machines_test.cpp)
+add_roguelike_test(hit_detection_test      systems/hit_detection_test.cpp)
+add_roguelike_test(combat_coordinator_test systems/combat_coordinator_test.cpp)
 add_roguelike_test(object_pool_test systems/object_pool_test.cpp)   # G11: 对象池槽位复用/回收/扩容安全
 add_roguelike_test(buff_test        combat/buff_test.cpp)
 # G39: 打击感分级 + 流派手感差异 — 防止屏震常量/BuildTheme 字段再次退化成死数据
@@ -127,7 +132,8 @@ add_roguelike_test(save_test        save/save_test.cpp)
 add_roguelike_test(meta_load_guard_test save/meta_load_guard_test.cpp)
 # G7.3: Simulation test (data-structure only, no game deps)
 add_executable(simulation_test sim/simulation_test.cpp
-    ${CMAKE_SOURCE_DIR}/src/core/sim/sim_runner.cpp)
+    ${CMAKE_SOURCE_DIR}/src/core/sim/sim_runner.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/sim/sim_diagnostics.cpp)
 target_link_libraries(simulation_test PRIVATE gtest_main gtest)
 target_include_directories(simulation_test PRIVATE ${CMAKE_SOURCE_DIR}/src)
 copy_test_runtime_dlls(simulation_test)

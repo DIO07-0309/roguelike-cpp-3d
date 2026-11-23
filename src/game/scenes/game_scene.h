@@ -236,6 +236,7 @@ public:
     void _tick_player_autonomy(float dt);
     void _tick_player_combat(float dt);
     void _tick_active_effects(float dt);   // G40: 特效生命周期唯一入口 (原两处逐字复制)
+    void _accumulate_sim_diag();            // P3: 卡死诊断聚合 (纯值)
     void _tick_weapon_specials(float dt);
     void _emit_spear_vfx(const std::vector<WeaponAttackResult>& spec_results);
     void _emit_nunchaku_vfx(const std::vector<WeaponAttackResult>& spec_results);

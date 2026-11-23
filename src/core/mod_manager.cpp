@@ -51,7 +51,9 @@ void ModManager::_scan_dir(const std::string& mods_dir) {
     } while (FindNextFileA(h, &fd));
     FindClose(h);
 #else
-    (void)mods_dir;   // stub — Windows only for now
+    // 约定: 3D 版当前仅 Windows 实机验证 (CLAUDE.md 版本策略), POSIX mod 扫描暂不实现.
+    // 按下述结构补 <dirent.h> opendir/readdir 即可, 不影响 Windows 二进制与 sim.
+    (void)mods_dir;
 #endif
 }
 

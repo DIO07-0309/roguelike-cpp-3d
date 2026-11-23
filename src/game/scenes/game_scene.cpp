@@ -34,6 +34,7 @@
 #include "systems/collision_utils.h"
 #include "core/sim/sim_ai.h"         // G5.6
 #include "core/sim/sim_runner.h"     // G5.6
+#include "core/sim/sim_diagnostics.h" // P3: 卡死诊断聚合 (纯值, 不改 gameplay)
 #include "ai/agents/bt_agent.h"      // G8.1
 #include "event_system.h"
 #include "event_bus.h"
@@ -2225,6 +2226,7 @@ void GameScene::_collect_sim_stats() {
     _fill_sim_build_snapshot(s);
     _collect_sim_behavior_metrics(s);
 
+    _accumulate_sim_diag();  // P3: 先聚合全部计数器 (后续 log 函数会重置 move_branch)
     _log_sim_action_counters();
     _log_sim_move_branch_counters();
     _log_sim_stuck_samples(s);
@@ -2495,6 +2497,30 @@ void GameScene::_dump_sim_reachability() {
     }
 }
 
+// P3: 聚合本局诊断计数器到全局 (纯值, 不改任何 gameplay 状态或 RNG).
+void GameScene::_accumulate_sim_diag() {
+    SimDiagSnapshot d;
+    d.hunt_enters = sim_hunt_enters;
+    d.hunt_frames = sim_hunt_frames;
+    d.hunt_approach = sim_hunt_approach_frames;
+    d.move_rec = sim_move_branch[0];
+    d.move_loot = sim_move_branch[1];
+    d.move_room = sim_move_branch[2];
+    d.move_appr = sim_move_branch[3];
+    d.move_stand = sim_move_branch[4];
+    d.bfs_fail = sim_bfs_fail;
+    d.progress_move = sim_progress_src[0];
+    d.progress_monhp = sim_progress_src[1];
+    d.progress_php = sim_progress_src[2];
+    d.progress_alive = sim_progress_src[3];
+    d.step_attempts = sim_step_attempts;
+    d.step_rollbacks = sim_step_rollbacks;
+    d.stuck_bfs_hit = sim_stuck_bfs_hit;
+    d.stuck_bfs_fail = sim_stuck_bfs_fail;
+    d.runs = 1;
+    sim_diag_accumulate(d);
+}
+
 void GameScene::_reset_sim_diag_counters() {
     sim_stuck_sample_count = 0;
     sim_rot_blocked = 0;
@@ -2502,6 +2528,9 @@ void GameScene::_reset_sim_diag_counters() {
     for (int i = 0; i < 4; i++) sim_progress_src[i] = 0;   // G26
     for (int i = 0; i < 2; i++) sim_stuck_early[i] = 0;   // G26
     sim_stuck_for_max = 0.0;                               // G26
+    // P3: hunt/step 计数器此前从不清零 → 诊断聚合跨局膨胀; 此处补齐逐局重置.
+    sim_step_attempts = 0; sim_step_rollbacks = 0;
+    sim_hunt_enters = 0; sim_hunt_frames = 0; sim_hunt_approach_frames = 0;
 }
 
 // Q3.2: 重置统计, 供下一局使用

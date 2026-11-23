@@ -181,8 +181,9 @@ std::vector<HitResult> hit_detect_by_shape(
     case HitShape::CAPSULE:
         return hit_detect_capsule(origin, dir, range_px, width_px, targets);
     case HitShape::PROJECTILE: {
-        // Projectile: for now, treat as capsule from origin to range
-        // (simplified — full projectile spawns later)
+        // 约定: PROJECTILE 形状数据仅用于弩 (weapons.json type=CROSSBOW),
+        // 弩在 weapon_executor 入口被拦截走真实 ProjectilePool; 此分支是兼容兜底,
+        // 正常游戏路径不可达. 保留 capsule 退化为安全 fallback, 勿误删枚举.
         return hit_detect_capsule(origin, dir, range_px, width_px, targets);
     }
     case HitShape::CIRCLE:

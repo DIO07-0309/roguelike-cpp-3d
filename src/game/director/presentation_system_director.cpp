@@ -183,15 +183,7 @@ void PresentationSystemDirector::subscribe_skill_evolved_toast() {
 }
 
 void PresentationSystemDirector::init_events() {
-    EventBus::inst().subscribe(GameEventType::PLAYER_LEVEL_UP,
-        [](const GameEvent& ev) {
-            (void)ev;  // reserved: 升级特效
-        }, "Presentation", this);
-    EventBus::inst().subscribe(GameEventType::MONSTER_DIED,
-        [](const GameEvent& ev) {
-            (void)ev;  // reserved: 击杀飘字/震动
-        }, "Presentation", this);
-
+    // 升级特效/击杀飘字由 GameSceneCombat 同步实现, 旧空订阅已删
     subscribe_attack_evolved_toast();
     subscribe_skill_evolved_toast();
     // G1 Step4: Boss 规则激活 — 弹 toast
@@ -218,8 +210,6 @@ void PresentationSystemDirector::init_events() {
 }
 
 void PresentationSystemDirector::unregister_events() {
-    EventBus::inst().unsubscribe(GameEventType::PLAYER_LEVEL_UP, this);
-    EventBus::inst().unsubscribe(GameEventType::MONSTER_DIED, this);
     EventBus::inst().unsubscribe(GameEventType::ATTACK_EVOLVED, this);
     EventBus::inst().unsubscribe(GameEventType::SKILL_EVOLVED, this);
     EventBus::inst().unsubscribe(GameEventType::BOSS_RULE_ACTIVATED, this);

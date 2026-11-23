@@ -1,4 +1,36 @@
-﻿# P2 逐件资产预览补齐 — 239 件 / 8 张 sheet（2026-11-23）
+﻿# P3 测试盲区补齐 + 死 stub 清理 + sim 诊断增强（2026-11-23）
+
+> 用户拍板三切片: A 档安全单测 + 删 4 处死 stub + sim 诊断增强 (LOW 风险中间切片, 不碰卡死根因).
+
+## 1. 删 4 处死 stub（零 gameplay 影响）
+
+- `Player::attack_target` 死函数（全仓零调用）连同声明删除。
+- `FLOOR_ENTER`（GameplayDirector）/`PLAYER_LEVEL_UP`+`MONSTER_DIED`（PresentationDirector）三个空订阅连同注销删除；真实表现已在 GameSceneCombat 同步实现。
+- `PROJECTILE` 命中分支、POSIX mod stub 仅注释文档化为明确约定，行为零变化。
+- 删 `weapon_test.cpp` 里 4 个"手工数学假测试"（从不调用生产函数），由真实 `hit_detection_test` 取代。
+
+## 2. A 档安全单测（4 个新测试目标）
+
+- `replay_test`：action id 映射往返 / hash 链校验 / JSON round-trip（逐字段 + 二次序列化一致）。
+- `pure_state_machines_test`：tutorial 11 阶段链 / boss cinematic 生命周期 / boss timeline。
+- `hit_detection_test`：**真实调用** `hit_detect_circle/sector/rectangle/capsule`（用真 Monster 摆位），替换假测试。
+- `combat_coordinator_test`：时停 `instance_id` 路径 + HP 回滚（`cc_defer_in_timestop`）。
+- 全部纯函数/状态机，零 gameplay/RNG/sim 基线影响。
+
+## 3. sim 诊断增强（不碰卡死根因）
+
+- `sim_diagnostics.h/.cpp`：全局聚合器，把既有 18 个诊断计数器按局累加（纯值，不调 rng、不写 gameplay）。
+- `GameScene::_accumulate_sim_diag` 在 log 函数重置计数前聚合；`sim_runner.cpp` `begin()` reset + `to_json()` 输出 `diagnostics` 段（hunt/move_branch/progress_src/step/stuck_bfs）。
+- **修 MAJOR**：hunt/step 5 个计数器此前从不在局间清零 → 诊断跨局膨胀（sim5 hunt_enters 虚高 69）; `_reset_sim_diag_counters` 补清零后降到真实 14。
+- 卡死根因（探索/寻路/预算/目标评分协同失调）仍是系统性 redesign，**本轮未碰**; 此诊断段为下一轮 redesign 提供可判读验收数据。
+
+## 验证与 Review
+
+ctest **96/96**（92+4 新测试）、sim golden baseline Passed（确定性未变）、fn_length 0 超规、validator 0 错 0 警；实跑 `--sim` 确认 balance_report.json 出现完整且数值可信的 diagnostics 段。fresh reviewer 判定：1 个 MAJOR（诊断计数器跨局膨胀，已修）+ 6 个 MINOR（假测试/断言强度/CHANGELOG/桌面同步/死代码/命名，均已处理）。
+
+---
+
+# P2 逐件资产预览补齐 — 239 件 / 8 张 sheet（2026-11-23）
 
 > 用户拍板: 复用软件光栅脚本 + 分类合照 sheet + 全部缺口 239 件。纯美术预览, 零玩法副作用。
 
