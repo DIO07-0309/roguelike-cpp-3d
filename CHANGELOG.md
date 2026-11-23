@@ -1,4 +1,24 @@
-﻿# P1 剩余三项：技能占位标记 + 死枚举清理 + validator 盲点修复（2026-11-23）
+﻿# P2 逐件资产预览补齐 — 239 件 / 8 张 sheet（2026-11-23）
+
+> 用户拍板: 复用软件光栅脚本 + 分类合照 sheet + 全部缺口 239 件。纯美术预览, 零玩法副作用。
+
+## 实现
+
+- `art_src/scripts/preview_all_assets.py`: 复用 `preview_models` 的光栅器, 批量把 239 件模型渲染成 8 张分类合照 sheet。每 cell 独立渲染再 paste (绕开 draw_model 单行 y 裁剪限制), 标签两行显示 (家族 + .部件槽) 让 5 槽部件可区分。输出 `sheet_manifest.json` 作单一事实源。
+- 8 张 sheet: monster_parts 150 / boss_parts 30 / player_parts 6 / npc_guard 7 / items 16 / arena 5 / rooms 19 / props 6。
+- 已有独立逐资产预览的 9 地标 + 22 地形 (31 件) 不算缺口, 不重复造。
+
+## 闸门
+
+`tools/check_preview_coverage.js`: 读 manifest, 验证 239 件 sheet 覆盖 + 31 件独立预览 + png 非空白 (按面积动态阈值 area×0.01, 拦住纯色图) + 无陈旧条目 + cwd 无关 (路径锚定仓库根)。正向 `FAILED=0`; 负向 (manifest 去 chest) `FAILED=1`。
+
+## 验证与 Review
+
+8 张图全量人工审图通过 (模型清晰/无空白/无错位/标签可辨); 分组独立核验 239 件无缺失无重复; 闸门正负向有效; fresh reviewer Conditional PASS → 3 个 MEDIUM/LOW 已修: 标签截断(I2)、空白图漏检(I3)、cwd 依赖(I4)。继承的纯视觉底部裁切(I1, preview_models 原有) 记为已知限制。ctest/基线不受影响 (纯预览资产, 未碰 gameplay/RNG/存档/模型 JSON)。
+
+---
+
+# P1 剩余三项：技能占位标记 + 死枚举清理 + validator 盲点修复（2026-11-23）
 
 > 用户拍板：孤儿技能标记未实现占位、死枚举只删可安全删除的、validator 修 bug + 低风险检查。
 
