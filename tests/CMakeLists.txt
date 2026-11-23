@@ -102,6 +102,8 @@ add_roguelike_test(replay_test             core/replay_test.cpp)
 add_roguelike_test(pure_state_machines_test core/pure_state_machines_test.cpp)
 add_roguelike_test(hit_detection_test      systems/hit_detection_test.cpp)
 add_roguelike_test(combat_coordinator_test systems/combat_coordinator_test.cpp)
+# P3-redesign: sim 结算判定契约
+add_roguelike_test(sim_outcome_test sim/sim_outcome_test.cpp)
 add_roguelike_test(object_pool_test systems/object_pool_test.cpp)   # G11: 对象池槽位复用/回收/扩容安全
 add_roguelike_test(buff_test        combat/buff_test.cpp)
 # G39: 打击感分级 + 流派手感差异 — 防止屏震常量/BuildTheme 字段再次退化成死数据

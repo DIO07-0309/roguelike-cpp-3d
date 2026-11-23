@@ -35,6 +35,7 @@
 #include "core/sim/sim_ai.h"         // G5.6
 #include "core/sim/sim_runner.h"     // G5.6
 #include "core/sim/sim_diagnostics.h" // P3: 卡死诊断聚合 (纯值, 不改 gameplay)
+#include "core/sim/sim_outcome.h"      // P3-redesign: 胜利判定纯函数
 #include "ai/agents/bt_agent.h"      // G8.1
 #include "event_system.h"
 #include "event_bus.h"
@@ -2254,7 +2255,9 @@ void GameScene::_collect_sim_stats() {
 
 void GameScene::_fill_sim_run_result(RunResult& s) {
     s.seed = _dungeon_seed;
-    s.victory = (current_floor >= MAX_FLOORS) && player->combat.is_alive;  // Q3.7: 死在F15不算通关
+    // P3-redesign: 排除超时/看门狗强制结算时的"F15 存活"假胜利
+    s.victory = is_sim_victory(current_floor, player->combat.is_alive,
+                               _sim_game_timeout, _sim_wall_timeout, sim_stuck_watchdog);
     s.floor_reached = current_floor;
     s.turns = (int)(game_time * 60); // approximate frames → turns
     s.damage_dealt = (int)_sim_dmg_dealt;  // Q3.2: 真实累计 (替代 kills*10 估算)
