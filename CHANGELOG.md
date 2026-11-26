@@ -1,4 +1,26 @@
-﻿# Sim 通关 F15 Redesign — 未达标，gameplay 改动已回退（2026-11-24）
+﻿# 攻击链路诊断 + 根因定位 — "攻击打不掉血"（2026-11-27）
+
+> 用户目标：先修"攻击打不掉血"单点。本轮交付 = 纯观测诊断 + 根因定位；标量修复方案实测未达标已回退。
+
+## 诊断模块（保留产物）
+
+`src/core/sim/attack_diagnostics.h/.cpp` + `_weapon_attack` sim-only 采样 + `balance_report.json.attack_diagnostics` 段。纯观测、不改 gameplay、不碰 rng/存档/确定性。记录 attack_calls / can_attack_pass / whiff（排除弩）/ dist_bucket（真最近怪、execute 前 stage 推导射程）/ crossbow_calls。`simulation_test` 补链接。
+
+## 根因（实测，固定 build seed4242）
+
+31022 次 attack 里仅 2016 次（6.5%）通过武器冷却门控；放行的 2016 次里 92% 在"怪距>射程3/4"的边缘、命中率仅 1.2%。结论：AI 攻击判据（`_evaluate_attack` 圆形直线距离）与武器真实命中判据（`hit_detect_by_shape` 方向+形状宽度）不一致，AI 在形状上够不到的位置反复空挥。
+
+## 标量折扣方案（实测未达标，已回退）
+
+近战攻击半径 ×0.7：命中率 1.2%→5.8%（未达 10% 护栏）、kills/damage 无提升；×0.5：命中率跌回 1.4%、dmg 暴跌（负回归）。证明根因是角度/宽度而非半径，标量方案有天花板。已全部回退，仅留诊断。下一步应复用 AttackGeometry 做几何命中判定（独立立项）。
+
+## Review
+
+fresh reviewer 判定"有条件合入"：gameplay 安全（零副作用/确定性/JSON 兼容）PASS；4 个诊断口径缺陷（段位分母、弩 whiff、runs 死字段、哨兵入桶）已全修。ctest 97/97、golden 绿色。设计文档 `docs/superpowers/specs/2026-11-27-sim-attack-range-mismatch-design.md` 诚实记录根因与标量方案回退。
+
+---
+
+# Sim 通关 F15 Redesign — 未达标，gameplay 改动已回退（2026-11-24）
 
 > 用户目标：sim 稳定通关 F15 + 赢若干局（win_rate≥5% 且 F10/F15 有击杀），授权数值/平衡可改。按 `docs/superpowers/specs/2026-11-23-sim-clear-f15-redesign-design.md` 实施。
 

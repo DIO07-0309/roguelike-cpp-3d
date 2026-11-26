@@ -1,6 +1,7 @@
 #include "sim_runner.h"
 #include "build_score.h"  // G7.4: BuildType enum
 #include "sim_diagnostics.h"  // P3: 卡死诊断聚合
+#include "attack_diagnostics.h"  // P3-redesign: 攻击链路诊断
 #include <cstdio>
 #include <fstream>
 #include <algorithm>
@@ -14,7 +15,8 @@ void SimRunner::begin(const SimulationConfig& cfg) {
     _cfg = cfg;
     _report = BalanceReport{};
     _report.runs.reserve(cfg.runs);
-    sim_diag_reset();  // P3: 每批次清空诊断聚合器
+    sim_diag_reset();     // P3: 每批次清空诊断聚合器
+    attack_diag_reset();  // P3-redesign: 清空攻击诊断聚合器
     printf("[SIM] Starting %d runs (seed_start=%u)\n", cfg.runs, cfg.seed_start);
 }
 
@@ -374,6 +376,21 @@ std::string BalanceReport::to_json() const {
         dg["stuck_bfs_hit"] = d.stuck_bfs_hit;
         dg["stuck_bfs_fail"] = d.stuck_bfs_fail;
         j["diagnostics"] = dg;
+    }
+    // P3-redesign: 攻击链路诊断 (纯观测)
+    {
+        const auto& a = attack_diag_totals();
+        json aj = json::object();
+        aj["attack_calls"] = a.attack_calls;
+        aj["can_attack_pass"] = a.can_attack_pass;
+        aj["total_results"] = a.total_results;
+        aj["total_damage"] = a.total_damage;
+        aj["whiffs"] = a.whiffs;
+        aj["crossbow_calls"] = a.crossbow_calls;
+        json db = json::array();
+        for (int i = 0; i < 4; i++) db.push_back(a.dist_bucket[i]);
+        aj["dist_bucket"] = db;  // 放行攻击的最近怪距离/射程分布
+        j["attack_diagnostics"] = aj;
     }
     return j.dump(2);
 }

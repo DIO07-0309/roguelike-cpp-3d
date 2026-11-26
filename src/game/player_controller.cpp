@@ -1,4 +1,5 @@
 #include "player_controller.h"
+#include "core/sim/attack_diagnostics.h"  // P3-redesign: 攻击链路诊断 (sim-only, 纯观测)
 #include "core/logger.h"      // A4-probe
 #include "core/sim/sim_ai.h"  // G15: SIM-LOOT best 诊断 (last_best_action)
 #include "scenes/game_scene.h"
@@ -708,11 +709,38 @@ struct WeaponVFXContext {
 void PlayerController::_weapon_attack(GameScene& gs, Player& p) {
     // Read stage BEFORE execute advances the combo
     int stage = p.weapon.combo_index();
+    // P3-redesign: 诊断值必须在 execute 前采样 — execute 会推进 combo,
+    // current_range() 之后返回的是下一段, 与决策期口径脱节.
+    const bool diag_can_attack = gs._sim_mode && p.weapon.can_attack(gs.game_time);
+    const WeaponDef* diag_def = p.weapon.current_def();
+    // 用 execute 前的 stage 推导射程, 与 _evaluate_attack 决策期同源.
+    const float diag_reach = (diag_def && stage >= 0 && stage < diag_def->stage_count)
+        ? std::max(diag_def->stages[stage].range, 1.5f) * 32.0f
+        : 48.0f;
+    const bool diag_crossbow = (p.weapon.weapon_type() == WeaponType::CROSSBOW);
     std::vector<Monster*> mlist;
     for (auto& m : gs.monsters) mlist.push_back(m.get());
     auto results = WeaponExecutor::execute(
         &p, mlist, gs.game_time, gs.get_tree()->get_audio(),
         &gs.projectiles, gs.game_map.get());
+    if (gs._sim_mode) {
+        int dmg = 0;
+        for (const auto& r : results) dmg += r.damage;
+        // 真正最近怪距离 / 真实射程 — 判断 miss 是否因站在射程边缘
+        float dist_ratio = -1.0f;
+        float best_d = 1e18f;
+        const float px = p.entity.rect.x + p.entity.rect.width / 2;
+        const float py = p.entity.rect.y + p.entity.rect.height / 2;
+        for (auto* m : mlist) {
+            if (!m || !m->combat.is_alive) continue;
+            float dx = m->entity.rect.x + m->entity.rect.width / 2 - px;
+            float dy = m->entity.rect.y + m->entity.rect.height / 2 - py;
+            float d = std::sqrt(dx * dx + dy * dy);
+            if (d < best_d) { best_d = d; }
+        }
+        if (best_d < 1e17f) dist_ratio = best_d / diag_reach;
+        attack_diag_record(diag_can_attack, (int)results.size(), dmg, dist_ratio, diag_crossbow);
+    }
     // Feedback always, even on whiff
     p.combo.hit(gs.game_time);
     p._last_attack_time = gs.game_time;

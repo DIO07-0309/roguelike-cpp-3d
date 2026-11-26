@@ -135,7 +135,8 @@ add_roguelike_test(meta_load_guard_test save/meta_load_guard_test.cpp)
 # G7.3: Simulation test (data-structure only, no game deps)
 add_executable(simulation_test sim/simulation_test.cpp
     ${CMAKE_SOURCE_DIR}/src/core/sim/sim_runner.cpp
-    ${CMAKE_SOURCE_DIR}/src/core/sim/sim_diagnostics.cpp)
+    ${CMAKE_SOURCE_DIR}/src/core/sim/sim_diagnostics.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/sim/attack_diagnostics.cpp)
 target_link_libraries(simulation_test PRIVATE gtest_main gtest)
 target_include_directories(simulation_test PRIVATE ${CMAKE_SOURCE_DIR}/src)
 copy_test_runtime_dlls(simulation_test)
