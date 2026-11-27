@@ -16,7 +16,8 @@ void SimRunner::begin(const SimulationConfig& cfg) {
     _report = BalanceReport{};
     _report.runs.reserve(cfg.runs);
     sim_diag_reset();     // P3: 每批次清空诊断聚合器
-    attack_diag_reset();  // P3-redesign: 清空攻击诊断聚合器
+    attack_diag_reset();              // P3-redesign: 清空攻击诊断聚合器
+    attack_diag_set_enabled(true);    // sim 期间开启命中瞬间诊断
     printf("[SIM] Starting %d runs (seed_start=%u)\n", cfg.runs, cfg.seed_start);
 }
 
@@ -346,6 +347,54 @@ void append_report_runs(const BalanceReport& r, json& j) {
     j["runs"] = runarr;
 }
 
+// P3: 卡死诊断聚合 (纯值, 既有计数器汇总, 不改 gameplay/RNG)
+static void append_diagnostics(json& j) {
+    const auto& d = sim_diag_totals();
+    json dg = json::object();
+    dg["runs_accumulated"] = d.runs;
+    dg["hunt_enters"] = d.hunt_enters;
+    dg["hunt_frames"] = d.hunt_frames;
+    dg["hunt_approach_frames"] = d.hunt_approach;
+    json mb = json::object();
+    mb["rec"] = d.move_rec; mb["loot"] = d.move_loot; mb["room"] = d.move_room;
+    mb["approach"] = d.move_appr; mb["stand"] = d.move_stand;
+    dg["move_branch"] = mb;
+    dg["bfs_fail"] = d.bfs_fail;
+    json ps = json::object();
+    ps["move"] = d.progress_move; ps["mon_hp"] = d.progress_monhp;
+    ps["player_hp"] = d.progress_php; ps["alive"] = d.progress_alive;
+    dg["progress_src"] = ps;
+    dg["step_attempts"] = d.step_attempts;
+    dg["step_rollbacks"] = d.step_rollbacks;
+    dg["stuck_bfs_hit"] = d.stuck_bfs_hit;
+    dg["stuck_bfs_fail"] = d.stuck_bfs_fail;
+    j["diagnostics"] = dg;
+}
+
+// P3-redesign: 攻击链路诊断 (纯观测)
+static void append_attack_diagnostics(json& j) {
+    const auto& a = attack_diag_totals();
+    json aj = json::object();
+    aj["attack_calls"] = a.attack_calls;
+    aj["can_attack_pass"] = a.can_attack_pass;
+    aj["total_results"] = a.total_results;
+    aj["total_damage"] = a.total_damage;
+    aj["whiffs"] = a.whiffs;
+    aj["crossbow_calls"] = a.crossbow_calls;
+    json db = json::array(), sp = json::array(), sw = json::array();
+    json pdb = json::array(), pab = json::array();
+    for (int i = 0; i < 4; i++) {
+        db.push_back(a.dist_bucket[i]);
+        sp.push_back(a.shape_pass[i]); sw.push_back(a.shape_whiff[i]);
+        pdb.push_back(a.probe_dist_bucket[i]); pab.push_back(a.probe_angle_bucket[i]);
+    }
+    aj["dist_bucket"] = db;
+    aj["shape_pass"] = sp; aj["shape_whiff"] = sw;
+    aj["hit_probe"] = a.hit_probe; aj["hit_probe_empty"] = a.hit_probe_empty;
+    aj["probe_dist_bucket"] = pdb; aj["probe_angle_bucket"] = pab;
+    j["attack_diagnostics"] = aj;
+}
+
 }  // namespace
 
 std::string BalanceReport::to_json() const {
@@ -354,44 +403,8 @@ std::string BalanceReport::to_json() const {
     append_report_dashboard(*this, j);
     append_report_groups(*this, j);
     append_report_runs(*this, j);
-    // P3: 卡死诊断聚合 (纯值, 既有计数器汇总, 不改 gameplay/RNG)
-    {
-        const auto& d = sim_diag_totals();
-        json dg = json::object();
-        dg["runs_accumulated"] = d.runs;
-        dg["hunt_enters"] = d.hunt_enters;
-        dg["hunt_frames"] = d.hunt_frames;
-        dg["hunt_approach_frames"] = d.hunt_approach;
-        json mb = json::object();
-        mb["rec"] = d.move_rec; mb["loot"] = d.move_loot; mb["room"] = d.move_room;
-        mb["approach"] = d.move_appr; mb["stand"] = d.move_stand;
-        dg["move_branch"] = mb;
-        dg["bfs_fail"] = d.bfs_fail;
-        json ps = json::object();
-        ps["move"] = d.progress_move; ps["mon_hp"] = d.progress_monhp;
-        ps["player_hp"] = d.progress_php; ps["alive"] = d.progress_alive;
-        dg["progress_src"] = ps;
-        dg["step_attempts"] = d.step_attempts;
-        dg["step_rollbacks"] = d.step_rollbacks;
-        dg["stuck_bfs_hit"] = d.stuck_bfs_hit;
-        dg["stuck_bfs_fail"] = d.stuck_bfs_fail;
-        j["diagnostics"] = dg;
-    }
-    // P3-redesign: 攻击链路诊断 (纯观测)
-    {
-        const auto& a = attack_diag_totals();
-        json aj = json::object();
-        aj["attack_calls"] = a.attack_calls;
-        aj["can_attack_pass"] = a.can_attack_pass;
-        aj["total_results"] = a.total_results;
-        aj["total_damage"] = a.total_damage;
-        aj["whiffs"] = a.whiffs;
-        aj["crossbow_calls"] = a.crossbow_calls;
-        json db = json::array();
-        for (int i = 0; i < 4; i++) db.push_back(a.dist_bucket[i]);
-        aj["dist_bucket"] = db;  // 放行攻击的最近怪距离/射程分布
-        j["attack_diagnostics"] = aj;
-    }
+    append_diagnostics(j);            // P3: 卡死诊断聚合
+    append_attack_diagnostics(j);     // P3-redesign: 攻击链路诊断
     return j.dump(2);
 }
 

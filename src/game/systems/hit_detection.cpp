@@ -15,6 +15,13 @@ static Vector2 _forward_vec(Direction dir) {
     }
 }
 
+// P3-redesign: aim_angle_rad>=0 时用真实朝向单位向量; -1 回退四向 (真实游戏默认).
+static Vector2 _facing_vec(Direction dir, float aim_angle_rad) {
+    if (aim_angle_rad >= 0.0f)
+        return {std::cos(aim_angle_rad), std::sin(aim_angle_rad)};
+    return _forward_vec(dir);
+}
+
 // ── Helper: center of a monster's rect ──
 static Vector2 _monster_center(const Monster* m) {
     return {
@@ -68,10 +75,10 @@ std::vector<HitResult> hit_detect_circle(
 // ── Sector detection ──
 std::vector<HitResult> hit_detect_sector(
     Vector2 origin, Direction dir, float radius_px, float half_angle_deg,
-    const std::vector<Monster*>& targets)
+    const std::vector<Monster*>& targets, float aim_angle_rad)
 {
     std::vector<HitResult> results;
-    Vector2 fwd = _forward_vec(dir);
+    Vector2 fwd = _facing_vec(dir, aim_angle_rad);
     float half_rad = half_angle_deg * 3.14159265f / 180.0f;
     float r2 = radius_px * radius_px;
     for (auto* m : targets) {
@@ -97,10 +104,10 @@ std::vector<HitResult> hit_detect_sector(
 // ── Rectangle detection ──
 std::vector<HitResult> hit_detect_rectangle(
     Vector2 origin, Direction dir, float length_px, float width_px,
-    const std::vector<Monster*>& targets)
+    const std::vector<Monster*>& targets, float aim_angle_rad)
 {
     std::vector<HitResult> results;
-    Vector2 fwd = _forward_vec(dir);
+    Vector2 fwd = _facing_vec(dir, aim_angle_rad);
     // Perpendicular direction for width
     Vector2 perp = { -fwd.y, fwd.x };
     // Rectangle center is origin + forward * (length/2)
@@ -143,10 +150,10 @@ static float _point_seg_dist_sq(Vector2 p, Vector2 a, Vector2 b) {
 
 std::vector<HitResult> hit_detect_capsule(
     Vector2 origin, Direction dir, float length_px, float radius_px,
-    const std::vector<Monster*>& targets)
+    const std::vector<Monster*>& targets, float aim_angle_rad)
 {
     std::vector<HitResult> results;
-    Vector2 fwd = _forward_vec(dir);
+    Vector2 fwd = _facing_vec(dir, aim_angle_rad);
     Vector2 tip = { origin.x + fwd.x * length_px, origin.y + fwd.y * length_px };
     float r2 = radius_px * radius_px;
     for (auto* m : targets) {
@@ -171,20 +178,20 @@ std::vector<HitResult> hit_detect_capsule(
 std::vector<HitResult> hit_detect_by_shape(
     int hit_shape, Vector2 origin, Direction dir,
     float range_px, float width_px,
-    const std::vector<Monster*>& targets)
+    const std::vector<Monster*>& targets, float aim_angle_rad)
 {
     switch (static_cast<HitShape>(hit_shape)) {
     case HitShape::SECTOR:
-        return hit_detect_sector(origin, dir, range_px, width_px, targets);
+        return hit_detect_sector(origin, dir, range_px, width_px, targets, aim_angle_rad);
     case HitShape::RECTANGLE:
-        return hit_detect_rectangle(origin, dir, range_px, width_px, targets);
+        return hit_detect_rectangle(origin, dir, range_px, width_px, targets, aim_angle_rad);
     case HitShape::CAPSULE:
-        return hit_detect_capsule(origin, dir, range_px, width_px, targets);
+        return hit_detect_capsule(origin, dir, range_px, width_px, targets, aim_angle_rad);
     case HitShape::PROJECTILE: {
         // 约定: PROJECTILE 形状数据仅用于弩 (weapons.json type=CROSSBOW),
         // 弩在 weapon_executor 入口被拦截走真实 ProjectilePool; 此分支是兼容兜底,
         // 正常游戏路径不可达. 保留 capsule 退化为安全 fallback, 勿误删枚举.
-        return hit_detect_capsule(origin, dir, range_px, width_px, targets);
+        return hit_detect_capsule(origin, dir, range_px, width_px, targets, aim_angle_rad);
     }
     case HitShape::CIRCLE:
     default:

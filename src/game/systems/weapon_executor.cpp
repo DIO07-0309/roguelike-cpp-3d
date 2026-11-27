@@ -4,6 +4,8 @@
 #include "systems/weapon_component.h"
 #include "systems/combat_system.h"
 #include "systems/hit_detection.h"
+#include "core/sim/attack_diagnostics.h"  // P3-redesign: 命中瞬间诊断 (sim-only)
+#include "systems/sim_aim.h"                // P3-redesign: sim 命中瞄准开关
 #include "systems/vfx_server.h"
 #include "game_map.h"
 #include "combat_feel.h"
@@ -83,6 +85,41 @@ static Vector2 _player_origin(const Player* p) {
 }
 
 // ── G10.5-B: forward vec (mirror of hit_detection.cpp _forward_vec) ──
+// P3-redesign: sim 精确瞄准 — 返回玩家到最近存活怪的真实方位角 (弧度).
+// 真实游戏 sim_hit_aim_enabled=false 时不调用, 走原四向.
+static float _sim_aim_angle(Vector2 origin, const std::vector<Monster*>& rt) {
+    float best = 1e18f, bx = 0.0f, by = 0.0f;
+    for (auto* m : rt) {
+        if (!m || !m->combat.is_alive) continue;
+        float dx = m->entity.rect.x + m->entity.rect.width / 2 - origin.x;
+        float dy = m->entity.rect.y + m->entity.rect.height / 2 - origin.y;
+        float d = std::sqrt(dx * dx + dy * dy);
+        if (d < best) { best = d; bx = dx; by = dy; }
+    }
+    return (best < 1e17f) ? std::atan2(by, bx) : -1.0f;
+}
+
+// P3-redesign: 命中瞬间诊断 (sim-only) — 记录最近怪距离/相对四向夹角.
+static void _record_hit_probe(const Player* p, Vector2 origin,
+                              const std::vector<Monster*>& rt, int hit_shape,
+                              float range_px, float width_px, int hit_count) {
+    float best = 1e18f, bx = 0.0f, by = 0.0f;
+    for (auto* m : rt) {
+        if (!m || !m->combat.is_alive) continue;
+        float dx = m->entity.rect.x + m->entity.rect.width / 2 - origin.x;
+        float dy = m->entity.rect.y + m->entity.rect.height / 2 - origin.y;
+        float d = std::sqrt(dx * dx + dy * dy);
+        if (d < best) { best = d; bx = dx; by = dy; }
+    }
+    if (best >= 1e17f) return;
+    float fx = 0.0f, fy = 0.0f;
+    if (p->direction == Direction::UP) fy = -1; else if (p->direction == Direction::DOWN) fy = 1;
+    else if (p->direction == Direction::LEFT) fx = -1; else fx = 1;
+    float dot = (bx * fx + by * fy) / best;
+    float rel = std::acos(std::max(-1.0f, std::min(1.0f, dot))) * 180.0f / 3.14159265f;
+    attack_diag_record_hit(hit_shape, range_px, width_px, best, rel, hit_count);
+}
+
 static Vector2 _we_forward_vec(Direction dir) {
     switch (dir) {
     case Direction::UP:    return {0.0f, -1.0f};
@@ -424,8 +461,12 @@ static std::vector<WeaponAttackResult> _melee_normal(
     if (is_stage3 && def->legendary_effect == "sword_wave")
         effective_rpx *= 1.3f;
 
+    // P3-redesign: sim 命中传真实方位角; 真实游戏 aim_rad=-1 走原四向, 逐字节不变.
+    const float aim_rad = sim_hit_aim_enabled() ? _sim_aim_angle(origin, rt) : -1.0f;
     auto hits = hit_detect_by_shape(
-        (int)st.hit_shape, origin, p->direction, effective_rpx, wp, rt);
+        (int)st.hit_shape, origin, p->direction, effective_rpx, wp, rt, aim_rad);
+    if (attack_diag_enabled())
+        _record_hit_probe(p, origin, rt, (int)st.hit_shape, effective_rpx, wp, (int)hits.size());
     for (auto& h : hits) {
         float mult = st.damage_multiplier;
         // ── Affix: dagger bleed on stage-3 thrust ──

@@ -20,6 +20,7 @@
 #include "core/service_locator.h"
 #include "core/event_bus.h"
 #include "config.h"
+#include "systems/sim_aim.h"  // P3-redesign: sim 命中瞄准开关
 #include "core/registry_builder.h"     // G4.1
 #include "core/builtin_provider.h"     // G4.1
 #include "core/mod_provider.h"         // G4.1
@@ -271,6 +272,7 @@ static bool _init_sim_headless(const CliFlags& f) {
     AudioServer::g_muted = true;            // Q3.1: headless 静音
     SaveManager::g_sim_readonly = true;     // Q3.1: sim 不覆盖玩家存档
     g_meta.g_readonly = true;               // Q3.1: sim 不写 meta 存档
+    sim_hit_aim_set_enabled(true);          // P3-redesign: sim 命中用真实方位角, 真实游戏不变
     auto& sr = SimRunner::inst();
     if (GameScene::g_sim_all_builds) sr.set_all_builds(true);
     sr.begin(sim_cfg);

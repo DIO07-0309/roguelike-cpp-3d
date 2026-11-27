@@ -706,41 +706,55 @@ struct WeaponVFXContext {
     const std::vector<WeaponAttackResult>& results;
 };
 
+// P3-redesign: 攻击链路诊断采样 (sim-only, 纯观测). reach/shape 用 execute 前 stage 推导,
+// 与决策期 _evaluate_attack 同源 (execute 推进 combo 后 current_range 会变到下一段).
+void PlayerController::_record_attack_diag(GameScene& gs, const Player& p, int stage,
+        const std::vector<WeaponAttackResult>& results, bool can_attack) {
+    if (!gs._sim_mode) return;
+    const WeaponDef* def = p.weapon.current_def();
+    const bool valid_stage = def && stage >= 0 && stage < def->stage_count;
+    const float reach = valid_stage ? std::max(def->stages[stage].range, 1.5f) * 32.0f : 48.0f;
+    const bool crossbow = (p.weapon.weapon_type() == WeaponType::CROSSBOW);
+    const int shape = valid_stage ? (int)def->stages[stage].hit_shape : (int)HitShape::CIRCLE;
+    int dmg = 0;
+    for (const auto& r : results) dmg += r.damage;
+    float best = 1e18f;
+    const float px = p.entity.rect.x + p.entity.rect.width / 2;
+    const float py = p.entity.rect.y + p.entity.rect.height / 2;
+    for (const auto& m : gs.monsters) {
+        if (!m || !m->combat.is_alive) continue;
+        float dx = m->entity.rect.x + m->entity.rect.width / 2 - px;
+        float dy = m->entity.rect.y + m->entity.rect.height / 2 - py;
+        best = std::min(best, std::sqrt(dx * dx + dy * dy));
+    }
+    const float ratio = best < 1e17f ? best / reach : -1.0f;
+    attack_diag_record(can_attack, (int)results.size(), dmg, ratio, crossbow, shape);
+}
+
+// G9: 按武器类型分派 per-weapon VFX (从 _weapon_attack 抽出, 守 ≤40 行)
+void PlayerController::_dispatch_weapon_vfx(const WeaponVFXContext& ctx, int weapon_type) {
+    switch (static_cast<WeaponType>(weapon_type)) {
+    case WeaponType::FIST:     _vfx_fist(ctx); break;
+    case WeaponType::DAGGER:   _vfx_dagger(ctx); break;
+    case WeaponType::SWORD:    _vfx_sword(ctx); break;
+    case WeaponType::NUNCHAKU: _vfx_nunchaku(ctx); break;
+    case WeaponType::SPEAR:    _vfx_spear(ctx); break;
+    case WeaponType::CROSSBOW: _vfx_crossbow(ctx); break;
+    default: break;
+    }
+}
+
 void PlayerController::_weapon_attack(GameScene& gs, Player& p) {
     // Read stage BEFORE execute advances the combo
     int stage = p.weapon.combo_index();
-    // P3-redesign: 诊断值必须在 execute 前采样 — execute 会推进 combo,
-    // current_range() 之后返回的是下一段, 与决策期口径脱节.
+    // P3-redesign: can_attack 必须在 execute 前采样 (execute 推进 combo 会改变结果)
     const bool diag_can_attack = gs._sim_mode && p.weapon.can_attack(gs.game_time);
-    const WeaponDef* diag_def = p.weapon.current_def();
-    // 用 execute 前的 stage 推导射程, 与 _evaluate_attack 决策期同源.
-    const float diag_reach = (diag_def && stage >= 0 && stage < diag_def->stage_count)
-        ? std::max(diag_def->stages[stage].range, 1.5f) * 32.0f
-        : 48.0f;
-    const bool diag_crossbow = (p.weapon.weapon_type() == WeaponType::CROSSBOW);
     std::vector<Monster*> mlist;
     for (auto& m : gs.monsters) mlist.push_back(m.get());
     auto results = WeaponExecutor::execute(
         &p, mlist, gs.game_time, gs.get_tree()->get_audio(),
         &gs.projectiles, gs.game_map.get());
-    if (gs._sim_mode) {
-        int dmg = 0;
-        for (const auto& r : results) dmg += r.damage;
-        // 真正最近怪距离 / 真实射程 — 判断 miss 是否因站在射程边缘
-        float dist_ratio = -1.0f;
-        float best_d = 1e18f;
-        const float px = p.entity.rect.x + p.entity.rect.width / 2;
-        const float py = p.entity.rect.y + p.entity.rect.height / 2;
-        for (auto* m : mlist) {
-            if (!m || !m->combat.is_alive) continue;
-            float dx = m->entity.rect.x + m->entity.rect.width / 2 - px;
-            float dy = m->entity.rect.y + m->entity.rect.height / 2 - py;
-            float d = std::sqrt(dx * dx + dy * dy);
-            if (d < best_d) { best_d = d; }
-        }
-        if (best_d < 1e17f) dist_ratio = best_d / diag_reach;
-        attack_diag_record(diag_can_attack, (int)results.size(), dmg, dist_ratio, diag_crossbow);
-    }
+    _record_attack_diag(gs, p, stage, results, diag_can_attack);
     // Feedback always, even on whiff
     p.combo.hit(gs.game_time);
     p._last_attack_time = gs.game_time;
@@ -758,15 +772,7 @@ void PlayerController::_weapon_attack(GameScene& gs, Player& p) {
     _compute_stage_geometry(p, def, stage_geo);
     WeaponVFXContext ctx{gs, vfx, p, px, py, stage, stage_geo,
                          stage_geo.direction.x, stage_geo.direction.y, results};
-    switch (wt) {
-    case WeaponType::FIST:     _vfx_fist(ctx); break;
-    case WeaponType::DAGGER:   _vfx_dagger(ctx); break;
-    case WeaponType::SWORD:    _vfx_sword(ctx); break;
-    case WeaponType::NUNCHAKU: _vfx_nunchaku(ctx); break;
-    case WeaponType::SPEAR:    _vfx_spear(ctx); break;
-    case WeaponType::CROSSBOW: _vfx_crossbow(ctx); break;
-    default: break;
-    }
+    _dispatch_weapon_vfx(ctx, (int)wt);
     for (auto& e : vfx.effects) gs.active_effects.push_back(e);
     vfx.effects.clear();
     if (results.empty()) return; // whiff: VFX + shake played

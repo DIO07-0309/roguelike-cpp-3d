@@ -4,6 +4,7 @@
 
 #include <memory>
 #include <vector>
+#include <cmath>
 
 #include "systems/hit_detection.h"
 #include "monster.h"
@@ -57,6 +58,30 @@ TEST(HitDetectionReal, CapsuleSegmentRadius) {
     auto hits = hit_detect_capsule({100, 100}, Direction::RIGHT, 100.0f, 20.0f, targets);
     ASSERT_EQ(hits.size(), 1u);
     EXPECT_EQ(hits[0].target, on_segment.get());
+}
+
+// P3-redesign: 可选 aim_angle_rad — 默认行为不变, 真实角度能让斜向目标命中
+TEST(HitDetectionReal, AimAngleImprovesDiagonalHit) {
+    auto diag = monster_at(140, 140);  // 相对 origin(100,100) 为 45° 斜向
+    std::vector<Monster*> targets = {diag.get()};
+    // 默认 dir=DOWN (90°), 窄扇形半角 30° → 45° 目标不在扇形内 → miss
+    auto miss = hit_detect_sector({100, 100}, Direction::DOWN, 100.0f, 30.0f, targets);
+    EXPECT_TRUE(miss.empty());
+    // 传真实方位角 atan2(40,40)=45° → 命中
+    float angle = std::atan2(40.0f, 40.0f);
+    auto hit = hit_detect_sector({100, 100}, Direction::DOWN, 100.0f, 30.0f, targets, angle);
+    EXPECT_EQ(hit.size(), 1u);
+    EXPECT_EQ(hit[0].target, diag.get());
+}
+
+TEST(HitDetectionReal, AimAngleDefaultUnchanged) {
+    // 默认参数 (-1) 必须与显式传 dir 四向完全一致 (真实游戏零变化论证)
+    auto m = monster_at(100, 140);
+    std::vector<Monster*> targets = {m.get()};
+    auto a = hit_detect_sector({100, 100}, Direction::DOWN, 100.0f, 60.0f, targets);
+    auto b = hit_detect_sector({100, 100}, Direction::DOWN, 100.0f, 60.0f, targets, -1.0f);
+    EXPECT_EQ(a.size(), b.size());
+    EXPECT_EQ(b.size(), 1u);
 }
 
 TEST(HitDetectionReal, EmptyTargetsReturnsEmpty) {

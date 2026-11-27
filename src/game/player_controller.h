@@ -1,6 +1,7 @@
 #pragma once
 
 #include "raylib.h"       // Vector2 (G31-A: _resolve_move_input 按值返回)
+#include <vector>         // P3-redesign: _record_attack_diag 参数
 
 class GameScene;
 class InputMap;
@@ -106,6 +107,11 @@ private:
     void _vfx_spear(const WeaponVFXContext& ctx);
     void _vfx_crossbow(const WeaponVFXContext& ctx);
     void _apply_post_hit(const WeaponVFXContext& ctx);
+    // P3-redesign: 攻击链路诊断采样 (sim-only, 纯观测)
+    void _record_attack_diag(GameScene& gs, const Player& p, int stage,
+                             const std::vector<WeaponAttackResult>& results,
+                             bool can_attack_before_execute);
+    void _dispatch_weapon_vfx(const WeaponVFXContext& ctx, int weapon_type);
     // 聚合命中结果 → 顿帧秒数 + 屏震幅度 (输出参数, 与 ElementResolver 同款约定)
     float _hit_feel_seconds(const WeaponVFXContext& ctx, float& shake) const;
 };

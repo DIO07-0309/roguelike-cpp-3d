@@ -1,4 +1,35 @@
-﻿# 攻击链路诊断 + 根因定位 — "攻击打不掉血"（2026-11-27）
+﻿# Sim 攻击朝向精度修复 — "攻击打不掉血"单点达标（2026-11-28）
+
+> 用户目标：修"攻击打不掉血"单点（命中率≥10% 且 kills/damage 不降；F15 通关留后续）。设计 `docs/superpowers/specs/2026-11-28-sim-facing-precision-design.md`。
+
+## 根因（命中瞬间铁证，20 局）
+
+`attack_diagnostics` 的 hit_probe 实测：真实攻击 91.8% 空挥；方位角桶 93% 集中在 30-60°、距离桶 86% 在射程边缘。根因 = `_face_nearest_target` 把朝向量化为上下左右 4 向 → 攻击朝向与怪实际方位差 30-60°，叠加距离边缘 → 大量空挥。这解释了为何上轮标量折扣（只管距离）无效——角度偏差是另一半主因。
+
+## 方案（sim-only，真实游戏零变化）
+
+- `hit_detect_sector/rectangle/capsule/by_shape` 加可选 `aim_angle_rad=-1`；`_facing_vec` 默认返回原 `_forward_vec(dir)`，逐字节等价。
+- 新增独立 `sim_hit_aim_enabled` 标志（与纯观测 `attack_diag_enabled` 解耦），main.cpp 在 `--sim` 置位。
+- normal 命中点传玩家→最近怪真实 `atan2` 方位角；nunchaku/spear special 保持默认四向（占比小，留后续）。
+- 不改武器数值/冷却/伤害/rng/存档；不碰 Direction 枚举。
+
+## A/B 结果（20 局 seed4242，达标）
+
+- 空挥率 **91.8%→17.4%**；方位角桶 30-60° 集中 **→ <30°**；近战 whiff 73.6%→5.8%（命中率 94%）
+- 总命中 189→246、伤害 10284→**13425**、avg_floor 3.9→**4.2**、F5 Boss 击杀 2→3
+- 达标线（聚合口径）：命中率远超 10%、聚合 dmg 上升。个别固定局漂移属 auto-aim 改变目标选择的正常结果。
+
+## Golden 重采集（按 SOP）
+
+GOLDEN-001 四局：floor [2,3,4,4] 不变；kills [8,11,16,15]→[8,11,15,15]；dmg [183,127,51,291]→[183,84,72,331]；weapon 不变。run0 弩走弹体不受影响保持不变。归因注释写入测试文件。GOLDEN-002/003 不动。
+
+## 验证与 Review
+
+ctest **97/97**、fn_length 0 超规、validator 0 错 0 警。拆解 `_weapon_attack`/`_melee_normal`/`to_json` 守 ≤40 行。fresh reviewer 技术 PASS：真实游戏零变化（默认参数逐字节等价）、无 rng/线程风险、确定性保持、golden 重采集诚实。契约测试锁默认参数等价。补：CHANGELOG/桌面同步。
+
+---
+
+# 攻击链路诊断 + 根因定位 — "攻击打不掉血"（2026-11-27）
 
 > 用户目标：先修"攻击打不掉血"单点。本轮交付 = 纯观测诊断 + 根因定位；标量修复方案实测未达标已回退。
 

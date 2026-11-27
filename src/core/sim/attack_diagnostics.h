@@ -17,9 +17,21 @@ struct AttackDiagSnapshot {
     // 第二层: 放行攻击时的最近怪距离桶 (按 reach 归一: 0=<1/4, 1=<1/2, 2=<3/4, 3=>3/4)
     int64_t dist_bucket[4] = {0, 0, 0, 0};
     int64_t crossbow_calls = 0;  // 弩(弹体)攻击次数 — 走 ProjectilePool 不走 hit_detect
+    // 近战放行攻击按 hit_shape 分桶: 0=CIRCLE 1=SECTOR 2=RECTANGLE 3=CAPSULE
+    int64_t shape_pass[4] = {0, 0, 0, 0};
+    int64_t shape_whiff[4] = {0, 0, 0, 0};
+    // 真实命中瞬间: 采样次数 / 空命中数 / 距离桶 / 方位角桶 / 距离÷射程累计
+    int64_t hit_probe = 0, hit_probe_empty = 0;
+    int64_t probe_dist_bucket[4] = {0, 0, 0, 0};  // 最近怪距离/射程 4 档
+    int64_t probe_angle_bucket[4] = {0, 0, 0, 0}; // 方位角(度) 0:<30 1:<60 2:<90 3:>=90
 };
 
 void attack_diag_record(bool can_attack, int result_count, int damage,
-                        float dist_ratio, bool is_crossbow);
+                        float dist_ratio, bool is_crossbow, int hit_shape);
+// 命中瞬间诊断 (在 WeaponExecutor 真实命中判定点采样)
+void attack_diag_set_enabled(bool enabled);
+bool attack_diag_enabled();
+void attack_diag_record_hit(int hit_shape, float range_px, float width_param,
+                            float nearest_dist_px, float angle_deg, int hit_count);
 const AttackDiagSnapshot& attack_diag_totals();
 void attack_diag_reset();

@@ -56,15 +56,23 @@ const nlohmann::json* run_at(const nlohmann::json& report, size_t i) {
 // 覆盖: 地牢生成 / 刷怪 / 战斗判定 / 掉落 / 楼层推进 / 结算
 //
 // 基线采集: `roguelike_cpp.exe --sim 4 --sim-seed 4242 --sim-build none`
-//   当前实际值 (P6 后, 见下方 P6 基线更新):
+//   当前实际值 (P3-redesign 真实方位角后, 见下方基线更新):
 //   run0 floor=2  kills=8   dmg=183 weapon=crossbow_rare
-//   run1 floor=3  kills=11  dmg=127 weapon=sword_common
-//   run2 floor=4  kills=16  dmg=51  weapon=dagger_rare
-//   run3 floor=4  kills=15  dmg=291 weapon=sword_common
+//   run1 floor=3  kills=11  dmg=84  weapon=sword_common
+//   run2 floor=4  kills=15  dmg=72  weapon=dagger_rare
+//   run3 floor=4  kills=15  dmg=331 weapon=sword_common
 //   (历史值 A15-Guard 时代曾为 run1 spear_legendary / run2 floor5 / run3 floor2, 已漂移)
 // ⚠ 注: `--sim-build none` 实际会跑成"1 局指定 + 3 局随机 build"
 //   (SimRunner 的 all_builds/随机分支行为), 故 4 局 build 不同 —
 //   这不影响确定性, 但意味着改 build 相关逻辑会让前 3 局结果变化。
+// ═ P3-redesign 真实方位角基线更新 (2026-11-28) ═
+//   WeaponExecutor 命中判定在 sim 下传玩家→最近怪的真实 atan2 方位角,
+//   修正 _face_nearest_target 四方向量化造成的 30-60° 偏差 (命中瞬间诊断:
+//   probe 空挥率 91.8%→17.4%, 方位角 30-60° 集中→<30°).
+//   玩法有意改变: 近战 run1/2/3 的 hits/dmg 漂移 (run0 弩走弹体不受影响, 保持不变)。
+//   归因验证: 该改动仅 sim_hit_aim_enabled 开启时生效, 真实游戏走默认四向逐字节不变;
+//   GOLDEN-003 同 seed 确定性仍 PASS。
+//   当前实测值: run2 kills 16→15, dmg run1 127→84 / run2 51→72 / run3 291→331。
 // ═ P6 清怪模式基线更新 (2026-11-19) ═
 //   CombatFocusTracker: 僵持≥8s 无怪掉血 → 临时禁 loot/room 评分强制追怪。
 //   玩法有意改变: 清怪尾段不再被 loot/room 压制, run1/2/3 kills/dmg 漂移,
@@ -81,8 +89,8 @@ TEST(GoldenBaseline, FixedSeedOutcomeIsMatchesBaseline) {
     ASSERT_GE(r["runs"].size(), 4u) << "sim 未产出 4 局";
 
     const int    base_floor[] = {2, 3, 4, 4};
-    const int    base_kills[] = {8, 11, 16, 15};
-    const long   base_dmg[]   = {183, 127, 51, 291};
+    const int    base_kills[] = {8, 11, 15, 15};
+    const long   base_dmg[]   = {183, 84, 72, 331};
     const char*  base_weapon[] = {"crossbow_rare", "sword_common",
                                   "dagger_rare", "sword_common"};
 
