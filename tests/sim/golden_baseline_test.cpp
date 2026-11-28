@@ -57,14 +57,19 @@ const nlohmann::json* run_at(const nlohmann::json& report, size_t i) {
 //
 // 基线采集: `roguelike_cpp.exe --sim 4 --sim-seed 4242 --sim-build none`
 //   当前实际值 (P3-redesign 卡死系统性修复后, 见下方基线更新):
-//   run0 floor=9  kills=40  dmg=2254 weapon=crossbow_legendary
-//   run1 floor=9  kills=37  dmg=1155 weapon=spear_common
+//   run0 floor=12 kills=60  dmg=4974 weapon=crossbow_legendary
+//   run1 floor=12 kills=55  dmg=3456 weapon=spear_common
 //   run2 floor=3  kills=9   dmg=78  weapon=dagger_common
-//   run3 floor=13 kills=61  dmg=3745 weapon=sword_common
+//   run3 floor=15 kills=76  dmg=5836 weapon=sword_common
 //   (历史值 A15-Guard 时代曾为 run1 spear_legendary / run2 floor5 / run3 floor2, 已漂移)
 // ⚠ 注: `--sim-build none` 实际会跑成"1 局指定 + 3 局随机 build"
 //   (SimRunner 的 all_builds/随机分支行为), 故 4 局 build 不同 —
 //   这不影响确定性, 但意味着改 build 相关逻辑会让前 3 局结果变化。
+// ═ P3-redesign 系统性调参基线更新 (2026-11-28) ═
+//   批量调参 (tools/sim_tuner.py, 3 seed×50 局) 确认: 卡死预算 240→400s 使
+//   win_rate 0→19.3%, avg_floor 8→10.8, F15 Boss 击杀 0→8.3, 达标 (win≥5% 且 F10/F15 有击杀).
+//   4 局基线随之漂移: floor run0/1 9→12, run3 13→15; kills/dmg 大幅上升.
+//   旋钮外置为 SIM_TUNE_* 环境变量 (sim_tuning.cpp), 默认 stuck=400; 真实游戏零变化.
 // ═ P3-redesign 卡死系统性修复基线更新 (2026-11-28) ═
 //   5 个 per-change 改动 (standstill/loot-suppress/progress-tighten/hunt-lock/numeric)
 //   协同: 清怪优先 + sim 数值/预算放宽。玩法显著改变 — 4 局全部漂移:
@@ -96,9 +101,9 @@ TEST(GoldenBaseline, FixedSeedOutcomeIsMatchesBaseline) {
     ASSERT_TRUE(r.contains("runs")) << "report 缺少 runs 字段";
     ASSERT_GE(r["runs"].size(), 4u) << "sim 未产出 4 局";
 
-    const int    base_floor[] = {9, 9, 3, 13};
-    const int    base_kills[] = {40, 37, 10, 61};
-    const long   base_dmg[]   = {2254, 1155, 78, 3745};
+    const int    base_floor[] = {12, 12, 3, 15};
+    const int    base_kills[] = {60, 55, 10, 76};
+    const long   base_dmg[]   = {4974, 3456, 78, 5836};
     const char*  base_weapon[] = {"crossbow_legendary", "spear_common",
                                   "dagger_common", "sword_common"};
 

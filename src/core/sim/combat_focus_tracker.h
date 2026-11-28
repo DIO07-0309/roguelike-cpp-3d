@@ -1,5 +1,6 @@
 #pragma once
 #include "sim_redesign_flags.h"
+#include "sim_tuning.h"
 // ============================================================
 // P6: CombatFocusTracker — 清怪僵持检测 (纯值, 无 game 依赖)
 //
@@ -19,7 +20,11 @@
 
 class CombatFocusTracker {
 public:
-    static constexpr float kHuntThresholdSec = 8.0f;
+    static constexpr float kHuntThresholdSec = 8.0f;  // 原契约默认值
+    float hunt_threshold() const {
+        return (sim_redesign_active() && sim_redesign_flags().hunt_lock)
+            ? sim_tuning::hunt_threshold() : kHuntThresholdSec;
+    }
 
     // 每帧观测战斗状态。hp_sum/alive_count 口径必须与 _stuck_progress 一致:
     // 只统计 is_alive 怪的 current_hp (alive==0 时 hp_sum 视为 0)。
@@ -34,7 +39,7 @@ public:
             _hunting = false;
         } else if (_no_combat_since < 0.0f) {          // 锚定起点
             _no_combat_since = game_time;
-        } else if (game_time - _no_combat_since >= kHuntThresholdSec) {
+        } else if (game_time - _no_combat_since >= hunt_threshold()) {
             _hunting = true;                           // 僵持超时 → 纯追怪
         }
         _last_hp_sum = hp_sum;

@@ -1,4 +1,5 @@
 #include "growth_curve.h"
+#include "core/sim/sim_tuning.h"  // P3-redesign: 系统性调参旋钮
 #include <cmath>
 
 // ============================================================
@@ -71,8 +72,16 @@ const GrowthCurve& GrowthCurveSystem::curve(int floor) const {
 
 float GrowthCurveSystem::hp_scale(int floor) const       { return curve(floor).monster_hp; }
 float GrowthCurveSystem::atk_scale(int floor) const      { return curve(floor).monster_atk; }
-float GrowthCurveSystem::boss_hp_scale(int floor) const   { return curve(floor).boss_hp; }
-float GrowthCurveSystem::boss_atk_scale(int floor) const  { return curve(floor).boss_atk; }
+float GrowthCurveSystem::boss_hp_scale(int floor) const {
+    float v = curve(floor).boss_hp;
+    // sim 调参: 全局 Boss HP 倍率缩放 (默认目标 5 = SIM_CURVES F15 值 → 系数 1.0 等价).
+    // 注意: 作用于所有楼层 Boss, 非仅 F15 (调参组合 combo_max 借此整体下调 Boss 强度).
+    return _sim_numeric ? v * (sim_tuning::boss_hp_target() / 5.0f) : v;
+}
+float GrowthCurveSystem::boss_atk_scale(int floor) const {
+    float v = curve(floor).boss_atk;
+    return _sim_numeric ? v * (sim_tuning::boss_atk_target() / 2.5f) : v;
+}
 float GrowthCurveSystem::elite_scale(int floor) const     { return curve(floor).elite_scale; }
 float GrowthCurveSystem::exp_scale(int floor) const       { return curve(floor).exp_scale; }
 float GrowthCurveSystem::gold_scale(int floor) const      { return curve(floor).gold_scale; }

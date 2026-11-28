@@ -4,6 +4,7 @@
 #include "combat_system.h"
 #include "growth_curve.h"
 #include "core/sim/sim_redesign_flags.h"  // P3-redesign: sim 数值调整开关
+#include "core/sim/sim_tuning.h"          // P3-redesign: 系统性调参旋钮
 #include "relic_progression.h"
 #include "floor_manager.h"
 #include "scene_tree.h"
@@ -60,10 +61,10 @@ void GameSceneCombat::grantKillXp(Monster* m) {
         _s.player->xp_to_next = Player::calc_xp_for_level(_s.player->level + 1);
         // P3-redesign: sim 数值调整 (真实游戏不变)
         const bool sim_numeric = sim_redesign_active() && sim_redesign_flags().numeric;
-        _s.player->combat.attack += sim_numeric ? 6 : 2;
+        _s.player->combat.attack += sim_numeric ? sim_tuning::player_atk_per_level() : 2;
         _s.player->combat.physical_defense += sim_numeric ? 2 : 1;
         _s.player->combat.magical_defense += sim_numeric ? 2 : 1;
-        _s.player->combat.max_hp += sim_numeric ? 30 : 10;
+        _s.player->combat.max_hp += sim_numeric ? sim_tuning::player_hp_per_level() : 10;
         _s.player->combat.current_hp = get_effective_max_hp(_s.player.get());
         _s.get_tree()->get_audio()->play_sfx("levelup");
         _s._presentation.trigger_shake(CombatFeelSystem::SHAKE_LIGHT);

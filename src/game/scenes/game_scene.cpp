@@ -37,6 +37,7 @@
 #include "core/sim/sim_diagnostics.h" // P3: 卡死诊断聚合 (纯值, 不改 gameplay)
 #include "core/sim/sim_outcome.h"      // P3-redesign: 胜利判定纯函数
 #include "core/sim/sim_redesign_flags.h"  // P3-redesign: 卡死修复开关
+#include "core/sim/sim_tuning.h"          // P3-redesign: 系统性调参旋钮
 #include "ai/agents/bt_agent.h"      // G8.1
 #include "event_system.h"
 #include "event_bus.h"
@@ -782,7 +783,7 @@ bool GameScene::_sim_wall_timeout_check() {
     // M2-E: GetTime()(真实墙钟, 慢机改变结果) → 帧计数 (600s×60fps=36000帧, 确定性)
     // P3-redesign: sim 帧预算放宽 (72000f≈1200s) — 深层 13 层需要更多时间.
     const long wall_budget = (sim_redesign_active() && sim_redesign_flags().numeric)
-        ? 72000L : 36000L;
+        ? sim_tuning::wall_budget() : 36000L;
     if (_sim_mode && ++_sim_wall_frames > wall_budget) {
         LOG_INFO("[SIM] 帧数兜底超时(%ldf) 第%d层 — 强制结算", wall_budget, current_floor);
         // P1-C3 探针: 兜底结算现场快照 — 定位游走困死的末帧状态

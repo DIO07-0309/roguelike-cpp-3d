@@ -1,4 +1,36 @@
-﻿# Sim 震荡/回滚诊断 — 排除两个假设（2026-11-28）
+﻿# Sim 稳定通关 F15 — 系统性调参达标（2026-11-28）
+
+> 用户拍板：作为专门项目投入系统性多轮调参。达标线 win_rate≥5% 且 F10/F15 有击杀。
+
+## 方法（工程化，不再手动单点试错）
+
+把 9 个核心参数外置为 `SIM_TUNE_*` 环境变量（`src/core/sim/sim_tuning.h/.cpp`，全部 sim 门控、真实游戏零变化），写 `tools/sim_tuner.py` 批量脚本（多配置 × 多 seed，跑前删旧 report + 校验 total_runs 防脏读）。
+
+## 网格搜索结果（12 配置 × 20 局 seed4242）
+
+- `stuck400`（仅卡死预算 240→400s）：win 5%、floor 9.55、F10 Boss 10、F15 Boss 1
+- `combo_max`：win 10%、floor 10.9、F15 Boss 1
+- 其它配置（boss 缩放/玩家 ATK/loot 权重/hunt 阈值）单独调均无效或负收益
+
+## 大样本验证（3 seed × 50 局 = 150 局）
+
+`stuck400`（现为代码默认值）：**win 19.3%**、avg_floor 10.80、卡死 17.7、F5 Boss 46、F10 Boss 29、**F15 Boss 8.3**、maxfloor 15。三 seed 各 win 8%/26%/24% 全部达标。
+
+**结论：达标。** 核心洞察——深层清怪就是需要更多时间预算，240s 不够、400s 够；无需激进数值调整。
+
+## Golden 重采集
+
+新 4 局基线 [12,12,3,15]/[60,55,10,76]/[4974,3456,78,5836]/[crossbow_legendary,spear_common,dagger_common,sword_common]，run3 到 F15。GOLDEN-002/003 不动。
+
+## Review
+
+fresh reviewer 条件通过。修 ISSUE：sim_tuner 删旧 report + 校验 total_runs + 清 SIM_RD_* 残留；补 stuck240 配置使 A/B 可复现（stuck240 win0/stuck400 win5）；boss 缩放注释改"全局 Boss 倍率"（作用于所有楼层，非仅 F15）；注释漂移统一 400；锁存测试跟随 env 阈值隔离。ctest 97/97、fn_length 0、validator 0/0。
+
+可复现命令：`python tools/sim_tuner.py --runs 50 --seeds 4242,1,777 --preset grid`
+
+---
+
+# Sim 震荡/回滚诊断 — 排除两个假设（2026-11-28）
 
 > 延续系统性 redesign，针对 F12-13 远怪清不掉做定点诊断。
 

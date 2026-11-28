@@ -12,6 +12,7 @@
 #include "sim_ai_teleport.h"      // P0-M2: room-domain teleport contract
 #include "combat_focus_tracker.h"          // P6: 清怪僵持检测
 #include "sim_redesign_flags.h"            // P3-redesign: 卡死修复 per-change 开关
+#include "sim_tuning.h"                    // P3-redesign: 系统性调参旋钮
 #include "world/room_manager.h"   // P0-M2: room_at for teleport logging
 #include <cmath>
 #include <cstring>
@@ -780,7 +781,7 @@ std::optional<float> DecisionAgent::_eval_loot_score(int dir, const Player* p,
     if (loot_step < 0) return std::nullopt;
     float loot_w = 0.7f;
     if (sim_redesign_active() && sim_redesign_flags().loot_suppress)
-        loot_w = 0.3f;  // 清怪阶段降权 (非零, 保留机会窗口)
+        loot_w = sim_tuning::loot_weight();  // 调参旋钮 (默认 0.3)
     if (dir == loot_step) { sim_move_branch[1]++; return loot_w; }
     return std::nullopt;
 }
@@ -810,7 +811,7 @@ std::optional<float> DecisionAgent::_eval_move_loot_and_rooms(
         // 降到 0.5 让"活着打怪"恒压过"去摸房", 房间仍远高于随机游走(0.1).
         float room_w = 0.5f;
         if (sim_redesign_active() && sim_redesign_flags().loot_suppress)
-            room_w = 0.2f;  // 降权但保留机会窗口 (15s 楼梯阶段仍可触发房间)
+            room_w = sim_tuning::room_weight();  // 调参旋钮 (默认 0.2)
         if (dir == room_step) { sim_move_branch[2]++; return room_w; }
         return std::nullopt;   // G26-fix: 其余方向交还战斗分支
     }
@@ -1104,9 +1105,9 @@ std::string DecisionAgent::_stuck_tp_or_pull(const Player* p,
 // G13: 卡死脱困编排 — 返回脱困动作; "" = 未进入脱困 (交给常规评分)
 // G53: 累计卡死是否超预算 (超了置看门狗标志并返回 true)
 bool DecisionAgent::_stuck_over_budget(float stuck_for) const {
-    // P3-redesign: sim 卡死预算放宽 (240s, 历史 240s 曾更差 — per-change 开关可关)。
+    // P3-redesign: sim 卡死预算旋钮 (默认 400s, 150局验证 win 0→19.3%; SIM_TUNE_STUCK 可调)。
     const double budget = (sim_redesign_active() && sim_redesign_flags().numeric)
-        ? 240.0 : kStuckTotalBudget;
+        ? sim_tuning::stuck_budget() : kStuckTotalBudget;
     if (_stuck_total + stuck_for <= budget) return false;
     sim_stuck_watchdog = 1;
     LOG_INFO("[SIM] 卡死看门狗: 累计 %.0fs → 强制结算", _stuck_total + stuck_for);

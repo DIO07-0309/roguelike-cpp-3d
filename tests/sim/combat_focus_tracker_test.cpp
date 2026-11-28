@@ -4,11 +4,12 @@
 #include <gtest/gtest.h>
 #include "core/sim/combat_focus_tracker.h"
 #include "core/sim/sim_redesign_flags.h"
+#include "core/sim/sim_tuning.h"
 
 // P3-redesign: floor_hunting 锁存 — redesign active 时僵持触发后保持到清层,
 // 不因零星怪掉血解除 (原 hunting 契约仍由上面的测试锁定, 二者并存).
 TEST(CombatFocusTracker, FloorHuntingLatchesUntilCleared) {
-    constexpr float k = CombatFocusTracker::kHuntThresholdSec;
+    const float k = sim_tuning::hunt_threshold();  // 跟随 env (防外部 SIM_TUNE_HUNT 干扰)
     sim_redesign_set_active(true);
     sim_redesign_flags_mut().hunt_lock = true;
     CombatFocusTracker f;
@@ -24,7 +25,7 @@ TEST(CombatFocusTracker, FloorHuntingLatchesUntilCleared) {
 }
 
 TEST(CombatFocusTracker, FloorHuntingResetsOnFloorChange) {
-    constexpr float k = CombatFocusTracker::kHuntThresholdSec;
+    const float k = sim_tuning::hunt_threshold();  // 跟随 env
     sim_redesign_set_active(true);
     sim_redesign_flags_mut().hunt_lock = true;
     CombatFocusTracker f;
