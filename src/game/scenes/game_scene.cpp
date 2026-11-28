@@ -2523,6 +2523,7 @@ void GameScene::_accumulate_sim_diag() {
     d.progress_alive = sim_progress_src[3];
     d.step_attempts = sim_step_attempts;
     d.step_rollbacks = sim_step_rollbacks;
+    d.target_switch = sim_target_switch;
     d.stuck_bfs_hit = sim_stuck_bfs_hit;
     d.stuck_bfs_fail = sim_stuck_bfs_fail;
     d.runs = 1;
@@ -2537,7 +2538,7 @@ void GameScene::_reset_sim_diag_counters() {
     for (int i = 0; i < 2; i++) sim_stuck_early[i] = 0;   // G26
     sim_stuck_for_max = 0.0;                               // G26
     // P3: hunt/step 计数器此前从不清零 → 诊断聚合跨局膨胀; 此处补齐逐局重置.
-    sim_step_attempts = 0; sim_step_rollbacks = 0;
+    sim_step_attempts = 0; sim_step_rollbacks = 0; sim_target_switch = 0;
     sim_hunt_enters = 0; sim_hunt_frames = 0; sim_hunt_approach_frames = 0;
 }
 

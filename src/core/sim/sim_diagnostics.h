@@ -12,6 +12,7 @@ struct SimDiagSnapshot {
     int64_t bfs_fail = 0;           // appr 分支 step==-1 帧数
     int64_t progress_move = 0, progress_monhp = 0, progress_php = 0, progress_alive = 0;
     int64_t step_attempts = 0, step_rollbacks = 0;
+    int64_t target_switch = 0;  // 最近怪目标切换次数 (震荡诊断)
     int64_t stuck_bfs_hit = 0, stuck_bfs_fail = 0;
     int64_t runs = 0;               // 累加的局数
 };

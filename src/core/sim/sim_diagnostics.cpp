@@ -19,6 +19,7 @@ void sim_diag_accumulate(const SimDiagSnapshot& per_run) {
     g_totals.progress_alive += per_run.progress_alive;
     g_totals.step_attempts += per_run.step_attempts;
     g_totals.step_rollbacks += per_run.step_rollbacks;
+    g_totals.target_switch += per_run.target_switch;
     g_totals.stuck_bfs_hit += per_run.stuck_bfs_hit;
     g_totals.stuck_bfs_fail += per_run.stuck_bfs_fail;
     g_totals.runs += per_run.runs;

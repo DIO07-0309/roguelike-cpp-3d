@@ -301,6 +301,7 @@ extern int sim_stuck_watchdog;    // G13: >0 = 本帧请求强制结算 (STUCK_R
 extern int sim_action_counts[8];  // G13: 动作分布诊断 (见 sim_ai.cpp 注释)
 extern int sim_move_branch[5];   // G14: 移动分支归因 (0:recovery 1:loot 2:room 3:approach 4:stand)
 extern int sim_bfs_fail;         // G14: BFS/贪心全部失败次数
+extern int sim_target_switch;    // P3-redesign: 最近怪目标切换次数(震荡诊断)
 extern int sim_stairs[3];        // G14: 0:stairs总帧 1:descend 2:move
 extern int sim_move_noenemy;     // G14: 无怪随机游走帧数
 extern int sim_stuck_sample[64][13];  // G14: (tileX,tileY,怪距px,存活怪数,4邻可走,hazard,4邻DOOR数,怪tx,怪ty,AI房间,怪房间,LOCKED门数,怪4邻可走)

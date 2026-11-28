@@ -1,4 +1,18 @@
-﻿# Sim 卡死系统性 Redesign — 重大进展，win_rate 未稳达标（2026-11-28）
+﻿# Sim 震荡/回滚诊断 — 排除两个假设（2026-11-28）
+
+> 延续系统性 redesign，针对 F12-13 远怪清不掉做定点诊断。
+
+新增 `sim_target_switch` 计数器（最近怪 instance_id 切换频率），输出 `diagnostics.target_switch`。20 局实测：目标切换 910/40378 = **2.3%**（非主因）、step_rollbacks 28.5%（tile BFS vs rect 执行分裂，窄走廊 rect 半宽跨 2 tile 碰墙）。
+
+实验（均已回退，无 gameplay 突破）：
+- 执行层整格步进判定改用 `is_passable_sim(目标 tile)` 与 BFS 同源 → 回滚率仍 30.5%、floor/stuck 无改善（无效）。
+- 验证 CLOSED 门假设：`is_passable_sim` 不阻断 CLOSED 门，BFS 可穿过 → 假设不成立。
+
+结论：剩余 bottleneck 对单点修复不敏感，需要更系统的定位/调参。诊断工具（纯观测、零 gameplay 副作用）保留。
+
+---
+
+# Sim 卡死系统性 Redesign — 重大进展，win_rate 未稳达标（2026-11-28）
 
 > 用户拍板：先固化提交当前成果（floor 4.2→8~9.5、F10 首次可击杀、F15 首次可达），F15 稳定通关留后续迭代。设计 `docs/superpowers/specs/2026-11-28-sim-stuck-systemic-redesign-design.md`。
 

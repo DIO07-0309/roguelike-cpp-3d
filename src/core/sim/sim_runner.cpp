@@ -366,6 +366,7 @@ static void append_diagnostics(json& j) {
     dg["progress_src"] = ps;
     dg["step_attempts"] = d.step_attempts;
     dg["step_rollbacks"] = d.step_rollbacks;
+    dg["target_switch"] = d.target_switch;  // P3-redesign: 最近怪目标切换(震荡诊断)
     dg["stuck_bfs_hit"] = d.stuck_bfs_hit;
     dg["stuck_bfs_fail"] = d.stuck_bfs_fail;
     j["diagnostics"] = dg;

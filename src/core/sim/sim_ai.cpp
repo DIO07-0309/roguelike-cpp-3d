@@ -34,6 +34,8 @@ int sim_action_counts[8] = {0};
 int sim_move_branch[5] = {0};
 // G14: BFS/贪心全部失败次数 — appr 分支 step==-1 时自增
 int sim_bfs_fail = 0;
+// P3-redesign 诊断: 最近怪目标(instance_id)切换次数 — 高值=目标震荡(深怪清不掉)
+int sim_target_switch = 0;
 // G14: stairs 分支归因 — 0:stairs_active总帧 1:descend 2:move(走楼梯/搜刮)
 int sim_stairs[3] = {0};
 // G14: _evaluate_move 返回 0.1 的无怪随机游走帧数
@@ -1220,6 +1222,8 @@ int DecisionAgent::_pick_stable_bfs_step(const Player* p,
     const std::vector<Monster*>& monsters, const GameMap* map, int bstep) const {
     auto* mem_t = _find_nearest(p, monsters);
     if (!mem_t || _mem_target != mem_t->instance_id || _mem_step < 0) {
+        if (mem_t && _mem_target != 0 && _mem_target != mem_t->instance_id)
+            ++sim_target_switch;  // P3-redesign 诊断: 目标切换
         _mem_target = mem_t ? mem_t->instance_id : 0;
         _mem_step = bstep;
         return bstep;
