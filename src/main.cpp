@@ -21,6 +21,8 @@
 #include "core/event_bus.h"
 #include "config.h"
 #include "systems/sim_aim.h"  // P3-redesign: sim 命中瞄准开关
+#include "core/sim/sim_redesign_flags.h"  // P3-redesign: 卡死修复 per-change 开关
+#include "world/growth_curve.h"          // P3-redesign: sim 缓和成长曲线
 #include "core/registry_builder.h"     // G4.1
 #include "core/builtin_provider.h"     // G4.1
 #include "core/mod_provider.h"         // G4.1
@@ -273,6 +275,8 @@ static bool _init_sim_headless(const CliFlags& f) {
     SaveManager::g_sim_readonly = true;     // Q3.1: sim 不覆盖玩家存档
     g_meta.g_readonly = true;               // Q3.1: sim 不写 meta 存档
     sim_hit_aim_set_enabled(true);          // P3-redesign: sim 命中用真实方位角, 真实游戏不变
+    sim_redesign_set_active(true);          // P3-redesign: 卡死系统性修复 (per-change 开关)
+    g_growth.set_sim_numeric(sim_redesign_flags().numeric);  // sim 缓和成长曲线
     auto& sr = SimRunner::inst();
     if (GameScene::g_sim_all_builds) sr.set_all_builds(true);
     sr.begin(sim_cfg);

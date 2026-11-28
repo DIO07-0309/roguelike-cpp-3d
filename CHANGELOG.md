@@ -1,4 +1,34 @@
-﻿# Sim 攻击朝向精度修复 — "攻击打不掉血"单点达标（2026-11-28）
+﻿# Sim 卡死系统性 Redesign — 重大进展，win_rate 未稳达标（2026-11-28）
+
+> 用户拍板：先固化提交当前成果（floor 4.2→8~9.5、F10 首次可击杀、F15 首次可达），F15 稳定通关留后续迭代。设计 `docs/superpowers/specs/2026-11-28-sim-stuck-systemic-redesign-design.md`。
+
+## 根因链（完整证据）
+
+攻击修复后卡死仍 18/20。铁证：存活怪满血、11-35 格外、path_reach=1（可达却清不掉）；动作分布 room 45%/pick 24%/approach 44%；假进展 move=2295；hunt 触发 100 次但 approach 仅 40%。代码级根因 = 站桩死区（`_eval_move_in_range` 在 `reach<dist≤ideal` 返回 0 分）→ 攻击分也为 0 → loot/room 趁虚而入 → 怪永远清不掉；叠加 hunt 反复重置 + 假进展拖看门狗。历史多次单点修补无效（approach 分 0.6→1.2 实测也无效）。
+
+## 方案（5 个 per-change 开关，全部 sim-only）
+
+`sim_redesign_flags.h/.cpp`：standstill_fix（死区交还 approach）/ loot_suppress（清怪阶段 loot/room 降权但保留机会窗口）/ progress_tighten（p_move 假进展收紧，远怪豁免）/ hunt_lock（floor_hunting 锁存，清层/换层解锁）/ numeric（数值+预算）。`SIM_RD_*=0` 环境变量可逐个关闭做 A/B 二分。真实游戏全门控（g_sim_mode=false 恒 false）。
+
+数值：SIM_CURVES 前 4 列单调缓和（F15 boss_hp ×15→×5），第 5-11 列与原表一致（reviewer 修正：初版误压平 exp_scale 等，已恢复）；玩家成长 +6ATK/+30HP；卡死预算 120→240s；帧预算 36000→72000。
+
+## 实测（seed4242）
+
+- 20 局：avg_floor 4.2→8.2~9.5、卡死 18→10~20、F5 Boss 击杀 3→25、F10 0→8、最高到 F15
+- 30 局某次：win_rate 3.3%（1/30）、floor 9.5、F10 Boss 11 击杀 —— **曾通关 F15，但不稳定**
+- 二分：全关 floor 4.2/stuck 18，全开 floor 8.5/stuck 6（10 局）；loot_suppress + progress_tighten 为主贡献
+
+## 未达标项（诚实）
+
+**win_rate 未稳过 5%**（0-3.3% 波动）、F15 Boss 零击杀、深层 F12-13 远怪仍清不掉。核心目标"稳定通关 F15"未达成，留后续迭代。
+
+## 验证与 Review
+
+ctest **97/97**、golden 重采集（新 4 局 [9,9,3,13]/[40,37,10,61]/[2254,1155,78,3745]，归因注释）、GOLDEN-002/003 不动、fn_length 0、validator 0/0。fresh reviewer 判定代码本体可合入：真实游戏零变化、确定性保持、SIM_CURVES 单调、P6 契约不破坏；修 reviewer ISSUE：SIM_CURVES 第5-11列恢复原表、测试 ASSERT 泄漏全局标志改 EXPECT、golden 归因措辞改保守。
+
+---
+
+# Sim 攻击朝向精度修复 — "攻击打不掉血"单点达标（2026-11-28）
 
 > 用户目标：修"攻击打不掉血"单点（命中率≥10% 且 kills/damage 不降；F15 通关留后续）。设计 `docs/superpowers/specs/2026-11-28-sim-facing-precision-design.md`。
 

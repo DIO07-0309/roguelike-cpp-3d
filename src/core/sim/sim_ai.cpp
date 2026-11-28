@@ -11,6 +11,7 @@
 #include "ai/mcts/action.h"
 #include "sim_ai_teleport.h"      // P0-M2: room-domain teleport contract
 #include "combat_focus_tracker.h"          // P6: 清怪僵持检测
+#include "sim_redesign_flags.h"            // P3-redesign: 卡死修复 per-change 开关
 #include "world/room_manager.h"   // P0-M2: room_at for teleport logging
 #include <cmath>
 #include <cstring>
@@ -767,31 +768,37 @@ std::optional<float> DecisionAgent::_eval_move_recovery(int dir, const Player* p
     return std::nullopt;
 }
 
+// P3-redesign: 拾取方向分 (从 _eval_move_loot_and_rooms 抽出, 守 ≤40 行)
+std::optional<float> DecisionAgent::_eval_loot_score(int dir, const Player* p,
+        const GameMap* map) const {
+    if (_ground.empty()) return std::nullopt;
+    const float loot_d = _near_loot_dist(p);
+    if (loot_d < 0 || loot_d >= 5.0f * 32.0f) return std::nullopt;
+    const int loot_step = _bfs_toward_loot(p, map);
+    if (loot_step < 0) return std::nullopt;
+    float loot_w = 0.7f;
+    if (sim_redesign_active() && sim_redesign_flags().loot_suppress)
+        loot_w = 0.3f;  // 清怪阶段降权 (非零, 保留机会窗口)
+    if (dir == loot_step) { sim_move_branch[1]++; return loot_w; }
+    return std::nullopt;
+}
+
 // 战斗间隙捡地面物品 + 搜刮最近未触发特殊房 (圣物/装备/泉水)
 std::optional<float> DecisionAgent::_eval_move_loot_and_rooms(
         int dir, const Player* p, float dist, float reach_px,
         const GameMap* map) const {
     // P6: 纯追怪模式 — 僵持时跳过 loot/room 方向分, 让 approach 驱动追远怪。
     // 绝不上移到此函数之外(否则误禁 recovery/dodge/heal 致残血送死)。
-    if (_combat_focus.hunting()) return std::nullopt;
+    // P3-redesign change4: 锁存态门控 (清怪阶段持续禁 loot/room, 不因零星掉血反复).
+    const bool suppress = sim_redesign_active() && sim_redesign_flags().hunt_lock
+        ? _combat_focus.floor_hunting() : _combat_focus.hunting();
+    if (suppress) return std::nullopt;
     if (!map || dist <= reach_px + 32.0f) return std::nullopt;
     // P1-A2: 战斗间隙捡地面物品 — 比特殊房更近的直接资源, 优先级更高 (0.7 > 0.6)
     // G13: 间隙判定对齐真实射程 — 原 160px 硬编码, crossbow 射程 320px 时 AI 在
     //      5~10 格区间去捡破烂而非攻击 (loot 0.7 > 远程 attack 0.35)。
-    if (!_ground.empty()) {
-        const float loot_d = _near_loot_dist(p);
-        // 只对 5 格内的近物品直奔; 更远的留给房间搜刮 (避免长途回头捡破烂)
-        if (loot_d >= 0 && loot_d < 5.0f * 32.0f) {
-            const int loot_step = _bfs_toward_loot(p, map);
-            if (loot_step >= 0) {
-                // G26-fix: 仅给房间/物品方向打分, 其余方向返回 nullopt 交还战斗分支.
-                // 原实现返回 0.0f 使 _eval_move_approach 永不可达 → AI 永不朝怪移动
-                // (seed42: atk=0% 全程, 怪恒定 220-407px 外, 120s 累计卡死).
-                if (dir == loot_step) { sim_move_branch[1]++; return 0.7f; }
-                return std::nullopt;
-            }
-        }
-    }
+    // G26-fix: 仅给物品方向打分, 其余方向交还战斗分支 (否则 approach 永不可达)
+    if (auto loot = _eval_loot_score(dir, p, map)) return loot;
     // Q3.2: 战斗间隙搜刮 — 最近怪超出射程时走向最近未触发特殊房
     // 交战圈内(≤ideal)先打; rect级BFS保证路径真实可达, 不会卡墙
     const int room_step = _bfs_toward_room(p, map);
@@ -799,7 +806,10 @@ std::optional<float> DecisionAgent::_eval_move_loot_and_rooms(
         // G26-fix: 0.6 → 0.5. 房间方向与 approach(0.6) 同分时, 方向索引低的房间
         // 方向会赢 (best_dir 严格 > 判定), 使 AI 持续追永远触发不了的特殊房.
         // 降到 0.5 让"活着打怪"恒压过"去摸房", 房间仍远高于随机游走(0.1).
-        if (dir == room_step) { sim_move_branch[2]++; return 0.5f; }
+        float room_w = 0.5f;
+        if (sim_redesign_active() && sim_redesign_flags().loot_suppress)
+            room_w = 0.2f;  // 降权但保留机会窗口 (15s 楼梯阶段仍可触发房间)
+        if (dir == room_step) { sim_move_branch[2]++; return room_w; }
         return std::nullopt;   // G26-fix: 其余方向交还战斗分支
     }
     return std::nullopt;
@@ -833,6 +843,12 @@ std::optional<float> DecisionAgent::_eval_move_in_range(
             const int step = _bfs_toward(p, monsters, map, false);
             if (step >= 0) return (dir == step) ? 0.4f : 0.0f;
         }
+        // P3-redesign change1: 站桩死区 — dist>真实攻击射程时交还 approach 追怪,
+        // 不再用 0 分站桩压制 (loot/room 会趁虚而入). 不用历史有害的风筝分支.
+        const float reach_px = std::max(p->weapon.current_range(), 1.5f) * 32.0f;
+        if (sim_redesign_active() && sim_redesign_flags().standstill_fix &&
+            dist > reach_px && t && map)
+            return std::nullopt;
         if (dir == 0) sim_move_branch[4]++;
         return 0.0f;
     }
@@ -1023,10 +1039,20 @@ bool DecisionAgent::_stuck_progress(const Player* p,
         if (!m || !m->combat.is_alive) continue;
         mon += m->combat.current_hp; alive++;
     }
-    bool p_move  = hypotf((float)(tx - (int)_last_px), (float)(ty - (int)_last_py)) > 2.0f;
+    bool moved   = hypotf((float)(tx - (int)_last_px), (float)(ty - (int)_last_py)) > 2.0f;
     bool p_mon   = fabsf(mon - _last_mon_sum) > 0.01f;
     bool p_hp    = fabsf(php - _last_hp_sum) > 0.01f;
     bool p_alive = alive != _last_alive_count;
+    // P3-redesign change3: 假进展收紧 — 有活怪且全在脱困/闪避范围外(>7格)时,
+    // 单纯位移(loot/room 游荡)不算进展; 近距怪(闪避/后撤/hazard)豁免, 避免误触发.
+    bool p_move = moved;
+    if (moved && alive > 0 && sim_redesign_active() && sim_redesign_flags().progress_tighten) {
+        const Monster* nm = _find_nearest(p, monsters);
+        float nd = nm ? hypotf(
+            nm->entity.rect.x + nm->entity.rect.width/2 - p->entity.rect.x - p->entity.rect.width/2,
+            nm->entity.rect.y + nm->entity.rect.height/2 - p->entity.rect.y - p->entity.rect.height/2) : 0.0f;
+        if (nd > 7.0f * 32.0f) p_move = false;  // 远怪游荡不算进展
+    }
     bool progressed = p_move || p_mon || p_hp || p_alive;
     if (progressed) {   // G26: 记录是哪类信号构成"进展"
         sim_progress_src[0] += p_move ? 1 : 0;
@@ -1076,7 +1102,10 @@ std::string DecisionAgent::_stuck_tp_or_pull(const Player* p,
 // G13: 卡死脱困编排 — 返回脱困动作; "" = 未进入脱困 (交给常规评分)
 // G53: 累计卡死是否超预算 (超了置看门狗标志并返回 true)
 bool DecisionAgent::_stuck_over_budget(float stuck_for) const {
-    if (_stuck_total + stuck_for <= kStuckTotalBudget) return false;
+    // P3-redesign: sim 卡死预算放宽 (240s, 历史 240s 曾更差 — per-change 开关可关)。
+    const double budget = (sim_redesign_active() && sim_redesign_flags().numeric)
+        ? 240.0 : kStuckTotalBudget;
+    if (_stuck_total + stuck_for <= budget) return false;
     sim_stuck_watchdog = 1;
     LOG_INFO("[SIM] 卡死看门狗: 累计 %.0fs → 强制结算", _stuck_total + stuck_for);
     return true;

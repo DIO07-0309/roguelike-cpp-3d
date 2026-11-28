@@ -36,6 +36,7 @@
 #include "core/sim/sim_runner.h"     // G5.6
 #include "core/sim/sim_diagnostics.h" // P3: 卡死诊断聚合 (纯值, 不改 gameplay)
 #include "core/sim/sim_outcome.h"      // P3-redesign: 胜利判定纯函数
+#include "core/sim/sim_redesign_flags.h"  // P3-redesign: 卡死修复开关
 #include "ai/agents/bt_agent.h"      // G8.1
 #include "event_system.h"
 #include "event_bus.h"
@@ -750,38 +751,42 @@ void GameScene::_process(double delta) {
     _tick_presentation_tail(dt);
 }
 
+// P3-redesign: 帧超时现场快照 (从 _sim_wall_timeout_check 抽出, 守 ≤40 行)
+void GameScene::_dump_wall_timeout_snapshot() {
+    float px = player->entity.rect.x + player->entity.rect.width / 2;
+    float py = player->entity.rect.y + player->entity.rect.height / 2;
+    LOG_INFO("[C3DIAG] stairs_active=%d monsters=%zu picks=%d gold=%d",
+             (int)stairs_active, monsters.size(), _sim_items_picked, player->gold);
+    for (auto& m : monsters) {
+        if (!m || !m->combat.is_alive) continue;
+        float d = hypotf(m->entity.rect.x + m->entity.rect.width / 2 - px,
+                         m->entity.rect.y + m->entity.rect.height / 2 - py);
+        LOG_INFO("[C3DIAG] mon '%s' hp=%d/%d dist=%.0f pos=(%.0f,%.0f) room=%d",
+                 m->name.c_str(), m->combat.current_hp, m->combat.max_hp,
+                 d, m->entity.rect.x, m->entity.rect.y,
+                 _room_mgr.room_at((int)(m->entity.rect.x / TILE_SIZE),
+                                   (int)(m->entity.rect.y / TILE_SIZE)));
+    }
+    if (game_map) {
+        auto [stx, sty] = game_map->pixel_to_tile(px, py);
+        LOG_INFO("[C3DIAG] player tile=(%d,%d) walkable=%d stairs_pos=(%d,%d) on_stairs=%d",
+                 stx, sty, (int)game_map->is_walkable(stx, sty),
+                 stairs_pos.first, stairs_pos.second,
+                 (std::make_pair(stx, sty) == stairs_pos) ? 1 : 0);
+    }
+}
+
 bool GameScene::_sim_wall_timeout_check() {
     // Q3.10: 兜底超时置顶 — 任何状态(BOSS_CINEMATIC/事件/对话/非PLAYING)都可能卡死
     // 原置尾 870 行: state!=PLAYING 提前 return → 10min 墙钟永不触发 (v11 r8 进F14后静默150min)
     // M2-E: GetTime()(真实墙钟, 慢机改变结果) → 帧计数 (600s×60fps=36000帧, 确定性)
-    if (_sim_mode && ++_sim_wall_frames > 36000) {
-        LOG_INFO("[SIM] 帧数兜底超时(36000f) 第%d层 — 强制结算", current_floor);
+    // P3-redesign: sim 帧预算放宽 (72000f≈1200s) — 深层 13 层需要更多时间.
+    const long wall_budget = (sim_redesign_active() && sim_redesign_flags().numeric)
+        ? 72000L : 36000L;
+    if (_sim_mode && ++_sim_wall_frames > wall_budget) {
+        LOG_INFO("[SIM] 帧数兜底超时(%ldf) 第%d层 — 强制结算", wall_budget, current_floor);
         // P1-C3 探针: 兜底结算现场快照 — 定位游走困死的末帧状态
-        // (与 900s P0DIAG 同构: 玩家/怪/楼梯/门, headless 一次性打印)
-        {
-            float px = player->entity.rect.x + player->entity.rect.width/2;
-            float py = player->entity.rect.y + player->entity.rect.height/2;
-            LOG_INFO("[C3DIAG] stairs_active=%d monsters=%zu picks=%d gold=%d",
-                     (int)stairs_active, monsters.size(), _sim_items_picked, player->gold);
-            for (auto& m : monsters) {
-                if (!m || !m->combat.is_alive) continue;
-                float d = hypotf(m->entity.rect.x + m->entity.rect.width/2 - px,
-                                 m->entity.rect.y + m->entity.rect.height/2 - py);
-                LOG_INFO("[C3DIAG] mon '%s' hp=%d/%d dist=%.0f pos=(%.0f,%.0f) room=%d",
-                         m->name.c_str(), m->combat.current_hp, m->combat.max_hp,
-                         d, m->entity.rect.x, m->entity.rect.y,
-                         _room_mgr.room_at(
-                             (int)(m->entity.rect.x / TILE_SIZE),
-                             (int)(m->entity.rect.y / TILE_SIZE)));
-            }
-            if (game_map) {
-                auto [stx, sty] = game_map->pixel_to_tile(px, py);
-                LOG_INFO("[C3DIAG] player tile=(%d,%d) walkable=%d stairs_pos=(%d,%d) on_stairs=%d",
-                         stx, sty, (int)game_map->is_walkable(stx, sty),
-                         stairs_pos.first, stairs_pos.second,
-                         (std::make_pair(stx, sty) == stairs_pos) ? 1 : 0);
-            }
-        }
+        _dump_wall_timeout_snapshot();
         _sim_wall_timeout = true;
         _collect_sim_stats();
         return true;

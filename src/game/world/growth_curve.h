@@ -21,6 +21,9 @@ struct GrowthCurve {
 
 class GrowthCurveSystem {
 public:
+    // P3-redesign: sim 缓和曲线开关 (由 sim_redesign_flags.numeric 驱动, main.cpp 置位)
+    void set_sim_numeric(bool enabled) const { _sim_numeric = enabled; }
+
     // 核心查询
     const GrowthCurve& curve(int floor) const;
 
@@ -34,6 +37,9 @@ public:
     float gold_scale(int floor) const;      // 掉落
     float relic_scale(int floor) const;     // 圣物稀有度
     float arena_scale(int floor) const;     // Arena
+
+private:
+    mutable bool _sim_numeric = false;  // P3-redesign
 };
 
 // 全局单实例

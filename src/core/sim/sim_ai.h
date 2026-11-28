@@ -143,6 +143,8 @@ private:
         const Monster* t, float dist, const GameMap* map) const;
     std::optional<float> _eval_move_loot_and_rooms(int dir, const Player* p,
         float dist, float reach_px, const GameMap* map) const;
+    std::optional<float> _eval_loot_score(int dir, const Player* p,
+        const GameMap* map) const;  // P3-redesign: 拾取方向分 (拆函数守≤40行)
     std::optional<float> _eval_move_in_range(int dir, const Player* p,
         const Monster* t, float dist, const std::vector<Monster*>& monsters,
         const GameMap* map) const;

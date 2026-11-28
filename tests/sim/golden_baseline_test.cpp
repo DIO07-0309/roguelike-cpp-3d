@@ -56,15 +56,23 @@ const nlohmann::json* run_at(const nlohmann::json& report, size_t i) {
 // 覆盖: 地牢生成 / 刷怪 / 战斗判定 / 掉落 / 楼层推进 / 结算
 //
 // 基线采集: `roguelike_cpp.exe --sim 4 --sim-seed 4242 --sim-build none`
-//   当前实际值 (P3-redesign 真实方位角后, 见下方基线更新):
-//   run0 floor=2  kills=8   dmg=183 weapon=crossbow_rare
-//   run1 floor=3  kills=11  dmg=84  weapon=sword_common
-//   run2 floor=4  kills=15  dmg=72  weapon=dagger_rare
-//   run3 floor=4  kills=15  dmg=331 weapon=sword_common
+//   当前实际值 (P3-redesign 卡死系统性修复后, 见下方基线更新):
+//   run0 floor=9  kills=40  dmg=2254 weapon=crossbow_legendary
+//   run1 floor=9  kills=37  dmg=1155 weapon=spear_common
+//   run2 floor=3  kills=9   dmg=78  weapon=dagger_common
+//   run3 floor=13 kills=61  dmg=3745 weapon=sword_common
 //   (历史值 A15-Guard 时代曾为 run1 spear_legendary / run2 floor5 / run3 floor2, 已漂移)
 // ⚠ 注: `--sim-build none` 实际会跑成"1 局指定 + 3 局随机 build"
 //   (SimRunner 的 all_builds/随机分支行为), 故 4 局 build 不同 —
 //   这不影响确定性, 但意味着改 build 相关逻辑会让前 3 局结果变化。
+// ═ P3-redesign 卡死系统性修复基线更新 (2026-11-28) ═
+//   5 个 per-change 改动 (standstill/loot-suppress/progress-tighten/hunt-lock/numeric)
+//   协同: 清怪优先 + sim 数值/预算放宽。玩法显著改变 — 4 局全部漂移:
+//   floor [2,3,4,4]→[9,9,3,13], kills/dmg 大幅上升 (清怪不再卡死, 能推进深层)。
+//   20-30 局实测 avg_floor 4.2→8~9.5, F5 Boss 击杀 3→25, F10 首次可击杀。
+//   归因: 推测 loot-suppress/progress-tighten 为主贡献 (env SIM_RD_*=0 可逐个关闭复现 A/B 复核)。
+//   注: 中途曾采集 [8,8,3,12] 基线, 后修正 SIM_CURVES 第5-11列 (exp_scale 等恢复原表) 重采为当前值。
+//   确定性: GOLDEN-003 同 seed 一致; 所有改动在 sim_redesign_active 开关内, 真实游戏不变。
 // ═ P3-redesign 真实方位角基线更新 (2026-11-28) ═
 //   WeaponExecutor 命中判定在 sim 下传玩家→最近怪的真实 atan2 方位角,
 //   修正 _face_nearest_target 四方向量化造成的 30-60° 偏差 (命中瞬间诊断:
@@ -88,11 +96,11 @@ TEST(GoldenBaseline, FixedSeedOutcomeIsMatchesBaseline) {
     ASSERT_TRUE(r.contains("runs")) << "report 缺少 runs 字段";
     ASSERT_GE(r["runs"].size(), 4u) << "sim 未产出 4 局";
 
-    const int    base_floor[] = {2, 3, 4, 4};
-    const int    base_kills[] = {8, 11, 15, 15};
-    const long   base_dmg[]   = {183, 84, 72, 331};
-    const char*  base_weapon[] = {"crossbow_rare", "sword_common",
-                                  "dagger_rare", "sword_common"};
+    const int    base_floor[] = {9, 9, 3, 13};
+    const int    base_kills[] = {40, 37, 10, 61};
+    const long   base_dmg[]   = {2254, 1155, 78, 3745};
+    const char*  base_weapon[] = {"crossbow_legendary", "spear_common",
+                                  "dagger_common", "sword_common"};
 
     for (size_t i = 0; i < 4u; ++i) {
         const nlohmann::json* run = run_at(r, i);

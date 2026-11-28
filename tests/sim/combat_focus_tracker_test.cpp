@@ -3,6 +3,48 @@
 // 纯值输入(hp_sum/alive/game_time), 无 game 依赖。
 #include <gtest/gtest.h>
 #include "core/sim/combat_focus_tracker.h"
+#include "core/sim/sim_redesign_flags.h"
+
+// P3-redesign: floor_hunting 锁存 — redesign active 时僵持触发后保持到清层,
+// 不因零星怪掉血解除 (原 hunting 契约仍由上面的测试锁定, 二者并存).
+TEST(CombatFocusTracker, FloorHuntingLatchesUntilCleared) {
+    constexpr float k = CombatFocusTracker::kHuntThresholdSec;
+    sim_redesign_set_active(true);
+    sim_redesign_flags_mut().hunt_lock = true;
+    CombatFocusTracker f;
+    f.observe(100.0f, 3, 0.0f);
+    for (int t = 1; t <= (int)k + 1; ++t) f.observe(100.0f, 3, (float)t);
+    EXPECT_TRUE(f.floor_hunting()) << "僵持触发应锁存";
+    f.observe(90.0f, 3, k + 2.0f);            // 零星掉血: 原 hunting 退出
+    EXPECT_FALSE(f.hunting());
+    EXPECT_TRUE(f.floor_hunting()) << "锁存不因零星掉血解除";
+    f.observe(0.0f, 0, k + 3.0f);             // 清层
+    EXPECT_FALSE(f.floor_hunting()) << "清空后解锁";
+    sim_redesign_set_active(false);            // 复原全局标志
+}
+
+TEST(CombatFocusTracker, FloorHuntingResetsOnFloorChange) {
+    constexpr float k = CombatFocusTracker::kHuntThresholdSec;
+    sim_redesign_set_active(true);
+    sim_redesign_flags_mut().hunt_lock = true;
+    CombatFocusTracker f;
+    f.observe(100.0f, 3, 50.0f);
+    for (int t = 51; t <= 50 + (int)k + 1; ++t) f.observe(100.0f, 3, (float)t);
+    EXPECT_TRUE(f.floor_hunting());
+    f.observe(100.0f, 3, 0.0f);               // game_time 回退 = 换层
+    EXPECT_FALSE(f.floor_hunting()) << "换层解锁";
+    sim_redesign_set_active(false);
+}
+
+TEST(SimRedesignFlags, DefaultsAllTrue) {
+    // per-change 开关默认全开 (协同方案)
+    const auto& fl = sim_redesign_flags();
+    EXPECT_TRUE(fl.standstill_fix);
+    EXPECT_TRUE(fl.loot_suppress);
+    EXPECT_TRUE(fl.progress_tighten);
+    EXPECT_TRUE(fl.hunt_lock);
+    EXPECT_TRUE(fl.numeric);
+}
 
 TEST(CombatFocusTracker, HuntingAfterNoDamage) {
     constexpr float k = CombatFocusTracker::kHuntThresholdSec;

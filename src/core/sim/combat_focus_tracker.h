@@ -1,4 +1,5 @@
 #pragma once
+#include "sim_redesign_flags.h"
 // ============================================================
 // P6: CombatFocusTracker — 清怪僵持检测 (纯值, 无 game 依赖)
 //
@@ -39,9 +40,15 @@ public:
         _last_hp_sum = hp_sum;
         _last_alive = alive_count;
         _last_time = game_time;
+        // P3-redesign change4: 清怪锁存 — 僵持触发后保持到清层/换层, 不因零星掉血解除.
+        if (sim_redesign_active() && sim_redesign_flags().hunt_lock) {
+            if (_hunting) _floor_locked = true;
+            if (alive_count <= 0) _floor_locked = false;  // 清层解锁; 换层由 reset() 解锁
+        }
     }
 
     bool hunting() const { return _hunting; }
+    bool floor_hunting() const { return _floor_locked; }  // P3-redesign: 锁存态
 
     void reset() {
         _last_hp_sum = -1.0f;
@@ -49,6 +56,7 @@ public:
         _last_alive = -1;
         _no_combat_since = -1.0f;
         _hunting = false;
+        _floor_locked = false;
     }
 
 private:
@@ -57,4 +65,5 @@ private:
     int   _last_alive = -1;
     float _no_combat_since = -1.0f;
     bool  _hunting = false;
+    bool  _floor_locked = false;  // P3-redesign
 };

@@ -270,6 +270,7 @@ public:
     // G30-K: _process 子步骤 (头部守卫/时间/sim 注入/构筑, 纯结构搬运, 执行顺序零改动)
     // 三个 bool 子步骤返回 true = 已强制结算或门控拦截, 调度骨架据此短路 (等价原 return)
     bool _sim_wall_timeout_check();
+    void _dump_wall_timeout_snapshot();  // P3-redesign: 帧超时现场快照 (拆函数守≤40行)
     bool _sim_stuck_gate();
     bool _tick_hit_stop_gates(float dt);
     void _advance_game_time(float dt);
